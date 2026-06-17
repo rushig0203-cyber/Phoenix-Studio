@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, Upload, Zap, Film, Send, CheckCircle2, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Sparkles, Upload, Send, CheckCircle2, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThumbnailGenerator from "./editor/ThumbnailGenerator";
 
@@ -49,7 +49,6 @@ export default function UploadTabConsole() {
   const [ytTitle, setYtTitle] = useState("");
   const [ytDescription, setYtDescription] = useState("");
   const [ytTags, setYtTags] = useState("");
-  const [thumbnailPath, setThumbnailPath] = useState<string | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 
   const [instaCaption, setInstaCaption] = useState("");
@@ -109,7 +108,7 @@ export default function UploadTabConsole() {
       } else {
         throw new Error("API responded with an error");
       }
-    } catch (err: any) {
+    } catch {
       setErrorMsg("AI Assistant failed to generate viral assets. Please fill in details manually.");
     } finally {
       setIsGeneratingAI(false);

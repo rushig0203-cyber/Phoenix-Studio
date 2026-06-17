@@ -23,8 +23,7 @@ export default function ThumbnailGenerator({ videoUrl, onSave }: ThumbnailGenera
   const [textLine1, setTextLine1] = useState("VIRAL TRUTH!");
   const [textLine2, setTextLine2] = useState("DON'T MISS THIS");
   const [textColor, setTextColor] = useState("#FBBF24"); // Yellow
-  const [bannerColor, setBannerColor] = useState("rgba(0, 0, 0, 0.75)");
-  const [fontSize, setFontSize] = useState(48);
+  const [bannerColor] = useState("rgba(0, 0, 0, 0.75)");
   const [fontFamily, setFontFamily] = useState("Impact");
   const [textPosition, setTextPosition] = useState<"top" | "center" | "bottom">("center");
 

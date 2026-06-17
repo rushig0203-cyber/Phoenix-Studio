@@ -1,7 +1,7 @@
 "use strict";
 
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { toBlobURL, fetchFile, importScript } from "@ffmpeg/util";
+import { toBlobURL, importScript } from "@ffmpeg/util";
 
 let ffmpeg: FFmpeg | null = null;
 let isLoading = false;
@@ -131,13 +131,18 @@ export const generateThumbnailsWasm = async (
   file: File,
   count: number = 8
 ): Promise<string[]> => {
+  const mountId = `work_${Math.random().toString(36).substring(2, 9)}`;
+  const mountDir = `/${mountId}`;
   try {
     const instance = await getFFmpeg();
-    const inName = "input.mp4";
     
-    // Write original file into FFmpeg virtual storage
-    await instance.writeFile(inName, await fetchFile(file));
+    // Mount the video file directly into the Web Worker filesystem without reading it into memory
+    await instance.createDir(mountDir);
+    await instance.mount("WORKERFS" as any, {
+      blobs: [{ name: "input.mp4", data: file }]
+    }, mountDir);
     
+    const inPath = `${mountDir}/input.mp4`;
     const duration = await getVideoDuration(file);
     const interval = duration / (count + 1);
     const thumbnails: string[] = [];
@@ -156,7 +161,7 @@ export const generateThumbnailsWasm = async (
       // Execute frame slice command
       await instance.exec([
         "-ss", formattedTime,
-        "-i", inName,
+        "-i", inPath,
         "-vframes", "1",
         "-q:v", "5",
         outName,
@@ -177,12 +182,16 @@ export const generateThumbnailsWasm = async (
       }
     }
 
-    // Cleanup virtual input file
-    await instance.deleteFile(inName);
     return thumbnails;
   } catch (err) {
     console.warn("WASM thumbnail extraction failed, using browser canvas fallback...", err);
     return generateThumbnailsCanvas(file, count);
+  } finally {
+    try {
+      const instance = await getFFmpeg();
+      await instance.unmount(mountDir);
+      await instance.deleteDir(mountDir);
+    } catch {}
   }
 };
 
