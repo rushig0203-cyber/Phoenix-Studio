@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  # AuraClip Web Application Server
+  auraclip:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auraclip
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:./dev.db
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=auraclip-nextauth-super-secret-key-12345
+      - AWS_ACCESS_KEY_ID=mock-access-key
+      - AWS_SECRET_ACCESS_KEY=mock-secret-key
+      - AWS_REGION=us-east-1
+      - S3_ENDPOINT=http://localhost:9000
+      - S3_BUCKET_NAME=auraclip-storage
+      - S3_FORCE_PATH_STYLE=true
+    volumes:
+      - auraclip-data:/app/prisma
+      - ./saved_video_clips:/app/saved_video_clips
+
+volumes:
+  auraclip-data:

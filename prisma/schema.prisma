@@ -1,0 +1,205 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("USER") // "USER" | "ADMIN"
+  remainingMins Float     @default(120.0) // minutes of video processing remaining
+  accounts      Account[]
+  sessions      Session[]
+  projects        Project[]
+  activityLogs    ActivityLog[]
+  publishSettings PublishSettings?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id               String           @id @default(cuid())
+  userId           String
+  title            String
+  originalVideoUrl String?
+  status           String           @default("PENDING") // "PENDING" | "UPLOADING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  progress         Int              @default(0) // progress percentage
+  duration         Float            @default(0.0) // in seconds
+  thumbnailUrl     String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clips       Clip[]
+  videos      Video[]
+  audioTracks AudioTrack[]
+  exports          Export[]
+  versions         ProjectVersion[]
+  publishHistories PublishHistory[]
+}
+
+model Clip {
+  id         String   @id @default(cuid())
+  projectId  String
+  title      String
+  startTime  Float    // in seconds
+  endTime    Float    // in seconds
+  duration   Float    // in seconds
+  videoUrl   String?
+  viralScore Int      @default(0) // 1-100 score
+  reason     String?              // AI reason for high virality
+  transcript String?              // snippet of transcript
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Video {
+  id         String   @id @default(cuid())
+  projectId  String
+  title      String
+  url        String
+  s3Key      String?
+  duration   Float
+  size       String?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AudioTrack {
+  id            String   @id @default(cuid())
+  projectId     String
+  title         String
+  url           String
+  s3Key         String?
+  duration      Float
+  playStartTime Float    @default(0.0)
+  volume        Float    @default(1.0)
+  fadeIn        Float    @default(0.0)
+  fadeOut       Float    @default(0.0)
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Export {
+  id         String           @id @default(cuid())
+  projectId  String
+  resolution String           @default("P1080") // "P720" | "P1080" | "P4K"
+  format     String           @default("MP4") // "MP4" | "MOV" | "WEBM"
+  status     String           @default("PENDING") // "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED"
+  progress   Int              @default(0)
+  downloadUrl String?
+  s3Key      String?
+  duration   Float            @default(0.0)
+  retryCount Int              @default(0)
+  error      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ProjectVersion {
+  id             String   @id @default(cuid())
+  projectId      String
+  version        Int
+  videoClipsJson String
+  audioClipsJson String
+  createdAt      DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model PublishSettings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  makeWebhookUrl       String?
+  instagramConnected   Boolean  @default(false)
+  instagramAccountName String?
+  youtubeConnected     Boolean  @default(false)
+  youtubeChannelName   String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PublishHistory {
+  id           String    @id @default(cuid())
+  projectId    String
+  clipId       String
+  clipTitle    String
+  platform     String    // "Instagram" | "YouTube"
+  status       String    // "PUBLISHED" | "FAILED" | "SCHEDULED" | "PENDING"
+  scheduledFor DateTime?
+  postUrl      String?
+  error        String?
+  caption      String?
+  hashtags     String?
+  youtubeTitle String?
+  youtubeDesc  String?
+  mediaPath    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
