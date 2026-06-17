@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import ProjectCard, { Project } from "@/components/ProjectCard";
 import UploadZone from "@/components/UploadZone";
+import UploadTabConsole from "@/components/UploadTabConsole";
 import { Button } from "@/components/ui/button";
 import { saveVideoFile, getVideoFile } from "@/lib/videoStorage";
 import {
@@ -34,6 +35,7 @@ function DashboardContent() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<string>("NEWEST");
   const [showUploadZone, setShowUploadZone] = useState(true);
+  const [dashboardView, setDashboardView] = useState<"projects" | "direct-upload">("projects");
 
   // Track processing status per project
   const [processingStates, setProcessingStates] = useState<
@@ -127,7 +129,25 @@ function DashboardContent() {
               console.log("AuraClip: Auto-starting processing for stuck/redirected project:", project.id);
               startProcessing(project.id, file);
             } else {
-              if (project.title.toLowerCase().includes("youtube")) {
+              if (project.originalVideoUrl) {
+                try {
+                  console.log(`AuraClip Watcher: Fetching watched video from ${project.originalVideoUrl}`);
+                  const res = await fetch(project.originalVideoUrl);
+                  if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                  const blob = await res.blob();
+                  const filename = project.originalVideoUrl.split("/").pop() || "watch_video.mp4";
+                  const fetchedFile = new File([blob], filename, { type: blob.type || "video/mp4" });
+                  await saveVideoFile(project.id, fetchedFile);
+                  startProcessing(project.id, fetchedFile);
+                } catch (fetchErr) {
+                  console.error("AuraClip: Failed to load watched video file:", fetchErr);
+                  setProjects((prev) =>
+                    prev.map((p) =>
+                      p.id === project.id ? { ...p, status: "FAILED" as const, progress: 0 } : p
+                    )
+                  );
+                }
+              } else if (project.title.toLowerCase().includes("youtube")) {
                 const mockBlob = new Blob(["mock video content"], { type: "video/mp4" });
                 const mockFile = new File([mockBlob], "mock_youtube.mp4", { type: "video/mp4" });
                 startProcessing(project.id, mockFile);
@@ -155,7 +175,7 @@ function DashboardContent() {
   /**
    * Start real processing pipeline for a project.
    */
-  const startProcessing = async (projectId: string, file: File) => {
+  async function startProcessing(projectId: string, file: File) {
     // Prevent duplicate processing
     if (processingRef.current.has(projectId)) return;
     processingRef.current.add(projectId);
@@ -346,150 +366,183 @@ function DashboardContent() {
     <div className="flex-1 flex flex-col">
       {/* Main dashboard content */}
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-8">
-        {/* Banner with CTA */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Recent Projects
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              Upload a video to automatically extract AI-analyzed viral clips
-              with real transcription.
-            </p>
-          </div>
-
-          <Button
-            onClick={() => setShowUploadZone(!showUploadZone)}
-            className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold text-xs gap-1.5 px-6 shrink-0 shadow-lg active:scale-95 transition-transform"
+        
+        {/* Dashboard Mode Switcher Tabs */}
+        <div className="flex border-b border-border/30 gap-6">
+          <button
+            onClick={() => setDashboardView("projects")}
+            className={`pb-4 text-sm font-bold transition-all relative ${
+              dashboardView === "projects" ? "text-white" : "text-muted-foreground hover:text-slate-200"
+            }`}
           >
-            <Plus className="h-4 w-4" />
-            New Upload
-          </Button>
-        </div>
-
-        {/* Collapsible Upload Zone */}
-        {showUploadZone && (
-          <div className="rounded-2xl border border-border/40 bg-card/20 p-6 shadow-xl relative animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-violet-400">
-                Upload video file
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowUploadZone(false)}
-                className="text-xs hover:bg-white/5"
-              >
-                Close
-              </Button>
-            </div>
-            <UploadZone onUploadComplete={handleUploadComplete} />
-          </div>
-        )}
-
-        {/* Controls: Search, Filter, Sort */}
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-card/20 border border-border/40 rounded-xl p-4">
-          {/* Search box */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search project titles..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-border/40 bg-white/5 pl-9 pr-4 py-2 text-xs text-white placeholder-muted-foreground focus:border-violet-500 focus:outline-none transition-all duration-200"
-            />
-          </div>
-
-          {/* Filtering row */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL" className="bg-slate-900 text-white">
-                  All States
-                </option>
-                <option
-                  value="COMPLETED"
-                  className="bg-slate-900 text-white"
-                >
-                  Ready
-                </option>
-                <option
-                  value="PROCESSING"
-                  className="bg-slate-900 text-white"
-                >
-                  Processing
-                </option>
-                <option
-                  value="UPLOADING"
-                  className="bg-slate-900 text-white"
-                >
-                  Uploading
-                </option>
-                <option value="FAILED" className="bg-slate-900 text-white">
-                  Failed
-                </option>
-              </select>
-            </div>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
-            >
-              <option value="NEWEST" className="bg-slate-900 text-white">
-                Newest First
-              </option>
-              <option value="DURATION" className="bg-slate-900 text-white">
-                Longest Duration
-              </option>
-            </select>
-          </div>
-        </div>
-
-        {/* Project Grid / Library */}
-        {filteredProjects.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProjects.map((proj) => (
-              <ProjectCard
-                key={proj.id}
-                project={proj}
-                onRename={handleRename}
-                onDelete={handleDelete}
-                onRetry={handleRetry}
-              />
-            ))}
-          </div>
-        ) : (
-          // Empty State Layout
-          <div className="rounded-2xl border border-dashed border-border/40 bg-card/10 p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
-            <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h4 className="font-bold text-white text-base">
-              No projects found
-            </h4>
-            <p className="text-xs text-muted-foreground mt-2 max-w-sm leading-relaxed">
-              {searchQuery || statusFilter !== "ALL"
-                ? "No projects match your current search and filters. Reset filters to see all uploads."
-                : "Get started by uploading your first long video file. AuraClip will transcribe, analyze, and extract viral clips automatically."}
-            </p>
-            {(searchQuery || statusFilter !== "ALL") && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchQuery("");
-                  setStatusFilter("ALL");
-                }}
-                className="mt-6 rounded-full text-xs border-border/40 hover:bg-white/5"
-              >
-                Clear Filters
-              </Button>
+            Studio Projects Library
+            {dashboardView === "projects" && (
+              <div className="absolute bottom-0 inset-x-0 h-0.5 bg-violet-500 rounded-full" />
             )}
-          </div>
+          </button>
+          <button
+            onClick={() => setDashboardView("direct-upload")}
+            className={`pb-4 text-sm font-bold transition-all relative ${
+              dashboardView === "direct-upload" ? "text-white" : "text-muted-foreground hover:text-slate-200"
+            }`}
+          >
+            Direct API Publisher Queue
+            {dashboardView === "direct-upload" && (
+              <div className="absolute bottom-0 inset-x-0 h-0.5 bg-violet-500 rounded-full" />
+            )}
+          </button>
+        </div>
+
+        {dashboardView === "direct-upload" ? (
+          <UploadTabConsole />
+        ) : (
+          <>
+            {/* Banner with CTA */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white tracking-tight">
+                  Recent Projects
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload a video to automatically extract AI-analyzed viral clips
+                  with real transcription.
+                </p>
+              </div>
+
+              <Button
+                onClick={() => setShowUploadZone(!showUploadZone)}
+                className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold text-xs gap-1.5 px-6 shrink-0 shadow-lg active:scale-95 transition-transform"
+              >
+                <Plus className="h-4 w-4" />
+                New Upload
+              </Button>
+            </div>
+
+            {/* Collapsible Upload Zone */}
+            {showUploadZone && (
+              <div className="rounded-2xl border border-border/40 bg-card/20 p-6 shadow-xl relative animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-violet-400">
+                    Upload video file
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowUploadZone(false)}
+                    className="text-xs hover:bg-white/5"
+                  >
+                    Close
+                  </Button>
+                </div>
+                <UploadZone onUploadComplete={handleUploadComplete} />
+              </div>
+            )}
+
+            {/* Controls: Search, Filter, Sort */}
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-card/20 border border-border/40 rounded-xl p-4">
+              {/* Search box */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search project titles..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-border/40 bg-white/5 pl-9 pr-4 py-2 text-xs text-white placeholder-muted-foreground focus:border-violet-500 focus:outline-none transition-all duration-200"
+                />
+              </div>
+
+              {/* Filtering row */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL" className="bg-slate-900 text-white">
+                      All States
+                    </option>
+                    <option
+                      value="COMPLETED"
+                      className="bg-slate-900 text-white"
+                    >
+                      Ready
+                    </option>
+                    <option
+                      value="PROCESSING"
+                      className="bg-slate-900 text-white"
+                    >
+                      Processing
+                    </option>
+                    <option
+                      value="UPLOADING"
+                      className="bg-slate-900 text-white"
+                    >
+                      Uploading
+                    </option>
+                    <option value="FAILED" className="bg-slate-900 text-white">
+                      Failed
+                    </option>
+                  </select>
+                </div>
+
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="NEWEST" className="bg-slate-900 text-white">
+                    Newest First
+                  </option>
+                  <option value="DURATION" className="bg-slate-900 text-white">
+                    Longest Duration
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {/* Project Grid / Library */}
+            {filteredProjects.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map((proj) => (
+                  <ProjectCard
+                    key={proj.id}
+                    project={proj}
+                    onRename={handleRename}
+                    onDelete={handleDelete}
+                    onRetry={handleRetry}
+                  />
+                ))}
+              </div>
+            ) : (
+              // Empty State Layout
+              <div className="rounded-2xl border border-dashed border-border/40 bg-card/10 p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+                <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                <h4 className="font-bold text-white text-base">
+                  No projects found
+                </h4>
+                <p className="text-xs text-muted-foreground mt-2 max-w-sm leading-relaxed">
+                  {searchQuery || statusFilter !== "ALL"
+                    ? "No projects match your current search and filters. Reset filters to see all uploads."
+                    : "Get started by uploading your first long video file. AuraClip will transcribe, analyze, and extract viral clips automatically."}
+                </p>
+                {(searchQuery || statusFilter !== "ALL") && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilter("ALL");
+                    }}
+                    className="mt-6 rounded-full text-xs border-border/40 hover:bg-white/5"
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

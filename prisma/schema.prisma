@@ -175,8 +175,14 @@ model PublishSettings {
   makeWebhookUrl       String?
   instagramConnected   Boolean  @default(false)
   instagramAccountName String?
+  instagramAccessToken String?
+  instagramAccountId   String?
   youtubeConnected     Boolean  @default(false)
   youtubeChannelName   String?
+  youtubeAccessToken   String?
+  youtubeRefreshToken  String?
+  youtubeClientId      String?
+  youtubeClientSecret  String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -197,6 +203,8 @@ model PublishHistory {
   hashtags     String?
   youtubeTitle String?
   youtubeDesc  String?
+  youtubeTags  String?   // Comma-separated tags
+  thumbnailUrl String?   // URL or local path to the generated thumbnail
   mediaPath    String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

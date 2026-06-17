@@ -283,7 +283,7 @@ export default function PreviewPlayer() {
     }
   };
 
-  const playActiveAudios = (time: number = currentTime) => {
+  function playActiveAudios(time: number = currentTime) {
     audioClips.forEach((clip) => {
       const audio = audioElementsRef.current.get(clip.id);
       if (!audio) return;
@@ -306,13 +306,13 @@ export default function PreviewPlayer() {
         }).catch(() => {});
       }
     });
-  };
+  }
 
-  const pauseAllAudios = () => {
+  function pauseAllAudios() {
     for (const audio of audioElementsRef.current.values()) {
       if (!audio.paused) audio.pause();
     }
-  };
+  }
 
   const togglePlay = () => {
     if (videoClips.length === 0) return;

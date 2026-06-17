@@ -43,8 +43,15 @@ export default function SettingsPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [igConnected, setIgConnected] = useState(false);
   const [igHandle, setIgHandle] = useState("");
+  const [igAccessToken, setIgAccessToken] = useState("");
+  const [igAccountId, setIgAccountId] = useState("");
+  
   const [ytConnected, setYtConnected] = useState(false);
   const [ytHandle, setYtHandle] = useState("");
+  const [ytAccessToken, setYtAccessToken] = useState("");
+  const [ytRefreshToken, setYtRefreshToken] = useState("");
+  const [ytClientId, setYtClientId] = useState("");
+  const [ytClientSecret, setYtClientSecret] = useState("");
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -64,8 +71,14 @@ export default function SettingsPage() {
           setWebhookUrl(data.makeWebhookUrl || "");
           setIgConnected(data.instagramConnected || false);
           setIgHandle(data.instagramAccountName || "");
+          setIgAccessToken(data.instagramAccessToken || "");
+          setIgAccountId(data.instagramAccountId || "");
           setYtConnected(data.youtubeConnected || false);
           setYtHandle(data.youtubeChannelName || "");
+          setYtAccessToken(data.youtubeAccessToken || "");
+          setYtRefreshToken(data.youtubeRefreshToken || "");
+          setYtClientId(data.youtubeClientId || "");
+          setYtClientSecret(data.youtubeClientSecret || "");
         }
       } catch (err) {
         console.error("Failed to load settings:", err);
@@ -90,8 +103,14 @@ export default function SettingsPage() {
           makeWebhookUrl: webhookUrl,
           instagramConnected: igConnected,
           instagramAccountName: igHandle,
+          instagramAccessToken: igAccessToken,
+          instagramAccountId: igAccountId,
           youtubeConnected: ytConnected,
           youtubeChannelName: ytHandle,
+          youtubeAccessToken: ytAccessToken,
+          youtubeRefreshToken: ytRefreshToken,
+          youtubeClientId: ytClientId,
+          youtubeClientSecret: ytClientSecret,
         }),
       });
 
@@ -224,97 +243,177 @@ export default function SettingsPage() {
 
               <div className="space-y-6">
                 {/* Instagram Channel Box */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-950/20 border border-border/20">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400">
-                      <Instagram className="h-4.5 w-4.5" />
+                <div className="space-y-4 p-4 rounded-xl bg-slate-950/20 border border-border/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400">
+                        <Instagram className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Instagram Business Account</h4>
+                        <p className="text-[10px] text-muted-foreground">Automatically post Reels via direct API or Webhook.</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white">Instagram Business Account</h4>
-                      <p className="text-[10px] text-muted-foreground">Automatically post Reels via Make.com triggers.</p>
+
+                    <div className="flex items-center gap-3">
+                      {igConnected ? (
+                        <>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                            Connected: @{igHandle}
+                          </span>
+                          <Button
+                            type="button"
+                            onClick={toggleInstagram}
+                            className="h-8 px-4 text-xs font-bold bg-white/5 border border-border/30 hover:bg-rose-600 hover:text-white rounded-lg cursor-pointer"
+                          >
+                            Disconnect
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="creator_handle"
+                            value={igHandle}
+                            onChange={(e) => setIgHandle(e.target.value)}
+                            className="h-8 rounded-lg border border-border/40 bg-slate-950/40 px-3 text-[11px] text-white focus:border-violet-500 focus:outline-none placeholder-slate-700 w-36"
+                          />
+                          <Button
+                            type="button"
+                            onClick={toggleInstagram}
+                            className="h-8 px-4 text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg cursor-pointer"
+                          >
+                            Connect
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    {igConnected ? (
-                      <>
-                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                          Connected: @{igHandle}
-                        </span>
-                        <Button
-                          type="button"
-                          onClick={toggleInstagram}
-                          className="h-8 px-4 text-xs font-bold bg-white/5 border border-border/30 hover:bg-rose-600 hover:text-white rounded-lg cursor-pointer"
-                        >
-                          Disconnect
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <input
-                          type="text"
-                          placeholder="creator_handle"
-                          value={igHandle}
-                          onChange={(e) => setIgHandle(e.target.value)}
-                          className="h-8 rounded-lg border border-border/40 bg-slate-950/40 px-3 text-[11px] text-white focus:border-violet-500 focus:outline-none placeholder-slate-700 w-36"
-                        />
-                        <Button
-                          type="button"
-                          onClick={toggleInstagram}
-                          className="h-8 px-4 text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg cursor-pointer"
-                        >
-                          Connect
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  {igConnected && (
+                    <div className="border-t border-border/15 pt-4 space-y-3.5 animate-in slide-in-from-top-2 duration-200">
+                      <h5 className="text-[11px] font-bold text-slate-300">Direct Graph API Integration Credentials (Optional)</h5>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Instagram Account ID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 1784140582230491"
+                            value={igAccountId}
+                            onChange={(e) => setIgAccountId(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-pink-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Page Access Token</label>
+                          <input
+                            type="password"
+                            placeholder="EAAGb..."
+                            value={igAccessToken}
+                            onChange={(e) => setIgAccessToken(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-pink-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* YouTube Channel Box */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-950/20 border border-border/20">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600/10 border border-rose-500/20 text-rose-500">
-                      <Youtube className="h-4.5 w-4.5" />
+                <div className="space-y-4 p-4 rounded-xl bg-slate-950/20 border border-border/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-600/10 border border-rose-500/20 text-rose-500">
+                        <Youtube className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">YouTube Shorts Channel</h4>
+                        <p className="text-[10px] text-muted-foreground">Automatically post YouTube Shorts via direct API or Webhook.</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white">YouTube Shorts Channel</h4>
-                      <p className="text-[10px] text-muted-foreground">Automatically post YouTube Shorts via Make.com triggers.</p>
+
+                    <div className="flex items-center gap-3">
+                      {ytConnected ? (
+                        <>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                            Connected: {ytHandle}
+                          </span>
+                          <Button
+                            type="button"
+                            onClick={toggleYoutube}
+                            className="h-8 px-4 text-xs font-bold bg-white/5 border border-border/30 hover:bg-rose-600 hover:text-white rounded-lg cursor-pointer"
+                          >
+                            Disconnect
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="My Channel Name"
+                            value={ytHandle}
+                            onChange={(e) => setYtHandle(e.target.value)}
+                            className="h-8 rounded-lg border border-border/40 bg-slate-950/40 px-3 text-[11px] text-white focus:border-violet-500 focus:outline-none placeholder-slate-700 w-36"
+                          />
+                          <Button
+                            type="button"
+                            onClick={toggleYoutube}
+                            className="h-8 px-4 text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg cursor-pointer"
+                          >
+                            Connect
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    {ytConnected ? (
-                      <>
-                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                          Connected: {ytHandle}
-                        </span>
-                        <Button
-                          type="button"
-                          onClick={toggleYoutube}
-                          className="h-8 px-4 text-xs font-bold bg-white/5 border border-border/30 hover:bg-rose-600 hover:text-white rounded-lg cursor-pointer"
-                        >
-                          Disconnect
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <input
-                          type="text"
-                          placeholder="My Channel Name"
-                          value={ytHandle}
-                          onChange={(e) => setYtHandle(e.target.value)}
-                          className="h-8 rounded-lg border border-border/40 bg-slate-950/40 px-3 text-[11px] text-white focus:border-violet-500 focus:outline-none placeholder-slate-700 w-36"
-                        />
-                        <Button
-                          type="button"
-                          onClick={toggleYoutube}
-                          className="h-8 px-4 text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg cursor-pointer"
-                        >
-                          Connect
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  {ytConnected && (
+                    <div className="border-t border-border/15 pt-4 space-y-3.5 animate-in slide-in-from-top-2 duration-200">
+                      <h5 className="text-[11px] font-bold text-slate-300">Direct YouTube Data API OAuth Credentials (Optional)</h5>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Client ID</label>
+                          <input
+                            type="text"
+                            placeholder="client-id.apps.googleusercontent.com"
+                            value={ytClientId}
+                            onChange={(e) => setYtClientId(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-rose-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Client Secret</label>
+                          <input
+                            type="password"
+                            placeholder="GOCSPX-..."
+                            value={ytClientSecret}
+                            onChange={(e) => setYtClientSecret(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-rose-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Access Token</label>
+                          <input
+                            type="password"
+                            placeholder="ya29.a0..."
+                            value={ytAccessToken}
+                            onChange={(e) => setYtAccessToken(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-rose-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Refresh Token</label>
+                          <input
+                            type="password"
+                            placeholder="1//0..."
+                            value={ytRefreshToken}
+                            onChange={(e) => setYtRefreshToken(e.target.value)}
+                            className="h-8 w-full rounded-lg border border-border/40 bg-slate-950/60 px-3 text-[10px] text-white focus:border-rose-500 focus:outline-none placeholder-slate-800 font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

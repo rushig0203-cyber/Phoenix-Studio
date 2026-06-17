@@ -31,6 +31,7 @@ export interface Project {
   thumbnailUrl?: string;
   createdAt: Date;
   processingStage?: string; // Real pipeline stage label
+  originalVideoUrl?: string;
 }
 
 interface ProjectCardProps {

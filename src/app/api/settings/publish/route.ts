@@ -23,8 +23,14 @@ export async function GET() {
           makeWebhookUrl: "",
           instagramConnected: false,
           instagramAccountName: "",
+          instagramAccessToken: "",
+          instagramAccountId: "",
           youtubeConnected: false,
           youtubeChannelName: "",
+          youtubeAccessToken: "",
+          youtubeRefreshToken: "",
+          youtubeClientId: "",
+          youtubeClientSecret: "",
         },
       });
     }
@@ -49,8 +55,14 @@ export async function POST(req: Request) {
       makeWebhookUrl,
       instagramConnected,
       instagramAccountName,
+      instagramAccessToken,
+      instagramAccountId,
       youtubeConnected,
       youtubeChannelName,
+      youtubeAccessToken,
+      youtubeRefreshToken,
+      youtubeClientId,
+      youtubeClientSecret,
     } = await req.json();
 
     const updated = await db.publishSettings.upsert({
@@ -59,16 +71,28 @@ export async function POST(req: Request) {
         makeWebhookUrl,
         instagramConnected,
         instagramAccountName,
+        instagramAccessToken,
+        instagramAccountId,
         youtubeConnected,
         youtubeChannelName,
+        youtubeAccessToken,
+        youtubeRefreshToken,
+        youtubeClientId,
+        youtubeClientSecret,
       },
       create: {
         userId,
         makeWebhookUrl,
         instagramConnected,
         instagramAccountName,
+        instagramAccessToken,
+        instagramAccountId,
         youtubeConnected,
         youtubeChannelName,
+        youtubeAccessToken,
+        youtubeRefreshToken,
+        youtubeClientId,
+        youtubeClientSecret,
       },
     });
 

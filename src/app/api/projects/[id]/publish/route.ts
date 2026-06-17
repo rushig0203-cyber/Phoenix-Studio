@@ -11,7 +11,7 @@ import path from "path";
  * that Make.com can use as the Video URL for Instagram and YouTube modules.
  * Files are auto-deleted after 14 days.
  */
-async function uploadToTransferSh(filePath: string, fileName: string): Promise<string | null> {
+export async function uploadToTransferSh(filePath: string, fileName: string): Promise<string | null> {
   try {
     const fileBuffer = await fs.promises.readFile(filePath);
     const blob = new Blob([fileBuffer], { type: "video/mp4" });
@@ -193,6 +193,8 @@ export async function POST(
       hashtags,
       youtubeTitle,
       youtubeDesc,
+      youtubeTags,
+      thumbnailUrl,
       mediaPath,
     } = body;
 
@@ -230,6 +232,8 @@ export async function POST(
           hashtags,
           youtubeTitle,
           youtubeDesc,
+          youtubeTags,
+          thumbnailUrl,
           mediaPath,
         },
       });
@@ -248,7 +252,41 @@ export async function POST(
 
     let triggerResult;
 
-    if (hasWebhook) {
+    const hasDirectCredentials =
+      (historyRecord.platform === "YouTube" && settings?.youtubeAccessToken) ||
+      (historyRecord.platform === "Instagram" && settings?.instagramAccessToken && settings?.instagramAccountId);
+
+    if (hasDirectCredentials) {
+      let publicMediaUrl = null;
+      if (historyRecord.mediaPath) {
+        if (historyRecord.platform === "Instagram") {
+          const fullPath = path.resolve(process.cwd(), historyRecord.mediaPath);
+          if (fs.existsSync(fullPath)) {
+            const fileName = path.basename(fullPath);
+            publicMediaUrl = await uploadToTransferSh(fullPath, fileName);
+          }
+        }
+      }
+
+      const { publishToPlatform } = await import("@/lib/publisher");
+      triggerResult = await publishToPlatform(
+        {
+          projectId,
+          clipId: historyRecord.clipId,
+          clipTitle: historyRecord.clipTitle,
+          platform: historyRecord.platform,
+          caption: historyRecord.caption || undefined,
+          hashtags: historyRecord.hashtags || undefined,
+          youtubeTitle: historyRecord.youtubeTitle || undefined,
+          youtubeDesc: historyRecord.youtubeDesc || undefined,
+          youtubeTags: historyRecord.youtubeTags || undefined,
+          thumbnailUrl: historyRecord.thumbnailUrl || undefined,
+        },
+        historyRecord.mediaPath || "",
+        settings,
+        publicMediaUrl
+      );
+    } else if (hasWebhook) {
       triggerResult = await triggerWebhook(
         settings.makeWebhookUrl!,
         {
