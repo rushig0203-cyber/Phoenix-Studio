@@ -1,0 +1,55 @@
+name: AuraClip CI/CD
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: auraclip
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install Packages
+      run: npm ci --legacy-peer-deps
+
+    - name: Validate database schemas
+      env:
+        DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/auraclip?schema=public
+      run: |
+        npx prisma validate
+        npx prisma db push --skip-generate
+
+    - name: Execute Code Linting
+      run: npm run lint
+
+    - name: Compile Production Bundle
+      env:
+        DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/auraclip?schema=public
+        NEXTAUTH_SECRET: auraclip-nextauth-super-secret-key-12345
+      run: npm run build

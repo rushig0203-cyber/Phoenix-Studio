@@ -1,0 +1,1 @@
+import Link from "next/link"; export default function Footer(){return <footer className="border-t border-white/10 bg-[#101114] px-5 py-7 text-white"><div className="mx-auto flex max-w-7xl items-center justify-between text-sm"><Link href="/" className="font-bold">AuraClip</Link><p className="text-xs text-white/40">© 2026 AuraClip</p></div></footer>}
