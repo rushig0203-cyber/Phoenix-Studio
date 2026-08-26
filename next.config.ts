@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
   async headers() {
     return [
       {
-        source: "/(.*)",
+        source: "/dashboard/project/:id*",
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",

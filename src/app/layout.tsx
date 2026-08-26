@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AuraClip | AI Video Clips & Curation Tool",
+  title: "Phoenix Frame | AI Video Clips & Curation Tool",
   description: "Convert your long-form videos into high-impact viral clips automatically. Perfect for YouTube Shorts, TikToks, and Reels.",
 };
 
@@ -28,7 +28,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Suspense>
+          {children}
+        </Suspense>
+      </body>
     </html>
   );
 }

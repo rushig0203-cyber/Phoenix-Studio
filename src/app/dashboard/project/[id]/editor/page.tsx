@@ -3,14 +3,15 @@
 
 import React, { useEffect, useState, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { Film, Upload, AlertCircle, Loader2, Info, Type, Music, Scissors, Trash2 } from "lucide-react";
-import { useEditorStore, VideoClip, AudioClip } from "@/store/editorStore";
+import { Film, Upload, AlertCircle, Loader2, Info, Type, Music, Scissors, Trash2, Layers } from "lucide-react";
+import { useEditorStore, VideoClip, AudioClip, ElementOverlay } from "@/store/editorStore";
 import { getVideoDuration, generateThumbnailsCanvas } from "@/lib/ffmpeg";
 import EditorHeader from "@/components/editor/EditorHeader";
 import PreviewPlayer from "@/components/editor/PreviewPlayer";
 import Timeline from "@/components/editor/Timeline";
 import AudioControls from "@/components/editor/AudioControls";
 import CaptionsControls from "@/components/editor/CaptionsControls";
+import ElementsControls from "@/components/editor/ElementsControls";
 import { Button } from "@/components/ui/button";
 
 import { getVideoFile } from "@/lib/videoStorage";
@@ -36,11 +37,11 @@ function VideoEditorContent() {
   const searchParams = useSearchParams();
   const projectId = params.id as string;
 
-  const [activeTab, setActiveTab] = useState<"audio" | "captions" | "scenes">("captions");
+  const [activeTab, setActiveTab] = useState<"audio" | "captions" | "scenes" | "elements">("elements");
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam === "audio" || tabParam === "captions" || tabParam === "scenes") {
+    if (tabParam === "audio" || tabParam === "captions" || tabParam === "scenes" || tabParam === "elements") {
       queueMicrotask(() => setActiveTab(tabParam));
     }
   }, [searchParams]);
@@ -49,6 +50,7 @@ function VideoEditorContent() {
     videoFile,
     videoClips,
     audioClips,
+    elementOverlays,
     currentTime,
     isPlaying,
     selectedClipId,
@@ -75,13 +77,14 @@ function VideoEditorContent() {
       const data = {
         videoClips,
         audioClips,
+        elementOverlays,
       };
       localStorage.setItem(`auraclip_autosave_${projectId}`, JSON.stringify(data));
       console.log("AuraClip: Timeline configuration auto-saved locally.");
     }, 1000);
 
     return () => clearTimeout(saveTimer);
-  }, [videoClips, audioClips, projectId, videoFile]);
+  }, [videoClips, audioClips, elementOverlays, projectId, videoFile]);
 
   // Load previous autosaved session configuration if available
   useEffect(() => {
@@ -109,6 +112,7 @@ function VideoEditorContent() {
           // 1. Check if there is an autosave for this project's editor session
           let initialClips: VideoClip[] | undefined = undefined;
           let initialAudioClips: AudioClip[] | undefined = undefined;
+          let initialElementOverlays: ElementOverlay[] | undefined = undefined;
           
           const autosavedData = localStorage.getItem(`auraclip_autosave_${projectId}`);
           if (autosavedData) {
@@ -121,6 +125,10 @@ function VideoEditorContent() {
               if (parsed.audioClips && Array.isArray(parsed.audioClips)) {
                 initialAudioClips = parsed.audioClips as AudioClip[];
                 console.log("AuraClip: Found autosaved audio clips.");
+              }
+              if (parsed.elementOverlays && Array.isArray(parsed.elementOverlays)) {
+                initialElementOverlays = parsed.elementOverlays as ElementOverlay[];
+                console.log("AuraClip: Found autosaved elements overlays.");
               }
             } catch (e) {
               console.warn("AuraClip: Failed to parse autosaved editor data", e);
@@ -148,7 +156,7 @@ function VideoEditorContent() {
           }
 
           // Set video in Zustand store
-          setVideoFile(file, duration, sizeInMb, thumbs, initialClips, initialAudioClips);
+          setVideoFile(file, duration, sizeInMb, thumbs, initialClips, initialAudioClips, initialElementOverlays);
           console.log("AuraClip: Auto-loaded video file from IndexedDB.");
         }
       } catch (err) {
@@ -243,10 +251,24 @@ function VideoEditorContent() {
             {/* Left Vertical Canva-style Toolbar */}
             <div className="w-16 md:w-20 bg-slate-950/80 border-r border-border/40 flex flex-col items-center py-6 gap-6 shrink-0 z-20">
               <button
+                type="button"
+                onClick={() => setActiveTab("elements")}
+                className={`flex flex-col items-center gap-1.5 p-2 rounded-xl text-center w-14 md:w-16 transition-all cursor-pointer group ${
+                  activeTab === "elements"
+                    ? "text-violet-400 bg-violet-500/10 border border-violet-500/20"
+                    : "text-muted-foreground hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <Layers className="h-5 w-5 group-hover:scale-110 transition-transform" />
+                <span className="text-[9px] font-bold tracking-tight">Elements</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab("captions")}
                 className={`flex flex-col items-center gap-1.5 p-2 rounded-xl text-center w-14 md:w-16 transition-all cursor-pointer group ${
                   activeTab === "captions"
-                    ? "text-violet-400 bg-violet-500/10 border border-violet-500/20"
+                    ? "text-pink-400 bg-pink-500/10 border border-pink-500/20"
                     : "text-muted-foreground hover:text-white hover:bg-white/5"
                 }`}
               >
@@ -255,6 +277,7 @@ function VideoEditorContent() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab("audio")}
                 className={`flex flex-col items-center gap-1.5 p-2 rounded-xl text-center w-14 md:w-16 transition-all cursor-pointer group ${
                   activeTab === "audio"
@@ -267,6 +290,7 @@ function VideoEditorContent() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab("scenes")}
                 className={`flex flex-col items-center gap-1.5 p-2 rounded-xl text-center w-14 md:w-16 transition-all cursor-pointer group ${
                   activeTab === "scenes"
@@ -282,6 +306,7 @@ function VideoEditorContent() {
             {/* Sliding Panel Drawer */}
             <div className="w-80 md:w-96 bg-slate-900/60 border-r border-border/40 h-full flex flex-col z-10 shrink-0">
               <div className="flex-1 min-h-0">
+                {activeTab === "elements" && <ElementsControls />}
                 {activeTab === "captions" && <CaptionsControls />}
                 {activeTab === "audio" && <AudioControls />}
                 {activeTab === "scenes" && <ScenesManager />}

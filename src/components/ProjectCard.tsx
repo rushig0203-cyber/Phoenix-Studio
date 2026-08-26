@@ -32,6 +32,7 @@ export interface Project {
   createdAt: Date;
   processingStage?: string; // Real pipeline stage label
   originalVideoUrl?: string;
+  mode?: "AI" | "MANUAL" | "ULTIMATE";
 }
 
 interface ProjectCardProps {
@@ -110,7 +111,13 @@ export default function ProjectCard({ project, onDelete, onRename, onRetry }: Pr
           {/* Overlay Link & Play Indicator */}
           {project.status === "COMPLETED" && (
             <Link
-              href={`/dashboard/project/${project.id}`}
+              href={
+                project.mode === "ULTIMATE"
+                  ? `/dashboard/project/${project.id}/ultimate`
+                  : project.mode === "MANUAL"
+                  ? `/dashboard/project/${project.id}/editor`
+                  : `/dashboard/project/${project.id}`
+              }
               className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 hover:bg-violet-500 hover:scale-105">
@@ -127,7 +134,16 @@ export default function ProjectCard({ project, onDelete, onRename, onRetry }: Pr
             <div className="flex items-start justify-between gap-2">
               <h4 className="font-semibold text-sm text-white line-clamp-1 group-hover:text-violet-300 transition-colors">
                 {project.status === "COMPLETED" ? (
-                  <Link href={`/dashboard/project/${project.id}`} className="hover:underline">
+                  <Link
+                    href={
+                      project.mode === "ULTIMATE"
+                        ? `/dashboard/project/${project.id}/ultimate`
+                        : project.mode === "MANUAL"
+                        ? `/dashboard/project/${project.id}/editor`
+                        : `/dashboard/project/${project.id}`
+                    }
+                    className="hover:underline"
+                  >
                     {project.title}
                   </Link>
                 ) : (
@@ -178,10 +194,20 @@ export default function ProjectCard({ project, onDelete, onRename, onRetry }: Pr
               {/* Go to Clips link for Ready status */}
               {project.status === "COMPLETED" && (
                 <Link
-                  href={`/dashboard/project/${project.id}`}
+                  href={
+                    project.mode === "ULTIMATE"
+                      ? `/dashboard/project/${project.id}/ultimate`
+                      : project.mode === "MANUAL"
+                      ? `/dashboard/project/${project.id}/editor`
+                      : `/dashboard/project/${project.id}`
+                  }
                   className="text-violet-400 hover:text-violet-300 font-medium flex items-center gap-0.5 hover:underline transition-all"
                 >
-                  View Clips
+                  {project.mode === "ULTIMATE"
+                    ? "Enter Studio"
+                    : project.mode === "MANUAL"
+                    ? "Open Editor"
+                    : "View Clips"}
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               )}

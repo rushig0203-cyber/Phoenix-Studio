@@ -13,7 +13,7 @@ import {
   Maximize,
   AlertCircle,
 } from "lucide-react";
-import { useEditorStore, AudioClip } from "@/store/editorStore";
+import { useEditorStore, AudioClip, ElementOverlay } from "@/store/editorStore";
 import { Button } from "@/components/ui/button";
 
 export default function PreviewPlayer() {
@@ -21,19 +21,25 @@ export default function PreviewPlayer() {
     videoUrl,
     videoClips,
     audioClips,
+    elementOverlays,
+    selectedElementId,
     currentTime,
     isPlaying,
     setCurrentTime,
     setIsPlaying,
+    setSelectedElementId,
+    updateElementOverlay,
     captionFont,
     captionColor,
     captionSize,
     captionStroke,
     captionUppercase,
+    captionPreset,
   } = useEditorStore();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastPlayClickTimeRef = useRef<number>(0);
 
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
@@ -79,9 +85,26 @@ export default function PreviewPlayer() {
 
     if (isPlaying) {
       if (video.paused) {
+        // Skip redundant play() calls that bypass user gesture validation
+        if (Date.now() - lastPlayClickTimeRef.current < 450) {
+          return;
+        }
+
+        // Sync volume and muted state before playing to ensure up-to-date audio settings
+        video.muted = isMuted;
+        const clipVolume = activeClip && typeof activeClip.volume === "number" ? activeClip.volume : 1.0;
+        video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
+
         video.play().catch((err) => {
-          console.warn("Autoplay block or playback interrupted:", err);
-          setIsPlaying(false);
+          console.warn("Autoplay check or playback interrupted:", err);
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            setIsMuted(true); // Sync the React UI state
+            video.play().catch((err2) => {
+              console.error("Playback fully blocked:", err2);
+              setIsPlaying(false);
+            });
+          }
         });
       }
     } else {
@@ -89,7 +112,7 @@ export default function PreviewPlayer() {
         video.pause();
       }
     }
-  }, [isPlaying, videoUrl, activeClip, setIsPlaying]);
+  }, [isPlaying, videoUrl, activeClip, setIsPlaying, isMuted, volume]);
 
   // Sync speed changes
   useEffect(() => {
@@ -105,8 +128,9 @@ export default function PreviewPlayer() {
     if (video) {
       const clipVolume = activeClip && typeof activeClip.volume === "number" ? activeClip.volume : 1.0;
       video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
+      video.muted = isMuted; // Keep muted property perfectly synchronized
     }
-  }, [volume, isMuted, activeClip]);
+  }, [volume, isMuted, activeClip, videoUrl]);
 
   // Synchronous Spacebar toggle
   useEffect(() => {
@@ -127,13 +151,17 @@ export default function PreviewPlayer() {
           setIsPlaying(nextPlaying);
           const video = videoRef.current;
           if (nextPlaying) {
+            lastPlayClickTimeRef.current = Date.now();
             video.muted = isMuted;
             const clipVolume = activeClip && typeof activeClip.volume === "number" ? activeClip.volume : 1.0;
             video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
             video.play().catch((err) => {
-              console.warn("Spacebar play failed, trying muted:", err);
-              video.muted = true;
-              video.play().catch(console.error);
+              console.warn("Spacebar play failed:", err);
+              if (err.name === "NotAllowedError") {
+                video.muted = true;
+                setIsMuted(true); // Sync the React UI state
+                video.play().catch(console.error);
+              }
             });
             playActiveAudios(currentTime);
           } else {
@@ -223,8 +251,10 @@ export default function PreviewPlayer() {
         const clipProgress = currentTime - clip.playStartTime;
         const targetAudioTime = clip.startTime + clipProgress;
 
-        // Sync playback pointer if drift exceeds 0.2s
-        if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
+        // Sync playback pointer if drift is substantial (e.g. > 1.0s during play, > 0.2s when paused/seeking)
+        const drift = Math.abs(audio.currentTime - targetAudioTime);
+        const threshold = isPlaying ? 1.0 : 0.2;
+        if (drift > threshold) {
           audio.currentTime = targetAudioTime;
         }
 
@@ -322,15 +352,19 @@ export default function PreviewPlayer() {
     const video = videoRef.current;
     if (video) {
       if (nextPlaying) {
+        lastPlayClickTimeRef.current = Date.now();
         // Force unmuted synchronously inside user gesture context
         video.muted = isMuted;
         const clipVolume = activeClip && typeof activeClip.volume === "number" ? activeClip.volume : 1.0;
         video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
         
         video.play().catch((err) => {
-          console.warn("AuraClip Editor: Playback blocked, fallback to muted:", err);
-          video.muted = true;
-          video.play().catch(console.error);
+          console.warn("AuraClip Editor: Playback failed:", err);
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            setIsMuted(true); // Sync React state so the UI reflects muted state
+            video.play().catch(console.error);
+          }
         });
         playActiveAudios();
       } else {
@@ -428,6 +462,26 @@ export default function PreviewPlayer() {
                   : "object-cover"
               }`}
             />
+            {/* Elements Overlay Layer */}
+            <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden select-none">
+              <div className="relative w-full h-full">
+                {elementOverlays
+                  .filter((overlay) => currentTime >= overlay.playStartTime && currentTime <= overlay.playStartTime + overlay.duration)
+                  .map((overlay) => (
+                    <ElementOverlayComponent
+                      key={overlay.id}
+                      overlay={overlay}
+                      isSelected={selectedElementId === overlay.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedElementId(overlay.id);
+                      }}
+                      onUpdate={(updates) => updateElementOverlay(overlay.id, updates)}
+                    />
+                  ))
+                }
+              </div>
+            </div>
             {videoError && (
               <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-950 absolute inset-0 z-30">
                 <AlertCircle className="h-10 w-10 text-rose-500 mb-3 animate-pulse" />
@@ -449,81 +503,209 @@ export default function PreviewPlayer() {
               </div>
             )}
             
-            {/* Live styled captions overlay */}
-            {isPlaying && activeClip?.transcript && (
-              <div className="absolute bottom-10 left-4 right-4 text-center z-20 pointer-events-none select-none">
-                <div className="bg-black/75 backdrop-blur-sm rounded-xl px-3.5 py-1.5 border border-white/10 shadow-xl inline-block max-w-full">
-                  <div
-                    style={{
-                      fontFamily:
-                        captionFont === "Impact"
-                          ? "Impact, Charcoal, sans-serif"
-                          : captionFont === "Montserrat"
-                          ? "'Montserrat', sans-serif"
-                          : captionFont === "Inter"
-                          ? "'Inter', sans-serif"
-                          : "Arial, sans-serif",
-                      fontSize:
-                        captionSize === "sm"
-                          ? "0.75rem"
-                          : captionSize === "md"
-                          ? "0.9rem"
-                          : captionSize === "lg"
-                          ? "1.1rem"
-                          : "1.35rem",
-                      textShadow: captionStroke
-                        ? "1.5px 1.5px 0 #000, -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 0 1.5px 0 #000, 1.5px 0 0 #000, 0 -1.5px 0 #000, -1.5px 0 0 #000"
-                        : "none",
-                    }}
-                    className={`flex flex-wrap justify-center items-center gap-x-1 gap-y-0.5 font-extrabold tracking-wide leading-snug ${
-                      captionUppercase ? "uppercase" : ""
-                    }`}
-                  >
-                    ⚡{" "}
-                    {(() => {
-                      const words = activeClip.transcript.split(/\s+/);
-                      const progress =
-                        activeClip.duration > 0
-                          ? Math.max(
-                              0,
-                              Math.min(
-                                1,
-                                (currentTime - activeClip.playStartTime) /
-                                  activeClip.duration
-                              )
-                            )
-                          : 0;
-                      const currentWordIndex = Math.floor(progress * words.length);
+            {/* ─── Premium Caption Overlay ─────────────────────────────── */}
+            {activeClip?.transcript && (
+              (() => {
+                const words = activeClip.transcript.split(/\s+/).filter(Boolean);
+                const progress =
+                  activeClip.duration > 0
+                    ? Math.max(0, Math.min(1, (currentTime - activeClip.playStartTime) / activeClip.duration))
+                    : 0;
+                const currentWordIndex = Math.floor(progress * words.length);
 
-                      const windowSize = 5;
-                      const start = Math.max(
-                        0,
-                        Math.min(currentWordIndex - 2, words.length - windowSize)
-                      );
-                      const end = Math.min(start + windowSize, words.length);
+                // Font mapping
+                const fontMap: Record<string, string> = {
+                  Impact: "Impact, Charcoal, sans-serif",
+                  Montserrat: "'Montserrat', 'Segoe UI', sans-serif",
+                  Inter: "'Inter', 'Segoe UI', sans-serif",
+                  Arial: "Arial, Helvetica, sans-serif",
+                };
+                const fontFamily = fontMap[captionFont] || fontMap.Inter;
 
-                      return words.slice(start, end).map((word, idx) => {
-                        const absoluteIdx = start + idx;
-                        const isHighlighted = absoluteIdx === currentWordIndex;
+                // Font size
+                const sizeMap: Record<string, string> = {
+                  sm: "0.85rem",
+                  md: "1.05rem",
+                  lg: "1.3rem",
+                  xl: "1.65rem",
+                };
+                const fontSize = sizeMap[captionSize] || sizeMap.md;
+
+                // Stroke / shadow for legibility
+                const heavyShadow = "2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 2px 0 #000, 2px 0 0 #000, 0 -2px 0 #000, -2px 0 0 #000, 0 4px 12px rgba(0,0,0,0.9)";
+                const softShadow = "0 2px 8px rgba(0,0,0,0.95), 0 1px 3px rgba(0,0,0,1)";
+                const textShadow = captionStroke ? heavyShadow : softShadow;
+
+                // Preset determines render mode
+                // tiktok → one highlighted word at a time (large, pop)
+                // minimalist → sentence block, no bg
+                // classic → rolling 5-word window with highlight
+                // karaoke → words fill color left-to-right
+
+                if (captionPreset === "tiktok") {
+                  // ── Mode: TikTok — one BIG word at a time ───────────────
+                  const word = words[Math.min(currentWordIndex, words.length - 1)] || "";
+                  return (
+                    <div className="absolute bottom-12 left-0 right-0 flex justify-center z-20 pointer-events-none select-none px-6">
+                      <div
+                        style={{
+                          fontFamily,
+                          fontSize: sizeMap[captionSize === "sm" ? "md" : captionSize === "md" ? "lg" : captionSize === "lg" ? "xl" : "xl"] || "1.65rem",
+                          color: captionColor,
+                          textShadow: heavyShadow,
+                          textTransform: captionUppercase ? "uppercase" : "none",
+                          fontWeight: 900,
+                          letterSpacing: "0.03em",
+                          lineHeight: 1.1,
+                          animation: "word-pop 0.12s ease-out",
+                        }}
+                        key={currentWordIndex}
+                      >
+                        {word}
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (captionPreset === "minimalist") {
+                  // ── Mode: Minimalist — full sentence, clean, no background ─
+                  const windowSize = 7;
+                  const start = Math.max(0, Math.min(currentWordIndex - 3, words.length - windowSize));
+                  const end = Math.min(start + windowSize, words.length);
+                  const visibleWords = words.slice(start, end);
+
+                  return (
+                    <div className="absolute bottom-10 left-0 right-0 flex justify-center z-20 pointer-events-none select-none px-8">
+                      <p
+                        style={{
+                          fontFamily,
+                          fontSize,
+                          textShadow: softShadow,
+                          textTransform: captionUppercase ? "uppercase" : "none",
+                          fontWeight: 700,
+                          lineHeight: 1.4,
+                          textAlign: "center",
+                          letterSpacing: "0.01em",
+                        }}
+                        className="text-white"
+                      >
+                        {visibleWords.map((w, i) => {
+                          const absIdx = start + i;
+                          return (
+                            <span
+                              key={`${absIdx}-${w}`}
+                              style={{
+                                color: absIdx === currentWordIndex ? captionColor : "rgba(255,255,255,0.92)",
+                                transition: "color 0.15s ease",
+                              }}
+                            >
+                              {w}{" "}
+                            </span>
+                          );
+                        })}
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (captionPreset === "karaoke") {
+                  // ── Mode: Karaoke — entire sentence, words fill with color ─
+                  const LINE_SIZE = 8;
+                  const lineStart = Math.floor(currentWordIndex / LINE_SIZE) * LINE_SIZE;
+                  const lineWords = words.slice(lineStart, lineStart + LINE_SIZE);
+
+                  return (
+                    <div className="absolute bottom-10 left-0 right-0 flex justify-center z-20 pointer-events-none select-none px-6">
+                      <div
+                        style={{
+                          background: "rgba(0,0,0,0.72)",
+                          backdropFilter: "blur(8px)",
+                          borderRadius: "12px",
+                          padding: "10px 18px",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontFamily,
+                            fontSize,
+                            fontWeight: 800,
+                            textTransform: captionUppercase ? "uppercase" : "none",
+                            letterSpacing: "0.02em",
+                            lineHeight: 1.35,
+                            textAlign: "center",
+                            margin: 0,
+                          }}
+                        >
+                          {lineWords.map((w, i) => {
+                            const absIdx = lineStart + i;
+                            const isPast = absIdx < currentWordIndex;
+                            const isCurrent = absIdx === currentWordIndex;
+                            return (
+                              <span
+                                key={`${absIdx}-${w}`}
+                                style={{
+                                  color: isPast || isCurrent ? captionColor : "rgba(255,255,255,0.5)",
+                                  textShadow: isCurrent ? heavyShadow : softShadow,
+                                  fontWeight: isCurrent ? 900 : 700,
+                                  transform: isCurrent ? "scale(1.08)" : "scale(1)",
+                                  display: "inline-block",
+                                  transition: "all 0.15s ease",
+                                  marginRight: "0.35em",
+                                }}
+                              >
+                                {w}
+                              </span>
+                            );
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── Mode: Classic (default) — rolling pill-word window ───────
+                const windowSize = 5;
+                const start = Math.max(0, Math.min(currentWordIndex - 2, words.length - windowSize));
+                const end = Math.min(start + windowSize, words.length);
+                const visibleWords = words.slice(start, end);
+
+                return (
+                  <div className="absolute bottom-10 left-0 right-0 flex justify-center z-20 pointer-events-none select-none px-6">
+                    <div className="flex flex-wrap justify-center items-center gap-x-1 gap-y-1.5">
+                      {visibleWords.map((word, i) => {
+                        const absIdx = start + i;
+                        const isActive = absIdx === currentWordIndex;
                         return (
                           <span
-                            key={idx}
-                            style={{ color: isHighlighted ? captionColor : "#FFFFFF" }}
-                            className={`transition-all duration-200 px-1 rounded ${
-                              isHighlighted
-                                ? "scale-110 bg-white/10"
-                                : "text-white/80"
-                            }`}
+                            key={`${absIdx}-${word}`}
+                            style={{
+                              fontFamily,
+                              fontSize,
+                              fontWeight: isActive ? 900 : 700,
+                              textTransform: captionUppercase ? "uppercase" : "none",
+                              color: isActive ? captionColor : "#FFFFFF",
+                              textShadow: isActive ? heavyShadow : softShadow,
+                              background: isActive ? `${captionColor}22` : "transparent",
+                              border: isActive ? `1.5px solid ${captionColor}55` : "1.5px solid transparent",
+                              borderRadius: "6px",
+                              padding: "1px 6px",
+                              transform: isActive ? "scale(1.12)" : "scale(1)",
+                              display: "inline-block",
+                              transition: "all 0.15s ease",
+                              lineHeight: 1.3,
+                            }}
                           >
                             {word}
                           </span>
                         );
-                      });
-                    })()}
+                      })}
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()
             )}
+            {/* ─────────────────────────────────────────────────────────── */}
           </>
         ) : (
           <div className="text-center text-muted-foreground p-8 flex flex-col items-center">
@@ -669,6 +851,286 @@ export default function PreviewPlayer() {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+interface ElementOverlayComponentProps {
+  overlay: ElementOverlay;
+  isSelected: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onUpdate: (updates: Partial<ElementOverlay>) => void;
+}
+
+function ElementOverlayComponent({
+  overlay,
+  isSelected,
+  onClick,
+  onUpdate,
+}: ElementOverlayComponentProps) {
+  const elementRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick(e);
+
+    // Only start drag if clicking on the element itself and not on a resize handle
+    const target = e.target as HTMLElement;
+    if (target.closest(".resize-handle")) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialX = overlay.x;
+    const initialY = overlay.y;
+
+    const parent = elementRef.current?.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const parentWidth = rect.width;
+    const parentHeight = rect.height;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      const pctDeltaX = (deltaX / parentWidth) * 100;
+      const pctDeltaY = (deltaY / parentHeight) * 100;
+
+      const newX = Math.max(0, Math.min(100 - overlay.width, initialX + pctDeltaX));
+      const newY = Math.max(0, Math.min(100 - overlay.height, initialY + pctDeltaY));
+
+      onUpdate({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleResizeMouseDown = (e: React.MouseEvent, corner: "top-left" | "top-right" | "bottom-left" | "bottom-right") => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    
+    const initialX = overlay.x;
+    const initialY = overlay.y;
+    const initialWidth = overlay.width;
+    const initialHeight = overlay.height;
+
+    const parent = elementRef.current?.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const parentWidth = rect.width;
+    const parentHeight = rect.height;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      const pctDeltaX = (deltaX / parentWidth) * 100;
+      const pctDeltaY = (deltaY / parentHeight) * 100;
+
+      let newX = overlay.x;
+      let newY = overlay.y;
+      let newWidth = overlay.width;
+      let newHeight = overlay.height;
+
+      if (corner === "bottom-right") {
+        newWidth = Math.max(5, Math.min(100 - initialX, initialWidth + pctDeltaX));
+        newHeight = Math.max(5, Math.min(100 - initialY, initialHeight + pctDeltaY));
+      } else if (corner === "bottom-left") {
+        const potentialX = initialX + pctDeltaX;
+        newX = Math.max(0, Math.min(initialX + initialWidth - 5, potentialX));
+        newWidth = initialWidth - (newX - initialX);
+        newHeight = Math.max(5, Math.min(100 - initialY, initialHeight + pctDeltaY));
+      } else if (corner === "top-right") {
+        const potentialY = initialY + pctDeltaY;
+        newY = Math.max(0, Math.min(initialY + initialHeight - 5, potentialY));
+        newHeight = initialHeight - (newY - initialY);
+        newWidth = Math.max(5, Math.min(100 - initialX, initialWidth + pctDeltaX));
+      } else if (corner === "top-left") {
+        const potentialX = initialX + pctDeltaX;
+        newX = Math.max(0, Math.min(initialX + initialWidth - 5, potentialX));
+        newWidth = initialWidth - (newX - initialX);
+
+        const potentialY = initialY + pctDeltaY;
+        newY = Math.max(0, Math.min(initialY + initialHeight - 5, potentialY));
+        newHeight = initialHeight - (newY - initialY);
+      }
+
+      onUpdate({ x: newX, y: newY, width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const renderContent = () => {
+    if (overlay.type === "text") {
+      const textStyle: React.CSSProperties = {
+        fontFamily: overlay.fontFamily === "Impact" ? "Impact, Charcoal, sans-serif" :
+                    overlay.fontFamily === "Montserrat" ? "'Montserrat', sans-serif" :
+                    overlay.fontFamily === "Inter" ? "'Inter', sans-serif" : "Arial, sans-serif",
+        color: overlay.color || "#FFFFFF",
+        fontSize: `${overlay.fontSize || 16}px`,
+        fontWeight: "bold",
+        textAlign: "center",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        wordBreak: "break-word",
+        backgroundColor: overlay.backgroundColor || "transparent",
+        opacity: overlay.opacity,
+      };
+
+      if (overlay.color === "#FF00FF") {
+        textStyle.textShadow = "0 0 5px #fff, 0 0 10px #FF00FF, 0 0 20px #FF00FF, 0 0 40px #FF00FF";
+      } else if (overlay.color === "#FFCC00") {
+        textStyle.textShadow = "2px 2px 0px #990000";
+      }
+
+      return (
+        <div style={textStyle}>
+          {overlay.text || "Double click to type"}
+        </div>
+      );
+    }
+
+    if (overlay.type === "shape") {
+      const fill = overlay.color || "#8B5CF6";
+      const opacity = overlay.opacity;
+
+      if (overlay.shapeType === "circle") {
+        return (
+          <div
+            style={{
+              backgroundColor: fill,
+              opacity: opacity,
+              borderRadius: "50%",
+              width: "100%",
+              height: "100%",
+            }}
+          />
+        );
+      }
+
+      if (overlay.shapeType === "arrow") {
+        return (
+          <svg
+            viewBox="0 0 100 100"
+            style={{
+              fill: fill,
+              opacity: opacity,
+              width: "100%",
+              height: "100%",
+            }}
+            preserveAspectRatio="none"
+          >
+            <path d="M10,40 L60,40 L60,20 L90,50 L60,80 L60,60 L10,60 Z" />
+          </svg>
+        );
+      }
+
+      if (overlay.shapeType === "star") {
+        return (
+          <svg
+            viewBox="0 0 100 100"
+            style={{
+              fill: fill,
+              opacity: opacity,
+              width: "100%",
+              height: "100%",
+            }}
+            preserveAspectRatio="none"
+          >
+            <path d="M50,5 L63,38 L98,38 L70,58 L81,91 L50,70 L19,91 L30,58 L2,38 L37,38 Z" />
+          </svg>
+        );
+      }
+
+      return (
+        <div
+          style={{
+            backgroundColor: fill,
+            opacity: opacity,
+            width: "100%",
+            height: "100%",
+            borderRadius: "4px",
+          }}
+        />
+      );
+    }
+
+    if (overlay.type === "image") {
+      return (
+        <img
+          src={overlay.imageUrl}
+          alt="Overlay Asset"
+          style={{
+            opacity: overlay.opacity,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+          }}
+          draggable={false}
+        />
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div
+      ref={elementRef}
+      onMouseDown={handleMouseDown}
+      style={{
+        position: "absolute",
+        left: `${overlay.x}%`,
+        top: `${overlay.y}%`,
+        width: `${overlay.width}%`,
+        height: `${overlay.height}%`,
+        zIndex: overlay.zIndex,
+      }}
+      className={`pointer-events-auto cursor-move select-none flex items-center justify-center ${
+        isSelected ? "border-2 border-dashed border-violet-500" : "hover:border border-white/30"
+      }`}
+    >
+      {renderContent()}
+
+      {isSelected && (
+        <>
+          <div
+            onMouseDown={(e) => handleResizeMouseDown(e, "top-left")}
+            className="resize-handle absolute -top-1.5 -left-1.5 h-3 w-3 bg-white border border-violet-500 rounded-full cursor-nwse-resize z-50 shadow-md"
+          />
+          <div
+            onMouseDown={(e) => handleResizeMouseDown(e, "top-right")}
+            className="resize-handle absolute -top-1.5 -right-1.5 h-3 w-3 bg-white border border-violet-500 rounded-full cursor-nesw-resize z-50 shadow-md"
+          />
+          <div
+            onMouseDown={(e) => handleResizeMouseDown(e, "bottom-left")}
+            className="resize-handle absolute -bottom-1.5 -left-1.5 h-3 w-3 bg-white border border-violet-500 rounded-full cursor-nesw-resize z-50 shadow-md"
+          />
+          <div
+            onMouseDown={(e) => handleResizeMouseDown(e, "bottom-right")}
+            className="resize-handle absolute -bottom-1.5 -right-1.5 h-3 w-3 bg-white border border-violet-500 rounded-full cursor-nwse-resize z-50 shadow-md"
+          />
+        </>
+      )}
     </div>
   );
 }

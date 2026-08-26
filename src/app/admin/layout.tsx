@@ -1,14 +1,16 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import Link from "next/link";
-import { LayoutDashboard, Users, RefreshCw, HardDrive, ShieldAlert, Video, Home } from "lucide-react";
+import { LayoutDashboard, Users, RefreshCw, HardDrive, ShieldAlert, Video, Home, Loader2 } from "lucide-react";
+import { connection } from "next/server";
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await connection();
   const session = await getServerSession(authOptions);
 
   // Enforce ADMIN role access control
@@ -101,9 +103,17 @@ export default async function AdminLayout({
         </div>
       </aside>
 
-      {/* Main dashboard content panel */}
       <main className="flex-1 flex flex-col min-h-screen overflow-y-auto bg-slate-950">
-        {children}
+        <Suspense
+          fallback={
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[400px] text-muted-foreground font-medium">
+              <Loader2 className="h-6 w-6 animate-spin mb-2 text-violet-500" />
+              Loading admin dashboard...
+            </div>
+          }
+        >
+          {children}
+        </Suspense>
       </main>
     </div>
   );

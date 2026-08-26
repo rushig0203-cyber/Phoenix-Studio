@@ -183,6 +183,28 @@ model PublishSettings {
   youtubeRefreshToken  String?
   youtubeClientId      String?
   youtubeClientSecret  String?
+
+  // API keys for stock providers
+  pexelsApiKey         String?  @default("")
+  pixabayApiKey        String?  @default("")
+  geminiApiKey         String?  @default("")
+  
+  // AI Curation Preferences
+  aiModel              String?  @default("gemini-2.0-flash")
+  aiTone               String?  @default("clickbait")
+  aiInstructions       String?  @default("")
+  
+  // Subtitle burnt-in defaults
+  subtitleFont         String?  @default("Montserrat")
+  subtitleColor        String?  @default("#FFFF00")
+  subtitleSize         String?  @default("lg")
+  subtitleStroke       Boolean  @default(true)
+  subtitleUppercase    Boolean  @default(true)
+  
+  // Audio defaults
+  defaultMusicVolume   Float    @default(0.15)
+  duckingLevel         Float    @default(0.80)
+
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

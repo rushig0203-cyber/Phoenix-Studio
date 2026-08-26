@@ -1,7 +1,7 @@
 "use strict";
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getVideoFile } from "@/lib/videoStorage";
@@ -35,6 +35,7 @@ import {
 import ClipCard from "@/components/ClipCard";
 import { Button } from "@/components/ui/button";
 import PublishConsole from "@/components/PublishConsole";
+import { useEditorStore } from "@/store/editorStore";
 
 // Reusable Clip type matching ClipCard expectations
 interface Clip {
@@ -52,7 +53,7 @@ interface Clip {
   fitMode?: "cover" | "contain";
 }
 
-export default function ProjectDetailsPage() {
+function ProjectDetailsContent() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -83,6 +84,26 @@ export default function ProjectDetailsPage() {
   const [editingClip, setEditingClip] = useState<Clip | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const lastPlayClickTimeRef = useRef<number>(0);
+
+  // Stitching & Custom subtitle states
+  const [selectedClipsForStitch, setSelectedClipsForStitch] = useState<Record<string, boolean>>({});
+  const [burnCaptionsTimeline, setBurnCaptionsTimeline] = useState(true);
+  const [duckAudioTimeline, setDuckAudioTimeline] = useState(true);
+  const [isStitching, setIsStitching] = useState(false);
+  const [stitchProgress, setStitchProgress] = useState(0);
+  const [stitchStep, setStitchStep] = useState("");
+  const [burnCaptionsActiveClip, setBurnCaptionsActiveClip] = useState(true);
+
+  const {
+    captionFont,
+    captionColor,
+    captionSize,
+    captionStroke,
+    captionUppercase,
+    captionPreset,
+    audioClips,
+  } = useEditorStore();
 
   const handleSaveEditedClip = (updatedClip: Clip) => {
     // 1. Update React state
@@ -120,7 +141,7 @@ export default function ProjectDetailsPage() {
       video.muted = isMuted;
       video.volume = isMuted ? 0 : 1;
     }
-  }, [isMuted]);
+  }, [isMuted, videoUrl]);
 
   const toggleFullscreen = () => {
     const container = playerContainerRef.current;
@@ -195,7 +216,11 @@ export default function ProjectDetailsPage() {
         keywords: c.keywords,
       }));
 
-      // Compute real metrics
+      const initialSelection: Record<string, boolean> = {};
+      results.clips.forEach((c) => {
+        initialSelection[c.id] = true;
+      });
+
       const avgScore = results.averageScore;
       const maxScore = Math.max(...loadedClips.map((c) => c.viralScore));
       const hookStrength =
@@ -209,6 +234,7 @@ export default function ProjectDetailsPage() {
 
       queueMicrotask(() => {
         setClips(loadedClips);
+        setSelectedClipsForStitch(initialSelection);
         setActiveClipId(loadedClips[0]?.id || "");
         setCurrentTime(loadedClips[0]?.startTime || 0);
         setAnalysisMetrics({
@@ -271,6 +297,21 @@ export default function ProjectDetailsPage() {
         alert("Original video file not found in local storage. Please re-upload the video.");
         return;
       }
+
+      const burnEnabled = burnCaptionsActiveClip && enabledCaptionsClips[activeClip.id];
+      const subtitleOptions = burnEnabled ? {
+        burnCaptions: true,
+        transcript: activeClip.transcript,
+        style: {
+          fontFamily: captionFont,
+          color: captionColor,
+          size: captionSize,
+          stroke: captionStroke,
+          uppercase: captionUppercase,
+          preset: captionPreset,
+        }
+      } : undefined;
+
       await downloadClip(
         file,
         activeClip.startTime,
@@ -279,13 +320,97 @@ export default function ProjectDetailsPage() {
         (percent, message) => {
           console.log(`AuraClip Export: ${percent}% — ${message}`);
         },
-        projectId
+        projectId,
+        undefined,
+        subtitleOptions
       );
     } catch (err) {
       console.error("AuraClip: Clip export failed:", err);
       alert("Export failed. Please try again.");
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleStitchTimeline = async () => {
+    const selectedList = clips.filter((c) => selectedClipsForStitch[c.id]);
+    if (selectedList.length === 0) return;
+
+    setIsStitching(true);
+    setStitchProgress(0);
+    setStitchStep("Preparing original video...");
+
+    try {
+      const { exportTimeline, saveToLocalFolder } = await import("@/lib/clipExporter");
+      const { getVideoFile } = await import("@/lib/videoStorage");
+      const file = await getVideoFile(projectId);
+      if (!file) {
+        alert("Original video file not found in local storage. Please re-upload the video.");
+        return;
+      }
+
+      // Convert Clip[] to VideoClip[] format expected by exportTimeline
+      const videoSegments = selectedList.map((clip) => ({
+        id: clip.id,
+        title: clip.title,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        duration: clip.duration,
+        playStartTime: 0,
+        volume: 1.0,
+        transcript: clip.transcript,
+      }));
+
+      const subtitleOptions = burnCaptionsTimeline ? {
+        burnCaptions: true,
+        style: {
+          fontFamily: captionFont,
+          color: captionColor,
+          size: captionSize,
+          stroke: captionStroke,
+          uppercase: captionUppercase,
+          preset: captionPreset,
+        },
+        duckAudio: duckAudioTimeline,
+      } : {
+        duckAudio: duckAudioTimeline,
+      };
+
+      const compiledBlob = await exportTimeline(
+        file,
+        videoSegments,
+        audioClips,
+        [],
+        (percent, message) => {
+          setStitchProgress(percent);
+          setStitchStep(message);
+        },
+        subtitleOptions
+      );
+
+      const fileName = `${projectTitle.replace(/[^a-zA-Z0-9\s-_]/g, "").replace(/\s+/g, "_")}_compilation.mp4`;
+
+      // Save locally
+      saveToLocalFolder(compiledBlob, fileName, projectId, undefined, true).catch(console.error);
+
+      // Trigger download
+      const url = URL.createObjectURL(compiledBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      alert("Timeline stitched and downloaded successfully!");
+    } catch (err) {
+      console.error("AuraClip Stitch failed:", err);
+      alert("Stitching failed. Please try again.");
+    } finally {
+      setIsStitching(false);
+      setStitchProgress(0);
+      setStitchStep("");
     }
   };
 
@@ -310,12 +435,16 @@ export default function ProjectDetailsPage() {
     const video = videoRef.current;
     if (video) {
       if (nextPlaying) {
+        lastPlayClickTimeRef.current = Date.now();
         video.muted = isMuted;
         video.volume = isMuted ? 0 : 1;
         video.play().catch((err) => {
-          console.warn("AuraClip: Playback failed, trying muted:", err);
-          video.muted = true;
-          video.play().catch(console.error);
+          console.warn("AuraClip: Playback failed:", err);
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            setIsMuted(true); // Sync React state so UI shows muted speaker icon
+            video.play().catch(console.error);
+          }
         });
       } else {
         video.pause();
@@ -339,9 +468,24 @@ export default function ProjectDetailsPage() {
 
     if (isPlaying) {
       if (video.paused) {
+        // Skip redundant plays triggered during synchronous click event handler
+        if (Date.now() - lastPlayClickTimeRef.current < 450) {
+          return;
+        }
+
+        // Sync volume and muted state before playing
+        video.muted = isMuted;
+        video.volume = isMuted ? 0 : 1;
         video.play().catch((err) => {
           console.warn("Playback block or play interrupted:", err);
-          setIsPlaying(false);
+          if (err.name === "NotAllowedError") {
+            video.muted = true;
+            setIsMuted(true); // Sync React state
+            video.play().catch((err2) => {
+              console.error("Playback fully blocked:", err2);
+              setIsPlaying(false);
+            });
+          }
         });
       }
     } else {
@@ -349,7 +493,7 @@ export default function ProjectDetailsPage() {
         video.pause();
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, isMuted, videoUrl]);
 
   // Sync seek position when active clip shifts
   useEffect(() => {
@@ -452,6 +596,13 @@ export default function ProjectDetailsPage() {
             </h2>
           </div>
         </div>
+
+        <Link href={`/dashboard/project/${projectId}/ultimate`}>
+          <Button className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold text-xs gap-1.5 px-6 shrink-0 shadow-lg active:scale-95 transition-transform cursor-pointer">
+            <Sparkles className="h-4 w-4 text-yellow-300 animate-pulse" />
+            Ultimate Pro Studio
+          </Button>
+        </Link>
       </header>
 
       {/* Main detail page content */}
@@ -690,6 +841,19 @@ export default function ProjectDetailsPage() {
                 </div>
               )}
               
+              {/* Caption Options Toggle */}
+              <div className="flex flex-wrap items-center gap-4 bg-slate-950/40 p-3.5 rounded-xl border border-border/10">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={burnCaptionsActiveClip}
+                    onChange={(e) => setBurnCaptionsActiveClip(e.target.checked)}
+                    className="accent-violet-500 cursor-pointer h-4 w-4"
+                  />
+                  <span>Burn Subtitles into Video</span>
+                </label>
+              </div>
+
               {/* Action Buttons Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-1.5">
                 {enabledCaptionsClips[activeClip.id] ? (
@@ -883,6 +1047,62 @@ export default function ProjectDetailsPage() {
           {/* Tab Content rendering */}
           {activeTab === "clips" ? (
             <div className="space-y-4 max-h-[750px] overflow-y-auto pr-2 custom-scrollbar">
+              
+              {/* Stitching Options Panel */}
+              {clips.length > 0 && (
+                <div className="bg-slate-950/40 border border-border/30 rounded-xl p-4 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Video className="h-3.5 w-3.5 text-violet-400" />
+                      Timeline Stitching Console
+                    </h4>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {clips.filter(c => selectedClipsForStitch[c.id]).length} / {clips.length} selected
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300 font-bold uppercase">
+                    <label className="flex items-center gap-2 bg-slate-900/40 p-2.5 rounded-lg border border-border/20 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={burnCaptionsTimeline}
+                        onChange={(e) => setBurnCaptionsTimeline(e.target.checked)}
+                        className="accent-violet-500 cursor-pointer h-3.5 w-3.5"
+                      />
+                      <span>Burn Captions</span>
+                    </label>
+                    <label className="flex items-center gap-2 bg-slate-900/40 p-2.5 rounded-lg border border-border/20 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={duckAudioTimeline}
+                        onChange={(e) => setDuckAudioTimeline(e.target.checked)}
+                        className="accent-violet-500 cursor-pointer h-3.5 w-3.5"
+                      />
+                      <span>Auto Duck Music</span>
+                    </label>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleStitchTimeline}
+                    disabled={isStitching || clips.filter(c => selectedClipsForStitch[c.id]).length === 0}
+                    className="w-full h-9 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {isStitching ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1 text-white" />
+                        Stitching: {stitchProgress}% ({stitchStep})
+                      </>
+                    ) : (
+                      <>
+                        <Scissors className="h-3.5 w-3.5" />
+                        Stitch Selected Clips ({clips.filter(c => selectedClipsForStitch[c.id]).length})
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
               {isLoadingClips ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 text-violet-400 animate-spin mb-2" />
@@ -897,19 +1117,36 @@ export default function ProjectDetailsPage() {
                     ? clip 
                     : { ...clip, transcript: undefined, hookText: undefined };
                   return (
-                    <ClipCard
-                      key={clip.id}
-                      clip={clipToRender}
-                      isActive={clip.id === activeClipId}
-                      isBestPick={clip.id === bestClipId}
-                      onSelect={() => handleClipSelect(clip)}
-                      onEdit={() =>
-                        router.push(
-                          `/dashboard/project/${projectId}/editor?tab=scenes`
-                        )
-                      }
-                      index={idx + 1}
-                    />
+                    <div key={clip.id} className="relative flex items-start gap-2 group">
+                      <div className="pt-4 pl-1 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedClipsForStitch[clip.id]}
+                          onChange={() => {
+                            setSelectedClipsForStitch((prev) => ({
+                              ...prev,
+                              [clip.id]: !prev[clip.id],
+                            }));
+                          }}
+                          className="accent-violet-500 h-4 w-4 cursor-pointer"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <ClipCard
+                          clip={clipToRender}
+                          isActive={clip.id === activeClipId}
+                          isBestPick={clip.id === bestClipId}
+                          onSelect={() => handleClipSelect(clip)}
+                          onEdit={() =>
+                            router.push(
+                              `/dashboard/project/${projectId}/editor?tab=scenes`
+                            )
+                          }
+                          index={idx + 1}
+                          projectId={projectId}
+                        />
+                      </div>
+                    </div>
                   );
                 })
               )}
@@ -1181,5 +1418,20 @@ function ClipEditorModal({ isOpen, onClose, clip, projectDuration, onSave }: Cli
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProjectDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[400px] text-muted-foreground font-medium">
+          <Loader2 className="h-6 w-6 animate-spin mb-2" />
+          Loading Project Studio...
+        </div>
+      }
+    >
+      <ProjectDetailsContent />
+    </Suspense>
   );
 }

@@ -31,6 +31,26 @@ export interface AudioClip {
   isMuted: boolean;
 }
 
+export interface ElementOverlay {
+  id: string;
+  type: "text" | "shape" | "image";
+  text?: string;                // For text elements
+  fontFamily?: string;          // e.g. Impact, Montserrat, Arial, Inter, "Neon", "Glow"
+  color?: string;               // Text/shape color (e.g. #FFFFFF)
+  backgroundColor?: string;     // For shape or text backings
+  fontSize?: number;            // For text elements
+  shapeType?: "rectangle" | "circle" | "arrow" | "star"; // For shape elements
+  imageUrl?: string;            // For image elements (blob URL)
+  opacity: number;              // 0 to 1
+  x: number;                    // Percent from left (0 to 100)
+  y: number;                    // Percent from top (0 to 100)
+  width: number;                // Percent of viewport width (0 to 100)
+  height: number;               // Percent of viewport height (0 to 100)
+  playStartTime: number;        // Timeline start in seconds
+  duration: number;             // Overlay duration in seconds
+  zIndex: number;               // CSS layering
+}
+
 interface EditorState {
   videoFile: File | null;
   videoUrl: string | null;
@@ -43,22 +63,24 @@ interface EditorState {
 
   videoClips: VideoClip[];
   audioClips: AudioClip[];
+  elementOverlays: ElementOverlay[];
 
   currentTime: number;
   isPlaying: boolean;
   zoom: number; // Pixels per second of timeline width
 
   selectedClipId: string | null;
-  selectedTrackType: "video" | "audio" | null;
+  selectedTrackType: "video" | "audio" | "element" | null;
+  selectedElementId: string | null;
 
   // Undo / Redo Stacks
-  history: Array<{ videoClips: VideoClip[]; audioClips: AudioClip[] }>;
-  future: Array<{ videoClips: VideoClip[]; audioClips: AudioClip[] }>;
+  history: Array<{ videoClips: VideoClip[]; audioClips: AudioClip[]; elementOverlays: ElementOverlay[] }>;
+  future: Array<{ videoClips: VideoClip[]; audioClips: AudioClip[]; elementOverlays: ElementOverlay[] }>;
 
   thumbnails: string[];
 
   // Actions
-  setVideoFile: (file: File, duration: number, size: string, thumbnails?: string[], initialClips?: VideoClip[], initialAudioClips?: AudioClip[]) => void;
+  setVideoFile: (file: File, duration: number, size: string, thumbnails?: string[], initialClips?: VideoClip[], initialAudioClips?: AudioClip[], initialElementOverlays?: ElementOverlay[]) => void;
   clearVideoFile: () => void;
 
   addVideoClip: (clip: Omit<VideoClip, "id" | "playStartTime">) => void;
@@ -71,11 +93,16 @@ interface EditorState {
   updateAudioClip: (clipId: string, updates: Partial<AudioClip>) => void;
   deleteAudioClip: (clipId: string) => void;
 
+  addElementOverlay: (overlay: Omit<ElementOverlay, "id">) => void;
+  updateElementOverlay: (id: string, updates: Partial<ElementOverlay>) => void;
+  deleteElementOverlay: (id: string) => void;
+  setSelectedElementId: (elementId: string | null) => void;
+
   setCurrentTime: (time: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setZoom: (zoom: number) => void;
 
-  setSelectedClip: (clipId: string | null, trackType: "video" | "audio" | null) => void;
+  setSelectedClip: (clipId: string | null, trackType: "video" | "audio" | "element" | null) => void;
 
   captionFont: "Impact" | "Montserrat" | "Inter" | "Arial";
   captionColor: string;
@@ -113,6 +140,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   videoClips: [],
   audioClips: [],
+  elementOverlays: [],
   thumbnails: [],
 
   currentTime: 0,
@@ -121,6 +149,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectedClipId: null,
   selectedTrackType: null,
+  selectedElementId: null,
 
   captionFont: "Impact",
   captionColor: "#EAB308", // Tailwind Amber/Yellow-500
@@ -139,7 +168,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   history: [],
   future: [],
 
-  setVideoFile: (file, duration, size, thumbnails = [], initialClips, initialAudioClips) => {
+  setVideoFile: (file, duration, size, thumbnails = [], initialClips, initialAudioClips, initialElementOverlays) => {
     const videoUrl = URL.createObjectURL(file);
     
     // Use initialClips if provided, otherwise fallback to default single clip covering the whole video
@@ -166,11 +195,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       videoMetadata: { duration, size },
       videoClips,
       audioClips: initialAudioClips || [],
+      elementOverlays: initialElementOverlays || [],
       thumbnails,
       currentTime: 0,
       isPlaying: false,
       selectedClipId: videoClips[0]?.id || null,
       selectedTrackType: videoClips[0] ? "video" : null,
+      selectedElementId: null,
       history: [],
       future: [],
     });
@@ -179,17 +210,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clearVideoFile: () => {
     const { videoUrl } = get();
     if (videoUrl) URL.revokeObjectURL(videoUrl);
-
+ 
     set({
       videoFile: null,
       videoUrl: null,
       videoMetadata: null,
       videoClips: [],
       audioClips: [],
+      elementOverlays: [],
       currentTime: 0,
       isPlaying: false,
       selectedClipId: null,
       selectedTrackType: null,
+      selectedElementId: null,
       history: [],
       future: [],
     });
@@ -345,6 +378,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
+  addElementOverlay: (overlay) => {
+    get().saveToHistory();
+    const newElement: ElementOverlay = {
+      ...overlay,
+      id: "eoverlay-" + Math.random().toString(36).substr(2, 9),
+    };
+    set((state) => ({
+      elementOverlays: [...state.elementOverlays, newElement],
+      selectedClipId: newElement.id,
+      selectedTrackType: "element",
+      selectedElementId: newElement.id,
+    }));
+  },
+
+  updateElementOverlay: (id, updates) => {
+    get().saveToHistory();
+    set((state) => ({
+      elementOverlays: state.elementOverlays.map((e) =>
+        e.id === id ? { ...e, ...updates } : e
+      ),
+    }));
+  },
+
+  deleteElementOverlay: (id) => {
+    get().saveToHistory();
+    set((state) => ({
+      elementOverlays: state.elementOverlays.filter((e) => e.id !== id),
+      selectedClipId: state.selectedClipId === id ? null : state.selectedClipId,
+      selectedTrackType: state.selectedClipId === id ? null : state.selectedTrackType,
+      selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+    }));
+  },
+
+  setSelectedElementId: (elementId) => {
+    set({
+      selectedElementId: elementId,
+      selectedClipId: elementId,
+      selectedTrackType: elementId ? "element" : null,
+    });
+  },
+
   setCurrentTime: (time) => {
     // Clamp time to 0 or total video duration
     const duration = get().videoClips.reduce((sum, c) => sum + c.duration, 0);
@@ -360,11 +434,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ selectedClipId: clipId, selectedTrackType: trackType }),
 
   saveToHistory: () => {
-    const { videoClips, audioClips, history } = get();
+    const { videoClips, audioClips, elementOverlays, history } = get();
     // Deep clone arrays to store state
     const snapshot = {
       videoClips: JSON.parse(JSON.stringify(videoClips)),
       audioClips: JSON.parse(JSON.stringify(audioClips)),
+      elementOverlays: JSON.parse(JSON.stringify(elementOverlays)),
     };
     
     set({
@@ -374,7 +449,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   undo: () => {
-    const { history, future, videoClips, audioClips } = get();
+    const { history, future, videoClips, audioClips, elementOverlays } = get();
     if (history.length === 0) return;
 
     const previous = history[history.length - 1];
@@ -382,20 +457,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const currentSnapshot = {
       videoClips: JSON.parse(JSON.stringify(videoClips)),
       audioClips: JSON.parse(JSON.stringify(audioClips)),
+      elementOverlays: JSON.parse(JSON.stringify(elementOverlays)),
     };
 
     set({
       videoClips: previous.videoClips,
       audioClips: previous.audioClips,
+      elementOverlays: previous.elementOverlays || [],
       history: newHistory,
       future: [currentSnapshot, ...future],
       selectedClipId: null, // Reset selection on state undo to avoid mapping errors
       selectedTrackType: null,
+      selectedElementId: null,
     });
   },
 
   redo: () => {
-    const { history, future, videoClips, audioClips } = get();
+    const { history, future, videoClips, audioClips, elementOverlays } = get();
     if (future.length === 0) return;
 
     const next = future[0];
@@ -403,15 +481,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const currentSnapshot = {
       videoClips: JSON.parse(JSON.stringify(videoClips)),
       audioClips: JSON.parse(JSON.stringify(audioClips)),
+      elementOverlays: JSON.parse(JSON.stringify(elementOverlays)),
     };
 
     set({
       videoClips: next.videoClips,
       audioClips: next.audioClips,
+      elementOverlays: next.elementOverlays || [],
       history: [...history, currentSnapshot],
       future: newFuture,
       selectedClipId: null,
       selectedTrackType: null,
+      selectedElementId: null,
     });
   },
 }));

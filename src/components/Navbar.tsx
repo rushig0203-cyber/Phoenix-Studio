@@ -4,16 +4,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Video, ArrowRight, Settings } from "lucide-react";
+import { Menu, X, ArrowRight, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
 
-  const navLinks = [
-    { name: "Features", href: "#features" },
-    { name: "FAQ", href: "#faq" },
-  ];
+  const navLinks: { name: string; href: string }[] = [];
 
   return (
     <motion.header
@@ -24,12 +21,14 @@ export default function Navbar() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-500 shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform">
-            <Video className="h-5 w-5 text-white" />
-          </div>
+        <Link href="/" className="flex items-center gap-2.5 group">
+          <img
+            src="/phoenix_frame_logo.png"
+            alt="Phoenix Frame Logo"
+            className="h-10 w-10 object-contain group-hover:scale-105 transition-transform duration-200 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+          />
           <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-            AuraClip
+            Phoenix Frame
           </span>
         </Link>
 
@@ -52,14 +51,6 @@ export default function Navbar() {
             <Button variant="ghost" className="h-9 px-3 text-muted-foreground hover:text-white rounded-lg gap-1.5 text-xs font-semibold cursor-pointer">
               <Settings className="h-4 w-4 text-violet-400" />
               Settings
-            </Button>
-          </Link>
-          <Link href="/dashboard">
-            <Button className="relative group overflow-hidden rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-6 py-2 font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-violet-500/20 active:scale-95 cursor-pointer">
-              <span className="relative z-10 flex items-center gap-1.5">
-                Go to Dashboard
-                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform animate-pulse" />
-              </span>
             </Button>
           </Link>
         </div>
@@ -103,11 +94,6 @@ export default function Navbar() {
                   <Button variant="outline" className="w-full border-border/40 hover:bg-white/5 text-white cursor-pointer gap-1.5 text-xs">
                     <Settings className="h-4 w-4 text-violet-400" />
                     Settings
-                  </Button>
-                </Link>
-                <Link href="/dashboard" onClick={() => setIsOpen(false)} className="w-full">
-                  <Button className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white cursor-pointer text-xs">
-                    Go to Dashboard
                   </Button>
                 </Link>
               </div>

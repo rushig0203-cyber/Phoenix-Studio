@@ -1,10 +1,10 @@
 import React from "react";
 import { db } from "@/lib/db";
 import { Users, Video, RefreshCw, HardDrive, BarChart3, Clock } from "lucide-react";
-
-export const dynamic = "force-dynamic";
+import { connection } from "next/server";
 
 export default async function AdminDashboardPage() {
+  await connection();
   // 1. Fetch real-time system counts
   const userCount = await db.user.count();
   const projectCount = await db.project.count();

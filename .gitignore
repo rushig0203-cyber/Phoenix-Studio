@@ -48,3 +48,7 @@ next-env.d.ts
 /saved_video_clips/
 /watch_folder/
 /public/watched_videos/
+/public/temp_publishes/
+scratch_query*.js
+*.mp4
+

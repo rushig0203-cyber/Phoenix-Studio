@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { db } from "./db";
-import { triggerWebhook } from "@/app/api/projects/[id]/publish/route";
-import { publishToPlatform } from "./publisher";
+import { publishToPlatform, triggerWebhook, uploadToTransferSh } from "./publisher";
 
 const globalForScheduler = globalThis as unknown as {
   schedulerInitialized: boolean | undefined;
@@ -98,7 +97,6 @@ async function processPublishJob(job: any) {
       if (job.mediaPath) {
         // Upload to transfer.sh/0x0.st first if it is Instagram Reels (Graph API requires a public URL)
         if (job.platform === "Instagram") {
-          const { uploadToTransferSh } = await import("@/app/api/projects/[id]/publish/route");
           const fullPath = path.resolve(process.cwd(), job.mediaPath);
           if (fs.existsSync(fullPath)) {
             const fileName = path.basename(fullPath);

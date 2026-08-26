@@ -9,9 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  let userId = (session?.user as any)?.id;
 
   const { id: projectId } = await params;
 
@@ -33,8 +31,18 @@ export async function POST(
 
     const fileName = `${projectId}_${clipId.replace(/[^a-zA-Z0-9_-]/g, "")}.mp4`;
     const filePath = path.join(dirPath, fileName);
-
     await fs.promises.writeFile(filePath, buffer);
+
+    // Save clip file under public/temp_publishes/ for static localhost downloads
+    try {
+      const publicDirPath = path.join(process.cwd(), "public", "temp_publishes");
+      await fs.promises.mkdir(publicDirPath, { recursive: true });
+      const publicFilePath = path.join(publicDirPath, fileName);
+      await fs.promises.writeFile(publicFilePath, buffer);
+      console.log(`AuraClip: Saved static clip copy to ${publicFilePath}`);
+    } catch (publicErr) {
+      console.warn("AuraClip: Failed to save copy in public directory:", publicErr);
+    }
 
     // Return the relative or absolute path for database storage
     const relativePath = path.join("saved_video_clips", "temp_publishes", fileName);

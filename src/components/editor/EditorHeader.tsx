@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Undo2, Redo2, Download, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Undo2, Redo2, Download, CheckCircle2, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { useEditorStore } from "@/store/editorStore";
 import { Button } from "@/components/ui/button";
 import { exportTimeline, saveToLocalFolder } from "@/lib/clipExporter";
@@ -26,10 +26,17 @@ export default function EditorHeader({ projectId }: EditorHeaderProps) {
     videoMetadata,
     videoClips,
     audioClips,
+    elementOverlays,
     history,
     future,
     undo,
     redo,
+    captionFont,
+    captionColor,
+    captionSize,
+    captionStroke,
+    captionUppercase,
+    captionPreset,
   } = useEditorStore();
 
   const [isExporting, setIsExporting] = useState(false);
@@ -63,9 +70,21 @@ export default function EditorHeader({ projectId }: EditorHeaderProps) {
         videoFile,
         videoClips,
         audioClips,
+        elementOverlays,
         (percent, message) => {
           setExportProgress(percent);
           console.log(`AuraClip Timeline Export: ${percent}% — ${message}`);
+        },
+        {
+          burnCaptions: true,
+          style: {
+            fontFamily: captionFont,
+            color: captionColor,
+            size: captionSize,
+            stroke: captionStroke,
+            uppercase: captionUppercase,
+            preset: captionPreset,
+          }
         }
       );
       setCompiledBlob(blob);
@@ -161,6 +180,15 @@ export default function EditorHeader({ projectId }: EditorHeaderProps) {
 
         {/* Right section: Export Trigger */}
         <div className="flex items-center gap-3">
+          <Link href={`/dashboard/project/${projectId}/ultimate`}>
+            <Button
+              variant="outline"
+              className="rounded-full border-violet-500/30 hover:border-violet-500 bg-violet-600/10 hover:bg-violet-600/20 text-violet-300 font-semibold text-xs gap-1.5 px-6 shadow-lg active:scale-95 transition-transform cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-yellow-300 animate-pulse" />
+              Ultimate Studio
+            </Button>
+          </Link>
           <Button
             onClick={handleExport}
             className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold text-xs gap-1.5 px-6 shadow-lg active:scale-95 transition-transform"

@@ -1,0 +1,667 @@
+"use strict";
+"use client";
+
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Video,
+  Search,
+  Filter,
+  Plus,
+  Coins,
+  FolderOpen,
+  Loader2,
+  Settings,
+  ArrowLeft,
+} from "lucide-react";
+import ProjectCard, { Project } from "@/components/ProjectCard";
+import UploadZone from "@/components/UploadZone";
+import { Button } from "@/components/ui/button";
+import Navbar from "@/components/Navbar";
+import { saveVideoFile, getVideoFile } from "@/lib/videoStorage";
+import {
+  processVideo,
+  isProjectProcessed,
+  type ProcessingStatus,
+} from "@/lib/processingPipeline";
+
+const INITIAL_PROJECTS: Project[] = [];
+
+// Inner component that reads search params
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<string>("NEWEST");
+  const [showUploadZone, setShowUploadZone] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<"AI" | "MANUAL" | "ULTIMATE">("AI");
+
+  // Track processing status per project
+  const [processingStates, setProcessingStates] = useState<
+    Record<string, ProcessingStatus>
+  >({});
+  const processingRef = useRef<Set<string>>(new Set());
+  const autoProcessingRef = useRef<Set<string>>(new Set());
+
+  // Load projects from localStorage on client-side mount
+  useEffect(() => {
+    const saved = localStorage.getItem("auraclip_projects");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+          .map((p: any) => ({
+            ...p,
+            createdAt: new Date(p.createdAt),
+            mode: p.mode || "AI",
+          }))
+          .filter((p: any) => p.id !== "proj-1" && p.id !== "proj-2" && p.id !== "proj-3");
+        setProjects(parsed);
+      } catch (e) {
+        setProjects([]);
+      }
+    } else {
+      setProjects([]);
+    }
+
+    setMounted(true);
+  }, []);
+
+  // Save projects to localStorage whenever state changes
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem("auraclip_projects", JSON.stringify(projects));
+    }
+  }, [projects, mounted]);
+
+  // Check if a new upload was requested via redirect query params
+  useEffect(() => {
+    if (!mounted) return;
+
+    const newUpload = searchParams.get("newUpload");
+    const title = searchParams.get("title");
+    const duration = searchParams.get("duration");
+    const id = searchParams.get("id");
+
+    if (newUpload === "true" && title) {
+      const parsedDuration = duration ? parseInt(duration) : 120;
+
+      setProjects((prev) => {
+        const titleExists = prev.some(
+          (p) =>
+            p.title === title &&
+            (p.status === "UPLOADING" || p.status === "PROCESSING")
+        );
+        if (titleExists) return prev;
+
+        const newProj: Project = {
+          id: id || "proj-" + Math.random().toString(36).substr(2, 9),
+          title: title,
+          duration: parsedDuration,
+          status: "UPLOADING",
+          progress: 15,
+          createdAt: new Date(),
+          mode: "AI",
+        };
+
+        return [newProj, ...prev];
+      });
+
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+    }
+  }, [searchParams, mounted]);
+
+  // Auto-process projects in UPLOADING/PROCESSING states that are not currently running
+  // Uses autoProcessingRef to lock checking operations and prevent overlapping asynchronous race condition loops
+  useEffect(() => {
+    if (!mounted) return;
+
+    const autoProcessStuckProjects = async () => {
+      for (const project of projects) {
+        if (
+          (project.status === "UPLOADING" || project.status === "PROCESSING") &&
+          !processingRef.current.has(project.id) &&
+          !autoProcessingRef.current.has(project.id)
+        ) {
+          autoProcessingRef.current.add(project.id);
+          try {
+            const file = await getVideoFile(project.id);
+            if (file) {
+              console.log("AuraClip: Auto-starting processing for stuck/redirected project:", project.id);
+              startProcessing(project.id, file);
+            } else {
+              if (project.originalVideoUrl) {
+                try {
+                  console.log(`AuraClip Watcher: Fetching watched video from ${project.originalVideoUrl}`);
+                  const res = await fetch(project.originalVideoUrl);
+                  if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                  const blob = await res.blob();
+                  const filename = project.originalVideoUrl.split("/").pop() || "watch_video.mp4";
+                  const fetchedFile = new File([blob], filename, { type: blob.type || "video/mp4" });
+                  await saveVideoFile(project.id, fetchedFile);
+                  startProcessing(project.id, fetchedFile);
+                } catch (fetchErr) {
+                  console.error("AuraClip: Failed to load watched video file:", fetchErr);
+                  setProjects((prev) =>
+                    prev.map((p) =>
+                      p.id === project.id ? { ...p, status: "FAILED" as const, progress: 0 } : p
+                    )
+                  );
+                }
+              } else if (project.title.toLowerCase().includes("youtube")) {
+                const mockBlob = new Blob(["mock video content"], { type: "video/mp4" });
+                const mockFile = new File([mockBlob], "mock_youtube.mp4", { type: "video/mp4" });
+                startProcessing(project.id, mockFile);
+              } else {
+                console.warn("AuraClip: No file found in IndexedDB for stuck project:", project.id);
+                setProjects((prev) =>
+                  prev.map((p) =>
+                    p.id === project.id ? { ...p, status: "FAILED" as const, progress: 0 } : p
+                  )
+                );
+              }
+            }
+          } catch (e) {
+            console.error("AuraClip: Error auto-starting project:", project.id, e);
+          } finally {
+            autoProcessingRef.current.delete(project.id);
+          }
+        }
+      }
+    };
+
+    autoProcessStuckProjects();
+  }, [projects, mounted]);
+
+  /**
+   * Start real processing pipeline for a project.
+   */
+  async function startProcessing(projectId: string, file: File) {
+    // Prevent duplicate processing
+    if (processingRef.current.has(projectId)) return;
+    processingRef.current.add(projectId);
+
+    // Update project status to PROCESSING
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, status: "PROCESSING" as const, progress: 0, processingStage: "transcribing" }
+          : p
+      )
+    );
+
+    try {
+      await processVideo(projectId, file, (status: ProcessingStatus) => {
+        // Store processing state
+        setProcessingStates((prev) => ({
+          ...prev,
+          [projectId]: status,
+        }));
+
+        // Map pipeline stage to project progress
+        const stageLabel =
+          status.stage === "transcribing"
+            ? "Transcribing audio..."
+            : status.stage === "analyzing"
+            ? "AI analyzing content..."
+            : status.stage === "generating"
+            ? "Generating clips..."
+            : status.stage === "complete"
+            ? "Ready"
+            : status.stage === "error"
+            ? "Failed"
+            : "Processing...";
+
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id !== projectId) return p;
+
+            if (status.stage === "complete") {
+              return {
+                ...p,
+                status: "COMPLETED" as const,
+                progress: 100,
+                processingStage: undefined,
+              };
+            }
+
+            if (status.stage === "error") {
+              return {
+                ...p,
+                status: "FAILED" as const,
+                progress: 0,
+                processingStage: undefined,
+              };
+            }
+
+            return {
+              ...p,
+              status: "PROCESSING" as const,
+              progress: status.progress,
+              processingStage: stageLabel,
+            };
+          })
+        );
+      });
+    } catch (err) {
+      console.error("AuraClip: Pipeline failed for project:", projectId, err);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, status: "FAILED" as const, progress: 0 }
+            : p
+        )
+      );
+    } finally {
+      processingRef.current.delete(projectId);
+    }
+  }
+
+  // Handle manual upload completing on Dashboard
+  const handleUploadComplete = async (data: {
+    title: string;
+    duration: number;
+    size: string;
+    file: File;
+  }) => {
+    const projectId =
+      "proj-" + Math.random().toString(36).substr(2, 9);
+ 
+    // Save video file to IndexedDB
+    try {
+      await saveVideoFile(projectId, data.file);
+      console.log("AuraClip: Video stored in IndexedDB.");
+    } catch (e) {
+      console.error("AuraClip: Failed to store video:", e);
+    }
+ 
+    const newProj: Project = {
+      id: projectId,
+      title: data.title,
+      duration: data.duration,
+      status: activeCategory === "MANUAL" ? "COMPLETED" : "PROCESSING",
+      progress: activeCategory === "MANUAL" ? 100 : 0,
+      createdAt: new Date(),
+      processingStage: activeCategory === "MANUAL" ? undefined : "Preparing...",
+      mode: activeCategory,
+    };
+    setProjects((prev) => [newProj, ...prev]);
+    setShowUploadZone(false);
+ 
+    if (activeCategory === "MANUAL") {
+      // Pre-save basic editor state with full clip
+      const initialClips = [
+        {
+          id: "vclip-default",
+          title: data.title,
+          startTime: 0,
+          endTime: data.duration,
+          playStartTime: 0,
+          duration: data.duration,
+          volume: 1.0,
+        }
+      ];
+      const editorData = {
+        videoClips: initialClips,
+        audioClips: [],
+        elementOverlays: [],
+      };
+      localStorage.setItem(`auraclip_autosave_${projectId}`, JSON.stringify(editorData));
+ 
+      // Save placeholder results
+      const mockResult = {
+        clips: [
+          {
+            id: "vclip-default",
+            title: data.title,
+            startTime: 0,
+            endTime: data.duration,
+            duration: data.duration,
+            viralScore: 100,
+            reason: "Manual Editor Import",
+            transcript: "",
+            hookText: "",
+            keywords: [],
+          }
+        ],
+        averageScore: 100,
+        topKeywords: [],
+      };
+      localStorage.setItem("auraclip_results_" + projectId, JSON.stringify(mockResult));
+ 
+      // Redirect straight to editor
+      router.push(`/dashboard/project/${projectId}/editor`);
+    } else {
+      // Start real AI processing pipeline
+      startProcessing(projectId, data.file);
+    }
+  };
+
+  // Retry handler — reprocess from stored IndexedDB file
+  const handleRetry = async (id: string) => {
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              status: "PROCESSING" as const,
+              progress: 0,
+              processingStage: "Retrying...",
+            }
+          : p
+      )
+    );
+
+    // Try to load the stored file
+    try {
+      const file = await getVideoFile(id);
+      if (file) {
+        startProcessing(id, file);
+      } else {
+        // No file in IndexedDB — mark as failed
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === id
+              ? { ...p, status: "FAILED" as const, progress: 0 }
+              : p
+          )
+        );
+      }
+    } catch (e) {
+      console.error("AuraClip: Retry failed:", e);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, status: "FAILED" as const, progress: 0 }
+            : p
+        )
+      );
+    }
+  };
+
+  // Actions
+  const handleRename = (id: string, newTitle: string) => {
+    setProjects((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, title: newTitle } : p))
+    );
+  };
+
+  const handleDelete = (id: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // Filter & Sort computation
+  const filteredProjects = projects
+    .filter((proj) => {
+      const projMode = proj.mode || "AI";
+      if (projMode !== activeCategory) return false;
+
+      const matchesSearch = proj.title
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+      if (statusFilter === "ALL") return matchesSearch;
+      return matchesSearch && proj.status === statusFilter;
+    })
+    .sort((a, b) => {
+      if (sortBy === "NEWEST") {
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      }
+      if (sortBy === "DURATION") {
+        return b.duration - a.duration;
+      }
+      return 0;
+    });
+
+  return (
+    <div className="relative min-h-screen bg-background text-foreground overflow-x-hidden flex flex-col justify-between">
+      {/* Background radial glow effects */}
+      <div className="absolute top-0 left-1/2 -z-10 h-[1000px] w-[1000px] -translate-x-1/2 rounded-full bg-gradient-to-b from-purple-700/12 via-purple-900/6 to-transparent blur-[120px]" />
+      
+      <Navbar />
+
+      {/* Main dashboard content */}
+      <main className="flex-grow max-w-7xl w-full mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-8 relative z-10">
+        
+        {/* Banner with CTA */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-6">
+              <div className="flex items-center gap-4">
+                <Link
+                  href="/"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/40 bg-white/5 text-muted-foreground hover:text-white transition-colors cursor-pointer"
+                  title="Back to Landing Page"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">
+                    Recent Projects
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {activeCategory === "AI" 
+                      ? "Upload a video to automatically extract AI-analyzed viral clips with real transcription."
+                      : activeCategory === "MANUAL"
+                      ? "Upload and edit full video files with Canva-style custom elements, text overlay styles, and timeline assets."
+                      : "The Ultimate Creator Weapon: AI curation, face tracking reframe, multi-track magnetic timeline, brand kits, scheduling calendar, and metrics."
+                    }
+                  </p>
+                </div>
+              </div>
+
+
+              <div className="flex items-center gap-3">
+                <Link href="/dashboard/settings">
+                  <Button
+                    variant="outline"
+                    className="rounded-full border-border/40 hover:bg-white/5 text-white font-semibold text-xs gap-1.5 px-6 shrink-0 shadow-lg active:scale-95 transition-transform cursor-pointer"
+                  >
+                    <Settings className="h-4 w-4 text-violet-400" />
+                    Settings
+                  </Button>
+                </Link>
+ 
+                <Button
+                  onClick={() => setShowUploadZone(!showUploadZone)}
+                  className="rounded-full bg-gradient-to-r from-purple-700 to-violet-700 hover:from-purple-600 hover:to-violet-600 text-white font-semibold text-xs gap-1.5 px-6 shrink-0 shadow-lg active:scale-95 transition-transform cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  {activeCategory === "MANUAL" ? "Import for Editor" : activeCategory === "ULTIMATE" ? "New Pro Upload" : "New AI Upload"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Category tabs */}
+            <div className="flex border-b border-border/20 pb-1 gap-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("AI");
+                  setShowUploadZone(false);
+                }}
+                className={`text-sm font-bold pb-2.5 border-b-2 transition-all cursor-pointer ${
+                  activeCategory === "AI"
+                    ? "border-violet-500 text-white"
+                    : "border-transparent text-muted-foreground hover:text-white"
+                }`}
+              >
+                AI Video Curation & Clips
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("MANUAL");
+                  setShowUploadZone(false);
+                }}
+                className={`text-sm font-bold pb-2.5 border-b-2 transition-all cursor-pointer ${
+                  activeCategory === "MANUAL"
+                    ? "border-violet-500 text-white"
+                    : "border-transparent text-muted-foreground hover:text-white"
+                }`}
+              >
+                Direct Canva Pro Editor
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("ULTIMATE");
+                  setShowUploadZone(false);
+                }}
+                className={`text-sm font-bold pb-2.5 border-b-2 transition-all cursor-pointer ${
+                  activeCategory === "ULTIMATE"
+                    ? "border-violet-500 text-white"
+                    : "border-transparent text-muted-foreground hover:text-white"
+                }`}
+              >
+                Ultimate AI Studio (Pro)
+              </button>
+            </div>
+
+
+            {/* Collapsible Upload Zone */}
+            {showUploadZone && (
+              <div className="rounded-2xl border border-border/40 bg-card/20 p-6 shadow-xl relative animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-violet-400">
+                    Upload video file
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowUploadZone(false)}
+                    className="text-xs hover:bg-white/5"
+                  >
+                    Close
+                  </Button>
+                </div>
+                <UploadZone onUploadComplete={handleUploadComplete} />
+              </div>
+            )}
+
+            {/* Controls: Search, Filter, Sort */}
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-card/20 border border-border/40 rounded-xl p-4">
+              {/* Search box */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search project titles..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-border/40 bg-white/5 pl-9 pr-4 py-2 text-xs text-white placeholder-muted-foreground focus:border-violet-500 focus:outline-none transition-all duration-200"
+                />
+              </div>
+
+              {/* Filtering row */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <select
+                     value={statusFilter}
+                     onChange={(e) => setStatusFilter(e.target.value)}
+                     className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL" className="bg-slate-900 text-white">
+                      All States
+                    </option>
+                    <option
+                      value="COMPLETED"
+                      className="bg-slate-900 text-white"
+                    >
+                      Ready
+                    </option>
+                    <option
+                      value="PROCESSING"
+                      className="bg-slate-900 text-white"
+                    >
+                      Processing
+                    </option>
+                    <option
+                      value="UPLOADING"
+                      className="bg-slate-900 text-white"
+                    >
+                      Uploading
+                    </option>
+                    <option value="FAILED" className="bg-slate-900 text-white">
+                      Failed
+                    </option>
+                  </select>
+                </div>
+
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="rounded-lg border border-border/40 bg-white/5 px-3 py-2 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="NEWEST" className="bg-slate-900 text-white">
+                    Newest First
+                  </option>
+                  <option value="DURATION" className="bg-slate-900 text-white">
+                    Longest Duration
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {/* Project Grid / Library */}
+            {filteredProjects.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map((proj) => (
+                  <ProjectCard
+                    key={proj.id}
+                    project={proj}
+                    onRename={handleRename}
+                    onDelete={handleDelete}
+                    onRetry={handleRetry}
+                  />
+                ))}
+              </div>
+            ) : (
+              // Empty State Layout
+              <div className="rounded-2xl border border-dashed border-border/40 bg-card/10 p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+                <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                <h4 className="font-bold text-white text-base">
+                  No projects found
+                </h4>
+                <p className="text-xs text-muted-foreground mt-2 max-w-sm leading-relaxed">
+                  {searchQuery || statusFilter !== "ALL"
+                    ? "No projects match your current search and filters. Reset filters to see all uploads."
+                    : activeCategory === "ULTIMATE"
+                    ? "Upload your video to the Ultimate Studio. AuraClip will process and open a dashboard with advanced multi-track timelines, branding kits, content calendar scheduling, and viral analytics."
+                    : "Get started by uploading your first long video file. AuraClip will transcribe, analyze, and extract viral clips automatically."}
+                </p>
+                {(searchQuery || statusFilter !== "ALL") && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilter("ALL");
+                    }}
+                    className="mt-6 rounded-full text-xs border-border/40 hover:bg-white/5"
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+            )}
+          </main>
+    </div>
+  );
+}
+
+export default function DashboardClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[400px] text-muted-foreground font-medium">
+          <Loader2 className="h-6 w-6 animate-spin mb-2" />
+          Loading Creator Dashboard...
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
+  );
+}

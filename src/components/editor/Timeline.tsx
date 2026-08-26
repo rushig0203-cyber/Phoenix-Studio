@@ -11,8 +11,9 @@ import {
   ChevronRight,
   Music,
   Video as VideoIcon,
+  Layers,
 } from "lucide-react";
-import { useEditorStore, VideoClip, AudioClip } from "@/store/editorStore";
+import { useEditorStore, VideoClip, AudioClip, ElementOverlay } from "@/store/editorStore";
 import { Button } from "@/components/ui/button";
 
 export default function Timeline() {
@@ -33,6 +34,11 @@ export default function Timeline() {
     deleteAudioClip,
     setSelectedClip,
     thumbnails,
+    elementOverlays,
+    selectedElementId,
+    setSelectedElementId,
+    updateElementOverlay,
+    deleteElementOverlay,
   } = useEditorStore();
 
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -149,6 +155,68 @@ export default function Timeline() {
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
   };
+  
+  // Element Clip placement drag mouse events
+  const handleElementDragStart = (e: React.MouseEvent, overlay: ElementOverlay) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".cursor-ew-resize")) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startPlayStartTime = overlay.playStartTime;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaSec = deltaX / zoom;
+      const newPlayStartTime = Math.max(0, startPlayStartTime + deltaSec);
+      updateElementOverlay(overlay.id, { playStartTime: newPlayStartTime });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Element Clip Trim Handle dragging mouse events
+  const handleElementTrimStart = (
+    e: React.MouseEvent,
+    overlay: ElementOverlay,
+    type: "left" | "right"
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startPlayStartTime = overlay.playStartTime;
+    const startDuration = overlay.duration;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaSec = deltaX / zoom;
+
+      if (type === "left") {
+        const maxPlayStartTime = startPlayStartTime + startDuration - 0.2;
+        const newPlayStartTime = Math.max(0, Math.min(startPlayStartTime + deltaSec, maxPlayStartTime));
+        const newDuration = startDuration - (newPlayStartTime - startPlayStartTime);
+        updateElementOverlay(overlay.id, { playStartTime: newPlayStartTime, duration: Math.max(0.2, newDuration) });
+      } else {
+        const newDuration = Math.max(0.2, startDuration + deltaSec);
+        updateElementOverlay(overlay.id, { duration: newDuration });
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   // 4. Video Clips Reordering (Reorder in gapless list index)
   const moveVideoClip = (index: number, direction: "left" | "right") => {
@@ -176,6 +244,8 @@ export default function Timeline() {
         deleteVideoClip(selectedClipId);
       } else if (selectedTrackType === "audio") {
         deleteAudioClip(selectedClipId);
+      } else if (selectedTrackType === "element") {
+        deleteElementOverlay(selectedClipId);
       }
     }
   };
@@ -403,6 +473,74 @@ export default function Timeline() {
                       {clip.fadeIn > 0 && <span>In: {clip.fadeIn}s</span>}
                       {clip.fadeOut > 0 && <span>Out: {clip.fadeOut}s</span>}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Element Overlays / Stickers track */}
+          <div className="flex flex-col gap-2 py-4 px-2 min-h-[72px] relative bg-white/[0.01]">
+            <div className="absolute left-3 top-2 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fuchsia-400 select-none z-10 bg-slate-950/40 rounded px-1.5 py-0.5">
+              <Layers className="h-3 w-3" />
+              <span>Overlays & Stickers</span>
+            </div>
+
+            {/* Freeform placed elements */}
+            <div className="h-12 w-full mt-3 relative select-none">
+              {elementOverlays.map((overlay) => {
+                const isSelected = selectedElementId === overlay.id;
+                const leftOffset = overlay.playStartTime * zoom;
+                const width = overlay.duration * zoom;
+
+                return (
+                  <div
+                    key={overlay.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedElementId(overlay.id);
+                    }}
+                    onMouseDown={(e) => handleElementDragStart(e, overlay)}
+                    style={{
+                      left: `${leftOffset}px`,
+                      width: `${width}px`,
+                    }}
+                    className={`absolute h-full rounded-lg border flex flex-col justify-between p-2 cursor-grab active:cursor-grabbing transition-all ${
+                      isSelected
+                        ? "border-fuchsia-500 bg-fuchsia-600/10 shadow-inner z-20"
+                        : "border-border/40 bg-slate-900/60 hover:border-fuchsia-500/30 hover:bg-slate-900/80"
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold text-fuchsia-300 truncate max-w-[90%]">
+                      {overlay.type === "text"
+                        ? `Text: ${overlay.text || "Heading"}`
+                        : overlay.type === "shape"
+                        ? `Shape: ${overlay.shapeType}`
+                        : "Image Overlay"}
+                    </span>
+                    <div className="flex justify-between items-center text-[8px] font-mono text-muted-foreground mt-auto">
+                      <span>{overlay.duration.toFixed(1)}s</span>
+                    </div>
+
+                    {/* Trim Handles for Element Blocks */}
+                    {isSelected && (
+                      <>
+                        <div
+                          onMouseDown={(e) => handleElementTrimStart(e, overlay, "left")}
+                          className="absolute left-0 top-0 bottom-0 w-2.5 bg-fuchsia-500 cursor-ew-resize rounded-l-lg flex items-center justify-center border-r border-black/30"
+                          title="Trim element start"
+                        >
+                          <div className="w-0.5 h-3 bg-white/60" />
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleElementTrimStart(e, overlay, "right")}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 bg-fuchsia-500 cursor-ew-resize rounded-r-lg flex items-center justify-center border-l border-black/30"
+                          title="Trim element end"
+                        >
+                          <div className="w-0.5 h-3 bg-white/60" />
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}

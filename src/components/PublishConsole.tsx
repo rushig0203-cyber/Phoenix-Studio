@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Sparkles, Calendar, Zap, RefreshCw, Link as LinkIcon, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { useEditorStore } from "@/store/editorStore";
+import { Sparkles, Calendar, Zap, RefreshCw, Link as LinkIcon, Check, AlertTriangle, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
@@ -65,10 +66,19 @@ interface PublishHistory {
 
 interface PublishConsoleProps {
   projectId: string;
-  activeClip: Clip | undefined;
+  activeClip?: Clip;
 }
 
 export default function PublishConsole({ projectId, activeClip }: PublishConsoleProps) {
+  const {
+    captionFont,
+    captionColor,
+    captionSize,
+    captionStroke,
+    captionUppercase,
+    captionPreset,
+  } = useEditorStore();
+
   // Inputs
   const [instagramCaption, setInstagramCaption] = useState("");
   const [instagramHashtags, setInstagramHashtags] = useState("");
@@ -86,6 +96,8 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStep, setPublishStep] = useState("");
+  const [compiledVideoUrl, setCompiledVideoUrl] = useState<string | null>(null);
+  const [compiledVideoName, setCompiledVideoName] = useState("");
   const [historyList, setHistoryList] = useState<PublishHistory[]>([]);
   
   const [webhookConfigured, setWebhookConfigured] = useState(true);
@@ -94,6 +106,11 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
 
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [generatedShareUrl, setGeneratedShareUrl] = useState<string | null>(null);
+  const [generatedPlatform, setGeneratedPlatform] = useState<string>("");
+  const [viralityScore, setViralityScore] = useState<number | null>(null);
+  const [hookAnalysis, setHookAnalysis] = useState("");
+  const [ctrHooks, setCtrHooks] = useState<string[]>([]);
 
   // Load publish history & connection settings
   const loadHistoryAndSettings = async () => {
@@ -142,6 +159,11 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
     setYoutubeHashtags("");
     setErrorMsg("");
     setSuccessMsg("");
+    setViralityScore(null);
+    setHookAnalysis("");
+    setCtrHooks([]);
+    setCompiledVideoUrl(null);
+    setCompiledVideoName("");
   }, [activeClip]);
 
   const handleAIAnalyze = async () => {
@@ -168,7 +190,10 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
         setYoutubeTitle(data.youtubeTitle || "");
         setYoutubeDescription(data.youtubeDescription || "");
         setYoutubeHashtags(data.youtubeHashtags || "");
-        setSuccessMsg("AI copies generated successfully! Review and edit them below.");
+        setViralityScore(data.viralityScore || null);
+        setHookAnalysis(data.hookAnalysis || "");
+        setCtrHooks(data.ctrHooks || []);
+        setSuccessMsg("AI copies and virality analytics generated successfully! Review them below.");
       } else {
         const data = await res.json();
         setErrorMsg(data.error || "AI copy generation failed.");
@@ -220,8 +245,26 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
         activeClip.title,
         (percent, message) => {
           setPublishStep(`Compiling: ${percent}% — ${message}`);
+        },
+        {
+          burnCaptions: true,
+          transcript: activeClip.transcript,
+          style: {
+            fontFamily: captionFont,
+            color: captionColor,
+            size: captionSize,
+            stroke: captionStroke,
+            uppercase: captionUppercase,
+            preset: captionPreset,
+          }
         }
       );
+
+      // Save compiled video object URL in React state to allow direct local browser download
+      const blobUrl = URL.createObjectURL(clipBlob);
+      setCompiledVideoUrl(blobUrl);
+      const outputFilename = `${activeClip.title.replace(/[^a-zA-Z0-9]/g, "_")}.mp4`;
+      setCompiledVideoName(outputFilename);
 
       // 3. Upload the compiled clip file to Next.js server
       setPublishStep("Uploading clip buffer to server directory...");
@@ -230,23 +273,42 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
       uploadFormData.append("file", clipFile);
       uploadFormData.append("clipId", activeClip.id);
 
-      const uploadRes = await fetch(`/api/projects/${projectId}/publish/media`, {
+      const uploadRes = await fetch(`/api/projects/${projectId}/publish-media`, {
         method: "POST",
         body: uploadFormData,
       });
 
       if (!uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        throw new Error(uploadData.error || "Failed to store media buffer on the server.");
+        let errorMsg = "Failed to store media buffer on the server.";
+        try {
+          const contentType = uploadRes.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const uploadData = await uploadRes.json();
+            errorMsg = uploadData.error || errorMsg;
+          } else {
+            const text = await uploadRes.text();
+            errorMsg = text.slice(0, 150) || errorMsg;
+          }
+        } catch {}
+        throw new Error(errorMsg);
       }
 
       const uploadResult = await uploadRes.json();
       const mediaPath = uploadResult.path;
 
+      // Reset generated share link
+      setGeneratedShareUrl(null);
+      setGeneratedPlatform("");
+
       // 4. Record and trigger publishes for each selected platform
       const platforms = [];
       if (publishInstagram) platforms.push("Instagram");
       if (publishYoutube) platforms.push("YouTube");
+
+      let shareUrlFound = "";
+      let lastPlatform = "";
+      let directPublishCount = 0;
+      let webhookPublishCount = 0;
 
       for (const platform of platforms) {
         setPublishStep(`Sending ${platform} post to publish queue...`);
@@ -268,16 +330,58 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
         });
 
         if (!publishRes.ok) {
-          const publishData = await publishRes.json();
-          throw new Error(publishData.error || `Failed to trigger publishing for ${platform}`);
+          let errorMsg = `Failed to trigger publishing for ${platform}`;
+          try {
+            const contentType = publishRes.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const publishData = await publishRes.json();
+              errorMsg = publishData.error || errorMsg;
+            } else {
+              const text = await publishRes.text();
+              errorMsg = text.slice(0, 150) || errorMsg;
+            }
+          } catch {}
+          throw new Error(errorMsg);
+        }
+
+        const publishData = await publishRes.json();
+        if (publishData.success && publishData.record) {
+          if (publishData.record.status === "FAILED") {
+            throw new Error(publishData.record.error || `Failed to publish to ${platform}.`);
+          }
+          const isShareLink = (platform === "Instagram" && !igConnected && !webhookConfigured) || 
+                              (platform === "YouTube" && !ytConnected && !webhookConfigured) ||
+                              (publishData.record.postUrl && (publishData.record.postUrl.includes("transfer.sh") || publishData.record.postUrl.includes("0x0.st")));
+          if (isShareLink && publishData.record.postUrl) {
+            shareUrlFound = publishData.record.postUrl;
+            lastPlatform = platform;
+          } else {
+            if ((platform === "Instagram" && igConnected) || (platform === "YouTube" && ytConnected)) {
+              directPublishCount++;
+            } else if (webhookConfigured) {
+              webhookPublishCount++;
+            }
+          }
+        } else {
+          throw new Error(publishData.error || publishData.record?.error || `Failed to publish to ${platform}.`);
         }
       }
 
-      setSuccessMsg(
-        publishMode === "schedule"
-          ? "Clip scheduled successfully! You can verify scheduling details in logs."
-          : "Clip published successfully! Check Make.com webhook triggers and platform URLs."
-      );
+      if (shareUrlFound) {
+        setGeneratedShareUrl(shareUrlFound);
+        setGeneratedPlatform(lastPlatform);
+        setSuccessMsg("Clip compiled and upload link generated successfully! Scan the QR code or copy the link below.");
+      } else {
+        if (publishMode === "schedule") {
+          setSuccessMsg("Clip scheduled successfully! You can verify scheduling details in logs.");
+        } else if (directPublishCount > 0 && webhookPublishCount === 0) {
+          setSuccessMsg("Clip published successfully directly to your connected channel(s)!");
+        } else if (directPublishCount > 0 && webhookPublishCount > 0) {
+          setSuccessMsg("Clip published successfully! Check your connected channel(s) and Make.com webhook triggers.");
+        } else {
+          setSuccessMsg("Clip published successfully! Check Make.com webhook triggers and platform URLs.");
+        }
+      }
       
       // Reload history logs
       loadHistoryAndSettings();
@@ -332,19 +436,6 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
 
   return (
     <div className="space-y-6 max-h-[850px] overflow-y-auto pr-2 custom-scrollbar">
-      {!webhookConfigured && (
-        <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 flex flex-col sm:flex-row items-center gap-3.5 leading-relaxed text-xs animate-in fade-in duration-300">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300">
-            <Zap className="h-4.5 w-4.5 animate-pulse text-violet-400" />
-          </div>
-          <div className="flex-grow space-y-0.5">
-            <h5 className="font-bold text-white">Simulated Sandbox Mode</h5>
-            <p className="text-[10px] text-muted-foreground">
-              Make.com Webhook URL is empty. Publishing will compile your clip locally and log publishing results in history. Enter a webhook in <Link href="/dashboard/settings" className="text-violet-400 font-semibold hover:underline">Settings</Link> to post online.
-            </p>
-          </div>
-        </div>
-      )}
       {/* AI Asset Generation Trigger */}
       <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
         <div>
@@ -375,6 +466,72 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
         </Button>
       </div>
 
+      {/* AI Hook Analyzer & CTR Insights */}
+      {(viralityScore !== null || hookAnalysis || ctrHooks.length > 0) && (
+        <div className="rounded-xl border border-violet-500/20 bg-slate-950/40 p-4 space-y-4 animate-in fade-in duration-300">
+          <h4 className="text-xs font-bold text-white flex items-center gap-1.5 border-b border-border/10 pb-2">
+            <Sparkles className="h-4 w-4 text-violet-400" />
+            AI Virality & Hook Analytics
+          </h4>
+          
+          <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start justify-between">
+            {/* Virality Score Ring */}
+            {viralityScore !== null && (
+              <div className="flex flex-col items-center gap-1.5 shrink-0">
+                <div className="relative h-16 w-16 flex items-center justify-center rounded-full bg-slate-900 border-2 border-dashed border-border/40">
+                  <span className={`text-base font-extrabold ${
+                    viralityScore >= 85 
+                      ? "text-emerald-400" 
+                      : viralityScore >= 70 
+                        ? "text-amber-400" 
+                        : "text-rose-400"
+                  }`}>
+                    {viralityScore}
+                  </span>
+                  <div className="absolute inset-0 rounded-full border-2 border-violet-500/20 pointer-events-none" />
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Virality Score</span>
+              </div>
+            )}
+
+            {/* Hook Analysis text */}
+            {hookAnalysis && (
+              <div className="flex-1 space-y-1 w-full text-left">
+                <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider block">Hook Strength Assessment</span>
+                <p className="text-[11px] text-slate-300 leading-relaxed italic">
+                  &ldquo;{hookAnalysis}&rdquo;
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Alternative Clickbait Hook suggestions */}
+          {ctrHooks.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-border/10">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Alternative Viral Hooks (High CTR)</span>
+              <div className="grid grid-cols-1 gap-2">
+                {ctrHooks.map((hook, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3 bg-slate-900/60 border border-border/20 rounded-lg p-2 px-3 text-[11px] text-white">
+                    <span className="truncate">{hook}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        navigator.clipboard.writeText(hook);
+                        alert("Hook copied to clipboard!");
+                      }}
+                      className="h-6 px-2 text-[9px] font-bold text-violet-400 hover:text-violet-300 rounded cursor-pointer"
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Success/Error banners */}
       {successMsg && (
         <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs text-emerald-400 animate-in fade-in">
@@ -387,6 +544,130 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
         </div>
       )}
 
+      {/* Generated Shareable Link Card */}
+      {generatedShareUrl && (
+        <div className="rounded-xl border border-violet-500/40 bg-slate-950/60 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-start justify-between border-b border-border/10 pb-3">
+            <div>
+              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-violet-400" />
+                Your {generatedPlatform} Clip is Ready!
+              </h4>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Scan the QR code or copy the link to post it manually.
+              </p>
+            </div>
+            <button
+              onClick={() => setGeneratedShareUrl(null)}
+              className="text-muted-foreground hover:text-white text-[10px] font-bold"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-900/40 p-4 rounded-xl border border-border/20">
+            {/* QR Code */}
+            <div className="bg-white p-2 rounded-lg shrink-0 shadow-md">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(generatedShareUrl)}`}
+                alt="QR Code"
+                className="h-[120px] w-[120px]"
+              />
+            </div>
+
+            {/* Link & Instructions */}
+            <div className="flex-1 space-y-3.5 w-full">
+              <div className="space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Download Link</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={generatedShareUrl}
+                    className="flex-1 bg-slate-950/60 border border-border/30 rounded-lg px-3 py-1.5 text-[10px] font-mono text-white focus:outline-none"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedShareUrl);
+                      alert("Download link copied to clipboard!");
+                    }}
+                    className="h-8 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+
+              {/* Quick actions for captions/hashtags */}
+              <div className="flex flex-wrap gap-2">
+                {generatedPlatform === "Instagram" && instagramCaption && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(instagramCaption);
+                      alert("Instagram caption copied to clipboard!");
+                    }}
+                    className="h-7.5 px-3 rounded-lg border-border/40 hover:bg-white/5 text-[10px] font-bold cursor-pointer"
+                  >
+                    Copy Caption
+                  </Button>
+                )}
+                {generatedPlatform === "Instagram" && instagramHashtags && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(instagramHashtags);
+                      alert("Instagram hashtags copied to clipboard!");
+                    }}
+                    className="h-7.5 px-3 rounded-lg border-border/40 hover:bg-white/5 text-[10px] font-bold cursor-pointer"
+                  >
+                    Copy Hashtags
+                  </Button>
+                )}
+                {generatedPlatform === "YouTube" && youtubeDescription && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(youtubeDescription);
+                      alert("YouTube description copied to clipboard!");
+                    }}
+                    className="h-7.5 px-3 rounded-lg border-border/40 hover:bg-white/5 text-[10px] font-bold cursor-pointer"
+                  >
+                    Copy Description
+                  </Button>
+                )}
+                {generatedPlatform === "YouTube" && youtubeHashtags && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(youtubeHashtags);
+                      alert("YouTube hashtags copied to clipboard!");
+                    }}
+                    className="h-7.5 px-3 rounded-lg border-border/40 hover:bg-white/5 text-[10px] font-bold cursor-pointer"
+                  >
+                    Copy Hashtags
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[10px] text-muted-foreground leading-relaxed space-y-1 bg-violet-500/5 p-3.5 rounded-xl border border-violet-500/10">
+            <h5 className="font-bold text-slate-200">How to publish to {generatedPlatform}:</h5>
+            <ol className="list-decimal list-inside space-y-0.5 text-slate-300">
+              <li>Scan the QR code with your phone or open the link to download the video.</li>
+              <li>Click &quot;Copy Caption&quot; / &quot;Copy Description&quot; to copy your curated text.</li>
+              <li>Open {generatedPlatform}, select Reels/Shorts, upload the video, and paste!</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
       {/* Main Form Fields */}
       <form onSubmit={handlePublish} className="space-y-6">
         {/* Connection handles status */}
@@ -394,16 +675,20 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
             igConnected 
               ? "bg-pink-500/10 text-pink-400 border-pink-500/20" 
-              : "bg-slate-900 text-slate-500 border-border/20"
+              : webhookConfigured
+                ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                : "bg-slate-900 text-slate-400 border-border/20"
           }`}>
-            Instagram Reel: {igConnected ? "Ready" : "Disconnected"}
+            Instagram Reel: {igConnected ? "Ready (Direct)" : webhookConfigured ? "Ready (Make.com)" : "Manual Share Link"}
           </span>
           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
             ytConnected 
               ? "bg-rose-500/10 text-rose-400 border-rose-500/20" 
-              : "bg-slate-900 text-slate-500 border-border/20"
+              : webhookConfigured
+                ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                : "bg-slate-900 text-slate-400 border-border/20"
           }`}>
-            YouTube Shorts: {ytConnected ? "Ready" : "Disconnected"}
+            YouTube Shorts: {ytConnected ? "Ready (Direct)" : webhookConfigured ? "Ready (Make.com)" : "Manual Share Link"}
           </span>
         </div>
 
@@ -571,6 +856,26 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
             </>
           )}
         </Button>
+        
+        {compiledVideoUrl && (
+          <div className="pt-3 animate-in fade-in duration-200">
+            <Button
+              type="button"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = compiledVideoUrl;
+                a.download = compiledVideoName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }}
+              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white py-4 flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/20 active:scale-95 transition-all cursor-pointer"
+            >
+              <Download className="h-4 w-4 text-white" />
+              <span>Download Compiled MP4 (Local)</span>
+            </Button>
+          </div>
+        )}
       </form>
 
       {/* Publishing History Logs */}
@@ -660,7 +965,13 @@ export default function PublishConsole({ projectId, activeClip }: PublishConsole
                           className="text-violet-400 hover:underline flex items-center gap-1 font-semibold"
                         >
                           <LinkIcon className="h-3 w-3 shrink-0" />
-                          View Post
+                          {job.postUrl.includes("transfer.sh") || 
+                           job.postUrl.includes("0x0.st") || 
+                           job.postUrl.includes("temp_publishes") || 
+                           job.postUrl.includes("localhost")
+                            ? "Download Link"
+                            : "View Post"
+                          }
                         </a>
                       ) : (
                         <span className="text-slate-500">—</span>

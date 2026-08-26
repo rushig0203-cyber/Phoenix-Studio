@@ -10,21 +10,20 @@ require("ts-node").register({
 const { db } = require("./src/lib/db.ts");
 
 async function main() {
-  const projects = await db.project.findMany({
+  const users = await db.user.findMany({
     include: {
-      videos: true,
-      exports: true,
-      clips: true,
-    },
-  });
-
-  console.log(`TOTAL PROJECTS: ${projects.length}`);
-  for (const p of projects) {
-    console.log(`- Project: ${p.id} | Title: "${p.title}" | Status: ${p.status}`);
-    if (p.title.includes("Vlog 12")) {
-      console.log("MATCH:", JSON.stringify(p, null, 2));
+      publishSettings: true,
     }
-  }
+  });
+  console.log("USERS AND SETTINGS:", JSON.stringify(users, null, 2));
+
+  const histories = await db.publishHistory.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 5
+  });
+  console.log("LATEST PUBLISH HISTORIES:", JSON.stringify(histories, null, 2));
 }
 
-main().catch(console.error);
+main()
+  .catch(console.error)
+  .finally(() => db.$disconnect());
