@@ -1,0 +1,5 @@
+# Store text consistently across Windows and Linux checkouts.
+* text=auto
+
+# Unified patches use a single leading space for blank context lines.
+*.patch whitespace=-blank-at-eol

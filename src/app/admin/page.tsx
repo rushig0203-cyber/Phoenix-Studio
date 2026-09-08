@@ -39,13 +39,7 @@ export default async function AdminDashboardPage() {
     avgRenderTimeMs = totalMs / completedExports.length;
   }
 
-  // 3. Compute credit usage and S3 sizes
-  const totalUserCredits = await db.user.aggregate({
-    _sum: {
-      remainingMins: true,
-    },
-  });
-
+  // 3. Estimate the footprint recorded for local video assets.
   const videoAssets = await db.video.findMany({ select: { size: true } });
   let totalSizeMb = 0;
   videoAssets.forEach((v) => {
@@ -68,9 +62,9 @@ export default async function AdminDashboardPage() {
     <div className="p-8 space-y-8">
       {/* Page Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">System Performance & Analytics</h2>
+        <h2 className="text-2xl font-bold text-white tracking-tight">Local Studio Diagnostics</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Monitor active video workloads, render queues, user registrations, and storage allocations.
+          Review local project records and browser-render history. Hosted workers and cloud storage are disabled.
         </p>
       </div>
 
@@ -81,9 +75,7 @@ export default async function AdminDashboardPage() {
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Registered Creators</p>
             <h3 className="text-2xl font-bold text-white">{userCount}</h3>
-            <p className="text-[9px] text-violet-400 font-medium">
-              Credits Pool: {(totalUserCredits._sum.remainingMins || 0).toFixed(0)} mins
-            </p>
+            <p className="text-[9px] text-violet-400 font-medium">Local accounts on this installation</p>
           </div>
           <div className="h-12 w-12 rounded-lg bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
             <Users className="h-5 w-5" />
@@ -108,7 +100,7 @@ export default async function AdminDashboardPage() {
             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Render Tasks Completed</p>
             <h3 className="text-2xl font-bold text-white">{exportCount}</h3>
             <p className="text-[9px] text-amber-400 font-medium">
-              Active: {activeExports} | Queued: {queuedExports}
+              Legacy active: {activeExports} | queued: {queuedExports}
             </p>
           </div>
           <div className="h-12 w-12 rounded-lg bg-amber-600/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
@@ -123,7 +115,7 @@ export default async function AdminDashboardPage() {
             <h3 className="text-2xl font-bold text-white">
               {totalSizeMb >= 1024 ? `${(totalSizeMb / 1024).toFixed(2)} GB` : `${totalSizeMb.toFixed(1)} MB`}
             </h3>
-            <p className="text-[9px] text-rose-400 font-medium">Failed compilations: {failedExports}</p>
+            <p className="text-[9px] text-rose-400 font-medium">Legacy failed records: {failedExports}</p>
           </div>
           <div className="h-12 w-12 rounded-lg bg-rose-600/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
             <HardDrive className="h-5 w-5" />
@@ -152,19 +144,19 @@ export default async function AdminDashboardPage() {
               <span className="text-lg font-mono font-bold text-emerald-400 mt-1 block">Parallel</span>
             </div>
             <div className="border border-border/10 rounded-lg p-3 bg-black/20 text-center">
-              <span className="text-[10px] text-muted-foreground block">Active Workers</span>
-              <span className="text-lg font-mono font-bold text-white mt-1 block">1 Poll Loop</span>
+              <span className="text-[10px] text-muted-foreground block">Cloud Workers</span>
+              <span className="text-lg font-mono font-bold text-white mt-1 block">DISABLED</span>
             </div>
             <div className="border border-border/10 rounded-lg p-3 bg-black/20 text-center">
-              <span className="text-[10px] text-muted-foreground block">S3 Connection</span>
-              <span className="text-lg font-mono font-bold text-emerald-400 mt-1 block">ONLINE</span>
+              <span className="text-[10px] text-muted-foreground block">Cloud Storage</span>
+              <span className="text-lg font-mono font-bold text-emerald-400 mt-1 block">DISABLED</span>
             </div>
           </div>
 
           <div className="bg-slate-950/60 rounded-lg border border-border/20 p-4 flex items-center gap-3">
             <Clock className="h-8 w-8 text-violet-400/30 shrink-0" />
             <p className="text-[10px] text-muted-foreground leading-normal font-medium">
-              Rendering durations are calculated dynamically based on database-tracked export queue timestamps.
+              Historical render durations come from local database timestamps. New editor exports stay on this computer.
             </p>
           </div>
         </div>

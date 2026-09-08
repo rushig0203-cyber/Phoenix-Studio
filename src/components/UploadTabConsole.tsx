@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, Upload, Send, CheckCircle2, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Sparkles, Upload, Download, CheckCircle2, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThumbnailGenerator from "./editor/ThumbnailGenerator";
 
@@ -56,7 +56,6 @@ export default function UploadTabConsole() {
 
   // Process States
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-  const [isEnqueuing, setIsEnqueuing] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -104,109 +103,32 @@ export default function UploadTabConsole() {
           setInstaCaption(data.instagramCaption || "");
           setInstaHashtags(data.instagramHashtags || "");
         }
-        setStatusMsg("AI viral copy generated successfully! Review and edit the fields below.");
+        setStatusMsg("Local copy suggestions are ready. Review and edit them before posting.");
       } else {
         throw new Error("API responded with an error");
       }
     } catch {
-      setErrorMsg("AI Assistant failed to generate viral assets. Please fill in details manually.");
+      setErrorMsg("Local copy suggestions could not be generated. Please fill in details manually.");
     } finally {
       setIsGeneratingAI(false);
     }
   };
 
-  const handleEnqueue = async (e: React.FormEvent) => {
+  const handleManualDownload = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!videoFile) {
-      setErrorMsg("Please select a video file to enqueue.");
+    if (!videoFile || !videoUrl) {
+      setErrorMsg("Please select a video file first.");
       return;
     }
 
-    setIsEnqueuing(true);
     setErrorMsg("");
-    setStatusMsg("Compiling local buffers...");
-
-    try {
-      // 1. Create a Project on the DB
-      const projId = "proj_upload_" + Math.random().toString(36).substring(2, 11);
-      
-      // Save file locally via save-local route
-      const uploadFormData = new FormData();
-      uploadFormData.append("file", videoFile);
-      uploadFormData.append("fileName", `${projId}.mp4`);
-
-      setStatusMsg("Uploading video buffer to server directory...");
-      const saveRes = await fetch(`/api/projects/${projId}/save-local`, {
-        method: "POST",
-        body: uploadFormData,
-      });
-
-      if (!saveRes.ok) {
-        throw new Error("Failed to save media buffer on the server.");
-      }
-
-      const { path: mediaPath } = await saveRes.json();
-
-      // If thumbnail is generated as data URL, save it
-      let savedThumbPath = null;
-      if (activeTab === "youtube" && thumbnailPreview) {
-        setStatusMsg("Saving video thumbnail...");
-        const thumbBlob = await (await fetch(thumbnailPreview)).blob();
-        const thumbFormData = new FormData();
-        thumbFormData.append("file", thumbBlob);
-        thumbFormData.append("fileName", `${projId}_thumb.jpg`);
-
-        const thumbRes = await fetch(`/api/projects/${projId}/save-local`, {
-          method: "POST",
-          body: thumbFormData,
-        });
-        if (thumbRes.ok) {
-          const thumbData = await thumbRes.json();
-          savedThumbPath = thumbData.path;
-        }
-      }
-
-      // 2. Submit Publish Job Queue Entry
-      setStatusMsg("Adding job to publish queue...");
-      const publishRes = await fetch(`/api/projects/${projId}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clipId: `clip_${Date.now()}`,
-          clipTitle: videoFile.name,
-          platform: activeTab === "youtube" ? "YouTube" : "Instagram",
-          scheduledFor: null, // Publish immediately
-          caption: activeTab === "instagram" ? instaCaption : null,
-          hashtags: activeTab === "instagram" ? instaHashtags : null,
-          youtubeTitle: activeTab === "youtube" ? ytTitle : null,
-          youtubeDesc: activeTab === "youtube" ? ytDescription : null,
-          youtubeTags: activeTab === "youtube" ? ytTags : null,
-          thumbnailUrl: savedThumbPath,
-          mediaPath,
-        }),
-      });
-
-      if (!publishRes.ok) {
-        const errData = await publishRes.json();
-        throw new Error(errData.error || "Failed to enqueue job.");
-      }
-
-      setStatusMsg("Successfully enqueued post! The sequential publisher queue will dispatch it next.");
-      // Reset form
-      setVideoFile(null);
-      setVideoUrl(null);
-      setThumbnailPreview(null);
-      setYtTitle("");
-      setYtDescription("");
-      setYtTags("");
-      setInstaCaption("");
-      setInstaHashtags("");
-    } catch (err: any) {
-      console.error("Enqueue error:", err);
-      setErrorMsg(err.message || "Failed to add post to publishing queue.");
-    } finally {
-      setIsEnqueuing(false);
-    }
+    const download = document.createElement("a");
+    download.href = videoUrl;
+    download.download = videoFile.name;
+    download.click();
+    setStatusMsg(
+      "Local copy downloaded. Copy the prepared text and upload both through the social app yourself."
+    );
   };
 
   return (
@@ -243,6 +165,10 @@ export default function UploadTabConsole() {
           <Instagram className="h-4 w-4" />
           Instagram Reels
         </button>
+      </div>
+
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-200">
+        Free local mode never connects to YouTube or Instagram. This screen only prepares a file and copy for manual posting.
       </div>
 
       {/* Upload layout panel */}
@@ -284,15 +210,15 @@ export default function UploadTabConsole() {
             <div className="text-left">
               <h4 className="text-xs font-bold text-white flex items-center gap-1">
                 <Sparkles className="h-3.5 w-3.5 text-fuchsia-400 animate-pulse" />
-                AI Social Curator
+                Local copy assistant
               </h4>
               <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">
-                Generate high-engagement viral clickbaits and SEO tags instantly.
+                Generate editable caption and tag suggestions with the local analysis route.
               </p>
             </div>
             <Button
               onClick={handleAIAssist}
-              disabled={!videoFile || isGeneratingAI || isEnqueuing}
+              disabled={!videoFile || isGeneratingAI}
               className="w-full h-8.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
             >
               {isGeneratingAI ? (
@@ -303,7 +229,7 @@ export default function UploadTabConsole() {
               ) : (
                 <>
                   <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                  Generate Viral Assets
+                  Generate Copy Suggestions
                 </>
               )}
             </Button>
@@ -312,7 +238,7 @@ export default function UploadTabConsole() {
 
         {/* Right side form fields */}
         <div className="md:col-span-2">
-          <form onSubmit={handleEnqueue} className="rounded-2xl border border-border/40 bg-card/20 p-6 space-y-6 shadow-xl">
+          <form onSubmit={handleManualDownload} className="rounded-2xl border border-border/40 bg-card/20 p-6 space-y-6 shadow-xl">
             
             {/* Status alerts */}
             {statusMsg && (
@@ -441,27 +367,18 @@ export default function UploadTabConsole() {
               </div>
             )}
 
-            {/* Enqueue button */}
+            {/* Manual download button */}
             <Button
               type="submit"
-              disabled={!videoFile || isEnqueuing || isGeneratingAI}
+              disabled={!videoFile || isGeneratingAI}
               className={`w-full rounded-full ${
                 activeTab === "youtube"
                   ? "bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500"
                   : "bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500"
               } text-xs font-bold text-white py-5.5 flex items-center justify-center gap-2 shadow-lg active:scale-95 disabled:opacity-50 transition-all cursor-pointer`}
             >
-              {isEnqueuing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-white" />
-                  <span>{statusMsg}</span>
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 text-white" />
-                  <span>Enqueue Publish Event</span>
-                </>
-              )}
+              <Download className="h-4 w-4 text-white" />
+              <span>Download for Manual Posting</span>
             </Button>
 
           </form>

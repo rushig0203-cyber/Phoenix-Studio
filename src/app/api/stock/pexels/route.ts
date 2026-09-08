@@ -7,62 +7,12 @@ export async function GET(req: NextRequest) {
   const page = searchParams.get("page") || "1";
   const apiKey = process.env.PEXELS_API_KEY || "";
 
-  // Curator default fallback list when no API key is specified
-  const DEFAULT_STOCK = [
-    {
-      id: "pv-1",
-      title: "Programmer Coding at Desk",
-      category: "coding",
-      thumbnail: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-programmer-typing-on-a-keyboard-4916-large.mp4",
-      duration: 18
-    },
-    {
-      id: "pv-2",
-      title: "Sunset over Mountains",
-      category: "sunset",
-      thumbnail: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-sunset-clearing-in-the-mountains-4886-large.mp4",
-      duration: 12
-    },
-    {
-      id: "pv-3",
-      title: "Hustling in Modern Office",
-      category: "office",
-      thumbnail: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-his-laptop-in-an-office-4894-large.mp4",
-      duration: 15
-    },
-    {
-      id: "pv-4",
-      title: "Heavy Gym Fitness Workout",
-      category: "fitness",
-      thumbnail: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-woman-doing-exercises-on-a-fitness-mat-4927-large.mp4",
-      duration: 24
-    },
-    {
-      id: "pv-5",
-      title: "Busy City Traffic at Night",
-      category: "city",
-      thumbnail: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-intersection-of-a-big-city-at-night-4903-large.mp4",
-      duration: 20
-    }
-  ];
-
-  if (!apiKey || apiKey.trim() === "") {
-    // Return curated lists filtered local-side
-    const filtered = DEFAULT_STOCK.filter(video => {
-      const matchesSearch = video.title.toLowerCase().includes(query.toLowerCase());
-      const matchesCategory = category === "all" || video.category === category;
-      return matchesSearch && matchesCategory;
+  if (!apiKey.trim()) {
+    return NextResponse.json({
+      videos: [],
+      source: "pexels-unavailable",
+      error: "Pexels is not configured.",
     });
-    const mappedCurated = filtered.map(v => ({
-      ...v,
-      thumbnail: `/api/stock/proxy?url=${encodeURIComponent(v.thumbnail)}`
-    }));
-    return NextResponse.json({ videos: mappedCurated, source: "curated" });
   }
 
   try {
@@ -123,7 +73,7 @@ export async function GET(req: NextRequest) {
     const videos = (data.videos || []).map((v: any) => {
       // Find suitable HD/SD video link file
       const fileLink = v.video_files?.find((f: any) => f.quality === "hd" || f.width >= 1280) || v.video_files?.[0];
-      const rawThumbnail = v.image || "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&auto=format&fit=crop&q=80";
+      const rawThumbnail = v.image || "";
       
       // Parse descriptive title from Pexels video URL slug
       let parsedTitle = "";
@@ -143,8 +93,8 @@ export async function GET(req: NextRequest) {
               .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
               .join(" ");
           }
-        } catch (e) {
-          console.warn("Failed to parse slug title:", e);
+        } catch {
+          console.warn("AuraClip Pexels: could not parse a stock title.");
         }
       }
       
@@ -156,25 +106,19 @@ export async function GET(req: NextRequest) {
         id: `live-pv-${v.id}`,
         title: parsedTitle,
         category: category !== "all" ? category : "shared",
-        thumbnail: `/api/stock/proxy?url=${encodeURIComponent(rawThumbnail)}`,
+        thumbnail: rawThumbnail ? `/api/stock/proxy?url=${encodeURIComponent(rawThumbnail)}` : "",
         url: fileLink?.link || "",
         duration: v.duration || 15
       };
     }).filter((v: any) => v.url !== ""); // filter out items missing links
 
     return NextResponse.json({ videos, source: "live-pexels" });
-  } catch (err: any) {
-    console.error("AuraClip Pexels API failed:", err);
-    // Graceful fallback to static stock if API fails due to rate limits or invalid key
-    const filtered = DEFAULT_STOCK.filter(video => {
-      const matchesSearch = video.title.toLowerCase().includes(query.toLowerCase());
-      const matchesCategory = category === "all" || video.category === category;
-      return matchesSearch && matchesCategory;
+  } catch {
+    console.warn("AuraClip Pexels request failed; returning no stock results.");
+    return NextResponse.json({
+      videos: [],
+      source: "pexels-unavailable",
+      error: "Pexels is temporarily unavailable.",
     });
-    const mappedFallback = filtered.map(v => ({
-      ...v,
-      thumbnail: `/api/stock/proxy?url=${encodeURIComponent(v.thumbnail)}`
-    }));
-    return NextResponse.json({ videos: mappedFallback, source: "curated-fallback", error: err.message });
   }
 }

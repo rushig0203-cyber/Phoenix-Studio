@@ -1,0 +1,8 @@
+ALTER TABLE "ContentManagerState"
+  ALTER COLUMN "minReady" SET DEFAULT 15,
+  ALTER COLUMN "targetReady" SET DEFAULT 18,
+  ALTER COLUMN "maxReady" SET DEFAULT 20,
+  ALTER COLUMN "maxConcurrent" SET DEFAULT 2,
+  ALTER COLUMN "dailyTarget" SET DEFAULT 18,
+  ALTER COLUMN "dailyMinimum" SET DEFAULT 15,
+  ALTER COLUMN "dailyMaximum" SET DEFAULT 20;

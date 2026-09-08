@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-lumina
+.next-cache-*
+.next-*
+__pycache__
+*.pyc
+.git
+.env
+.env.*
+storage
+work
+npm-debug.log*

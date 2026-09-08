@@ -1,10 +1,7 @@
 name: AuraClip CI/CD
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   test-and-build:

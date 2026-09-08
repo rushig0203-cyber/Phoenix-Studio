@@ -16,6 +16,7 @@
 
 # next.js
 /.next/
+/.next-*/
 /out/
 
 # production
@@ -42,6 +43,8 @@ scratch_query*.js
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+__pycache__/
+*.py[cod]
 
 # local databases
 *.db
@@ -53,3 +56,8 @@ next-env.d.ts
 /public/watched_videos/
 /public/temp_publishes/
 /public/placeholder.mp4
+
+# Phoenix runtime media (uploads, work files, and completed review exports)
+/storage/
+/work/
+/public/local-videos/

@@ -1,13 +1,30 @@
 import { NextResponse } from "next/server";
-import { requireUserId, isUnauthorized } from "@/lib/session";
-import { getCloudUsage, STORAGE_LIMIT_BYTES } from "@/lib/s3";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { reviewRoot } from "@/lib/reviewFiles";
+
+export const runtime = "nodejs";
+
+async function measure(directory: string): Promise<{ bytes: number; objects: number }> {
+  let bytes = 0;
+  let objects = 0;
+  const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const location = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await measure(location);
+      bytes += nested.bytes;
+      objects += nested.objects;
+    } else if (entry.isFile()) {
+      const stat = await fs.stat(location);
+      bytes += stat.size;
+      objects += 1;
+    }
+  }
+  return { bytes, objects };
+}
 
 export async function GET() {
-  try {
-    const userId = await requireUserId();
-    const usage = await getCloudUsage(`users/${userId}/`);
-    return NextResponse.json({ ...usage, limitBytes: STORAGE_LIMIT_BYTES, percent: Math.min(100, usage.bytes / STORAGE_LIMIT_BYTES * 100) });
-  } catch (error) {
-    return NextResponse.json({ error: isUnauthorized(error) ? "Sign in required" : "Storage unavailable" }, { status: isUnauthorized(error) ? 401 : 500 });
-  }
+  const usage = await measure(reviewRoot());
+  return NextResponse.json({ ...usage, kind: "local", percent: 0, limitBytes: null });
 }

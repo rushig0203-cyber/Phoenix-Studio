@@ -3,14 +3,10 @@
 /**
  * AuraClip — Intelligent Clip Analyzer
  *
- * Two analysis modes:
- *   1. **Gemini AI** (primary): Sends transcript to the server-side /api/analyze
- *      endpoint which calls Google Gemini for intelligent clip segmentation.
- *   2. **Local rule-based** (fallback): Runs entirely in the browser using
- *      keyword density, sentence energy, pacing analysis, and natural boundaries.
- *
- * The Gemini mode produces higher-quality results with context-aware titles,
- * hooks, and scoring. The local mode works offline with zero dependencies.
+ * Two local analysis paths:
+ *   1. The deterministic server-side /api/analyze route.
+ *   2. A browser rule engine using keyword density, sentence energy, pacing,
+ *      and natural boundaries when the local route is unavailable.
  */
 
 import type { TranscriptResult, TranscriptSentence } from "./transcriber";
@@ -220,16 +216,16 @@ export function analyzeTranscript(
 }
 
 /**
- * Primary analysis entry point: tries Gemini AI first, falls back to local.
+ * Primary analysis entry point: tries the local route, then browser rules.
  */
 export async function analyzeWithAI(
   transcript: TranscriptResult,
   onProgress?: AnalyzerProgress
 ): Promise<AnalysisResult> {
-  onProgress?.("Attempting AI-powered analysis...", 5);
+  onProgress?.("Running local analysis...", 5);
 
   try {
-    // Try Gemini API via server-side route — abort after 15 seconds
+    // Try the deterministic server-side route; abort after 15 seconds.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
@@ -251,7 +247,7 @@ export async function analyzeWithAI(
     const data = await response.json();
 
     if (data.clips && data.clips.length > 0 && !data.useLocal) {
-      onProgress?.("Gemini AI analysis complete!", 90);
+      onProgress?.("Local analysis complete!", 90);
 
       // Compute metrics from AI clips
       const clips: AnalyzedClip[] = data.clips;
@@ -282,10 +278,10 @@ export async function analyzeWithAI(
       };
     }
 
-    // Gemini not available or returned useLocal — fall back
-    console.log("AuraClip: Gemini unavailable, using local analysis. Reason:", data.error || "No clips returned");
-  } catch (err) {
-    console.warn("AuraClip: Gemini API call failed, using local analysis:", err);
+    // The local route requested the browser rule engine, or returned no clips.
+    console.log("AuraClip: using the browser rule engine.");
+  } catch {
+    console.warn("AuraClip: local analysis route unavailable; using browser rules.");
   }
 
   // Fallback to local rule-based analysis

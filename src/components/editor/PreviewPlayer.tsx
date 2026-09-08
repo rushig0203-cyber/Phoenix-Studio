@@ -41,7 +41,7 @@ export default function PreviewPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastPlayClickTimeRef = useRef<number>(0);
 
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -97,14 +97,7 @@ export default function PreviewPlayer() {
 
         video.play().catch((err) => {
           console.warn("Autoplay check or playback interrupted:", err);
-          if (err.name === "NotAllowedError") {
-            video.muted = true;
-            setIsMuted(true); // Sync the React UI state
-            video.play().catch((err2) => {
-              console.error("Playback fully blocked:", err2);
-              setIsPlaying(false);
-            });
-          }
+          if (err.name === "NotAllowedError") setIsPlaying(false);
         });
       }
     } else {
@@ -157,11 +150,7 @@ export default function PreviewPlayer() {
             video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
             video.play().catch((err) => {
               console.warn("Spacebar play failed:", err);
-              if (err.name === "NotAllowedError") {
-                video.muted = true;
-                setIsMuted(true); // Sync the React UI state
-                video.play().catch(console.error);
-              }
+              if (err.name === "NotAllowedError") setIsPlaying(false);
             });
             playActiveAudios(currentTime);
           } else {
@@ -360,11 +349,7 @@ export default function PreviewPlayer() {
         
         video.play().catch((err) => {
           console.warn("AuraClip Editor: Playback failed:", err);
-          if (err.name === "NotAllowedError") {
-            video.muted = true;
-            setIsMuted(true); // Sync React state so the UI reflects muted state
-            video.play().catch(console.error);
-          }
+          if (err.name === "NotAllowedError") setIsPlaying(false);
         });
         playActiveAudios();
       } else {
@@ -441,10 +426,10 @@ export default function PreviewPlayer() {
               onTimeUpdate={handleTimeUpdate}
               onClick={togglePlay}
               onLoadedMetadata={() => {
-                // Explicitly unmute — browsers default to muted for programmatic play
                 if (videoRef.current) {
                   videoRef.current.muted = isMuted;
-                  videoRef.current.volume = isMuted ? 0 : volume;
+                  const clipVolume = activeClip && typeof activeClip.volume === "number" ? activeClip.volume : 1;
+                  videoRef.current.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume * clipVolume));
                 }
               }}
               onError={(e) => {

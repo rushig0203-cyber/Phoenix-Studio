@@ -88,11 +88,6 @@ export default function EditorHeader({ projectId }: EditorHeaderProps) {
         }
       );
       setCompiledBlob(blob);
-      const filename = `auraclip_${projectId}.mp4`;
-      const ticketRes = await fetch("/api/upload/presigned", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ filename, fileType:"video/mp4", bytes:blob.size, kind:"export" }) });
-      const ticket = await ticketRes.json(); if(!ticketRes.ok) throw new Error(ticket.error || "Cloud storage unavailable");
-      const upload = await fetch(ticket.uploadUrl,{ method:"PUT", headers:{"Content-Type":"video/mp4"}, body:blob }); if(!upload.ok) throw new Error("Export upload failed");
-      const saved = await fetch(`/api/projects/${projectId}/exports`,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({s3Key:ticket.s3Key,duration:totalDuration}) }); if(!saved.ok) throw new Error("Export could not be saved");
       setIsExportComplete(true);
     } catch (err: any) {
       console.error("AuraClip: Timeline export failed:", err);

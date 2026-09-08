@@ -6,12 +6,9 @@ import {
   Type, 
   Palette, 
   Upload, 
-  Plus, 
   Sparkles, 
   Check, 
-  ChevronRight, 
   Video,
-  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -63,7 +60,6 @@ export default function BrandKit() {
   const [watermarkText, setWatermarkText] = useState("AuraClip.co");
   const [watermarkOpacity, setWatermarkOpacity] = useState(60);
   const [hasIntro, setHasIntro] = useState(true);
-  const [hasOutro, setHasOutro] = useState(false);
   const [customLogoName, setCustomLogoName] = useState<string | null>("brand_logo_gold.png");
 
   const applyPreset = (preset: typeof PRESETS[0]) => {
@@ -376,10 +372,9 @@ export default function BrandKit() {
             <div className="absolute inset-0 z-0 bg-gradient-to-br from-indigo-900/30 via-slate-950 to-indigo-950/20 flex flex-col items-center justify-center text-center">
               {/* Overlay simulation of branding */}
               <div className="absolute inset-0 bg-black/10 z-10" />
-              <img 
-                src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=260&auto=format&fit=crop" 
-                className="w-full h-full object-cover" 
-                alt="Video mockup background" 
+              <div
+                className="h-full w-full bg-[radial-gradient(circle_at_25%_20%,rgba(139,92,246,0.55),transparent_34%),radial-gradient(circle_at_75%_68%,rgba(14,165,233,0.4),transparent_38%),linear-gradient(145deg,#111827,#020617)]"
+                aria-hidden="true"
               />
             </div>
 

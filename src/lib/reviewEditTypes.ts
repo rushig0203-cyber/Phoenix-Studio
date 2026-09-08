@@ -1,0 +1,46 @@
+export type EditCue = { start: number; end: number; text: string };
+export type ReviewEditDraft = {
+  title: string;
+  postCopy: string;
+  hashtags: string[];
+  trimStart: number;
+  trimEnd: number;
+  format: "original" | "9:16" | "16:9" | "1:1";
+  framing: "fit" | "crop";
+  cropPosition: number;
+  volume: number;
+  captionsEnabled: boolean;
+  captionPosition: "top" | "bottom";
+  captionSize: number;
+  captionColor: string;
+  cues: EditCue[];
+};
+export type ReviewEditJob = {
+  id: string;
+  reviewId: string;
+  outputId: string;
+  title: string;
+  draft: ReviewEditDraft;
+  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  progress: number;
+  stage: string;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  workerPid?: number;
+  archivedAt?: string;
+  elapsedSeconds?: number;
+  estimatedRemainingSeconds?: number | null;
+};
+export type ReviewEditState = {
+  draft: ReviewEditDraft;
+  duration: number;
+  width: number;
+  height: number;
+  canReplaceCaptions: boolean;
+  previewIsClean: boolean;
+  captionNote?: string;
+  mediaUrl: string;
+  jobs: ReviewEditJob[];
+};

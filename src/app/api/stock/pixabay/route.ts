@@ -7,62 +7,12 @@ export async function GET(req: NextRequest) {
   const page = searchParams.get("page") || "1";
   const apiKey = process.env.PIXABAY_API_KEY || "";
 
-  // Curator default fallback list when no API key is specified
-  const DEFAULT_STOCK = [
-    {
-      id: "pix-pv-1",
-      title: "Abstract Coding Grid",
-      category: "coding",
-      thumbnail: "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-software-developer-working-on-code-screen-4581-large.mp4",
-      duration: 14
-    },
-    {
-      id: "pix-pv-2",
-      title: "Beautiful Orange Sunset",
-      category: "sunset",
-      thumbnail: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-waves-crashing-on-a-beach-at-sunset-4882-large.mp4",
-      duration: 10
-    },
-    {
-      id: "pix-pv-3",
-      title: "Modern Collaboration Workspace",
-      category: "office",
-      thumbnail: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-colleagues-discussing-work-in-a-lobby-4892-large.mp4",
-      duration: 12
-    },
-    {
-      id: "pix-pv-4",
-      title: "Intense Running Athletics Workout",
-      category: "fitness",
-      thumbnail: "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-holding-hands-and-running-4888-large.mp4",
-      duration: 15
-    },
-    {
-      id: "pix-pv-5",
-      title: "High Angle City Traffic",
-      category: "city",
-      thumbnail: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=400&auto=format&fit=crop&q=80",
-      url: "https://assets.mixkit.co/videos/preview/mixkit-man-looking-at-city-from-a-high-balcony-4895-large.mp4",
-      duration: 21
-    }
-  ];
-
-  if (!apiKey || apiKey.trim() === "") {
-    // Return curated lists filtered local-side
-    const filtered = DEFAULT_STOCK.filter(video => {
-      const matchesSearch = video.title.toLowerCase().includes(query.toLowerCase());
-      const matchesCategory = category === "all" || video.category === category;
-      return matchesSearch && matchesCategory;
+  if (!apiKey.trim()) {
+    return NextResponse.json({
+      videos: [],
+      source: "pixabay-unavailable",
+      error: "Pixabay is not configured.",
     });
-    const mappedCurated = filtered.map(v => ({
-      ...v,
-      thumbnail: `/api/stock/proxy?url=${encodeURIComponent(v.thumbnail)}`
-    }));
-    return NextResponse.json({ videos: mappedCurated, source: "curated" });
   }
 
   try {
@@ -108,7 +58,7 @@ export async function GET(req: NextRequest) {
       const fileLink = v.videos?.large?.url || v.videos?.medium?.url || v.videos?.small?.url || v.videos?.tiny?.url || "";
       
       // Get thumbnail directly from video resolution objects
-      const rawThumbnail = v.videos?.medium?.thumbnail || v.videos?.small?.thumbnail || v.videos?.tiny?.thumbnail || v.videos?.large?.thumbnail || "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=400&auto=format&fit=crop&q=80";
+      const rawThumbnail = v.videos?.medium?.thumbnail || v.videos?.small?.thumbnail || v.videos?.tiny?.thumbnail || v.videos?.large?.thumbnail || "";
 
       // Parse tags into beautiful descriptive titles
       let parsedTitle = "";
@@ -127,25 +77,19 @@ export async function GET(req: NextRequest) {
         id: `live-pix-${v.id}`,
         title: parsedTitle,
         category: category !== "all" ? category : "shared",
-        thumbnail: `/api/stock/proxy?url=${encodeURIComponent(rawThumbnail)}`,
+        thumbnail: rawThumbnail ? `/api/stock/proxy?url=${encodeURIComponent(rawThumbnail)}` : "",
         url: fileLink,
         duration: v.duration || 15
       };
     }).filter((v: any) => v.url !== ""); // filter out items missing links
 
     return NextResponse.json({ videos, source: "live-pixabay" });
-  } catch (err: any) {
-    console.error("AuraClip Pixabay API failed:", err);
-    // Graceful fallback to static stock if API fails
-    const filtered = DEFAULT_STOCK.filter(video => {
-      const matchesSearch = video.title.toLowerCase().includes(query.toLowerCase());
-      const matchesCategory = category === "all" || video.category === category;
-      return matchesSearch && matchesCategory;
+  } catch {
+    console.warn("AuraClip Pixabay request failed; returning no stock results.");
+    return NextResponse.json({
+      videos: [],
+      source: "pixabay-unavailable",
+      error: "Pixabay is temporarily unavailable.",
     });
-    const mappedFallback = filtered.map(v => ({
-      ...v,
-      thumbnail: `/api/stock/proxy?url=${encodeURIComponent(v.thumbnail)}`
-    }));
-    return NextResponse.json({ videos: mappedFallback, source: "curated-fallback", error: err.message });
   }
 }

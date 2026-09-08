@@ -1,7 +1,7 @@
 "use strict";
 
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { toBlobURL, importScript } from "@ffmpeg/util";
+import { importScript } from "@ffmpeg/util";
 
 let ffmpeg: FFmpeg | null = null;
 let isLoading = false;
@@ -36,12 +36,13 @@ export const getFFmpeg = async (): Promise<FFmpeg> => {
     const { FFmpeg: FFmpegClass } = win.FFmpegWASM;
     const instance = new FFmpegClass();
     
-    // Core binaries hosted on official unpkg CDN
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-    await instance.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/octet-stream"),
-    });
+    // Do not fetch a renderer from the internet. A reviewed build may place the
+    // pinned core files under /ffmpeg-core/; otherwise exports fail visibly.
+    const coreURL = "/ffmpeg-core/ffmpeg-core.js";
+    const wasmURL = "/ffmpeg-core/ffmpeg-core.wasm";
+    const available = await fetch(coreURL, { method: "HEAD", cache: "no-store" }).then((response) => response.ok).catch(() => false);
+    if (!available) throw new Error("Local FFmpeg core is not installed or approved. No remote renderer will be downloaded.");
+    await instance.load({ coreURL, wasmURL });
 
     ffmpeg = instance;
     return ffmpeg;

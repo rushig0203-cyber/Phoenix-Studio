@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { requireUserId } from "@/lib/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || (session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  await requireUserId();
 
   try {
     const users = await db.user.findMany({
@@ -29,10 +27,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || (session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const adminId = await requireUserId();
 
   try {
     const { userId, role, remainingMins } = await req.json();
@@ -50,7 +45,6 @@ export async function PATCH(req: Request) {
     });
 
     // Log administrative modifications for audits
-    const adminId = (session.user as any).id;
     await db.activityLog.create({
       data: {
         userId: adminId,

@@ -20,8 +20,11 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-lumina/**",
     "out/**",
     "build/**",
+    "storage/**",
+    "work/**",
     "next-env.d.ts",
     "public/ffmpeg.js",
     "public/814.ffmpeg.js",

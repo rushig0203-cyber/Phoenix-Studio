@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const ALLOWED_HOSTS = new Set([
+  "cdn.pixabay.com",
+  "images.pexels.com",
+  "videos.pexels.com",
+]);
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const targetUrl = searchParams.get("url");
@@ -8,8 +14,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing url parameter" }, { status: 400 });
   }
 
+  let url: URL;
   try {
-    console.log(`AuraClip Proxy: Fetching stock asset from ${targetUrl}`);
+    url = new URL(targetUrl);
+  } catch {
+    return NextResponse.json({ error: "Invalid stock URL" }, { status: 400 });
+  }
+
+  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) {
+    return NextResponse.json({ error: "Unsupported stock source" }, { status: 400 });
+  }
+
+  try {
+    console.log("AuraClip Proxy: fetching an approved free stock asset.");
     const res = await fetch(targetUrl);
     if (!res.ok) throw new Error(`Failed to fetch target URL: ${res.status}`);
 
@@ -23,10 +40,10 @@ export async function GET(req: NextRequest) {
         "Cache-Control": "public, max-age=86400",
       },
     });
-  } catch (err: any) {
-    console.error("AuraClip Proxy: Failed to proxy target video:", err);
+  } catch {
+    console.warn("AuraClip Proxy: approved stock asset could not be fetched.");
     return NextResponse.json(
-      { error: err.message || "Failed to proxy target video" },
+      { error: "Failed to proxy approved stock video" },
       { status: 500 }
     );
   }

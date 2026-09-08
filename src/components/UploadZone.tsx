@@ -13,9 +13,7 @@ import {
   Search,
   Sparkles,
   Download,
-  ExternalLink,
   RefreshCw,
-  Send,
   Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +53,14 @@ const Youtube = (props: React.SVGProps<SVGSVGElement>) => (
 
 interface UploadZoneProps {
   onUploadStart?: (fileName: string) => void;
+  onStockImport?: (stock: {
+    title: string;
+    duration: number;
+    provider: "pexels" | "pixabay";
+    mediaId: string;
+    url: string;
+  }) => Promise<void>;
+  initialTab?: "local" | "pexels" | "pixabay";
   onUploadComplete?: (projectData: {
     title: string;
     duration: number;
@@ -68,9 +74,11 @@ interface UploadZoneProps {
 export default function UploadZone({
   onUploadStart,
   onUploadComplete,
+  onStockImport,
+  initialTab = "local",
 }: UploadZoneProps) {
   const [uploadTab, setUploadTab] = useState<"local" | "pexels" | "pixabay">(
-    "local",
+    initialTab,
   );
   const [isDragActive, setIsDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -83,14 +91,12 @@ export default function UploadZone({
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [stockVideos, setStockVideos] = useState<any[]>([]);
   const [isLoadingStock, setIsLoadingStock] = useState(false);
-  const [pexelsApiKey, setPexelsApiKey] = useState("");
-  const [pixabayApiKey, setPixabayApiKey] = useState("");
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [stockPage, setStockPage] = useState(1);
   const [usedStockKeys, setUsedStockKeys] = useState<string[]>([]);
   const [previewVideo, setPreviewVideo] = useState<any | null>(null);
 
-  // Direct Publish Modal States
+  // Manual post preparation modal state
   const [publishingVideo, setPublishingVideo] = useState<any | null>(null);
   const [publishPlatform, setPublishPlatform] = useState<
     "YouTube" | "Instagram"
@@ -106,7 +112,6 @@ export default function UploadZone({
   const [directPublishStatus, setDirectPublishStatus] = useState("");
   const [directPublishError, setDirectPublishError] = useState("");
   const [directPublishSuccess, setDirectPublishSuccess] = useState(false);
-  const [directPostUrl, setDirectPostUrl] = useState("");
   const [directDownloadUrl, setDirectDownloadUrl] = useState("");
 
   const currentProvider = uploadTab === "pixabay" ? "pixabay" : "pexels";
@@ -136,13 +141,12 @@ export default function UploadZone({
     setPublishingVideo(null);
   };
 
-  const handleOpenDirectPublish = (video: any) => {
+  const handleOpenManualPost = (video: any) => {
     setPublishingVideo(video);
     setDirectPublishError("");
     setDirectPublishSuccess(false);
     setDirectPublishProgress(0);
     setDirectPublishStatus("");
-    setDirectPostUrl("");
     setDirectDownloadUrl("");
 
     // Set default fields
@@ -189,18 +193,18 @@ export default function UploadZone({
           setDirectHashtags(data.instagramHashtags || "");
         }
       } else {
-        throw new Error("AI Curate API returned an error status.");
+        throw new Error("Local copy helper returned an error status.");
       }
     } catch {
       setDirectPublishError(
-        "Failed to generate AI assets. Please enter details manually.",
+        "Local copy suggestions could not be generated. Please enter details manually.",
       );
     } finally {
       setIsGeneratingDirectAI(false);
     }
   };
 
-  const handleExecuteDirectPublish = async () => {
+  const handlePrepareManualPost = async () => {
     if (!publishingVideo) return;
 
     setIsDirectPublishing(true);
@@ -210,7 +214,7 @@ export default function UploadZone({
     setDirectPublishStatus("Downloading stock video from provider...");
 
     try {
-      // 1. Download the stock video via local proxy to bypass CORS
+      // Download only from the selected free stock provider through the allowlisted proxy.
       const downloadRes = await fetch(
         `/api/stock/proxy?url=${encodeURIComponent(publishingVideo.url)}`,
       );
@@ -220,116 +224,20 @@ export default function UploadZone({
         );
       }
 
-      setDirectPublishProgress(45);
-      setDirectPublishStatus("Preparing video stream buffer...");
+      setDirectPublishProgress(70);
+      setDirectPublishStatus("Preparing a local download...");
       const videoBlob = await downloadRes.blob();
-      try {
-        const blobUrl = URL.createObjectURL(videoBlob);
-        setDirectDownloadUrl(blobUrl);
-      } catch (blobErr) {
-        console.warn("Failed to create direct download URL:", blobErr);
-      }
-
-      const ticketRes = await fetch("/api/upload/presigned", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: `${publishingVideo.title}.mp4`,
-          fileType: "video/mp4",
-          bytes: videoBlob.size,
-        }),
-      });
-      const ticket = await ticketRes.json();
-      if (!ticketRes.ok) throw new Error(ticket.error || "Upload unavailable");
-      const cloudUpload = await fetch(ticket.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "video/mp4" },
-        body: videoBlob,
-      });
-      if (!cloudUpload.ok) throw new Error("Cloud upload failed");
-      const projectRes = await fetch("/api/upload/finalize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          s3Key: ticket.s3Key,
-          title: publishingVideo.title,
-          filename: `${publishingVideo.title}.mp4`,
-          mimeType: "video/mp4",
-          duration: publishingVideo.duration || 30,
-          sourceProvider: currentProvider,
-          sourceMediaId: String(publishingVideo.id),
-        }),
-      });
-      const projectData = await projectRes.json();
-      if (!projectRes.ok)
-        throw new Error(projectData.error || "Could not create project");
-      const projId = projectData.id as string;
-      const clipId = `clip_${Date.now()}`;
-      const filename = `${projId}.mp4`;
-      const file = new File([videoBlob], filename, { type: "video/mp4" });
-
-      const uploadFormData = new FormData();
-      uploadFormData.append("file", file);
-      uploadFormData.append("clipId", clipId);
-
-      setDirectPublishProgress(65);
-      setDirectPublishStatus("Saving video buffer to server filesystem...");
-
-      const saveRes = await fetch(`/api/projects/${projId}/publish-media`, {
-        method: "POST",
-        body: uploadFormData,
-      });
-
-      if (!saveRes.ok) {
-        throw new Error("Failed to store media stream on server storage.");
-      }
-
-      const { path: mediaPath } = await saveRes.json();
-
-      // 3. Dispatch to publisher queue
-      setDirectPublishProgress(85);
-      setDirectPublishStatus("Initializing publishing event pipeline...");
-
-      const publishRes = await fetch(`/api/projects/${projId}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clipId,
-          clipTitle: publishingVideo.title,
-          platform: publishPlatform,
-          scheduledFor: null, // Publish immediately
-          caption: publishPlatform === "Instagram" ? directCaption : null,
-          hashtags: publishPlatform === "Instagram" ? directHashtags : null,
-          youtubeTitle: publishPlatform === "YouTube" ? directYtTitle : null,
-          youtubeDesc: publishPlatform === "YouTube" ? directYtDesc : null,
-          youtubeTags: publishPlatform === "YouTube" ? directYtTags : null,
-          mediaPath,
-        }),
-      });
-
-      if (!publishRes.ok) {
-        const errData = await publishRes.json();
-        throw new Error(
-          errData.error || "Publish service returned an error status.",
-        );
-      }
-
-      const publishData = await publishRes.json();
-      if (!publishData.success) {
-        throw new Error(publishData.record?.error || "Publish action failed.");
-      }
-
+      if (directDownloadUrl) URL.revokeObjectURL(directDownloadUrl);
+      setDirectDownloadUrl(URL.createObjectURL(videoBlob));
       setDirectPublishProgress(100);
-      setDirectPublishStatus("Successfully published video!");
+      setDirectPublishStatus("Ready to download and post manually.");
       setDirectPublishSuccess(true);
-      if (!publishData.record?.postUrl)
-        throw new Error("The platform did not return a confirmed post URL.");
-      setDirectPostUrl(publishData.record.postUrl);
       await rememberUsedStock(publishingVideo);
-    } catch (err: any) {
-      console.error("Direct publish failed:", err);
+    } catch (error) {
       setDirectPublishError(
-        err.message || "An unexpected error occurred during direct publishing.",
+        error instanceof Error
+          ? error.message
+          : "The local download could not be prepared.",
       );
     } finally {
       setIsDirectPublishing(false);
@@ -339,52 +247,22 @@ export default function UploadZone({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load Settings from database on client-side mount & reactive to tab selections
+  // Load the optional used-stock history. Provider keys remain server-side.
   useEffect(() => {
     async function initSettingsAndIds() {
-      const localPexels = "";
-      const localPixabay = "";
-
       try {
-        const res = await fetch("/api/settings/publish");
-        if (res.ok) {
-          const data = await res.json();
-          const pexels = data.pexelsApiKey || localPexels;
-          const pixabay = data.pixabayApiKey || localPixabay;
-          setPexelsApiKey(pexels);
-          setPixabayApiKey(pixabay);
-
-          if (uploadTab === "pixabay" && pixabay) {
-            setIsLiveMode(true);
-          } else if (uploadTab === "pexels" && pexels) {
-            setIsLiveMode(true);
-          } else {
-            setIsLiveMode(false);
-          }
+        const usedRes = await fetch("/api/stock/used", { cache: "no-store" });
+        if (usedRes.ok) {
+          const usedData = await usedRes.json();
+          setUsedStockKeys(Array.isArray(usedData.keys) ? usedData.keys : []);
         }
-      } catch (err) {
-        console.error("Failed to fetch settings in UploadZone:", err);
-      }
-
-      const usedRes = await fetch("/api/stock/used", { cache: "no-store" });
-      if (usedRes.ok) {
-        const usedData = await usedRes.json();
-        setUsedStockKeys(Array.isArray(usedData.keys) ? usedData.keys : []);
+      } catch {
+        setUsedStockKeys([]);
       }
     }
 
     initSettingsAndIds();
-  }, [uploadTab]);
-
-  useEffect(() => {
-    if (uploadTab === "pexels" && pexelsApiKey) {
-      setIsLiveMode(true);
-    } else if (uploadTab === "pixabay" && pixabayApiKey) {
-      setIsLiveMode(true);
-    } else {
-      setIsLiveMode(false);
-    }
-  }, [uploadTab, pexelsApiKey, pixabayApiKey]);
+  }, []);
 
   // Fetch Stock Videos from API proxy
   const fetchStockVideos = async (
@@ -394,6 +272,7 @@ export default function UploadZone({
     providerVal = uploadTab,
   ) => {
     setIsLoadingStock(true);
+    setIsLiveMode(false);
     setError(null);
     try {
       const provider = providerVal === "pixabay" ? "pixabay" : "pexels";
@@ -519,40 +398,19 @@ export default function UploadZone({
     }
 
     try {
-      setUploadProgress(30);
-      // Fetch via server-side proxy to bypass browser CORS blocks
-      const res = await fetch(
-        `/api/stock/proxy?url=${encodeURIComponent(videoUrl)}`,
-      );
-      setUploadProgress(60);
-
-      let blob: Blob;
-      if (res.ok) {
-        blob = await res.blob();
-      } else {
-        throw new Error("Proxy fetch failed");
-      }
-
-      setUploadProgress(90);
-      const filename = `${title.toLowerCase().replace(/[^a-z0-9]/g, "_")}.mp4`;
-      const file = new File([blob], filename, { type: "video/mp4" });
+      if (!onStockImport) throw new Error("Stock import is unavailable");
+      setUploadProgress(50);
+      await onStockImport({
+        title: `${providerName}: ${title}`,
+        duration,
+        provider,
+        mediaId: String(videoId),
+        url: videoUrl,
+      });
       setUploadProgress(100);
-
-      setTimeout(() => {
-        setIsUploading(false);
-        if (onUploadComplete) {
-          onUploadComplete({
-            title: `${providerName}: ${title}`,
-            duration,
-            size: (file.size / (1024 * 1024)).toFixed(1) + " MB",
-            file,
-            sourceProvider: provider,
-            sourceMediaId: String(videoId),
-          });
-        }
-      }, 500);
-    } catch {
-      setError("Download failed. Try again.");
+      setIsUploading(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Import failed. Try again.");
       setIsUploading(false);
     }
   };
@@ -905,11 +763,11 @@ export default function UploadZone({
                               </Button>
                               <Button
                                 type="button"
-                                onClick={() => handleOpenDirectPublish(video)}
+                                onClick={() => handleOpenManualPost(video)}
                                 className="flex-1 h-7 text-[9px] font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer"
                               >
-                                <Send className="h-3.5 w-3.5" />
-                                Publish
+                                <Download className="h-3.5 w-3.5" />
+                                Prepare post
                               </Button>
                             </div>
                           </div>
@@ -929,7 +787,7 @@ export default function UploadZone({
         )}
       </AnimatePresence>
 
-      {/* Direct Publish Modal Overlay */}
+      {/* Manual post preparation modal */}
       {publishingVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-200 text-left">
           <div className="bg-slate-900 border border-border/40 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -937,14 +795,14 @@ export default function UploadZone({
             <div className="p-5 flex items-center justify-between border-b border-border/20 bg-gradient-to-r from-pink-600/20 to-orange-600/20">
               <div className="flex items-center gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-pink-600 to-rose-600 text-white font-extrabold text-xs">
-                  <Send className="h-4 w-4" />
+                  <Download className="h-4 w-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    Direct Social Publisher
+                    Manual Post Export
                   </h3>
                   <p className="text-[10px] text-slate-400">
-                    Publish stock video instantly without editing
+                    Download the stock video and post it yourself
                   </p>
                 </div>
               </div>
@@ -970,20 +828,19 @@ export default function UploadZone({
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-white">
-                      Reel/Short Successfully Published!
+                      Video ready for manual posting
                     </h4>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      Your video is now live on social media.
+                      Phoenix Studio did not connect to or publish on any social account.
                     </p>
                   </div>
-                  {directPostUrl && (
+                  {directDownloadUrl && (
                     <a
-                      href={directPostUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-pink-400 hover:underline bg-pink-500/5 px-4 py-2 rounded-xl border border-pink-500/20 mt-2"
+                      href={directDownloadUrl}
+                      download={`${publishingVideo.title.replace(/[^a-zA-Z0-9\s-_]/g, "").replace(/\s+/g, "_")}.mp4`}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300 bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 mt-2"
                     >
-                      View Live Post <ExternalLink className="h-3.5 w-3.5" />
+                      <Download className="h-3.5 w-3.5" /> Download video
                     </a>
                   )}
                   <div className="pt-4">
@@ -1021,7 +878,7 @@ export default function UploadZone({
                   {/* Select Destination Platform */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase">
-                      Publish Destination
+                      Manual post destination
                     </label>
                     <div className="flex gap-2">
                       <button
@@ -1062,11 +919,11 @@ export default function UploadZone({
                     <div className="text-left">
                       <h4 className="text-xs font-bold text-white flex items-center gap-1">
                         <Sparkles className="h-3.5 w-3.5 text-fuchsia-400 animate-pulse" />
-                        AI Social Curator
+                        Local copy assistant
                       </h4>
                       <p className="text-[10px] text-muted-foreground leading-normal mt-0.5 max-w-[250px]">
-                        Auto-generate viral copywriting, descriptions, and
-                        hashtags tailored for this video.
+                        Generate suggested descriptions and hashtags locally,
+                        then copy them into the social app yourself.
                       </p>
                     </div>
                     <Button
@@ -1189,14 +1046,14 @@ export default function UploadZone({
                     </Button>
                     <Button
                       type="button"
-                      onClick={handleExecuteDirectPublish}
+                      onClick={handlePrepareManualPost}
                       className={`flex-1 h-9 rounded-xl text-xs font-bold text-white cursor-pointer border-0 ${
                         publishPlatform === "Instagram"
                           ? "bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 shadow-lg shadow-pink-900/20"
                           : "bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 shadow-lg shadow-rose-900/20"
                       }`}
                     >
-                      Publish Now
+                      Prepare Download
                     </Button>
                   </div>
                 </div>
@@ -1287,12 +1144,12 @@ export default function UploadZone({
                   onClick={() => {
                     const video = previewVideo;
                     setPreviewVideo(null);
-                    handleOpenDirectPublish(video);
+                    handleOpenManualPost(video);
                   }}
                   className="h-8 text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white rounded-lg flex items-center gap-1 cursor-pointer shadow-lg active:scale-95 transition-transform px-5"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  Publish
+                  <Download className="h-3.5 w-3.5" />
+                  Prepare post
                 </Button>
               </div>
             </div>

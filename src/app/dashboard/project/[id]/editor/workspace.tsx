@@ -55,7 +55,10 @@ export default function EditorWorkspace({ projectId }: { projectId: string }) {
     let active = true;
     Promise.all([fetch(`/api/projects/${projectId}`),fetch(`/api/projects/${projectId}/timeline`)]).then(async([mediaRes,timelineRes])=>{
       if(!mediaRes.ok)throw new Error("Cloud copy removed");
-      const media=await mediaRes.json();const timeline=timelineRes.ok?await timelineRes.json():{};
+      const media=await mediaRes.json();
+      const timeline=projectId.startsWith("local-")
+        ? JSON.parse(window.localStorage.getItem(`auraclip-timeline-${projectId}`) || "{}")
+        : timelineRes.ok?await timelineRes.json():{};
       const source=await fetch(media.url);if(!source.ok)throw new Error("Video unavailable");
       const blob=await source.blob();const file=new File([blob],"source-video.mp4",{type:blob.type||"video/mp4"});
       if(active){lastSaved.current=JSON.stringify({videoClips:timeline.videoClips||[],audioClips:timeline.audioClips||[],elementOverlays:timeline.elementOverlays||[]});await loadFile(file,timeline);hydrated.current=true;}
@@ -68,7 +71,7 @@ export default function EditorWorkspace({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  useEffect(()=>{if(!hydrated.current)return;const body=JSON.stringify({videoClips,audioClips,elementOverlays});if(body===lastSaved.current)return;const timer=setTimeout(()=>{void fetch(`/api/projects/${projectId}/timeline`,{method:"PUT",headers:{"Content-Type":"application/json"},body}).then(response=>{if(response.ok)lastSaved.current=body})},900);return()=>clearTimeout(timer)},[projectId,videoClips,audioClips,elementOverlays]);
+  useEffect(()=>{if(!hydrated.current)return;const body=JSON.stringify({videoClips,audioClips,elementOverlays});if(body===lastSaved.current)return;const timer=setTimeout(()=>{if(projectId.startsWith("local-")){window.localStorage.setItem(`auraclip-timeline-${projectId}`,body);lastSaved.current=body;return;}void fetch(`/api/projects/${projectId}/timeline`,{method:"PUT",headers:{"Content-Type":"application/json"},body}).then(response=>{if(response.ok)lastSaved.current=body})},900);return()=>clearTimeout(timer)},[projectId,videoClips,audioClips,elementOverlays]);
 
   if (loading) {
     return <div className="min-h-screen grid place-items-center bg-background text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>;

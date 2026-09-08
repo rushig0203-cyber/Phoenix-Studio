@@ -1,13 +1,17 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { db } from "@/lib/db";
 
+const OWNER_ID = process.env.AURACLIP_OWNER_ID || "auraclip-owner";
+
+/** AuraClip is a single-owner studio: it does not require a sign-in screen. */
 export async function requireUserId(): Promise<string> {
-  const session = await getServerSession(authOptions);
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-  if (!userId) throw new Error("UNAUTHORIZED");
-  return userId;
+  await db.user.upsert({
+    where: { id: OWNER_ID },
+    update: {},
+    create: { id: OWNER_ID, name: "Studio owner", role: "ADMIN" },
+  });
+  return OWNER_ID;
 }
 
-export function isUnauthorized(error: unknown) {
-  return error instanceof Error && error.message === "UNAUTHORIZED";
+export function isUnauthorized(_error: unknown) {
+  return false;
 }

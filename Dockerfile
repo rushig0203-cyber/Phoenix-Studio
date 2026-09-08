@@ -23,12 +23,15 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/.next-lumina ./.next-lumina
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/run-worker.js ./run-worker.js
+COPY --from=builder /app/scripts ./scripts
 
 # Set permissions for next cache and database folder
 RUN chown -R nextjs:nodejs /app
