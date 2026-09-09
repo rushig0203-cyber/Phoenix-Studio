@@ -10,18 +10,27 @@ const sharp = require("sharp");
 
 (async () => {
   try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
-  const directory = path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "work", "animation-quality-proof-v3");
+  sharp.concurrency(1);
+  sharp.cache({ memory: 16, files: 0, items: 16 });
+  const directory = path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "work", "animation-quality-proof-v4");
   await fs.mkdir(directory, { recursive: true });
   const captions = ["Clap your paws together!", "Hop across a shiny puddle.", "Wave hello to every friend.", "Tap the drum and keep the beat.", "Ride the happy garden bus.", "Close your eyes and breathe."];
   const cues = captions.map((text, index) => ({ text, start: index * 2, end: (index + 1) * 2 }));
   const options = { directory, topic: "Benny Bunny and Tika Bird lead the garden parade", cues, duration: 12, aspect: "16:9", cast: ["bunny", "bird"], song: true };
+  for (const aspect of ["16:9", "9:16"]) {
+    await sharp(Buffer.from(kidsAnimationSvg({ ...options, caption: captions[0], index: 0, frame: 3, aspect }))).png().toFile(path.join(directory, `poster-${aspect.replace(":", "-")}.png`));
+  }
+  for (const [name, topic, cast, caption] of [
+    ['bear', 'Benny Bear shares a garden kite', ['bear','fox'], 'Wave hello and fly the kite.'],
+    ['room', 'Milo and Luna tidy their playroom', ['dog','cat'], 'Put the toys in the basket.'],
+    ['night', 'A quiet bedtime under the stars', ['bunny','bear'], 'Close your eyes and breathe.'],
+    ['ocean', 'A friendly fish in the ocean', ['fish','fish'], 'Wave hello to your friend.'],
+  ]) await sharp(Buffer.from(kidsAnimationSvg({ ...options, topic, cast, caption, index: 0, frame: 3 }))).png().toFile(path.join(directory, `poster-${name}.png`));
+  if (process.argv.includes('--stills-only')) { console.log(`Animation stills saved to ${directory}`); return; }
   const result = await prepareKidsAnimation(options);
   await fs.writeFile(path.join(directory, "music.wav"), localMusicWav(12, true));
   await fs.writeFile(path.join(directory, "captions.srt"), cues.map((cue, index) => `${index + 1}\n00:00:${String(cue.start).padStart(2, "0")},000 --> 00:00:${String(cue.end).padStart(2, "0")},000\n${cue.text}\n`).join("\n"));
   await fs.writeFile(path.join(directory, "captions.ass"), `[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Caption,Arial,36,&H00FFFFFF,&H000000FF,&H00152A3A,&H90000000,-1,0,0,0,100,100,0,0,3,2,0,8,42,42,38,1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n` + cues.map(cue => `Dialogue: 0,0:00:${String(cue.start).padStart(2, "0")}.00,0:00:${String(cue.end).padStart(2, "0")}.00,Caption,,0,0,0,,${cue.text}`).join("\n"));
-  for (const aspect of ["16:9", "9:16"]) {
-    await sharp(Buffer.from(kidsAnimationSvg({ ...options, caption: captions[0], index: 0, frame: 3, aspect }))).png().toFile(path.join(directory, `poster-${aspect.replace(":", "-")}.png`));
-  }
   const executable = path.join(process.cwd(), "node_modules", "@ffmpeg-installer", "win32-x64", "ffmpeg.exe");
   const args = ["-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", "-y", "-threads", "1", "-f", "concat", "-safe", "0", "-i", "scenes.txt", "-i", "music.wav", "-vf", "fps=12,scale=1280:720,subtitles=captions.ass", "-t", "12", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-threads", "1", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", "preview.mp4"];
   await new Promise((resolve, reject) => {

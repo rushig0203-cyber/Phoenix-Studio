@@ -32,6 +32,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
+  const [locallyTrashed, setLocallyTrashed] = useState<Set<string>>(() => new Set());
   const inFlight = useRef(false);
 
   async function loadTrash() {
@@ -48,13 +49,15 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     if (inFlight.current) return;
     inFlight.current = true; setBusy(file.id); setError("");
     try {
+      // Only this click handler confirms. The API never opens another prompt.
+      if (!restore && !window.confirm(`Move “${file.title}” to Trash? You can restore it later.`)) return;
       const response = await fetch(`/api/review-files/${file.id}`, restore
         ? { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore" }) }
         : { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not update the review file.");
-      if (restore) { setTrash(items => items.filter(item => item.id !== file.id)); setUndoId(null); }
-      else { setPreviewId(current => current === file.id ? null : current); setUndoId(file.id); setTrash(items => [file, ...items.filter(item => item.id !== file.id)]); }
+      if (restore) { setLocallyTrashed(ids => { const next = new Set(ids); next.delete(file.id); return next; }); setTrash(items => items.filter(item => item.id !== file.id)); setUndoId(null); }
+      else { setLocallyTrashed(ids => new Set(ids).add(file.id)); setPreviewId(current => current === file.id ? null : current); setUndoId(file.id); setTrash(items => [file, ...items.filter(item => item.id !== file.id)]); }
       setNotice(restore ? `Restored “${file.title}”.` : `Moved “${file.title}” to Trash. The MP4 and editing files are retained on disk.`);
       await onRefresh();
     } catch (error) { setError(error instanceof Error ? error.message : "Could not reach the local server."); }
@@ -74,7 +77,8 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     } catch (error) { setError(error instanceof Error ? error.message : "Could not reach the local server."); }
   }
 
-  const visible = (trashOpen ? trash : files).filter(file => (filter === "all" || category(file) === filter) && `${file.title} ${file.quality.hashtags.join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  // An older in-flight poll must not briefly bring a just-deleted card back.
+  const visible = (trashOpen ? trash : files).filter(file => (trashOpen || !locallyTrashed.has(file.id)) && (filter === "all" || category(file) === filter) && `${file.title} ${file.quality.hashtags.join(" ")}`.toLowerCase().includes(query.toLowerCase()));
   const pages = Math.max(1, Math.ceil(visible.length / pageSize));
   const currentPage = Math.min(page, pages);
   const displayed = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);

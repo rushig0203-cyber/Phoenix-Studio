@@ -15,7 +15,7 @@ Phoenix includes a local-only adapter for [ACE-Step 1.5](https://github.com/ace-
 
 The engine is **not bundled or automatically downloaded**. Its [installation guide](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/INSTALL.md) lists approximately 10 GB for core models and warns CPU-only inference is significantly slower. Phoenix conservatively disables automatic singing below 12 GB usable system RAM or 4 GB currently free RAM. This is Phoenix's responsiveness guard, not a vendor minimum or a promise that larger machines will render quickly.
 
-The current 8 GB laptop therefore cannot enable this automatic mode through Phoenix. The working lightweight route remains importing a sung recording with accompaniment and the exact lyrics. A better engine connection cannot magically make a low-memory laptop produce professional songs.
+The current 8 GB laptop therefore cannot enable this automatic mode through Phoenix. The lightweight route remains importing a sung recording with accompaniment and the exact lyrics. Automatic singing quality is not verified on this machine.
 
 On suitable hardware where the user has separately installed and started ACE-Step, configure the **local** endpoint in private `.env.local`:
 
@@ -31,12 +31,19 @@ If submission becomes uncertain, Phoenix retains that state and will not blindly
 
 ## Animation limits
 
-The original local renderer now has shaded faces and clothes, layered scenery, independent blinks, contextual facial reactions, articulated walking legs, and four-second reusable motion cycles. It remains limited 2D illustration at 12 fps, rendered sequentially with bounded threads. It is **not** a general anime/3D generation model. No downloaded character artwork or commercial animation subscription is used.
+The version 4 local renderer has fuller face and body silhouettes, shaded eyes with highlights, paws and feathered wings, stitched overalls and pockets, detailed eight-petal flowers, a garden cottage and fence, and separate foreground plants. Room scenes have curtains, shelves, books and a rug; night and ocean scenes have their own scenery. Independent blinks, contextual facial reactions, articulated legs, and four-second motion cycles remain lightweight. Kite flight makes characters hold a string, not fly themselves. Sharp's image cache is capped at 24 MB with one raster worker.
+
+This remains limited 2D illustration at 12 fps, rendered sequentially with bounded threads. It is **not** a general anime/3D generation model. No downloaded character artwork or commercial animation subscription is used. Existing videos are preserved; the updated drawing system applies to new renders and draft previews.
+
+## Deleting a review video
+
+Move to Trash asks one confirmation. Cancelling sends no delete request, and another click while saving is ignored. Undo/Restore does not ask a second deletion confirmation. Files stay recoverable on disk.
 
 ## Checks
 
 ```powershell
 node --test scripts/test-creation-drafts.cjs scripts/test-stock-storyboard.cjs
+node --test scripts/test-animation-and-delete.cjs scripts/test-worker-startup.cjs
 node scripts/verify-kids-animation.cjs
 ```
 

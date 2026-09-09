@@ -41,7 +41,9 @@
     ".next-phoenix-review-update/types/**/*.ts",
     ".next-phoenix-review-update/dev/types/**/*.ts",
     ".next-approval/types/**/*.ts",
-    ".next-approval/dev/types/**/*.ts"
+    ".next-approval/dev/types/**/*.ts",
+    ".next-storybook/types/**/*.ts",
+    ".next-storybook/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
