@@ -28,6 +28,10 @@ import {
 export type { PublishingFormat } from "./publishingFormats";
 
 export type GenerationInput = {
+  scriptApproved?: boolean;
+  sceneNarration?: string[];
+  songMode?: "recording" | "local-ace";
+  songStyle?: string;
   songAudioId?: string;
   requestId?: string;
   topic: string;
@@ -342,12 +346,13 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
-export async function requireStockStoryboardRenderer() {
+export async function requireStockStoryboardRenderer(approvedFootage = false) {
   const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
   const api = response.ok ? await response.json() : null;
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
     throw new Error("The local stock renderer needs the Phoenix storyboard update. Apply the integrations patch and restart MoneyPrinterTurbo before creating a stock video.");
   }
+  if (approvedFootage && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.assetId) throw new Error("Restart the local renderer with the approved-footage update before rendering. Phoenix will not ignore your selected clips.");
 }
 
 export async function generatorReachable() {
@@ -816,6 +821,9 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
     : "";
   await updateJob(job.id, { progress: 2, stage: `${episodeLabel}starting free local children renderer`, error: undefined });
   const result = await renderKidsVideo(job.id, {
+    songMode: input.songMode,
+    scriptApproved: input.scriptApproved,
+    sceneNarration: input.sceneNarration,
     songAudioId: input.songAudioId,
     topic: input.topic,
     duration: input.duration,
@@ -850,7 +858,7 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
           licence: "Pixabay Content License backgrounds transformed with original Phoenix characters, script, vocals, music, captions, and editing",
           downloadedAt: new Date().toISOString(),
         }
-      : { kind: "upload", filename: safeFilename(`local-cartoon-${job.id}.mp4`), licence: input.songAudioId ? "Original local animation with user-supplied song audio; user must hold audio rights" : "Original local cartoon rendered with Ollama, Windows voice, and FFmpeg" },
+      : { kind: "upload", filename: safeFilename(`local-cartoon-${job.id}.mp4`), licence: input.songMode === "local-ace" ? "Original local animation with ACE-Step generated music and singing; review audio originality before publishing" : input.songAudioId ? "Original local animation with user-supplied song audio; user must hold audio rights" : "Original local cartoon rendered with Ollama, Windows voice, and FFmpeg" },
     audience: "kids-3-6",
     quality: {
       audio: input.songAudioId ? "supplied-song" : "local-narration-music",
@@ -861,11 +869,11 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
         ? `${input.seriesTitle} · Part ${input.episodeNumber} of ${input.episodeCount}. ${result.postCopy}${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`
         : `${result.postCopy}${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`,
       checks: [
-        input.songAudioId ? "User-supplied lyrics retained for the recording" : "Original topic-matched script created locally",
+        input.songMode === "local-ace" ? "Approved lyrics sent to local ACE-Step; listen for pronunciation and missing words" : input.songAudioId ? "User-supplied lyrics retained for the recording" : "Original topic-matched script created locally",
         result.visualMode === "pixabay-animation"
           ? `${result.visualSources.length} free licensed Pixabay animation backgrounds transformed with original recurring character and story overlays`
           : "Consistent topic-matched 2D cartoon characters and scenes created locally",
-        input.songAudioId ? "Owner-supplied sung recording preserved at its original pitch" : "Local spoken narration with original background music",
+        input.songMode === "local-ace" ? "Local ACE-Step audio preserved at original pitch; singing quality requires owner review" : input.songAudioId ? "Owner-supplied sung recording preserved at its original pitch" : "Local spoken narration with original background music",
         input.songAudioId ? "Lyrics burned in with estimated timing; adjust synchronization in Edit video" : "Short captions timed and burned into the video",
         "Duration, picture, and audio validated before review",
         input.songAudioId ? "No paid API used; review rights to your supplied song before posting" : "No paid API or unlicensed footage used",
@@ -905,8 +913,8 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
     monetizationReview: {
       status: tooSimilarToEarlierPart ? "NEEDS_CHANGES" : "NOT_REVIEWED",
       madeForKids: true,
-      originality: input.songAudioId ? "owner-supplied" : result.visualMode === "pixabay-animation" ? "licensed-transformed" : "original-local",
-      rightsBasis: input.songAudioId ? "User-supplied recording and lyrics with local animation. Confirm permission for commercial use of both music and lyrics." : result.visualMode === "pixabay-animation"
+      originality: input.songMode === "local-ace" ? "original-local" : input.songAudioId ? "owner-supplied" : result.visualMode === "pixabay-animation" ? "licensed-transformed" : "original-local",
+      rightsBasis: input.songMode === "local-ace" ? "Locally generated ACE-Step music and singing with approved lyrics and original 2D animation. Review for recognizable copied music and verify model/lyric rights before publishing." : input.songAudioId ? "User-supplied recording and lyrics with local animation. Confirm permission for commercial use of both music and lyrics." : result.visualMode === "pixabay-animation"
         ? "Free Pixabay animation backgrounds transformed with original recurring characters, story props, local script, rhythmic vocals, original music, captions, and editing."
         : "Original local script, procedural cartoon scenes, local synthetic voice, and locally generated accompaniment.",
       checks: ["Confirm the story, lyrics, melody, characters, and title do not copy a reference", "Watch for caption, pronunciation, identity, and audio problems", "Set the upload audience to made for kids", "Review the platform synthetic-content disclosure before upload"],
@@ -927,7 +935,7 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
-  await requireStockStoryboardRenderer();
+  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)));
   await updateJob(job.id, { progress: 5, stage: "Writing a length-controlled script with local Ollama" });
   const script = await createStockScript(input);
   const scriptOrigin = input.scriptOrigin || (input.script?.trim() ? "owner" : "local-model");

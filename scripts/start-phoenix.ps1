@@ -54,10 +54,16 @@ try {
     }
 
     if (-not (Test-PhoenixPort 3000)) {
-        if (-not (Test-Path -LiteralPath (Join-Path $phoenixRoot '.next-lumina\BUILD_ID'))) {
+        $phoenixBuildName = '.next-lumina'
+        $phoenixBuildMarker = Join-Path $phoenixStorage 'active-build.json'
+        if (Test-Path -LiteralPath $phoenixBuildMarker) {
+            $phoenixBuildName = (Get-Content -Raw -LiteralPath $phoenixBuildMarker | ConvertFrom-Json).directory
+            if ($phoenixBuildName -notmatch '^\.next-[a-z0-9-]+$') { throw 'The active-build marker is invalid. Select a verified local build before launching.' }
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $phoenixRoot "$phoenixBuildName\BUILD_ID"))) {
             throw 'The website has not been built. Run npm run build once in PhoenixStudio, then open this shortcut again.'
         }
-        $env:PHOENIX_BUILD_DIR = '.next-lumina'
+        $env:PHOENIX_BUILD_DIR = $phoenixBuildName
         $next = Join-Path $phoenixRoot 'node_modules\next\dist\bin\next'
         Start-PhoenixService 'website' $phoenixNode @(('"' + $next + '"'), 'start', '--hostname', '127.0.0.1') $phoenixRoot | Out-Null
     }
@@ -74,7 +80,12 @@ try {
         $_.CommandLine -and ($_.CommandLine.Contains($workerFile) -or $_.CommandLine -match '\s"?run-worker\.js"?\s*$')
     })
     if (-not $workers.Count) {
-        Start-PhoenixService 'worker' $phoenixNode @(('"' + $workerFile + '"')) $phoenixRoot | Out-Null
+        $workerStart = @(Start-PhoenixService 'worker' $phoenixNode @(('"' + $workerFile + '"')) $phoenixRoot)
+        $workerProcess = $workerStart | Where-Object { $_ -is [Diagnostics.Process] } | Select-Object -Last 1
+        Start-Sleep -Seconds 3
+        if (-not $workerProcess -or $workerProcess.HasExited) {
+            throw "The website is running, but the background worker failed to start. Check the newest worker error log in $phoenixStorage; queued work is retained."
+        }
     }
     Write-Output 'Phoenix Studio is ready. Existing services were reused.'
 

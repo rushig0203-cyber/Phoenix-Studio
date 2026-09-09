@@ -10,7 +10,7 @@ const sharp = require("sharp");
 
 (async () => {
   try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
-  const directory = path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "work", "animation-quality-proof-v2");
+  const directory = path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "work", "animation-quality-proof-v3");
   await fs.mkdir(directory, { recursive: true });
   const captions = ["Clap your paws together!", "Hop across a shiny puddle.", "Wave hello to every friend.", "Tap the drum and keep the beat.", "Ride the happy garden bus.", "Close your eyes and breathe."];
   const cues = captions.map((text, index) => ({ text, start: index * 2, end: (index + 1) * 2 }));

@@ -7,13 +7,13 @@ export type KidsAnimationCue = { text: string; start: number; end: number };
 export type KidsAnimationKind = "dog" | "cat" | "bunny" | "bird" | "bear" | "fox" | "fish";
 export type KidsAnimationAction = "clap" | "hop" | "wave" | "march" | "sway" | "flap" | "drum" | "reach" | "sleep";
 type Prop = "rain" | "umbrella" | "flower" | "drum" | "kite" | "ball" | "star" | "gift" | "toys" | "bridge" | "letter" | "bus" | "none";
-type Scene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean };
+type Scene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean; emotion: "happy" | "worried" | "curious" };
 type Stage = { width: number; height: number; ground: number; y: number; size: number };
 
-// Draw animation on twos, as in limited 2D cartoons. Reusing a two-second pose
+// Draw animation on twos, as in limited 2D cartoons. Reusing a four-second pose
 // cycle keeps a three-minute video small and avoids thousands of render jobs.
 export const KIDS_ANIMATION_FPS = 12;
-const CYCLE_FRAMES = KIDS_ANIMATION_FPS * 2;
+const CYCLE_FRAMES = KIDS_ANIMATION_FPS * 4;
 const ink = "#30445c";
 const tau = Math.PI * 2;
 const n = (value: number) => Number(value.toFixed(2));
@@ -49,7 +49,8 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0): 
     // Keep the central object visible across pronouns and reaction lines.
     : /kite/.test(topic) ? "kite" : /ball/.test(topic) ? "ball"
     : /star|moon/.test(topic) ? "star" : /flower|garden/.test(topic) ? "flower" : "none";
-  return { action, prop, theme, close: index % 4 === 2 && prop === "none" };
+  const emotion = /lost|stuck|torn|tangle|problem|afraid|dim|sad|wrong|wobbl/.test(words) ? "worried" : /look|notice|wonder|clue|find|surpris/.test(words) ? "curious" : "happy";
+  return { action, prop, theme, close: index % 4 === 2 && prop === "none", emotion };
 }
 
 function petalFlower(x: number, y: number, size: number, phase: number, color: string) {
@@ -85,12 +86,30 @@ function backdrop(stage: Stage, scene: Scene, phase: number, transparent: boolea
   }
   body += `<path d="M0 ${ground - 17} Q${w * 0.48} ${ground - 58} ${w} ${ground - 7} V${h} H0Z" fill="${scene.theme === "ocean" ? "#e8d7a0" : scene.theme === "room" ? "#e8c396" : scene.theme === "night" ? "#516b78" : "#c0ddb0"}"/>`;
   if (scene.theme === "garden") {
+    // Painted layers add depth without GPU-heavy blur filters.
+    body += `<path d="M${w * .49} ${ground - 30} Q${w * .6} ${ground + 35} ${w * .3} ${h} H${w * .74} Q${w * .58} ${ground + 10} ${w * .54} ${ground - 30}Z" fill="#ebd6ad" opacity=".65"/>`;
+    for (const side of [0, 1]) {
+      const x = side ? w - 25 : 25, y = ground - 100;
+      body += `<g transform="translate(${x} ${y})"><path d="M-12 104 Q-5 0 -16 -96 L12 -104 Q3 0 17 104Z" fill="#987762"/><path d="M0 12 Q-43 -25 -53 -48 M2 -12 Q48 -49 54 -80" fill="none" stroke="#987762" stroke-width="10"/>`;
+      for (const [dx, dy, rx] of [[-37,-100,54],[28,-133,64],[58,-77,51],[-2,-60,68]]) body += ellipse(dx, dy, rx, rx * .85, "url(#leaves)");
+      body += `<path d="M-31 -134 Q-20 -166 8 -168" fill="none" stroke="#d9e8ab" stroke-width="6" stroke-linecap="round" opacity=".6"/></g>`;
+    }
     for (let i = 0; i < 7; i++) body += petalFlower(28 + i * (w - 56) / 6, ground + 20 + i % 2 * 14, 10, phase + i, i % 2 ? "#ef9fb3" : "#c1a5e4");
+    for (let i = 0; i < 9; i++) {
+      const x = 14 + i * (w - 28) / 8;
+      body += `<path d="M${x} ${h} q-18 -45 -28 -40 q17 2 28 24 q-3 -38 10 -48 q-4 29 -2 40 q15 -26 27 -23 q-17 11 -24 47" fill="#789f71" opacity=".45"/>`;
+    }
+  }
+  if (scene.theme === "night") {
+    for (let i = 0; i < 8; i++) {
+      const x = (i * 113 + 20) % w, y = ground - 55 - (i % 3) * 60 + Math.sin(phase + i) * 12;
+      body += ellipse(x, y, 15, 15, "#ffdd8530") + ellipse(x, y, 3, 3, "#ffe8a9");
+    }
   }
   return body;
 }
 
-function puppet(kind: KidsAnimationKind, action: KidsAnimationAction, phase: number, singing: boolean, second = false) {
+function puppet(kind: KidsAnimationKind, action: KidsAnimationAction, phase: number, singing: boolean, second = false, emotion: Scene["emotion"] = "happy", speaking = true) {
   const fur = kind === "bear" ? "#b9815c" : kind === "fox" ? "#e99555" : kind === "cat" ? "#efb370" : kind === "dog" ? "#d0a174" : kind === "bird" ? "#f4d46c" : kind === "fish" ? (second ? "#a7a1df" : "#f5b66e") : "#eee6de";
   const pale = kind === "bear" ? "#edceac" : "#fff3df";
   const shirt = second ? "#d78099" : "#6aafbb";
@@ -98,8 +117,9 @@ function puppet(kind: KidsAnimationKind, action: KidsAnimationAction, phase: num
   const step = Math.sin(phase * 2);
   const hop = action === "hop" ? -Math.max(0, Math.sin(phase * 2)) * 26 : action === "flap" ? -8 - Math.sin(phase * 2) * 10 : -Math.abs(beat) * 3;
   const tilt = action === "sleep" ? Math.sin(phase) * 3 : action === "sway" ? Math.sin(phase) * 7 : Math.sin(phase) * 2;
-  const mouthOpen = action === "sleep" ? 1 : singing ? 4 + Math.max(0, Math.sin(phase * 5)) * 8 : 3 + Math.max(0, Math.sin(phase * 3)) * 5;
-  const blink = phase > 5.4 && phase < 5.7 || action === "sleep";
+  const mouthOpen = action === "sleep" ? 1 : singing ? 4 + Math.max(0, Math.sin(phase * 10)) * 8 : speaking ? 2 + Math.max(0, Math.sin(phase * 9)) * 5 : 1.5;
+  const eyePhase = (phase + (second ? 1.7 : 0)) % tau;
+  const blink = eyePhase > 5.4 && eyePhase < 5.65 || action === "sleep";
   if (kind === "fish") {
     return `<g transform="translate(${n(Math.sin(phase) * 18)} ${n(hop)}) rotate(${n(tilt)})">` +
       `<path d="M-50 0 L${n(-93 + Math.sin(phase * 2) * 9)} -39 L${n(-93 - Math.sin(phase * 2) * 9)} 39Z" fill="${fur}" stroke="${ink}" stroke-width="3"/>` +
@@ -121,26 +141,34 @@ function puppet(kind: KidsAnimationKind, action: KidsAnimationAction, phase: num
     return `<path d="M${side * 39} 63 Q${side * 61} ${n((63 + hy) / 2)} ${n(hx)} ${n(hy)}" fill="none" stroke="${ink}" stroke-width="20" stroke-linecap="round"/>` +
       `<path d="M${side * 39} 63 Q${side * 61} ${n((63 + hy) / 2)} ${n(hx)} ${n(hy)}" fill="none" stroke="${kind === "bird" ? shirt : fur}" stroke-width="15" stroke-linecap="round"/>` + ellipse(hx, hy, kind === "bird" ? 15 : 11, 10, fur, ink, 2);
   };
-  let body = `<g transform="translate(0 ${n(hop)}) rotate(${n(tilt)} 0 90)">`;
+  const furId = `fur-${kind}-${second ? 1 : 0}`;
+  let body = `<defs><radialGradient id="${furId}" cx=".32" cy=".22" r=".9"><stop stop-color="${pale}"/><stop offset=".35" stop-color="${fur}"/><stop offset="1" stop-color="${kind === "bunny" ? "#bbb5be" : "#987054"}"/></radialGradient></defs><g transform="translate(0 ${n(hop)}) rotate(${n(tilt)} 0 90)">`;
   if (kind === "cat" || kind === "fox" || kind === "dog") body += `<path d="M36 111 Q100 ${n(100 + beat * 12)} 77 ${n(61 + beat * 12)}" fill="none" stroke="${ink}" stroke-width="23" stroke-linecap="round"/><path d="M36 111 Q100 ${n(100 + beat * 12)} 77 ${n(61 + beat * 12)}" fill="none" stroke="${fur}" stroke-width="17" stroke-linecap="round"/>`;
   for (const side of [-1, 1]) {
     const fy = 163 + side * footLift;
-    body += line(side * 23, 114, side * 31, fy, ink, 22) + line(side * 23, 114, side * 31, fy, fur, 16) + ellipse(side * 36, fy + 4, 23, 11, pale, ink, 2);
+    const kneeX = side * 26 + (action === "march" ? Math.max(0, -side * step) * 14 : 0);
+    const leg = `M${side * 23} 114 Q${n(kneeX)} ${n(140 + side * footLift / 2)} ${side * 31} ${n(fy)}`;
+    body += `<path d="${leg}" fill="none" stroke="${ink}" stroke-width="22" stroke-linecap="round"/><path d="${leg}" fill="none" stroke="${fur}" stroke-width="16" stroke-linecap="round"/>` + ellipse(side * 36, fy + 4, 23, 11, pale, ink, 2);
+    body += `<path d="M${side * 36 - 10} ${n(fy + 1)} h15" stroke="white" stroke-width="3" stroke-linecap="round" opacity=".65"/>`;
   }
   body += ellipse(0, 85, 48, 53, shirt, ink) + `<path d="M-29 53 Q0 69 29 53" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.7"/>` + ellipse(0, 86, 10, 10, "#fff1ae");
+  body += `<path d="M-35 79 Q-42 103 -25 121" stroke="white" stroke-width="6" fill="none" opacity=".22" stroke-linecap="round"/><path d="M20 124 Q36 119 40 108" stroke="${ink}" stroke-width="5" fill="none" opacity=".12"/>`;
   body += arm(-1) + arm(1);
   const earWiggle = Math.sin(phase * 2) * 5;
   if (kind === "bunny") body += `<g transform="rotate(${n(-7 + earWiggle)} -26 -26)">${ellipse(-26, -65, 16, 47, fur, ink)}${ellipse(-26, -67, 7, 30, "#dfb4be")}</g><g transform="rotate(${n(7 - earWiggle)} 26 -26)">${ellipse(26, -65, 16, 47, fur, ink)}${ellipse(26, -67, 7, 30, "#dfb4be")}</g>`;
   else if (kind === "cat" || kind === "fox") body += `<path d="M-49 -5 L-42 -61 L-12 -32 M49 -5 L42 -61 L12 -32" fill="${fur}" stroke="${ink}" stroke-width="3"/><path d="M-40 -20 L-37 -46 L-21 -29 M40 -20 L37 -46 L21 -29" fill="#e7abb0"/>`;
   else if (kind === "bear") body += ellipse(-38, -32, 23, 24, fur, ink) + ellipse(38, -32, 23, 24, fur, ink) + ellipse(-38, -32, 13, 14, pale) + ellipse(38, -32, 13, 14, pale);
   else if (kind === "bird") body += `<path d="M-15 -38 Q-30 -77 3 -44 Q10 -78 22 -42" fill="${fur}" stroke="${ink}" stroke-width="3"/>`;
-  body += ellipse(0, 0, 52, 46, fur, ink);
+  body += ellipse(0, 0, 52, 46, `url(#${furId})`, ink);
+  body += `<path d="M-37 -19 Q-25 -36 -5 -35" fill="none" stroke="${pale}" stroke-width="5" stroke-linecap="round" opacity=".55"/>`;
   if (kind === "dog") body += `<g transform="rotate(${n(earWiggle)} -47 -17)">${ellipse(-48, 0, 18, 37, "#9a7154", ink)}</g><g transform="rotate(${n(-earWiggle)} 47 -17)">${ellipse(48, 0, 18, 37, "#9a7154", ink)}</g>`;
   body += ellipse(0, 20, 29, 22, pale) + ellipse(-31, 15, 10, 5, "#e5a6a3") + ellipse(31, 15, 10, 5, "#e5a6a3");
   if (blink) body += `<path d="M-27 -5 Q-20 2 -13 -5 M13 -5 Q20 2 27 -5" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
   else for (const side of [-1, 1]) body += ellipse(side * 20, -7, 10, 13, "white") + ellipse(side * 20 + (second ? -1 : 1), -5, 5, 8, ink) + ellipse(side * 20 + 2, -9, 2, 3, "white");
+  if (emotion === "worried") body += `<path d="M-29 -22 Q-21 -30 -13 -24 M13 -24 Q21 -30 29 -22" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
+  else if (emotion === "curious") body += `<path d="M-29 -23 Q-21 -30 -13 -25 M13 -28 Q21 -34 29 -29" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
   body += kind === "bird" ? `<path d="M-9 13 L9 13 L0 ${n(22 + mouthOpen)}Z" fill="#e59d48" stroke="${ink}" stroke-width="2"/>`
-    : ellipse(0, 15, 7, 5, ink) + ellipse(0, 30, 10, mouthOpen, "#94515c") + ellipse(0, 32 + mouthOpen / 2, 6, mouthOpen / 3, "#e994a1");
+    : ellipse(0, 15, 7, 5, ink) + (speaking || singing ? ellipse(0, 30, 10, mouthOpen, "#94515c") + ellipse(0, 32 + mouthOpen / 2, 6, mouthOpen / 3, "#e994a1") : `<path d="M-9 29 Q0 ${emotion === "worried" ? 23 : 38} 9 29" fill="none" stroke="${ink}" stroke-width="2.5" stroke-linecap="round"/>`);
   return body + "</g>";
 }
 
@@ -151,7 +179,7 @@ function sceneProp(stage: Stage, prop: Prop, phase: number) {
     const dx = 30 + (i * 61) % (w - 60), dy = h * 0.24 + ((i * 29 + phase / tau * 110) % 130);
     return line(dx, dy, dx - 5, dy + 14, "#72bdda", 3);
   }).join("") + ellipse(x, ground + 14, w * 0.16, 10, "#86cadd") + ellipse(x, ground + 12, 30 + phase * 4, 5, "none", "#d4f4f7", 2);
-  if (prop === "flower") return petalFlower(x, y, 25, phase, "#e7a4ba");
+  if (prop === "flower") return petalFlower(x, ground - 48, 25, phase, "#e7a4ba");
   if (prop === "umbrella") return `<g transform="translate(${x} ${y - 25}) rotate(${n(Math.sin(phase) * 9)})"><path d="M-69 0 Q0 -100 69 0 Q45 -14 23 0 Q0 -14 -23 0 Q-45 -14 -69 0Z" fill="#b8a1df" stroke="${ink}" stroke-width="3"/><path d="M0 0 V88 Q0 109 19 98" fill="none" stroke="${ink}" stroke-width="5"/></g>`;
   if (prop === "ball") return `<g transform="translate(${x + Math.sin(phase) * 38} ${ground - 20 - Math.abs(Math.sin(phase)) * 52}) rotate(${n(phase * 50)})">${ellipse(0, 0, 28, 28, "#eab674", ink)}<path d="M-28 0 H28 M0 -28 V28" stroke="#fff0d4" stroke-width="5"/></g>`;
   if (prop === "kite") return `<g transform="translate(${x + Math.sin(phase) * 25} ${y - 48 + Math.cos(phase) * 9}) rotate(${n(Math.sin(phase) * 12)})"><path d="M0 -51 L40 0 L0 59 L-40 0Z" fill="#e997a3" stroke="${ink}" stroke-width="3"/><path d="M0 -51 V59 L-40 0Z" fill="#f2cf7d"/><path d="M0 59 Q-29 84 0 107 T0 150" fill="none" stroke="${ink}" stroke-width="2"/></g>`;
@@ -189,13 +217,13 @@ export function kidsAnimationSvg(options: { topic: string; caption: string; inde
       const size = stage.size * (scene.close ? 1.1 : 1);
       const y = stage.y - (scene.close ? 14 : 0);
       body += ellipse(x, ground + 4, 62 - Math.max(0, Math.sin(charPhase * 2)) * (scene.action === "hop" ? 10 : 0), 9, "#43697b22");
-      body += `<g transform="translate(${n(x)} ${n(y)}) scale(${size})">${puppet(kind, scene.action, charPhase, !!options.song, i === 1)}</g>`;
+      body += `<g transform="translate(${n(x)} ${n(y)}) scale(${size})">${puppet(kind, scene.action, charPhase, !!options.song, i === 1, scene.emotion, options.index % 2 === i)}</g>`;
       if (scene.prop === "drum") {
         body += `<g transform="translate(${n(x)} ${n(y + 108 * size)}) scale(${size})"><path d="M-38 0 H38 V34 Q0 48 -38 34Z" fill="#d692a9" stroke="${ink}" stroke-width="3"/>${ellipse(0, 0, 38, 12, "#ffedce", ink)}<path d="M-31 12 L-13 36 L4 12 L24 36 L32 12" fill="none" stroke="#ffedce" stroke-width="3"/>${line(-23, -31 + Math.sin(charPhase * 2) * 16, -11, -8, ink, 3)}${line(25, -31 - Math.sin(charPhase * 2) * 16, 11, -8, ink, 3)}</g>`;
       }
     }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient></defs>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient><linearGradient id="leaves" x2=".7" y2="1"><stop stop-color="#bed795"/><stop offset=".5" stop-color="#84b48c"/><stop offset="1" stop-color="#558c7a"/></linearGradient></defs>${body}</svg>`;
 }
 
 export async function prepareKidsAnimation(options: { directory: string; topic: string; cues: KidsAnimationCue[]; duration: number; aspect: "9:16" | "16:9"; cast: [KidsAnimationKind, KidsAnimationKind]; song: boolean; transparent?: boolean; onProgress?: (percent: number) => Promise<unknown> }) {
@@ -213,7 +241,7 @@ export async function prepareKidsAnimation(options: { directory: string; topic: 
     const cue = options.cues[cueIndex];
     const scene = planKidsAnimationScene(options.topic.toLowerCase(), cue.text, cueIndex);
     const pose = frame % CYCLE_FRAMES;
-    const key = createHash("sha1").update(JSON.stringify([scene, pose, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
+    const key = createHash("sha1").update(JSON.stringify([3, scene, pose, cueIndex % 2, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
     const filename = `animation/${key}.png`;
     if (!rendered.has(key)) {
       const svg = kidsAnimationSvg({ topic: options.topic, caption: cue.text, index: cueIndex, frame: pose, aspect: options.aspect, cast: options.cast, song: options.song, transparent: options.transparent });
@@ -227,6 +255,6 @@ export async function prepareKidsAnimation(options: { directory: string; topic: 
   }
   timeline.push(`file '${lastFile}'`);
   await fs.writeFile(path.join(options.directory, "scenes.txt"), timeline.join("\n") + "\n", "utf8");
-  await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({ version: 2, fps: KIDS_ANIMATION_FPS, uniqueFrames: rendered.size, frames, scenes: options.cues.map((cue, index) => ({ ...cue, ...planKidsAnimationScene(options.topic.toLowerCase(), cue.text, index) })) }, null, 2));
+  await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({ version: 3, fps: KIDS_ANIMATION_FPS, uniqueFrames: rendered.size, frames, scenes: options.cues.map((cue, index) => ({ ...cue, ...planKidsAnimationScene(options.topic.toLowerCase(), cue.text, index) })) }, null, 2));
   return { uniqueFrames: rendered.size, frames };
 }

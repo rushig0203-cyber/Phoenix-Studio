@@ -9,7 +9,7 @@ import { reviewRoot, safeReviewId } from "./reviewFiles";
 import { lowerChildProcessPriority } from "./renderResources";
 
 const maximumBytes=100*1024*1024;
-export type SongAudio = { id:string; filename:string; duration:number; bytes:number };
+export type SongAudio = { id:string; filename:string; duration:number; bytes:number; origin?: "recording" | "local-ace" };
 const directory=()=>path.join(reviewRoot(),"song-audio");
 export function songAudioPath(id:string){if(!safeReviewId(id))throw new Error("Invalid song recording.");return path.join(directory(),`${id}.audio`);}
 export async function getSongAudio(id:string):Promise<SongAudio>{const audioPath=songAudioPath(id);const value=JSON.parse(await fs.readFile(path.join(directory(),`${id}.json`),"utf8")) as SongAudio;await fs.access(audioPath);return value;}
@@ -19,7 +19,7 @@ export async function requireSongAudio(id:string|undefined,duration:number){
   if(audio.duration+.15<duration)throw new Error(`The song is ${Math.floor(audio.duration)} seconds long. Choose a video length no longer than that recording.`);
   return audio;
 }
-export async function stageSongAudio(body:ReadableStream<Uint8Array>,filename:string){
+export async function stageSongAudio(body:ReadableStream<Uint8Array>,filename:string,origin:SongAudio["origin"]="recording"){
   await fs.mkdir(directory(),{recursive:true});const id=crypto.randomUUID(),destination=songAudioPath(id);let bytes=0;
   try{
     const bound=new Transform({transform(chunk:Buffer,_encoding,callback){bytes+=chunk.length;callback(bytes>maximumBytes?new Error("Song recordings must be smaller than 100 MB."):null,chunk);}});
@@ -32,7 +32,7 @@ export async function stageSongAudio(body:ReadableStream<Uint8Array>,filename:st
     });
     const info=JSON.parse(result);const duration=Number(info.format?.duration);
     if(!info.streams?.some((s:{codec_type:string})=>s.codec_type==="audio")||!Number.isFinite(duration)||duration<20||duration>1800)throw new Error("The song must contain playable audio between 20 seconds and 30 minutes.");
-    const audio:SongAudio={id,filename:path.basename(filename).slice(0,180),duration,bytes};
+    const audio:SongAudio={id,filename:path.basename(filename).slice(0,180),duration,bytes,origin};
     await fs.writeFile(path.join(directory(),`${id}.json`),JSON.stringify(audio),"utf8");return audio;
   }catch(error){await fs.rm(destination,{force:true});throw error;}
 }

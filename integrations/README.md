@@ -22,6 +22,8 @@ The patch limits API render threads to one, uses 720p output and low-impact inte
 
 It also adds `phoenix_storyboard` to video requests: exact narration coverage, caption-timed sections, section-specific stock searches, bounded streaming downloads, no global footage loop, and one-process FFmpeg timeline assembly. Source pages and section timings are retained in the task/review record. Run `.venv/Scripts/python.exe -m unittest test.services.test_phoenix_storyboard` from the dependency folder to check this path. Restart the backend after applying an update; Phoenix checks the API schema before accepting new storyboard jobs.
 
+The `PhoenixStoryBeat.assetId` field now locks an approved section to one exact Pexels asset. Its metadata is resolved server-side; no arbitrary client media URL is accepted. An approved download failure or insufficient footage stops that section rather than substituting another clip. The draft approval and free singing setup are documented in [FREE-CREATION.md](FREE-CREATION.md).
+
 The dependency supports other providers; these are not required or enabled by Phoenix. Do not add paid keys to its configuration for this workflow. Original dependency licence: [MoneyPrinterTurbo-LICENSE](MoneyPrinterTurbo-LICENSE).
 
 To check the patch on an already patched copy, use `git apply --reverse --check` (this verifies only; it does not reverse anything).

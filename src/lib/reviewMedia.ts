@@ -29,11 +29,11 @@ export function parseByteRange(header: string, size: number) {
   return { start, end: Math.min(requestedEnd, size - 1) };
 }
 
-export async function streamReviewMedia(request: Request, filename: string) {
+export async function streamReviewMedia(request: Request, filename: string, contentType?: string) {
   const stats = await fs.stat(filename);
   if (!stats.isFile() || !stats.size) throw new Error("Saved video is missing or empty.");
   const extension = path.extname(filename).toLowerCase();
-  const type = ({ ".mov": "video/quicktime", ".webm": "video/webm", ".avi": "video/x-msvideo" } as Record<string, string>)[extension] || "video/mp4";
+  const type = contentType || ({ ".mov": "video/quicktime", ".webm": "video/webm", ".avi": "video/x-msvideo" } as Record<string, string>)[extension] || "video/mp4";
   const headers: Record<string, string> = { "Accept-Ranges": "bytes", "Cache-Control": "private, no-cache", "Content-Type": type, "X-Content-Type-Options": "nosniff" };
   const rangeHeader = request.headers.get("range");
   const range = rangeHeader ? parseByteRange(rangeHeader, stats.size) : null;

@@ -14,6 +14,9 @@ import {
   type GenerationInput,
 } from "@/lib/generation";
 import { JobHistoryConflictError } from "@/lib/jobHistory";
+import { createCreationDrafts } from "@/lib/creationDrafts";
+import { localSingingStatus } from "@/lib/localSinging";
+import { assertLocalRequest } from "@/lib/localRequest";
 import { buildKidsStorySeries, inventKidsIdea, kidsRendererAvailable } from "@/lib/kidsRenderer";
 import {
   durationFitsPublishingFormat,
@@ -23,6 +26,9 @@ import {
 } from "@/lib/publishingFormats";
 
 const schema = z.object({
+  planOnly: z.boolean().default(false),
+  songMode: z.enum(["recording", "local-ace"]).default("recording"),
+  songStyle: z.string().trim().max(500).optional(),
   songAudioId: z.string().uuid().optional(),
   requestId: z.string().uuid().optional(),
   topic: z.string().max(500).default(""),
@@ -56,6 +62,7 @@ function selectedFormat(data: z.infer<typeof schema>): PublishingFormat {
 
 export async function POST(request: Request) {
   try {
+    assertLocalRequest(request, true);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid creation request." }, { status: 400 });
@@ -63,8 +70,14 @@ export async function POST(request: Request) {
 
     const data = parsed.data;
     if (data.creationType === "children-song") {
+      if (data.songMode === "local-ace") {
+        if (!data.planOnly) return NextResponse.json({ error: "Generate and listen to the song in a draft before approving its video." }, { status: 400 });
+        const singing = await localSingingStatus();
+        if (!singing.available) return NextResponse.json({ error: singing.reason }, { status: 503 });
+      } else {
       if (!data.script?.trim()) return NextResponse.json({ error: "Add the lyrics from your sung recording so the captions match." }, { status: 400 });
       await requireSongAudio(data.songAudioId, data.duration);
+      }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
     if (!children && data.script?.trim()) {
@@ -109,6 +122,8 @@ export async function POST(request: Request) {
 
     const requestId = data.requestId || crypto.randomUUID();
     const common = {
+      songMode: data.songMode,
+      songStyle: data.songStyle,
       songAudioId: data.songAudioId,
       requestId,
       language: data.language,
@@ -144,6 +159,10 @@ export async function POST(request: Request) {
       inputs = [{ ...common, topic: baseTopic }];
     }
 
+    if (data.planOnly) {
+      const drafts = await createCreationDrafts(inputs);
+      return NextResponse.json({ draftIds: drafts.map(draft => draft.id), count: drafts.length, status: drafts[0].status, planOnly: true }, { status: 201 });
+    }
     const jobs = await createGenerationJobs("local-owner", inputs);
     console.log("[ai-creation] queued", {
       count: jobs.length,

@@ -39,7 +39,9 @@
     ".next-lumina/types/**/*.ts",
     ".next-lumina/dev/types/**/*.ts",
     ".next-phoenix-review-update/types/**/*.ts",
-    ".next-phoenix-review-update/dev/types/**/*.ts"
+    ".next-phoenix-review-update/dev/types/**/*.ts",
+    ".next-approval/types/**/*.ts",
+    ".next-approval/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

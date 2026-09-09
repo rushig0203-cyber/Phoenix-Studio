@@ -1,4 +1,4 @@
-export type StockBeat = { narration: string; query: string };
+export type StockBeat = { narration: string; query: string; assetId?: number };
 export type StockShot = StockBeat & { start: number; end: number; sourcePage?: string; timing: "subtitle-boundary" | "within-caption-estimate" };
 
 export function readStockShots(value: unknown, duration: number): StockShot[] {

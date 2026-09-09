@@ -11,6 +11,7 @@ import { socialHandle } from "@/lib/socialAccounts";
 import Link from "next/link";
 import ChannelConnections from "@/components/ChannelConnections";
 import ReviewLibrary from "@/components/ReviewLibrary";
+import CreationDrafts from "@/components/CreationDrafts";
 import type { ReviewEditJob } from "@/lib/reviewEditTypes";
 
 
@@ -247,6 +248,7 @@ export default function DashboardClient() {
 
         {sourceOpen ? <SourceProcessor onClose={() => setSourceOpen(false)} /> : null}
         {aiOpen ? <AICreation onClose={() => setAiOpen(false)} onStarted={(message) => { setNotice(message || "AI job queued. Live stages appear below."); void load(); }} /> : null}
+        <CreationDrafts refreshKey={notice} onApproved={() => void load()} />
 
         {monitorError ? <p role="alert" className="mt-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">Some live data could not refresh: {monitorError}. Available videos remain usable; retrying automatically.</p> : null}
         <ReviewLibrary files={files} loading={loading} onRefresh={load} />

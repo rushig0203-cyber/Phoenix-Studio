@@ -10,7 +10,7 @@ index a997b7b..9b152d5 100644
  /storage/
  /.idea/
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..c048260 100644
+index c4d12e1..e170111 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -28,19 +28,20 @@ index c4d12e1..c048260 100644
          raise ValueError(f"unsupported video aspect: {self}")
  
  
-@@ -70,6 +70,11 @@ class MaterialInfo:
+@@ -70,6 +70,12 @@ class MaterialInfo:
      source_info: Optional[dict[str, Any]] = None
  
  
 +class PhoenixStoryBeat(BaseModel):
 +    narration: str = Field(min_length=1, max_length=4000)
 +    query: str = Field(min_length=2, max_length=80)
++    assetId: Optional[int] = Field(default=None, gt=0)
 +
 +
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +100,7 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,7 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
@@ -48,7 +49,7 @@ index c4d12e1..c048260 100644
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +137,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +138,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -372,10 +373,10 @@ index 2176fa1..c6c0773 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..d0772af
+index 0000000..55d211a
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,240 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
 +import math
@@ -482,6 +483,41 @@ index 0000000..d0772af
 +            temporary.unlink(missing_ok=True)
 +
 +
++def approved_pexels_asset(asset_id, query):
++    """Resolve an approved ID through Pexels, never through a client-supplied URL."""
++    import requests
++    from urllib.parse import urlparse
++    from app.config import config
++    from app.services import material
++    from app.models.schema import MaterialInfo
++
++    response = requests.get(
++        f"https://api.pexels.com/v1/videos/videos/{int(asset_id)}",
++        headers={"Authorization": material.get_api_key("pexels_api_keys")},
++        proxies=config.proxy, verify=material._get_tls_verify(), timeout=(15, 30),
++        allow_redirects=False,
++    )
++    response.raise_for_status()
++    data = response.json()
++    if data.get("id") != asset_id:
++        raise ValueError("The approved Pexels asset is no longer available.")
++    files = [f for f in data.get("video_files", []) if f.get("file_type") == "video/mp4" and f.get("width", 0) > 0 and f.get("height", 0) > 0]
++    files.sort(key=lambda f: abs(min(f["width"], f["height"]) - 720))
++    if not files:
++        raise ValueError("The approved footage has no playable MP4.")
++    file = files[0]
++    url = urlparse(file["link"])
++    if url.scheme != "https" or not (url.hostname == "pexels.com" or (url.hostname or "").endswith(".pexels.com")) or url.username or url.password:
++        raise ValueError("Pexels returned an unsafe footage address.")
++    item = MaterialInfo()
++    item.provider, item.url, item.duration = "pexels", file["link"], data["duration"]
++    item.source_info = {"provider": "pexels", "asset_id": str(asset_id), "search_term": query,
++                        "source_page": material._safe_public_url(data.get("url")),
++                        "creator": material._creator_info(data.get("user")),
++                        "rendition": {"id": str(file.get("id", "")), "width": file["width"], "height": file["height"]}}
++    return item
++
++
 +def prepare_timeline(task_id, params, subtitle_path, audio_duration, progress):
 +    from app.config import config
 +    from app.services import material, task_artifacts
@@ -499,7 +535,13 @@ index 0000000..d0772af
 +    timeline, sources, used = [], [], set()
 +    for index, beat in enumerate(beats):
 +        progress(40 + 10 * index / len(beats), f"Finding footage for narration section {index + 1}/{len(beats)}")
-+        candidates = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
++        approved_id = beat.get("assetId")
++        if approved_id:
++            if params.video_source != "pexels":
++                raise ValueError("Approved footage IDs require the Pexels source.")
++            candidates = [approved_pexels_asset(approved_id, beat["query"])]
++        else:
++            candidates = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
 +        cursor = beat["start"]
 +        for candidate in candidates[:20]:
 +            info = candidate.source_info or {}
@@ -508,7 +550,9 @@ index 0000000..d0772af
 +                continue
 +            try:
 +                filename, available = download_stock_video(candidate, directory)
-+            except Exception:
++            except Exception as error:
++                if approved_id:
++                    raise ValueError(f"Approved footage for section {index + 1} could not be downloaded. It was not replaced.") from error
 +                # Skip an unusable candidate, not the narration section itself.
 +                continue
 +            if not math.isfinite(available) or available < 0.3:
@@ -575,10 +619,10 @@ index 0000000..d0772af
 +    return str(output)
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
-index 0000000..d30a4c8
+index 0000000..488d5f0
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,129 @@
 +import subprocess
 +import tempfile
 +import unittest
@@ -589,6 +633,20 @@ index 0000000..d30a4c8
 +
 +
 +class TestPhoenixStoryboard(unittest.TestCase):
++    def test_approved_footage_never_triggers_a_new_search_or_silent_replacement(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        params = VideoParams(video_subject="Morning", video_script="Open curtains.", phoenix_storyboard=[{"narration": "Open curtains.", "query": "opening curtains", "assetId": 123}])
++        candidate = MaterialInfo(url="approved", duration=4, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 3.9, "Open curtains.")]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate) as selected, patch("app.services.material._search_videos_with_cache") as search, patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 4)), patch("app.services.task_artifacts.patch_script_data", return_value=True):
++            timeline, _ = storyboard.prepare_timeline("unused-test", params, "unused.srt", 4, lambda *_: None)
++            selected.assert_called_once_with(123, "opening curtains")
++            search.assert_not_called()
++            self.assertEqual(timeline[0]["path"], "approved.mp4")
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 3.9, "Open curtains.")]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch("app.services.material._search_videos_with_cache") as search, patch.object(storyboard, "download_stock_video", side_effect=ValueError("Broken file")):
++            with self.assertRaisesRegex(ValueError, "not replaced"):
++                storyboard.prepare_timeline("unused-test", params, "unused.srt", 4, lambda *_: None)
++            search.assert_not_called()
++
 +    def test_boundaries_use_spoken_timestamps_not_equal_durations(self):
 +        beats = [{"narration": "Open the curtains.", "query": "opening curtains"}, {"narration": "Pour a glass of water.", "query": "pouring water"}]
 +        result = storyboard.align_beats(beats, "Open the curtains. Pour a glass of water.", [(0.1, 1.8, "Open the curtains."), (2.3, 5.7, "Pour a glass of water.")], 6)

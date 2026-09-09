@@ -15,6 +15,9 @@ import {
 } from "./renderResources";
 
 export type KidsRenderInput = {
+  scriptApproved?: boolean;
+  sceneNarration?: string[];
+  songMode?: "recording" | "local-ace";
   songAudioId?: string;
   topic: string;
   duration: number;
@@ -234,7 +237,7 @@ function wordCount(value: string) {
   return value.match(/\b[\p{L}'-]+\b/gu)?.length || 0;
 }
 
-function castFor(topic: string): [Character, Character] {
+export function castFor(topic: string): [Character, Character] {
   if (/benny|bunny|rabbit/i.test(topic) || /tika|bird/i.test(topic)) {
     return [{ name: "Benny", kind: "bunny" }, { name: "Tika", kind: "bird" }];
   }
@@ -428,6 +431,10 @@ function followsEpisodeBeat(script: string, input: KidsRenderInput) {
 }
 
 export async function createContent(input: KidsRenderInput, guidance: CreativeGuidance) {
+  if (input.scriptApproved) {
+    if (!input.script?.trim()) throw new Error("The approved narration is empty. Reopen the draft.");
+    return input.script.trim();
+  }
   // Uploaded song lyrics must remain verbatim; rewriting them makes the
   // subtitles unrelated to the actual singing in the recording.
   if (input.creationType === "children-song" && input.songAudioId) return (input.script || "").trim();
@@ -845,6 +852,8 @@ export async function renderKidsVideo(
   const song = input.creationType === "children-song";
   const captionPadding = song ? 1.25 : 0;
   const cues = captionCues(captions, targetSeconds, captionPadding, captionPadding);
+  if (input.sceneNarration?.length && input.sceneNarration.join(" ").replace(/\s+/g, " ") !== script.replace(/\s+/g, " ")) throw new Error("The approved visual scenes do not match the narration. Reopen the draft.");
+  const visualCues = input.sceneNarration?.length ? captionCues(input.sceneNarration, targetSeconds, captionPadding, captionPadding) : cues;
   if (cues.some((cue) => cue.duration < 0.85)) {
     throw new Error("The script is too dense to display as readable captions in the requested duration.");
   }
@@ -894,7 +903,7 @@ export async function renderKidsVideo(
   const cast = castFor(input.topic);
   let animationPercent = 38;
   await prepareKidsAnimation({
-    directory, topic: input.topic, cues, duration: targetSeconds, aspect: format,
+    directory, topic: input.topic, cues: visualCues, duration: targetSeconds, aspect: format,
     cast: [cast[0].kind, cast[1].kind], song, transparent: !!animationBackground,
     onProgress: async (value) => {
       const percent = 38 + Math.floor(value * 0.17);
@@ -1013,7 +1022,7 @@ export async function renderKidsVideo(
     script,
     captions,
     hashtags: hashtags(input),
-    postCopy: `${input.topic} — ${input.creationType === "children-song" ? "an animated song using your recording" : "an original short story"} for children ages 3–6.`,
+    postCopy: `${input.topic} — ${input.creationType === "children-song" ? input.songMode === "local-ace" ? "an original locally generated animated song" : "an animated song using your recording" : "an original short story"} for children ages 3–6.`,
     score: textCheck.score,
     reason,
     width,

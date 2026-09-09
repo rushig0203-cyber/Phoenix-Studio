@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   // A temporary build directory lets us verify an update without rewriting a live build.
   distDir: process.env.PHOENIX_BUILD_DIR || ".next-lumina",
   experimental: {
-    cpus: 2,
+    cpus: 1,
     webpackMemoryOptimizations: true,
   },
   // Runtime uploads and renders can be several gigabytes. They are data, not
