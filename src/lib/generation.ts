@@ -14,6 +14,7 @@ import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, checkStockScript } from "./stockBrief";
+import { createStockStoryboard, readStockShots, type StockBeat } from "./stockStoryboard";
 import {
   ensureReviewFolders,
   getReviewFile,
@@ -31,7 +32,10 @@ export type GenerationInput = {
   requestId?: string;
   topic: string;
   script?: string;
+  scriptOrigin?: "owner" | "local-model";
   visualTerms?: string[];
+  visualTermsOrigin?: "owner" | "local-model";
+  storyboard?: StockBeat[];
   language: string;
   duration: number;
   requestedDuration?: number;
@@ -338,6 +342,14 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
+export async function requireStockStoryboardRenderer() {
+  const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
+  const api = response.ok ? await response.json() : null;
+  if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
+    throw new Error("The local stock renderer needs the Phoenix storyboard update. Apply the integrations patch and restart MoneyPrinterTurbo before creating a stock video.");
+  }
+}
+
 export async function generatorReachable() {
   try {
     const response = await fetch(providerUrl("/api/v1/tasks?page=1&page_size=1"), {
@@ -476,6 +488,12 @@ export async function regenerateGenerationJob(id: string) {
       if (!input.script?.trim()) throw new Error("Open AI Creation and add the lyrics from your recording.");
     }
     const requestKey = `regenerate:${id}`;
+    if (input.creationType === "business" || input.creationType === "general") {
+      // Unknown legacy text is retained to avoid discarding an owner's words.
+      if (input.scriptOrigin === "local-model") delete input.script;
+      if (input.visualTermsOrigin === "local-model") delete input.visualTerms;
+      delete input.storyboard;
+    }
     const pending = jobs.find(job => job.requestKey === requestKey && !job.archivedAt && ["QUEUED", "RUNNING"].includes(job.status));
     if (pending) return pending;
     // A failed replacement must never remove the user's finished original.
@@ -739,7 +757,7 @@ async function existingReadyOutput(job: LocalGenerationJob, input: GenerationInp
   }
 }
 
-async function completeStockJob(job: LocalGenerationJob, input: GenerationInput, videoUrl: string) {
+async function completeStockJob(job: LocalGenerationJob, input: GenerationInput, videoUrl: string, shots?: unknown) {
   const target = input.targetPlatform === "YouTube" ? "youtube" : "instagram";
   const accountHandle = target === "instagram" ? socialHandle("instagram") : undefined;
   const destination = outputPath(job.id, target);
@@ -760,6 +778,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       postCopy: `${input.topic} — a locally assembled, ready-to-review social video.${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`,
       checks: ["Original narration with no generic fallback", "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
+      storyboard: input.storyboard?.length ? readStockShots(shots, media.duration) : undefined,
       warning: "Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.",
     },
     processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration).score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration).reason, status: "COMPLETED" },
@@ -908,9 +927,13 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
+  await requireStockStoryboardRenderer();
   await updateJob(job.id, { progress: 5, stage: "Writing a length-controlled script with local Ollama" });
   const script = await createStockScript(input);
-  const prepared = { ...input, script, visualTerms: stockSearchTerms({ ...input, script }) };
+  const scriptOrigin = input.scriptOrigin || (input.script?.trim() ? "owner" : "local-model");
+  await updateJob(job.id, { progress: 9, stage: "Planning literal footage for each narration section", requestJson: JSON.stringify({ ...input, script, scriptOrigin }) });
+  const storyboard = await createStockStoryboard({ ...input, script });
+  const prepared: GenerationInput = { ...input, script, scriptOrigin, storyboard, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
   await updateJob(job.id, { progress: 12, stage: "Submitting the script to the local stock-video renderer", requestJson: JSON.stringify(prepared) });
   let response: Response;
   try {
@@ -921,6 +944,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       video_subject: prepared.topic,
       video_script: script,
       video_terms: stockSearchTerms(prepared),
+      phoenix_storyboard: storyboard,
       video_language: prepared.language,
       video_aspect: prepared.aspect,
       voice_name: prepared.voice === "local-windows-voice" ? "en-US-JennyNeural-Female" : prepared.voice,
@@ -1092,11 +1116,11 @@ async function pollClaimedStockJob(job: LocalGenerationJob) {
       // `combined_videos` files are picture-only intermediates.
       const output = data.video_url || data.videoUrl || data.outputUrl || data.videos?.[0] || data.combined_videos?.[0];
       if (!output) throw new Error("The local renderer completed without a video URL.");
-      await completeStockJob(job, input, String(output));
+      await completeStockJob(job, input, String(output), data.phoenix_storyboard);
     } else if (["FAILED", "ERROR", "CANCELLED"].includes(state)) {
       await retryOrFail(job, new Error(String(data.error || data.message || payload.message || "Rendering failed.")), "Stock-video render failed");
     } else {
-      await updateJob(job.id, { progress, stage: `Rendering locally · provider ${Math.round(providerProgress)}%`, error: undefined, pollFailureCount: 0, nextAttemptAt: undefined });
+      await updateJob(job.id, { progress, stage: typeof data.phoenix_stage === "string" ? data.phoenix_stage.slice(0, 200) : `Rendering locally · provider ${Math.round(providerProgress)}%`, error: undefined, pollFailureCount: 0, nextAttemptAt: undefined });
     }
   } catch (error) {
     const failures = (job.pollFailureCount || 0) + 1;

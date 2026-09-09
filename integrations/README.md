@@ -20,6 +20,8 @@ Follow that repository's Python/FFmpeg setup instructions. Copy its cleaned `con
 
 The patch limits API render threads to one, uses 720p output and low-impact intermediate encodes, sets below-normal process priority on Windows, limits concurrent tasks to one, and uses local Ollama in the example configuration. Phoenix submits explicit local stock requests and never selects the dependency's paid visual-generation providers.
 
+It also adds `phoenix_storyboard` to video requests: exact narration coverage, caption-timed sections, section-specific stock searches, bounded streaming downloads, no global footage loop, and one-process FFmpeg timeline assembly. Source pages and section timings are retained in the task/review record. Run `.venv/Scripts/python.exe -m unittest test.services.test_phoenix_storyboard` from the dependency folder to check this path. Restart the backend after applying an update; Phoenix checks the API schema before accepting new storyboard jobs.
+
 The dependency supports other providers; these are not required or enabled by Phoenix. Do not add paid keys to its configuration for this workflow. Original dependency licence: [MoneyPrinterTurbo-LICENSE](MoneyPrinterTurbo-LICENSE).
 
 To check the patch on an already patched copy, use `git apply --reverse --check` (this verifies only; it does not reverse anything).

@@ -10,7 +10,7 @@ index a997b7b..9b152d5 100644
  /storage/
  /.idea/
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..40fc691 100644
+index c4d12e1..c048260 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -28,7 +28,27 @@ index c4d12e1..40fc691 100644
          raise ValueError(f"unsupported video aspect: {self}")
  
  
-@@ -131,7 +131,10 @@ class VideoParams(BaseModel):
+@@ -70,6 +70,11 @@ class MaterialInfo:
+     source_info: Optional[dict[str, Any]] = None
+ 
+ 
++class PhoenixStoryBeat(BaseModel):
++    narration: str = Field(min_length=1, max_length=4000)
++    query: str = Field(min_length=2, max_length=80)
++
++
+ class VideoParams(BaseModel):
+     """
+     {
+@@ -95,6 +100,7 @@ class VideoParams(BaseModel):
+     video_clip_duration: int = Field(default=5, ge=1)
+     video_clip_speed: Optional[float] = 1.0
+     match_materials_to_script: bool = False
++    phoenix_storyboard: Optional[List[PhoenixStoryBeat]] = Field(default=None, min_length=1, max_length=18)
+     video_count: int = Field(default=1, ge=1)
+ 
+     video_source: Optional[str] = "pexels"
+@@ -131,7 +137,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -40,6 +60,121 @@ index c4d12e1..40fc691 100644
      paragraph_number: int = Field(default=1, ge=1, le=10)
      video_script_prompt: str = Field(default="", max_length=2000)
      custom_system_prompt: str = Field(default="", max_length=8000)
+diff --git a/app/services/task.py b/app/services/task.py
+index a310390..04b4783 100644
+--- a/app/services/task.py
++++ b/app/services/task.py
+@@ -13,13 +13,14 @@ from loguru import logger
+ 
+ from app.config import config
+ from app.models import const
+-from app.models.schema import VideoConcatMode, VideoParams
++from app.models.schema import VideoAspect, VideoConcatMode, VideoParams
+ from app.services import bgm as bgm_service
+ from app.services import (
+     elevenlabs_music,
+     llm,
+     loomloom,
+     material,
++    phoenix_storyboard,
+     sonilo,
+     subtitle,
+     task_artifacts,
+@@ -793,7 +794,8 @@ def _record_loomloom_run_reference(
+ 
+ 
+ def generate_final_videos(
+-    task_id, params, downloaded_videos, audio_file, subtitle_path, audio_duration
++    task_id, params, downloaded_videos, audio_file, subtitle_path, audio_duration,
++    storyboard_timeline=None,
+ ):
+     final_video_paths = []
+     combined_video_paths = []
+@@ -820,18 +822,24 @@ def generate_final_videos(
+             utils.task_dir(task_id), f"combined-{index}.mp4"
+         )
+         logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
+-        video.combine_videos(
+-            combined_video_path=combined_video_path,
+-            video_paths=downloaded_videos,
+-            audio_file=audio_file,
+-            video_aspect=params.video_aspect,
+-            video_fit_mode=params.video_fit_mode,
+-            video_concat_mode=video_concat_mode,
+-            video_transition_mode=video_transition_mode,
+-            max_clip_duration=params.video_clip_duration,
+-            threads=params.n_threads,
+-            clip_speed=params.video_clip_speed,
+-        )
++        if storyboard_timeline:
++            phoenix_storyboard.render_timeline(
++                storyboard_timeline, combined_video_path, VideoAspect(params.video_aspect).to_resolution(), utils.get_ffmpeg_binary(),
++                lambda percent, stage: sm.state.update_task(task_id, progress=percent, phoenix_stage=stage),
++            )
++        else:
++            video.combine_videos(
++                combined_video_path=combined_video_path,
++                video_paths=downloaded_videos,
++                audio_file=audio_file,
++                video_aspect=params.video_aspect,
++                video_fit_mode=params.video_fit_mode,
++                video_concat_mode=video_concat_mode,
++                video_transition_mode=video_transition_mode,
++                max_clip_duration=params.video_clip_duration,
++                threads=params.n_threads,
++                clip_speed=params.video_clip_speed,
++            )
+ 
+         _progress += 50 / params.video_count / 2
+         sm.state.update_task(task_id, progress=_progress)
+@@ -1410,13 +1418,24 @@ def _run_pipeline(
+     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
+ 
+     # 5. Get video materials
+-    downloaded_videos = get_video_materials(
+-        task_id,
+-        params,
+-        video_terms,
+-        audio_duration,
+-        loomloom_video_request=loomloom_video_request,
+-    )
++    storyboard_timeline, public_storyboard = None, None
++    if getattr(params, "phoenix_storyboard", None):
++        try:
++            storyboard_timeline, public_storyboard = phoenix_storyboard.prepare_timeline(
++                task_id, params, subtitle_path, voice.get_audio_duration(audio_file),
++                lambda percent, stage: sm.state.update_task(task_id, progress=percent, phoenix_stage=stage),
++            )
++            downloaded_videos = list(dict.fromkeys(shot["path"] for shot in storyboard_timeline))
++        except Exception as exc:
++            return _mark_task_failed(task_id, "storyboard", str(exc))
++    else:
++        downloaded_videos = get_video_materials(
++            task_id,
++            params,
++            video_terms,
++            audio_duration,
++            loomloom_video_request=loomloom_video_request,
++        )
+     if not downloaded_videos:
+         return _mark_task_failed(
+             task_id,
+@@ -1449,6 +1468,7 @@ def _run_pipeline(
+             audio_file,
+             subtitle_path,
+             audio_duration,
++            **({"storyboard_timeline": storyboard_timeline} if storyboard_timeline else {}),
+         )
+     )
+ 
+@@ -1493,6 +1513,7 @@ def _run_pipeline(
+         "cross_post_error": None,
+         "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
+         "warnings": generation_warnings or None,
++        "phoenix_storyboard": public_storyboard,
+     }
+     sm.state.update_task(
+         task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs
 diff --git a/app/services/video.py b/app/services/video.py
 index 0a33dae..4f2e7d9 100644
 --- a/app/services/video.py
@@ -235,3 +370,327 @@ index 2176fa1..c6c0773 100644
  
              def subclipped(self, start_time, end_time):
                  return _FakeVideoClip(end_time - start_time)
+diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
+new file mode 100644
+index 0000000..d0772af
+--- /dev/null
++++ b/app/services/phoenix_storyboard.py
+@@ -0,0 +1,197 @@
++"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
++
++import math
++import os
++import re
++import subprocess
++import tempfile
++import time
++from pathlib import Path
++
++
++def words(text):
++    return re.findall(r"\w+", text.casefold().replace("’", "'"), re.UNICODE)
++
++
++def subtitle_cues(filename):
++    text = Path(filename).read_text(encoding="utf-8-sig")
++    pattern = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})[^\n]*\n(.*?)(?=\n\s*\n|\Z)", re.S)
++    cues = []
++    for match in pattern.finditer(text):
++        values = list(map(int, match.groups()[:8]))
++        start = values[0] * 3600 + values[1] * 60 + values[2] + values[3] / 1000
++        end = values[4] * 3600 + values[5] * 60 + values[6] + values[7] / 1000
++        content = re.sub(r"<[^>]*>", "", match.group(9)).strip()
++        if end <= start or (cues and start < cues[-1][1] - 0.02):
++            raise ValueError("Storyboard needs ordered, non-overlapping speech captions.")
++        if words(content):
++            cues.append((start, end, content))
++    if not cues:
++        raise ValueError("No timed speech captions were produced; cannot align the footage.")
++    return cues
++
++
++def align_beats(beats, script, cues, duration):
++    """Use actual caption timestamps, with explicitly labelled within-cue interpolation."""
++    if not math.isfinite(duration) or duration <= 0:
++        raise ValueError("Storyboard requires a valid narration duration.")
++    script_words = words(script)
++    if not beats or [word for beat in beats for word in words(beat["narration"])] != script_words:
++        raise ValueError("Storyboard narration must cover the script exactly once, in order.")
++    if [word for _, _, text in cues for word in words(text)] != script_words:
++        raise ValueError("Speech captions do not match the narration. Retry the captions; no guessed stock timeline was created.")
++    if cues[-1][1] > duration + 0.3:
++        raise ValueError("Speech captions extend beyond the narration audio.")
++    positions = []
++    for start, end, text in cues:
++        count = len(words(text))
++        for index in range(count):
++            positions.append((start + (end - start) * index / count, index == 0))
++    result = []
++    offset = 0
++    for index, beat in enumerate(beats):
++        start, exact = (0.0, True) if index == 0 else positions[offset]
++        offset += len(words(beat["narration"]))
++        end, end_exact = (duration, True) if offset == len(positions) else positions[offset]
++        if end - start < 0.2:
++            raise ValueError(f"Narration section {index + 1} is too short for a readable shot.")
++        result.append({**beat, "start": start, "end": end, "timing": "subtitle-boundary" if exact and end_exact else "within-caption-estimate"})
++    return result
++
++
++def download_stock_video(candidate, directory):
++    """Bounded streaming staging; a provider response is never buffered in RAM."""
++    from moviepy import VideoFileClip
++    import requests
++    from app.config import config
++    from app.services import material
++    from app.utils import utils
++
++    destination = Path(directory or utils.storage_dir("cache_videos"))
++    destination.mkdir(parents=True, exist_ok=True)
++    filename = destination / f"vid-{utils.md5(candidate.url.split('?')[0])}.mp4"
++
++    def duration(file):
++        with VideoFileClip(str(file), audio=False) as clip:
++            value = float(clip.duration)
++        if not math.isfinite(value) or value < 0.3:
++            raise ValueError("Stock footage has no usable video duration.")
++        return value
++
++    if filename.exists() and filename.stat().st_size:
++        return str(filename), duration(filename)
++    temporary = None
++    try:
++        with requests.get(candidate.url, stream=True, proxies=config.proxy, verify=material._get_tls_verify(), timeout=(20, 120)) as response:
++            response.raise_for_status()
++            limit = 256 * 1024 * 1024
++            if int(response.headers.get("Content-Length") or 0) > limit:
++                raise ValueError("Stock file exceeds the 256 MB per-shot download limit.")
++            with tempfile.NamedTemporaryFile(dir=destination, suffix=".mp4", prefix="phoenix-download-", delete=False) as staged:
++                temporary = Path(staged.name)
++                received, deadline = 0, time.monotonic() + 180
++                for chunk in response.iter_content(chunk_size=1024 * 1024):
++                    received += len(chunk)
++                    if received > limit or time.monotonic() > deadline:
++                        raise ValueError("Stock download exceeded its size or time limit.")
++                    staged.write(chunk)
++            seconds = duration(temporary)
++            os.replace(temporary, filename)
++            temporary = None
++            return str(filename), seconds
++    finally:
++        if temporary is not None:
++            temporary.unlink(missing_ok=True)
++
++
++def prepare_timeline(task_id, params, subtitle_path, audio_duration, progress):
++    from app.config import config
++    from app.services import material, task_artifacts
++    from app.utils import utils
++
++    if params.video_source not in ("pexels", "pixabay") or params.video_count != 1:
++        raise ValueError("Phoenix storyboard accepts one stock-only Pexels/Pixabay export.")
++    beats = align_beats([beat.model_dump() for beat in params.phoenix_storyboard], params.video_script, subtitle_cues(subtitle_path), audio_duration)
++    search = material.search_videos_pexels if params.video_source == "pexels" else material.search_videos_pixabay
++    directory = config.app.get("material_directory", "").strip()
++    if directory == "task":
++        directory = utils.task_dir(task_id)
++    elif directory and not os.path.isdir(directory):
++        directory = ""
++    timeline, sources, used = [], [], set()
++    for index, beat in enumerate(beats):
++        progress(40 + 10 * index / len(beats), f"Finding footage for narration section {index + 1}/{len(beats)}")
++        candidates = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
++        cursor = beat["start"]
++        for candidate in candidates[:20]:
++            info = candidate.source_info or {}
++            identity = str(info.get("asset_id") or candidate.url)
++            if identity in used:
++                continue
++            try:
++                filename, available = download_stock_video(candidate, directory)
++            except Exception:
++                # Skip an unusable candidate, not the narration section itself.
++                continue
++            if not math.isfinite(available) or available < 0.3:
++                continue
++            used.add(identity)
++            source = material._material_source_record(candidate, filename)
++            sources.append(source)
++            # Advance within this same source, never restart footage to pad a section.
++            source_start = 0.0
++            while source_start < available - 0.05 and cursor < beat["end"] - 0.001:
++                length = min(available - source_start, beat["end"] - cursor)
++                timeline.append({**beat, "start": cursor, "end": cursor + length, "path": filename, "sourceStart": source_start, "sourcePage": source.get("source_page")})
++                cursor += length
++                source_start += length
++            if cursor >= beat["end"] - 0.001:
++                break
++        if cursor < beat["end"] - 0.001:
++            raise ValueError(f"Section {index + 1} ({beat['query']}) has only {cursor - beat['start']:.1f}s of usable stock for {beat['end'] - beat['start']:.1f}s of narration. Change its visual search terms; unrelated or looped footage was not substituted.")
++    public = [{key: value for key, value in shot.items() if key not in ("path", "sourceStart")} for shot in timeline]
++    if not task_artifacts.patch_script_data(task_id, phoenix_storyboard=public, material_sources=sources):
++        raise ValueError("Could not save the storyboard and footage source records. Check available disk space and retry.")
++    return timeline, public
++
++
++def render_timeline(timeline, output_file, resolution, ffmpeg, progress=lambda *_: None):
++    """One low-priority FFmpeg process at a time; no Python-decoded frame pipeline."""
++    if not timeline or abs(timeline[0]["start"]) > 0.001:
++        raise ValueError("Storyboard must start at zero.")
++    for index, shot in enumerate(timeline):
++        if not all(math.isfinite(shot[key]) for key in ("start", "end", "sourceStart")) or shot["sourceStart"] < 0 or shot["end"] <= shot["start"]:
++            raise ValueError("Invalid storyboard shot timing.")
++        if index and abs(shot["start"] - timeline[index - 1]["end"]) > 0.001:
++            raise ValueError("Storyboard contains a timing gap or overlap.")
++    width, height = resolution
++    flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
++
++    def run(arguments):
++        result = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", *arguments], capture_output=True, timeout=240, creationflags=flags)
++        if result.returncode:
++            raise ValueError("Storyboard FFmpeg failed: " + result.stderr.decode(errors="replace")[-700:])
++        return result
++
++    output = Path(output_file)
++    output.parent.mkdir(parents=True, exist_ok=True)
++    with tempfile.TemporaryDirectory(prefix="phoenix-shots-", dir=output.parent) as temporary:
++        parts = []
++        for index, shot in enumerate(timeline):
++            # Cumulative frame boundaries avoid per-shot rounding drift.
++            frames = round(shot["end"] * 30) - round(shot["start"] * 30)
++            if frames < 1:
++                raise ValueError(f"Storyboard shot {index + 1} has no output frames.")
++            part = Path(temporary) / f"shot-{index:03}.mp4"
++            encoded = run(["-threads", "1", "-ss", str(shot["sourceStart"]), "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
++            counts = re.findall(r"^frame=(\d+)", encoded.stdout.decode(errors="replace"), re.M)
++            if not counts or int(counts[-1]) != frames:
++                raise ValueError(f"Storyboard shot {index + 1} ended before its narration section. Choose longer footage and retry.")
++            parts.append(part.name)
++            progress(50 + 24 * (index + 1) / len(timeline), f"Rendering timed shot {index + 1}/{len(timeline)}")
++        manifest = Path(temporary) / "concat.txt"
++        manifest.write_text("".join(f"file '{name}'\n" for name in parts), encoding="utf-8")
++        assembled = Path(temporary) / "combined.mp4"
++        run(["-f", "concat", "-safe", "1", "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
++        os.replace(assembled, output)
++    return str(output)
+diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
+new file mode 100644
+index 0000000..d30a4c8
+--- /dev/null
++++ b/test/services/test_phoenix_storyboard.py
+@@ -0,0 +1,115 @@
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++from app.services import phoenix_storyboard as storyboard
++
++
++class TestPhoenixStoryboard(unittest.TestCase):
++    def test_boundaries_use_spoken_timestamps_not_equal_durations(self):
++        beats = [{"narration": "Open the curtains.", "query": "opening curtains"}, {"narration": "Pour a glass of water.", "query": "pouring water"}]
++        result = storyboard.align_beats(beats, "Open the curtains. Pour a glass of water.", [(0.1, 1.8, "Open the curtains."), (2.3, 5.7, "Pour a glass of water.")], 6)
++        self.assertEqual([(item["start"], item["end"]) for item in result], [(0, 2.3), (2.3, 6)])
++        self.assertEqual(result[0]["timing"], "subtitle-boundary")
++
++    def test_within_caption_estimates_are_disclosed(self):
++        result = storyboard.align_beats([{"narration": "One two.", "query": "one"}, {"narration": "Three four.", "query": "two"}], "One two. Three four.", [(0, 8, "One two. Three four.")], 8)
++        self.assertEqual(result[1]["start"], 4)
++        self.assertTrue(all(item["timing"] == "within-caption-estimate" for item in result))
++
++    def test_unmatched_or_incomplete_narration_never_gets_guessed_timing(self):
++        with self.assertRaisesRegex(ValueError, "cover the script exactly"):
++            storyboard.align_beats([{"narration": "Missing.", "query": "one"}], "Original narration.", [(0, 2, "Original narration.")], 3)
++        with self.assertRaisesRegex(ValueError, "captions do not match"):
++            storyboard.align_beats([{"narration": "Original narration.", "query": "one"}], "Original narration.", [(0, 2, "Wrong text.")], 3)
++
++    def test_srt_parser_and_overlap_validation(self):
++        with tempfile.TemporaryDirectory(prefix="phoenix-captions-test-") as temporary:
++            filename = Path(temporary) / "captions.srt"
++            filename.write_text("1\n00:00:00,100 --> 00:00:01,800\nOpen the curtains.\n\n2\n00:00:02,300 --> 00:00:05,700\nPour water.\n", encoding="utf-8")
++            self.assertEqual(storyboard.subtitle_cues(filename)[1], (2.3, 5.7, "Pour water."))
++            filename.write_text("1\n00:00:00,000 --> 00:00:03,000\nOne.\n\n2\n00:00:02,000 --> 00:00:04,000\nTwo.\n", encoding="utf-8")
++            with self.assertRaisesRegex(ValueError, "non-overlapping"):
++                storyboard.subtitle_cues(filename)
++
++    def test_missing_stock_identifies_exact_section_and_never_borrows_other_footage(self):
++        from app.models.schema import VideoParams
++        params = VideoParams(video_subject="Morning", video_script="Open curtains.", phoenix_storyboard=[{"narration":"Open curtains.", "query":"opening curtains"}])
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 2, "Open curtains.")]), patch("app.services.material._search_videos_with_cache", return_value=[]), patch("app.services.material.save_video") as save:
++            with self.assertRaisesRegex(ValueError, "Section 1.*opening curtains.*not substituted"):
++                storyboard.prepare_timeline("unused-test", params, "unused.srt", 2, lambda *_: None)
++            save.assert_not_called()
++
++    def test_real_mp4_has_correct_color_order_and_no_timing_drift(self):
++        from app.utils import utils
++        ffmpeg = utils.get_ffmpeg_binary()
++        flags = subprocess.CREATE_NO_WINDOW if storyboard.os.name == "nt" else 0
++        with tempfile.TemporaryDirectory(prefix="phoenix-timeline-render-test-") as temporary:
++            root = Path(temporary)
++            for color in ("red", "blue"):
++                subprocess.run([ffmpeg,"-v","error","-y","-f","lavfi","-i",f"color=c={color}:s=160x90:r=30:d=2","-an","-c:v","libx264","-threads","1",str(root / f"{color}.mp4")],check=True,capture_output=True,creationflags=flags)
++            timeline=[{"start":0,"end":0.7,"sourceStart":0,"path":str(root/"red.mp4")},{"start":0.7,"end":2,"sourceStart":0.2,"path":str(root/"blue.mp4")}]
++            output=root/"output.mp4"
++            progress=[]
++            storyboard.render_timeline(timeline, output, (160,90), ffmpeg, lambda percent, stage: progress.append((percent,stage)))
++            decoded=subprocess.run([ffmpeg,"-v","error","-threads","1","-i",str(output),"-vf","scale=1:1","-filter_threads","1","-pix_fmt","rgb24","-f","rawvideo","-"],capture_output=True,check=True,creationflags=flags).stdout
++            self.assertEqual(len(decoded),60*3)
++            self.assertGreater(decoded[20*3],decoded[20*3+2]+100)
++            self.assertGreater(decoded[21*3+2],decoded[21*3]+100)
++            self.assertEqual(progress[-1][0],74)
++            self.assertEqual(list(root.glob("phoenix-shots-*")),[])
++
++    def test_gaps_are_rejected_before_any_render(self):
++        with patch.object(storyboard.subprocess,"run") as run:
++            with self.assertRaisesRegex(ValueError,"gap or overlap"):
++                storyboard.render_timeline([{"start":0,"end":1,"sourceStart":0},{"start":2,"end":3,"sourceStart":0}],"unused.mp4",(160,90),"ffmpeg")
++            run.assert_not_called()
++
++    def test_download_streams_chunks_and_removes_only_its_failed_staging_file(self):
++        from app.models.schema import MaterialInfo
++        from unittest.mock import MagicMock
++        candidate=MaterialInfo(url="https://example.invalid/fixture.mp4")
++        response=MagicMock()
++        response.__enter__.return_value=response
++        response.headers={}
++        response.iter_content.return_value=iter([b"chunk-one",b"chunk-two"])
++        clip=MagicMock()
++        clip.__enter__.return_value.duration=2
++        with tempfile.TemporaryDirectory(prefix="phoenix-stock-stream-test-") as temporary, patch("requests.get",return_value=response) as request, patch("moviepy.VideoFileClip",return_value=clip):
++            filename,duration=storyboard.download_stock_video(candidate,temporary)
++            self.assertTrue(request.call_args.kwargs["stream"])
++            self.assertEqual(Path(filename).read_bytes(),b"chunk-onechunk-two")
++            self.assertEqual(duration,2)
++            response.headers={"Content-Length":str(300*1024*1024)}
++            with self.assertRaisesRegex(ValueError,"256 MB"):
++                storyboard.download_stock_video(MaterialInfo(url="https://example.invalid/oversize.mp4"),temporary)
++            self.assertEqual(len(list(Path(temporary).iterdir())),1)
++
++    def test_material_preparation_preserves_section_order_and_source_records(self):
++        from app.models.schema import VideoParams,MaterialInfo
++        params=VideoParams(video_subject="Morning",video_script="Open curtains. Pour water.",phoenix_storyboard=[{"narration":"Open curtains.","query":"opening curtains"},{"narration":"Pour water.","query":"pouring water"}])
++        candidates=[[MaterialInfo(url="one",duration=2,source_info={"asset_id":"1","source_page":"https://www.pexels.com/video/1/"})],[MaterialInfo(url="two",duration=3,source_info={"asset_id":"2","source_page":"https://www.pexels.com/video/2/"})]]
++        with patch.object(storyboard,"subtitle_cues",return_value=[(0,1.8,"Open curtains."),(2,4.8,"Pour water.")]), patch("app.services.material._search_videos_with_cache",side_effect=candidates) as search, patch.object(storyboard,"download_stock_video",side_effect=[("one.mp4",2),("two.mp4",3)]), patch("app.services.task_artifacts.patch_script_data",return_value=True) as persist:
++            timeline,public=storyboard.prepare_timeline("unused-test",params,"unused.srt",5,lambda *_:None)
++            self.assertEqual([shot["path"] for shot in timeline],["one.mp4","two.mp4"])
++            self.assertEqual([(shot["start"],shot["end"]) for shot in timeline],[(0,2),(2,5)])
++            self.assertEqual([call.kwargs["search_term"] for call in search.call_args_list],["opening curtains","pouring water"])
++            self.assertTrue(all("path" not in shot for shot in public))
++            self.assertEqual(len(persist.call_args.kwargs["material_sources"]),2)
++
++    def test_task_orchestration_uses_timed_renderer_not_legacy_looping_assembler(self):
++        from app.models.schema import VideoParams
++        from app.services import task
++        params=VideoParams(video_subject="Morning",bgm_type="",subtitle_enabled=False)
++        shots=[{"start":0,"end":2}]
++        with tempfile.TemporaryDirectory(prefix="phoenix-task-route-test-") as temporary, patch.object(task.utils,"task_dir",return_value=temporary), patch.object(task.phoenix_storyboard,"render_timeline") as timed, patch.object(task.video,"combine_videos") as legacy, patch.object(task.video,"generate_video",return_value=True) as final, patch.object(task.sm.state,"update_task"):
++            task.generate_final_videos("unused-test",params,["footage.mp4"],"audio.mp3","captions.srt",2,storyboard_timeline=shots)
++            self.assertEqual(timed.call_args.args[0],shots)
++            legacy.assert_not_called()
++            self.assertEqual(final.call_args.kwargs["subtitle_path"],"captions.srt")
++
++
++if __name__ == "__main__":
++    unittest.main()

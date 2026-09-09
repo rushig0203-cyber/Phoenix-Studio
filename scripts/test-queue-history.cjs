@@ -95,6 +95,20 @@ test("regeneration queues an idempotent new copy and keeps the completed origina
   assert.equal(read(aiPath)[0].status,"COMPLETED");
   assert.equal(fs.readFileSync(output,"utf8"),"original-video");
 });
+test("regeneration rewrites model narration but preserves owner and unknown legacy text", async () => {
+  for (const origin of ["local-model", "owner", undefined]) {
+    const completed = job("COMPLETED");
+    completed.requestJson = JSON.stringify({...input, creationType:"business", script:"Saved narration.", scriptOrigin:origin, visualTerms:["customer support"], visualTermsOrigin:origin, storyboard:[{narration:"Saved narration.",query:"customer support"}]});
+    write(aiPath,[completed]);
+    const replacement = await ai.regenerateGenerationJob(completed.id);
+    const requested = JSON.parse(replacement.requestJson);
+    assert.equal(requested.script,origin === "local-model" ? undefined : "Saved narration.");
+    assert.deepEqual(requested.visualTerms,origin === "local-model" ? undefined : ["customer support"]);
+    assert.equal(requested.storyboard,undefined);
+    assert.equal(read(aiPath)[0].requestJson,completed.requestJson);
+  }
+});
+
 test("legacy spoken songs cannot regenerate or delete their existing result", async () => {
   const completed=job("COMPLETED");completed.requestJson=JSON.stringify({...input,creationType:"children-song"});write(aiPath,[completed]);
   const output=path.join(reviewRoot,"outputs",`${completed.id}-youtube.mp4`);fs.writeFileSync(output,"legacy-song");

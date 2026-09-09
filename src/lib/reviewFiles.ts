@@ -33,6 +33,7 @@ export type ReviewFile = {
   quality: {
     managerGuidance?: { revision: string; feedbackCount: number; rules: string[] };
     visualBrief?: string[];
+    storyboard?: import("./stockStoryboard").StockShot[];
     sourceDuration?: number;
     audio: "natural-audio-preserved" | "local-music-replaced" | "local-narration-music" | "supplied-song" | "no-audio" | "needs-review";
     captions: string[];

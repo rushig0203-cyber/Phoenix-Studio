@@ -7,7 +7,7 @@ A single-owner, local video workspace. Process uploaded episodes, create stock-f
 - **Source video:** streamed large uploads; coverage/highlights selection; speech and silence analysis; natural clip boundaries; FFmpeg exports, captions, posting copy and review recommendations.
 - **Children's stories:** original local narration and simple procedural 2D cut-out animation for ages 3–6. This is **not** anime or professional 3D animation.
 - **Children's songs:** requires a user-supplied recording that already contains singing/music and matching lyrics. Automatic high-quality singing is **not installed**; speech is never presented as singing.
-- **Business/general:** local Ollama narration (or an owner-supplied script), free Pexels footage, an editable ordered keyword brief, music and subtitles via MoneyPrinterTurbo. Keyword ordering is not verified shot-to-speech alignment. Failed narration does not silently become generic filler.
+- **Business/general:** local Ollama narration (or an owner-supplied script), a narration-section storyboard, free Pexels footage, music and subtitles via MoneyPrinterTurbo. Each section searches its own footage and uses speech-caption timing; any within-caption timing estimates are labelled. This is not visual understanding: watch every selected shot. Missing footage fails with the section/query instead of borrowing unrelated scenes or looping the video. Failed narration does not silently become generic filler.
 - **Review library:** real cached thumbnails, one focused video player, visible loading/error/retry states, search, category filters, pagination, posting details, and manual editing.
 - **Trash:** one-click recoverable removal, Undo and Restore. Media remains on disk and continues to occupy space. Older versions permanently deleted files; this change cannot restore those earlier deletions.
 - **Quality manager:** owner ratings change bounded future children's-story guidance. It does not retrain a model, autonomously rewrite its code, or predict earnings. Text scores do not evaluate visuals or singing.
@@ -25,6 +25,8 @@ The product is still being improved. Professional animation, automatic singing, 
 6. Run `npm run build`, then `npm start`. Start opens both the web server and the background worker. Development mode: `npm run dev`.
 7. Open [Phoenix Studio](http://localhost:3000). It opens the dashboard directly.
 
+For one-click startup, run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-desktop-shortcut.ps1` once. The **Phoenix Studio** Desktop shortcut starts missing local services and opens a Chrome app window (Edge/default browser fallback). Existing services are reused. Closing the browser leaves processing running; shutting down the PC stops it. The launcher expects the optional backend at `Documents/MoneyPrinterTurbo`, or the `PHOENIX_MPT_DIR` environment variable. It does not install software, download models, or enable paid services. Keep the project folder in place; reinstall the shortcut after moving it.
+
 FFmpeg/FFprobe are installed through the npm dependencies, or can be configured explicitly. Source preflight reports missing tools. Children's narration and secure local account storage currently rely on Windows facilities; Docker is not a verified full replacement for this Windows workflow.
 
 Uploads, MP4s, queue state, captions, and feedback live under `storage/Phoenix Studio Review Files`. A Desktop shortcut is available in the library. Keep the PC awake for queued work. Local software avoids provider API bills, but still uses your electricity, storage and internet; third-party free stock services have their own limits.
@@ -36,6 +38,7 @@ node scripts/test-review-library.cjs
 node scripts/test-quality-manager.cjs
 node scripts/test-queue-history.cjs
 node scripts/test-review-workflows.cjs
+node scripts/test-stock-storyboard.cjs
 npx tsc --noEmit
 npm run build
 ```

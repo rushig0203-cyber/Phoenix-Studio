@@ -9,6 +9,7 @@ import {
   listGenerationJobs,
   removeGenerationJob,
   regenerateGenerationJob,
+  requireStockStoryboardRenderer,
   retryGenerationJob,
   type GenerationInput,
 } from "@/lib/generation";
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
     if (!children && !(await generatorReachable())) {
       return NextResponse.json({ error: "The optional free stock-video service is offline." }, { status: 503 });
     }
+    if (!children) await requireStockStoryboardRenderer();
 
     const baseTopic = children && data.autoIdea
       ? await inventKidsIdea(data.creationType as "children-story" | "children-song")
@@ -120,7 +122,9 @@ export async function POST(request: Request) {
       creationType: data.creationType,
       audienceAge: children ? "3-6" : undefined,
       script: data.script,
+      scriptOrigin: data.script?.trim() ? "owner" : undefined,
       visualTerms: data.visualTerms,
+      visualTermsOrigin: data.visualTerms?.length ? "owner" : undefined,
     } satisfies Omit<GenerationInput, "topic">;
 
     let inputs: GenerationInput[];
