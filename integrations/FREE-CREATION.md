@@ -47,6 +47,23 @@ node --test scripts/test-animation-and-delete.cjs scripts/test-worker-startup.cj
 node scripts/verify-kids-animation.cjs
 ```
 
-The second command renders a bounded 12-second **instrumental animation test**, not a sung-song demonstration. It does not submit production queue jobs. See `test/services/test_phoenix_storyboard.py` in the patched MoneyPrinterTurbo checkout for approved-asset and actual FFmpeg-frame tests.
+`node scripts/verify-kids-animation.cjs` renders a bounded 12-second **instrumental animation test**, not a sung-song demonstration. It does not submit production queue jobs. Add `--stills-only` to check character frames without encoding a video. See `test/services/test_phoenix_storyboard.py` in the patched MoneyPrinterTurbo checkout for approved-asset and actual FFmpeg-frame tests.
+
+## Developer interfaces
+
+The dashboard sends `POST /api/generations` with `planOnly: true` to create drafts. Older direct-generation callers are retained for compatibility; the approval workflow should explicitly opt into planning. Source-processing endpoints remain separate.
+
+| Interface | Purpose |
+| --- | --- |
+| `GET /api/creation-drafts` | List saved, non-archived drafts |
+| `PATCH /api/creation-drafts` | `save`, `choose`, `approve`, `retry`, or `archive` a draft |
+| `GET /api/creation-drafts/footage?q=...&aspect=9:16` | Search real Pexels choices |
+| `GET /api/creation-drafts/:id/preview?scene=0&frame=6` | Preview the children's SVG pose for a saved section |
+| `GET` / `HEAD /api/creation-drafts/:id/audio` | Stream the saved song, including byte-range playback |
+| `GET /api/singing/status` | Explain local engine availability or its blocker |
+
+Draft mutations require `id` and the current `version`; approval also requires `reviewConfirmed: true`. Stock selection sends a section `index` and `assetId`, not an arbitrary media URL. A stale version returns HTTP 409. The draft routes enforce loopback access, and mutations require a same-origin request. API callers should retain the creation `requestId` for safe retries and poll the saved record instead of resubmitting a new creation.
+
+Planning states are `QUEUED`, `PLANNING`, `READY`, `FAILED`, `APPROVING`, `APPROVED`, and `ARCHIVED`. Approved drafts retain their `approvedJobId`; follow `/api/generations` for render progress and `/api/review-files` for completed outputs. Planning leases recover interrupted work, and interrupted approval dispatch reuses its job identity. A failed plan is not a finished video.
 
 Approval is an editorial checkpoint, not a guarantee of audience engagement, commercial rights, or monetization. Check source licences and platform requirements before publishing. Local processing still uses electricity, disk space, and any existing internet connection.
