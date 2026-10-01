@@ -39,7 +39,7 @@ function shortDuration(totalSeconds: number) {
   return `${remainder}s`;
 }
 
-export default function SourceProcessor({ onClose }: { onClose: () => void }) {
+export default function SourceProcessor({ onClose, onStarted }: { onClose: () => void; onStarted?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"coverage" | "highlights">("coverage");
   const [busy, setBusy] = useState(false);
@@ -146,6 +146,7 @@ export default function SourceProcessor({ onClose }: { onClose: () => void }) {
       setNotice(request.status >= 200 && request.status < 300
         ? data?.message || "Queued for processing."
         : data?.error || `Upload failed (${request.status}).`);
+      if (request.status >= 200 && request.status < 300) onStarted?.();
       void refresh();
     };
     request.send(file);

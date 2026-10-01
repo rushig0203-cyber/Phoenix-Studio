@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileVideo, RefreshCw, RotateCcw, Sparkles, Trash2 } from "lucide-react";
-import Navbar from "@/components/Navbar";
+import { FileVideo, RefreshCw, RotateCcw, Sparkles, Trash2, Plus, ListVideo, FolderOpen, Settings, Film, ShieldCheck } from "lucide-react";
 import SourceProcessor from "@/components/SourceProcessor";
 import AICreation from "@/components/AICreation";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,15 @@ import Link from "next/link";
 import ChannelConnections from "@/components/ChannelConnections";
 import ReviewLibrary from "@/components/ReviewLibrary";
 import CreationDrafts from "@/components/CreationDrafts";
+import StockReels from "@/components/StockReels";
+import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
 import type { ReviewEditJob } from "@/lib/reviewEditTypes";
+import type { CreationDraft } from "@/lib/creationDraftTypes";
+import { studioSection, type StudioSection } from "@/lib/studioNavigation";
+import StudioHealth, { type StudioHealthState } from "@/components/StudioHealth";
+import ReviewPlayer from "@/components/ReviewPlayer";
+import { completedTransitions } from "@/lib/creationIntent";
+import PostingActions from "@/components/PostingActions";
 
 
 type SourceJob = {
@@ -44,6 +51,8 @@ type AiJob = {
 };
 type DisplayJob = {
   id: string;
+  reviewId?: string;
+  outputId?: string;
   kind: "source" | "ai" | "edit";
   title: string;
   status: string;
@@ -76,15 +85,34 @@ function timing(job: DisplayJob) {
 }
 
 export default function DashboardClient() {
+  const [section, setSection] = useState<StudioSection>("create");
+  const [drafts, setDrafts] = useState<CreationDraft[]>([]);
+  const navigate = useCallback((value: StudioSection) => { setSection(value); window.location.hash = value; }, []);
+  useEffect(() => {
+    const sync = () => { setSection(studioSection(window.location.hash)); window.scrollTo(0, 0); };
+    sync(); window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [stockOpen, setStockOpen] = useState(false);
+  const [stockQuery, setStockQuery] = useState("forest waterfall");
+  const [idea, setIdea] = useState<ContentIdea | null>(null);
+  useEffect(() => {
+    const value = CONTENT_IDEAS.find(item => item.id === new URLSearchParams(window.location.search).get("ideaId"));
+    if (value?.workflow === "stock-reel") { setStockQuery(value.query); setStockOpen(true); setSection("create"); }
+    else if (value) { setIdea(value); setAiOpen(true); setSection("create"); }
+  }, []);
   const [files, setFiles] = useState<ReviewFile[]>([]);
+  const [preview, setPreview] = useState<ReviewFile | null>(null);
+  const previousJobs = useRef(new Map<string, string>());
   const [sourceJobs, setSourceJobs] = useState<SourceJob[]>([]);
   const [aiJobs, setAiJobs] = useState<AiJob[]>([]);
   const [editJobs, setEditJobs] = useState<ReviewEditJob[]>([]);
   const [removingJob, setRemovingJob] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [monitorError, setMonitorError] = useState("");
+  const [health, setHealth] = useState<StudioHealthState | null>(null);
   const [loading, setLoading] = useState(false);
   const [jobFilter, setJobFilter] = useState("all");
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -105,17 +133,19 @@ export default function DashboardClient() {
     const request = (async () => {
     try {
       // A failed edit-queue poll must not blank the independent video library.
-      const results = await Promise.allSettled(["/api/review-files", "/api/source-processing", "/api/generations", "/api/review-edits"].map(async endpoint => {
+      const results = await Promise.allSettled(["/api/review-files", "/api/source-processing", "/api/generations", "/api/review-edits", "/api/creation-drafts", "/api/studio-health"].map(async endpoint => {
         const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
         if (!response.ok) throw new Error(`${endpoint}: HTTP ${response.status}`);
         return response.json();
       }));
       if (!monitorMounted.current) return;
-      const [review, source, ai, edits] = results;
+      const [review, source, ai, edits, preparation, studio] = results;
       if (review.status === "fulfilled") setFiles(Array.isArray(review.value) ? review.value.filter((file: ReviewFile) => file.status === "READY") : []);
       if (source.status === "fulfilled") setSourceJobs(source.value.jobs || []);
       if (ai.status === "fulfilled") setAiJobs(Array.isArray(ai.value) ? ai.value : []);
       if (edits.status === "fulfilled") setEditJobs(Array.isArray(edits.value) ? edits.value : []);
+      if (preparation.status === "fulfilled") setDrafts(Array.isArray(preparation.value) ? preparation.value : []);
+      setHealth(studio.status === "fulfilled" ? studio.value : null);
       setMonitorError(results.flatMap(result => result.status === "rejected" ? [String(result.reason?.message || "Local request timed out")] : []).join("; "));
     } catch (error) {
       if (monitorMounted.current) {
@@ -183,7 +213,7 @@ export default function DashboardClient() {
     finally { setRemovingJob(null); }
   }
   const jobs = useMemo<DisplayJob[]>(() => [
-    ...editJobs.map(job => ({ id:job.id,kind:"edit" as const,title:job.title,status:job.status,progress:job.progress,detail:`Manual edit · ${job.stage}`,error:job.error,createdAt:job.createdAt,elapsedSeconds:job.elapsedSeconds,estimatedRemainingSeconds:job.estimatedRemainingSeconds ?? undefined })),
+    ...editJobs.map(job => ({ id:job.id,reviewId:job.reviewId,outputId:job.outputId,kind:"edit" as const,title:job.title,status:job.status,progress:job.progress,detail:`Manual edit · ${job.stage}`,error:job.error,createdAt:job.createdAt,elapsedSeconds:job.elapsedSeconds,estimatedRemainingSeconds:job.estimatedRemainingSeconds ?? undefined })),
     ...sourceJobs.map((job) => ({
       id: job.id,
       kind: "source" as const,
@@ -210,29 +240,46 @@ export default function DashboardClient() {
     })),
   ].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()), [sourceJobs, aiJobs, editJobs]);
 
+  useEffect(() => {
+    const finished = completedTransitions(previousJobs.current, jobs);
+    previousJobs.current = new Map(jobs.map(job => [`${job.kind}:${job.id}`, job.status]));
+    if (!finished.length) return; // Opening the app must not redirect for old videos.
+    setNotice(`${finished.length === 1 ? finished[0].title : `${finished.length} videos`} finished. Choose Watch video below to review the result.`);
+    setJobFilter("completed");
+    navigate("jobs");
+  }, [jobs, navigate]);
+
+  const activeCount = jobs.filter(job => ["QUEUED", "RUNNING", "PROCESSING"].includes(job.status)).length + drafts.filter(draft => ["QUEUED", "PLANNING", "APPROVING", "READY"].includes(draft.status)).length;
+  const failedCount = jobs.filter(job => ["FAILED", "BLOCKED"].includes(job.status)).length + drafts.filter(draft => draft.status === "FAILED").length;
+  const sections = [
+    { id: "create" as const, label: "Create", icon: Plus },
+    { id: "jobs" as const, label: "Jobs", icon: ListVideo },
+    { id: "library" as const, label: "Library", icon: FolderOpen },
+    { id: "settings" as const, label: "Settings", icon: Settings },
+  ];
+  const pageCopy = { create: ["What will you make today?", "Choose one way to create. Phoenix handles preparation and rendering."], ideas: ["Find your next idea", "Browse inspiration, pick a topic, then make it your own."], jobs: ["Your production queue", "Follow progress here. You only approve the finished video."], library: ["Your video library", "Watch the final result, make edits if you want, then download and post."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
     <div className="min-h-screen bg-[#f4f0e7] text-[#1e2719]">
-      <Navbar inStudio />
-      <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <header className="rounded-2xl bg-[#26331f] px-6 py-6 text-[#f8f5ea]">
-          <p className="text-xs font-bold uppercase tracking-[.22em] text-[#cbd796]">Phoenix Studio · free local mode</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-.05em]">Your local video workspace.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#d9dfc8]">Create, review, edit, and export. Your files stay on this PC; posting is always your choice.</p>
-          <p className="mt-2 text-xs font-semibold text-[#cbd796]">Instagram destination: {socialHandle("instagram")} · <a href="#channels" className="underline">Channel connections</a> · <Link href="/dashboard/manager" className="underline">Content quality manager</Link></p>
+      <aside className="border-b border-[#dadfce] bg-[#fffdf7] p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6">
+        <a href="#create" className="flex items-center gap-3 text-lg font-semibold tracking-tight"><span className="rounded-xl bg-[#32432a] p-2 text-white"><Film className="h-5 w-5" /></span>Phoenix Studio</a>
+        <p className="mt-2 hidden text-xs text-[#738063] md:block">Your local creative space</p>
+        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors ${section === id ? "bg-[#34462b] text-white" : "text-[#637155] hover:bg-[#edf1e5]"}`}><Icon className="h-4 w-4" />{label}{id === "jobs" && activeCount + failedCount > 0 ? <span className="ml-auto rounded-full bg-[#e4eace] px-2 text-xs text-[#33422b]" aria-label={`${activeCount} active, ${failedCount} failed`}>{activeCount || failedCount}</span> : null}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
+        <div className="absolute bottom-6 left-6 right-6 hidden rounded-xl bg-[#edf1e5] p-3 text-xs leading-5 text-[#5b6c4b] md:block"><ShieldCheck className="mb-2 h-4 w-4" />Free local mode<br />Files stay on this laptop.</div>
+      </aside>
+      <main className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-[#dce1d2] pb-6">
+          <div><p className="text-xs font-semibold uppercase tracking-[.2em] text-[#7a856a]">Studio / {sections.find(item => item.id === section)?.label}</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">{pageCopy[section][0]}</h1><p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p></div>
+          <a href="#jobs" className="flex items-center gap-2 rounded-full border border-[#d4dcc6] bg-[#fffdf7] px-4 py-2 text-xs font-medium"><span className={`h-2 w-2 rounded-full ${activeCount ? "animate-pulse bg-[#708a43]" : "bg-[#a8b395]"}`} />{activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
         </header>
-
-        <nav aria-label="Studio sections" className="mt-4 flex flex-wrap gap-2 text-sm font-semibold">
-          <a href="#create" className="rounded-lg border border-[#bfcaa6] bg-white px-4 py-2">Create</a>
-          <a href="#library" className="rounded-lg border border-[#bfcaa6] bg-white px-4 py-2">Review library · {files.length}</a>
-          <a href="#jobs" className="rounded-lg border border-[#bfcaa6] bg-white px-4 py-2">Live jobs · {jobs.filter(job => ["QUEUED", "RUNNING", "PROCESSING"].includes(job.status)).length} active</a>
-          <Link href="/dashboard/manager" className="rounded-lg border border-[#bfcaa6] bg-white px-4 py-2">Quality manager</Link>
-        </nav>
-        <section id="create" className="mt-5 grid scroll-mt-5 gap-4 md:grid-cols-2">
+        {monitorError ? <p role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">Some live data could not refresh: {monitorError}. Available videos remain usable; retrying automatically.</p> : null}
+        <StudioHealth health={health} detailed={section === "settings"} />
+        <div hidden={section !== "create"} data-studio-screen="create">
+        <section aria-label="Creation workflows" className="grid gap-4 xl:grid-cols-3">
           <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
             <FileVideo className="h-7 w-7 text-[#536b35]" />
             <h2 className="mt-4 text-2xl font-semibold">Process an episode</h2>
             <p className="mt-2 text-sm leading-6 text-[#687657]">Choose a local video, select full coverage or best highlights, then create real clips.</p>
-            <Button type="button" onClick={() => setSourceOpen((open) => !open)} className="mt-5 bg-[#394a2a] text-white">
+            <Button type="button" onClick={() => { setSourceOpen(open => !open); setAiOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
               {sourceOpen ? "Close processor" : "Choose a video"}
             </Button>
           </article>
@@ -240,24 +287,25 @@ export default function DashboardClient() {
             <Sparkles className="h-7 w-7 text-[#536b35]" />
             <h2 className="mt-4 text-2xl font-semibold">Create a new video</h2>
             <p className="mt-2 text-sm leading-6 text-[#687657]">Business and general videos from stock footage, or simple 2D children’s animation.</p>
-            <Button type="button" onClick={() => setAiOpen((open) => !open)} className="mt-5 bg-[#394a2a] text-white">
-              {aiOpen ? "Close AI Creation" : "Create a video"}
+            <Button type="button" onClick={() => { setAiOpen(open => !open); setSourceOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
+              {aiOpen ? "Close creation" : "Create a video"}
             </Button>
           </article>
+          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Use stock footage</h2><p className="mt-2 text-sm leading-6 text-[#657153]">Find a video on Pexels or Pixabay and turn it into a captioned reel. No generated visuals.</p><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close stock search" : "Find footage"}</Button></article>
         </section>
+        {sourceOpen ? <SourceProcessor onClose={() => setSourceOpen(false)} onStarted={() => { navigate("jobs"); void load(); }} /> : null}
+        {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => { setNotice(message); navigate("jobs"); void load(); }} /> : null}
+        {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={(message) => { setNotice(message || "Video queued. Preparation and rendering run automatically."); navigate("jobs"); void load(); }} /> : null}
+        {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
+        </div>
+        {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
+        {section === "jobs" ? <>
+        <CreationDrafts drafts={drafts} onRefresh={load} />
 
-        {sourceOpen ? <SourceProcessor onClose={() => setSourceOpen(false)} /> : null}
-        {aiOpen ? <AICreation onClose={() => setAiOpen(false)} onStarted={(message) => { setNotice(message || "AI job queued. Live stages appear below."); void load(); }} /> : null}
-        <CreationDrafts refreshKey={notice} onApproved={() => void load()} />
-
-        {monitorError ? <p role="alert" className="mt-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">Some live data could not refresh: {monitorError}. Available videos remain usable; retrying automatically.</p> : null}
-        <ReviewLibrary files={files} loading={loading} onRefresh={load} />
-
-        <section id="jobs" className="mt-8 scroll-mt-5 rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-6">
+        <section className="mt-5 rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[.18em] text-[#75834f]">Workflow Manager</p>
-              <h2 className="mt-1 text-2xl font-semibold">Live jobs & history</h2>
+              <h2 className="text-xl font-semibold">Rendering & history</h2>
             </div>
             <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
@@ -287,12 +335,13 @@ export default function DashboardClient() {
                       <div className={`h-full transition-[width] duration-500 ${failed ? "bg-[#b55d3d]" : "bg-[#667b42]"}`} style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
                     </div>
                     {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
+                    {job.status === "COMPLETED" ? <div className="mt-3 space-y-3">{files.filter(file => job.kind === "edit" ? file.id === job.outputId : file.id === job.id || file.processing?.jobId === job.id).map((file, index) => <div key={file.id}><Button type="button" variant="outline" size="sm" onClick={() => setPreview(file)}>Watch video{job.kind === "source" ? ` ${index + 1}` : ""}</Button><PostingActions file={file} /></div>)}</div> : null}
                     {failed && job.kind !== "edit" ? (
                       <Button type="button" variant="outline" size="sm" disabled={retrying !== null} onClick={() => void retry(job)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Retry"}
                       </Button>
                     ) : null}
-                    {job.kind === "edit" && failed ? <Link href="/dashboard" className="mt-3 inline-block text-xs">Open the original video’s editor to export again.</Link> : null}
+                    {job.kind === "edit" && failed ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} className="mt-3 inline-block text-xs">Open the original video’s editor to export again.</Link> : null}
                     {job.kind === "ai" && job.status === "COMPLETED" ? (
                       <Button type="button" variant="outline" size="sm" disabled={retrying !== null} onClick={() => void retry(job, true)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Regenerate"}
@@ -310,8 +359,10 @@ export default function DashboardClient() {
           )}
         </section>
 
-        <div className="mt-9"><ChannelConnections /></div>
+        </> : null}
+        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link></div></div><ChannelConnections /></div> : null}
       </main>
+      {preview ? <ReviewPlayer file={preview} onClose={() => setPreview(null)} /> : null}
     </div>
   );
 }

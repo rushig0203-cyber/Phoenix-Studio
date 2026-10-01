@@ -53,13 +53,72 @@ test('episode preview does not stack edited captions on its existing burned capt
 });
 test('manual export is idempotent, playable, captioned, and retains original',async()=>{
   const job=await edits.queueReviewEdit(jobId,draft);
+  assert.deepEqual((await edits.getReviewEditState(jobId)).draft,draft,'Export also persists the draft for reopening');
   assert.equal((await edits.queueReviewEdit(jobId,draft)).id,job.id);
+  await assert.rejects(edits.queueReviewEdit(jobId,{...draft,title:'Different pending edit'}), edits.EditConflict);
+  assert.equal((await edits.listReviewEdits(jobId))[0].draft.title,draft.title);
+  const route=require(path.join(project,'src/app/api/review-edits/route.ts'));
+  const scoped=await route.GET(new Request(`http://localhost/api/review-edits?reviewId=${jobId}`));
+  assert.deepEqual((await scoped.json()).map(item=>item.id),[job.id]);
+  assert.deepEqual(await (await route.GET(new Request(`http://localhost/api/review-edits?reviewId=${crypto.randomUUID()}`))).json(),[]);
+  assert.equal((await route.GET(new Request('http://localhost/api/review-edits?reviewId=invalid'))).status,400);
   await edits.processNextReviewEdit();
   const finished=(await edits.listReviewEdits())[0];assert.equal(finished.status,'COMPLETED',finished.error);assert.equal(finished.progress,100);
   const file=await reviews.getReviewFile(job.outputId);assert.ok(file);assert.equal(file.editedFrom,jobId);assert.equal(file.outputs.youtube.width,720);assert.equal(file.outputs.youtube.height,720);assert.ok(Math.abs(file.outputs.youtube.duration-2)<.15);
   assert.equal(file.quality.captions[0],'Corrected first line');assert.equal(hash(reviews.outputPath(jobId,'youtube')),originalHash);
   const newState=await edits.getReviewEditState(file.id);assert.equal(newState.canReplaceCaptions,true);assert.equal(newState.draft.cues[0].start,0);
   await edits.removeReviewEdit(job.id);assert.equal((await edits.listReviewEdits()).length,0);assert.ok(fs.existsSync(reviews.outputPath(file.id,'youtube')));
+});
+test('completed legacy highlight rank order never selects another clip captions or music',async()=>{
+  const sourceId=crypto.randomUUID(), firstId=crypto.randomUUID(), secondId=crypto.randomUUID();
+  const original=await reviews.getReviewFile(jobId);
+  const source=reviews.sourcePath(sourceId,'ranked.mp4');fs.copyFileSync(path.join(work,'clean.mp4'),source);
+  for(const [index,id] of [firstId,secondId].entries()) {
+    const directory=path.join(reviewDirectory,'work',`source-${sourceId}`,`clip-${index+1}`); fs.mkdirSync(directory,{recursive:true});
+    fs.writeFileSync(path.join(directory,'captions.srt'),`1\n00:00:00,000 --> 00:00:01,500\nCaption for ${id}\n`);
+    fs.copyFileSync(path.join(work,'clean.mp4'),reviews.outputPath(id,'youtube'));
+    await reviews.saveReviewFile({...original,id,source:{kind:'upload',filename:'ranked.mp4',licence:'fixture'},processing:{...original.processing,jobId:sourceId,start:index*2,end:(index+1)*2}});
+  }
+  fs.writeFileSync(path.join(reviewDirectory,'source-processing-jobs.json'),JSON.stringify([{id:sourceId,sourceFile:'ranked.mp4',mode:'highlights',status:'COMPLETED',reviewIds:[secondId,firstId]}]));
+  assert.equal((await edits.getReviewEditState(firstId)).draft.cues[0].text,`Caption for ${firstId}`);
+  assert.equal((await edits.getReviewEditState(secondId)).draft.cues[0].text,`Caption for ${secondId}`);
+});
+test('explicit stock editing artifacts remain independent of display order and enforce path containment',async()=>{
+  const {artifactReference}=require(path.join(project,'src/lib/reviewArtifacts.ts'));
+  const id=crypto.randomUUID(), original=await reviews.getReviewFile(jobId);
+  const file={...original,id,source:{kind:'pexels',filename:'stock.mp4',licence:'fixture'},artifacts:{version:1,renderRevision:'fixture',finalVideo:artifactReference(reviews.outputPath(id,'youtube')),editing:{video:artifactReference(path.join(work,'clean.mp4')),offsetSeconds:0,captionsBaked:false},captions:artifactReference(path.join(work,'captions.srt'))}};
+  await reviews.saveReviewFile(file);
+  const state=await edits.getReviewEditState(id);assert.equal(state.canReplaceCaptions,true);assert.equal(state.previewIsClean,true);assert.equal(state.draft.cues[0].text,'Original line one');
+  await reviews.saveReviewFile({...file,artifacts:{...file.artifacts,editing:{...file.artifacts.editing,video:'../private.mp4'}}});
+  await assert.rejects(edits.getReviewEditState(id),/Invalid saved artifact/);
+});
+test('square edited copy stores square delivery metadata and a reusable clean master',async()=>{
+  const original=await reviews.getReviewFile(jobId);
+  await reviews.saveReviewFile({...original,delivery:{publishingFormat:'youtube-short',platform:'youtube',aspect:'16:9',requestedDuration:4,actualDuration:4,creationType:'general'}});
+  const job=await edits.queueReviewEdit(jobId,{...draft,title:'Square metadata proof'});await edits.processNextReviewEdit();
+  const file=await reviews.getReviewFile(job.outputId);assert.equal(file.delivery.aspect,'1:1');assert.equal(file.artifacts.editing.captionsBaked,false);
+  assert.ok(file.artifacts.captions.endsWith('/captions.srt'));await edits.removeReviewEdit(job.id);
+});
+test('stock artifacts are streamed, probed, caption-validated and opened by the editor',async()=>{
+  const generation=require(path.join(project,'src/lib/generation.ts'));
+  const id=crypto.randomUUID(), directory=path.join(root,'stock-proof');fs.mkdirSync(directory);
+  const clean=path.join(directory,'clean.mp4'), narration=path.join(directory,'voice.mp3');
+  ff(['-f','lavfi','-i','color=c=green:s=320x180:r=12','-f','lavfi','-i','sine=frequency=440:duration=6','-t','6','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac',clean]);
+  ff(['-i',clean,'-vn','-threads','1',narration]);
+  const payload={version:1,clean_video:'/tasks/fixture/clean.mp4',caption_file:'/tasks/fixture/captions.srt',narration_file:'/tasks/fixture/voice.mp3',music_present:false,caption_count:1};
+  const original=await reviews.getReviewFile(jobId), realFetch=global.fetch, oldBase=process.env.MPT_BASE_URL;
+  process.env.MPT_BASE_URL='http://127.0.0.1:8080';
+  let calls=0;
+  global.fetch=async url=>{calls++;assert.equal(new URL(url).hostname,'127.0.0.1');return new Response(String(url).endsWith('.mp4')?fs.readFileSync(clean):String(url).endsWith('.mp3')?fs.readFileSync(narration):'1\n00:00:00,000 --> 00:00:05,900\nWords actually timed by the renderer.\n');};
+  try {
+    await assert.rejects(generation.retainStockArtifacts(id,reviews.outputPath(id,'youtube'),{duration:6,width:320,height:180,hasAudio:true},undefined),/required clean-video/);assert.equal(calls,0);
+    const result=await generation.retainStockArtifacts(id,reviews.outputPath(id,'youtube'),{duration:6,width:320,height:180,hasAudio:true},payload);
+    assert.equal(result.musicPresent,false);assert.equal(result.cues[0].end,5.9);assert.equal(calls,3);
+    await reviews.saveReviewFile({...original,id,source:{kind:'pexels',filename:'stock.mp4',licence:'fixture'},outputs:{youtube:{filename:`${id}-youtube.mp4`,duration:6,width:320,height:180}},artifacts:result.artifacts});
+    const state=await edits.getReviewEditState(id);assert.equal(state.canReplaceCaptions,true);assert.equal(state.draft.cues[0].text,'Words actually timed by the renderer.');
+    await assert.rejects(generation.retainStockArtifacts(id,reviews.outputPath(id,'youtube'),{duration:6,width:320,height:180,hasAudio:true},{...payload,caption_count:2}),/reported caption artifact/);
+    const before=calls;await assert.rejects(generation.retainStockArtifacts(id,reviews.outputPath(id,'youtube'),{duration:6,width:320,height:180,hasAudio:true},{...payload,clean_video:'https://evil.example/clean.mp4'}),/non-local/);assert.equal(calls,before);
+  } finally {global.fetch=realFetch;if(oldBase===undefined)delete process.env.MPT_BASE_URL;else process.env.MPT_BASE_URL=oldBase;}
 });
 test('cancelled edited job stays cancelled and old baked captions are not declared editable',async()=>{
   const job=await edits.queueReviewEdit(jobId,draft);await edits.removeReviewEdit(job.id);await edits.processNextReviewEdit();assert.ok(!fs.existsSync(reviews.outputPath(job.outputId,'youtube')));

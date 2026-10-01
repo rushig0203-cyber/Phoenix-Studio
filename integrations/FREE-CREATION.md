@@ -1,13 +1,21 @@
-# Free creation and the approval boundary
+# Free creation and final-video review
 
-Phoenix's dashboard creates persistent **drafts**, not finished-video jobs. Drafts live in `storage/Phoenix Studio Review Files/creation-drafts.json` and are planned by `run-worker.js`.
+## Three distinct creation paths
 
-1. Choose a story, song, business video, or general video and select **Plan video for approval**.
-2. Review and edit the narration. Stock drafts require selecting actual Pexels footage for every section. Children's drafts show poses from the same original 2D renderer used for export.
-3. Listen to any song audio in the draft. Confirm the story, visuals, and audio, then choose **Approve & render**.
-4. The approved snapshot becomes one render job. A repeated approval returns the same job. Existing finished videos are kept. Interrupted approvals are safely dispatched when the worker resumes.
+- **Real footage reels:** `GET /api/stock-reels?q=...&provider=all` searches the configured free Pexels/Pixabay libraries. `POST /api/stock-reels` accepts a provider/asset ID, request UUID, descriptive caption and maximum duration. The server resolves the media address itself, bounds downloads to 500 MB, streams to local storage and queues `sourceProcessing`. No Ollama, Whisper transcription, synthetic visuals or generated voice runs for this path. The overlay is explicitly labelled descriptive, not a transcript. Existing short footage stays short.
+- **Narrated business/general videos:** local writing and a timed stock storyboard, with automatic exact-asset selection and final review. Structured ratings for the matching creation type guide new narration; supplied scripts remain unchanged.
+- **Children's original 2D:** the local illustrated-animation path remains available, with optional ten-part stories and the previously documented singing limits.
 
-Stock footage is resolved by its approved Pexels ID on the server. Missing or too-short assets fail explicitly instead of switching to random footage. Shot durations are ultimately tied to the spoken caption timestamps, not the pre-render estimate. Inspect the final crop and captions before posting.
+The manager/dashboard topic explorer uses `GET /api/content-ideas` for 42 curated, original prompts across 10 categories, with balanced initial suggestions and local title-history rotation. It is not limited to those prompts: search for any stock subject or supply your own creation topic. It does not claim live trend discovery or guaranteed earnings.
+
+Phoenix's dashboard creates persistent preparation records which **automatically dispatch render jobs**. Records live in `storage/Phoenix Studio Review Files/creation-drafts.json` and are planned by `run-worker.js`. No scene approval is required for new creations.
+
+1. Choose a story, song, business video, or general video and select **Create video**.
+2. Phoenix plans the narration and visual sequence. Stock selection checks catalog descriptions, sufficient duration, aspect fit, uniqueness and contributor continuity. It does not understand actual video frames or guarantee the same people across clips.
+3. The saved plan automatically becomes a render job. Repeated submissions and interrupted dispatch reuse its identity; partially selected footage survives retry. No automatic publishing is enabled.
+4. Watch the finished video in Library, listen to its audio, and edit if necessary before posting. Older waiting plans resume automatically at worker startup. The plan editor and manual finish button have been removed from the app.
+
+Stock footage is resolved by its selected Pexels ID on the server. Missing or too-short assets fail explicitly instead of switching to random footage. A descriptive but off-topic catalog result is rejected; ID-only catalog entries are labelled as having unknown descriptive relevance. Shot durations are ultimately tied to the spoken caption timestamps, not the pre-render estimate. Inspect the final crop and captions before posting.
 
 ## Singing: supported does not mean installed or quality-verified
 
@@ -31,7 +39,7 @@ If submission becomes uncertain, Phoenix retains that state and will not blindly
 
 ## Animation limits
 
-The version 4 local renderer has fuller face and body silhouettes, shaded eyes with highlights, paws and feathered wings, stitched overalls and pockets, detailed eight-petal flowers, a garden cottage and fence, and separate foreground plants. Room scenes have curtains, shelves, books and a rug; night and ocean scenes have their own scenery. Independent blinks, contextual facial reactions, articulated legs, and four-second motion cycles remain lightweight. Kite flight makes characters hold a string, not fly themselves. Sharp's image cache is capped at 24 MB with one raster worker.
+The version 5 local renderer retains the detailed version 4 artwork and adds sentence-level story cues, acting/listening roles, and persistent tangled/held/flying kite states. Narrated scenes no longer alternate fake speaking mouths; quoted dialogue uses a speaker heuristic, not audio-derived lip sync. A tangled kite has visible knotted string (and a branch when specified), stays tangled through reaction lines, and changes state on resolution. These are bounded scene rules, not a general physical simulation. Sharp's image cache is capped at 24 MB with one raster worker.
 
 This remains limited 2D illustration at 12 fps, rendered sequentially with bounded threads. It is **not** a general anime/3D generation model. No downloaded character artwork or commercial animation subscription is used. Existing videos are preserved; the updated drawing system applies to new renders and draft previews.
 
@@ -51,12 +59,12 @@ node scripts/verify-kids-animation.cjs
 
 ## Developer interfaces
 
-The dashboard sends `POST /api/generations` with `planOnly: true` to create drafts. Older direct-generation callers are retained for compatibility; the approval workflow should explicitly opt into planning. Source-processing endpoints remain separate.
+The dashboard sends `POST /api/generations` with `planOnly: false`. It returns `draftIds`, `count`, `status` and `planOnly: false`; follow each preparation record to its `approvedJobId`, then poll `/api/generations` for render progress. Older `planOnly: true` submissions are accepted but now also render automatically. All API creation requests pass through durable planning; clients must not assume an immediate `jobId`. Source-processing endpoints remain separate.
 
 | Interface | Purpose |
 | --- | --- |
 | `GET /api/creation-drafts` | List saved, non-archived drafts |
-| `PATCH /api/creation-drafts` | `save`, `choose`, `approve`, `retry`, or `archive` a draft |
+| `PATCH /api/creation-drafts` | `save`, `choose`, `approve`, `finish` (automatically), `retry`, or `archive` a draft |
 | `GET /api/creation-drafts/footage?q=...&aspect=9:16` | Search real Pexels choices |
 | `GET /api/creation-drafts/:id/preview?scene=0&frame=6` | Preview the children's SVG pose for a saved section |
 | `GET` / `HEAD /api/creation-drafts/:id/audio` | Stream the saved song, including byte-range playback |
@@ -64,6 +72,6 @@ The dashboard sends `POST /api/generations` with `planOnly: true` to create draf
 
 Draft mutations require `id` and the current `version`; approval also requires `reviewConfirmed: true`. Stock selection sends a section `index` and `assetId`, not an arbitrary media URL. A stale version returns HTTP 409. The draft routes enforce loopback access, and mutations require a same-origin request. API callers should retain the creation `requestId` for safe retries and poll the saved record instead of resubmitting a new creation.
 
-Planning states are `QUEUED`, `PLANNING`, `READY`, `FAILED`, `APPROVING`, `APPROVED`, and `ARCHIVED`. Approved drafts retain their `approvedJobId`; follow `/api/generations` for render progress and `/api/review-files` for completed outputs. Planning leases recover interrupted work, and interrupted approval dispatch reuses its job identity. A failed plan is not a finished video.
+Planning states are `QUEUED`, `PLANNING`, `READY`, `FAILED`, `APPROVING`, `APPROVED`, and `ARCHIVED`. For `input.reviewMode: "final"`, the legacy `APPROVING`/`APPROVED` states mean automatic dispatch, **not human approval**. The render input uses `scriptLocked: true` and `scriptApproved: false`; the immutable narration retains its true origin. Dispatched records retain `approvedJobId`; follow `/api/generations` for progress and `/api/review-files` for outputs. Planning leases recover interrupted work. A failed plan is not a finished video.
 
 Approval is an editorial checkpoint, not a guarantee of audience engagement, commercial rights, or monetization. Check source licences and platform requirements before publishing. Local processing still uses electricity, disk space, and any existing internet connection.

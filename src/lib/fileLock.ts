@@ -9,6 +9,7 @@ type LockOptions = {
 };
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const temporarilyUnavailable = (code?: string) => ["EPERM", "EACCES", "EBUSY"].includes(code || "");
 
 /**
  * A small cross-process lock for short local JSON read/modify/write sections.
@@ -29,10 +30,24 @@ export async function withFileLock<T>(
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   while (!handle) {
     try {
-      handle = await fs.open(lockPath, "wx");
-      await handle.writeFile(token, "utf8");
+      const candidate = await fs.open(lockPath, "wx");
+      try { await candidate.writeFile(token, "utf8"); handle = candidate; }
+      catch (error) {
+        // A failed initialization must not leave an open Windows handle or
+        // enter the critical section without an identifiable ownership token.
+        await candidate.close().catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
+      if (temporarilyUnavailable(code)) {
+        // Windows scanners and another process closing/deleting the same lock
+        // can briefly return access denied instead of EEXIST. Never bypass the
+        // lock or delete it on that basis; retry within the same bounded deadline.
+        if (Date.now() >= deadline) throw new Error(`Timed out accessing local store lock: ${path.basename(lockPath)} (${code}). Check folder permissions or retry after the file is released.`);
+        await wait(retryMs);
+        continue;
+      }
       if (code !== "EEXIST") throw error;
       try {
         const observedToken = await fs.readFile(lockPath, "utf8");
@@ -68,7 +83,8 @@ export async function withFileLock<T>(
           }
         }
       } catch (statError) {
-        if ((statError as NodeJS.ErrnoException).code !== "ENOENT") throw statError;
+        const statCode = (statError as NodeJS.ErrnoException).code;
+        if (statCode !== "ENOENT" && !temporarilyUnavailable(statCode)) throw statError;
       }
       if (Date.now() >= deadline) throw new Error(`Timed out waiting for local store lock: ${path.basename(lockPath)}`);
       await wait(retryMs);
@@ -87,10 +103,16 @@ export async function withFileLock<T>(
   } finally {
     clearInterval(heartbeat);
     await handle.close().catch(() => undefined);
-    try {
-      if ((await fs.readFile(lockPath, "utf8")) === token) await fs.rm(lockPath, { force: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        if ((await fs.readFile(lockPath, "utf8")) === token) await fs.rm(lockPath, { force: true });
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") break;
+        if (!temporarilyUnavailable(code) || attempt >= 9) throw error;
+        await wait(Math.min(40 * (attempt + 1), 200));
+      }
     }
   }
 }

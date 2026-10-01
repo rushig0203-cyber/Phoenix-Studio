@@ -10,7 +10,7 @@ export type FootageChoice = {
   sourcePage: string;
   creator: string;
 };
-export type DraftScene = { narration: string; query: string; footage?: FootageChoice };
+export type DraftScene = { narration: string; query: string; footage?: FootageChoice; footageReason?: string };
 export type CreationDraft = {
   id: string;
   requestKey: string;
@@ -22,6 +22,7 @@ export type CreationDraft = {
   createdAt: string;
   updatedAt: string;
   error?: string;
+  nextAttemptAt?: string;
   leaseUntil?: number;
   leaseOwner?: string;
   approvedJobId?: string;

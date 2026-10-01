@@ -11,6 +11,7 @@ process.env.PHOENIX_FFMPEG_PATH = path.join(project, 'node_modules/@ffmpeg-insta
 process.env.PHOENIX_FFPROBE_PATH = path.join(project, 'node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 require('ts-node').register({ project:path.join(project,'tsconfig.json'), transpileOnly:true, compilerOptions:{module:'commonjs',moduleResolution:'node'} });
 require('tsconfig-paths').register({baseUrl:project,paths:{'@/*':['src/*']}});
+require('./mock-model-admission.cjs');
 process.chdir(root);
 const reviews = require(path.join(project, 'src/lib/reviewFiles.ts'));
 const media = require(path.join(project, 'src/lib/reviewMedia.ts'));

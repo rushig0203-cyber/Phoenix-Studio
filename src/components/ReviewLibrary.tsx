@@ -6,11 +6,16 @@ import Link from "next/link";
 import { FolderOpen, Play, RotateCcw, Search, Trash2 } from "lucide-react";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import ReviewPlayer, { reviewTarget } from "./ReviewPlayer";
+import PostingActions from "./PostingActions";
 
 const pageSize = 6;
 const category = (file: ReviewFile) => file.editedFrom ? "edited" : file.delivery?.creationType?.startsWith("children") || file.audience.startsWith("kids") ? "children" : file.source.filename.startsWith("stock-") ? "stock" : "source";
 const categoryNames: Record<string, string> = { children: "Children’s animation", stock: "Stock video", source: "Source clip", edited: "Edited copy" };
-const seconds = (value?: number) => value === undefined ? "" : `${Math.floor(value / 60)}:${String(Math.round(value % 60)).padStart(2, "0")}`;
+const seconds = (value?: number) => {
+  if (value === undefined || !Number.isFinite(value)) return "";
+  const rounded = Math.max(0, Math.round(value));
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
+};
 
 function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
   const [failed, setFailed] = useState(false);
@@ -64,11 +69,6 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     finally { inFlight.current = false; setBusy(null); }
   }
 
-  async function copyPost(file: ReviewFile) {
-    try { await navigator.clipboard.writeText(`${file.title}\n\n${file.quality.postCopy || ""}\n\n${file.quality.hashtags.join(" ")}`); setNotice("Title, post copy and hashtags copied."); }
-    catch { setError("Clipboard unavailable. Expand Posting details below to select and copy the text."); }
-  }
-
   async function shortcut() {
     try {
       const response = await fetch("/api/review-files/shortcut", { method: "POST" });
@@ -109,7 +109,8 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
           {file.series ? <p className="mt-1 text-xs text-[#687657]">Part {file.series.episodeNumber} of {file.series.episodeCount}</p> : null}
           <p className="mt-2 text-xs text-[#a06b29]">{file.monetizationReview?.status === "NEEDS_CHANGES" ? "Needs changes" : file.monetizationReview?.status === "CHECKED" ? "Manual checklist checked" : "Needs your review"}{file.audience.startsWith("kids") ? " · Made for kids" : ""}</p>
           {!trashOpen ? <>
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold"><Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link><a href={url} download={`${file.title}.mp4`} className="underline">Download</a><button type="button" onClick={() => void copyPost(file)} className="underline">Copy post + tags</button></div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold"><Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link><a href={url} download={`${file.title}.mp4`} className="underline">Download</a></div>
+            <PostingActions file={file} />
             <details className="mt-3 border-t border-[#dbe1cc] pt-3 text-xs text-[#526044]"><summary className="cursor-pointer font-semibold">Posting details & quality notes</summary><div className="mt-3 space-y-3 leading-5">
               <p className="whitespace-pre-wrap">{file.quality.postCopy || file.title}</p><p className="break-words">{file.quality.hashtags.join(" ")}</p>
               <p>{file.quality.captions[0] || "No caption text recorded."}</p>
@@ -120,7 +121,6 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
               {file.delivery?.creationType === "children-song" && file.quality.audio === "local-narration-music" ? <p className="text-amber-800">Older speech-only song: narration is not singing. Use a sung recording for a new version.</p> : null}
               <p>{file.monetizationReview?.warning || "Review the full video and rights before posting. Earnings are not guaranteed."}</p>
               <Link href={`/dashboard/manager?review=${file.id}`} className="block font-bold underline">Rate this video / guide the manager</Link>
-              <div className="flex flex-wrap gap-3"><a href="https://www.youtube.com/upload" target="_blank" rel="noreferrer" className="underline">YouTube upload ↗</a><a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="underline">Instagram ↗</a></div>
             </div></details>
           </> : null}
           <div className="mt-auto flex justify-end pt-3"><button type="button" disabled={busy !== null} aria-label={`${trashOpen ? "Restore" : "Move to Trash"}: ${file.title}`} onClick={() => void move(file, trashOpen)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8b4a32] disabled:opacity-50">{trashOpen ? <RotateCcw className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}{busy === file.id ? "Saving…" : trashOpen ? "Restore video" : "Move to Trash"}</button></div>

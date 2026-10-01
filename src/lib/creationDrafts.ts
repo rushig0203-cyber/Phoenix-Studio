@@ -5,15 +5,17 @@ import { reviewRoot } from "./reviewFiles";
 import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
 import { withLocalRenderSlot } from "./renderResources";
-import { createGenerationJobs, createStockScript, type GenerationInput } from "./generation";
+import { createGenerationJobs, type GenerationInput } from "./generation";
 import { createContent, type KidsRenderInput } from "./kidsRenderer";
 import { getCreativeGuidance } from "./qualityManager";
-import { createStockStoryboard, narrationBeats } from "./stockStoryboard";
+import { narrationBeats } from "./stockStoryboard";
 import { stockNarrationError } from "./stockBrief";
 import { requireSongAudio } from "./songAudio";
 import { selectedFootage } from "./stockCatalog";
 import { prepareLocalSong } from "./localSinging";
+import { prepareStockCreation } from "./stockPreparation";
 import type { CreationDraft, DraftScene } from "./creationDraftTypes";
+import { isWritingWaitError, withWritingSession, writingModelIdentity } from "./writingModel";
 
 const storeFile = () => path.join(reviewRoot(), "creation-drafts.json");
 const leaseOwner = `${process.pid}-${crypto.randomUUID()}`;
@@ -42,6 +44,7 @@ async function mutate<T>(fn: (drafts: CreationDraft[]) => T | Promise<T>) {
 
 export async function createCreationDrafts(inputs: GenerationInput[]) {
   return mutate(drafts => inputs.map((input, index) => {
+    input = { ...input, reviewMode: input.reviewMode || "final" };
     const requestKey = `${input.requestId || crypto.randomUUID()}:${index}`;
     const existing = drafts.find(d => d.requestKey === requestKey);
     if (existing) {
@@ -49,10 +52,27 @@ export async function createCreationDrafts(inputs: GenerationInput[]) {
       return existing;
     }
     const now = new Date().toISOString();
-    const draft: CreationDraft = { id: crypto.randomUUID(), requestKey, version: 1, status: "QUEUED", stage: "Queued for story planning only — no video render", input, scenes: [], createdAt: now, updatedAt: now };
+    const draft: CreationDraft = { id: crypto.randomUUID(), requestKey, version: 1, status: "QUEUED", stage: input.reviewMode === "final" ? "Queued — automatic planning, then rendering; review only the finished video" : "Queued for story planning only — no video render", input, scenes: [], createdAt: now, updatedAt: now };
     drafts.push(draft);
     return draft;
   }));
+}
+
+/** Resume legacy approval gates once at startup; do not endlessly restart failed final-mode jobs. */
+export async function enableAutomaticCreation() {
+  return mutate(drafts => {
+    let resumed = 0;
+    for (const draft of drafts) {
+      if (!["READY", "QUEUED", "FAILED"].includes(draft.status)) continue;
+      if (draft.input.reviewMode === "final" && draft.status !== "READY") continue;
+      draft.input.reviewMode = "final";
+      draft.status = "QUEUED";
+      draft.stage = "Queued — continuing automatically; review the finished video";
+      draft.error = undefined;
+      draft.version++; draft.updatedAt = new Date().toISOString(); resumed++;
+    }
+    return resumed;
+  });
 }
 
 function requireEditable(draft: CreationDraft | undefined, version: number) {
@@ -114,14 +134,16 @@ export async function chooseDraftFootage(id: string, version: number, index: num
 
 async function dispatchApproved(draft: CreationDraft) {
   const script = draft.input.creationType === "children-song" ? draft.input.script! : draft.scenes.map(s => s.narration.trim()).join(" ");
-  const input: GenerationInput = { ...draft.input, script, scriptApproved: true, scriptOrigin: "owner", requestId: draft.id,
+  const automatic = draft.input.reviewMode === "final";
+  const input: GenerationInput = { ...draft.input, script, scriptLocked: true, scriptApproved: !automatic, scriptOrigin: automatic ? draft.input.scriptOrigin : "owner", requestId: draft.id,
     ...(isStockDraft(draft) ? { storyboard: draft.scenes.map(s => ({ narration: s.narration, query: s.query, assetId: s.footage!.id })) } : { sceneNarration: draft.scenes.map(s => s.narration) }),
   };
   const [job] = await createGenerationJobs("local-owner", [input]);
   return mutate(drafts => {
     const stored = drafts.find(d => d.id === draft.id)!;
     if (stored.status === "APPROVED") return stored;
-    stored.status = "APPROVED"; stored.approvedJobId = job.id; stored.stage = "Approved and queued for rendering"; stored.error = undefined;
+    stored.status = "APPROVED"; stored.approvedJobId = job.id; stored.stage = automatic ? "Automatically queued for rendering — final video awaits your review" : "Approved and queued for rendering"; stored.error = undefined;
+    stored.leaseOwner = undefined; stored.leaseUntil = undefined;
     stored.version++; stored.updatedAt = new Date().toISOString();
     return stored;
   });
@@ -145,20 +167,24 @@ export async function approveCreationDraft(id: string, version: number) {
   return dispatchApproved(draft);
 }
 
-export async function changeDraftStatus(id: string, version: number, action: "retry" | "archive") {
+export async function changeDraftStatus(id: string, version: number, action: "retry" | "archive" | "finish") {
   return mutate(drafts => {
     const draft = drafts.find(d => d.id === id);
     if (!draft || draft.version !== version) throw new DraftConflict("Draft changed or no longer exists. Reload it.");
     if (["PLANNING", "APPROVING"].includes(draft.status)) throw new DraftConflict("Wait for the current planning step to finish.");
     if (action === "retry" && draft.status !== "FAILED") throw new DraftConflict("Only failed plans can be retried.");
-    draft.status = action === "retry" ? "QUEUED" : "ARCHIVED";
-    draft.stage = action === "retry" ? "Queued to resume planning" : "Draft archived; saved media retained";
+    if (action === "finish" && !["READY", "FAILED"].includes(draft.status)) throw new DraftConflict("Only waiting or failed plans can be finished automatically.");
+    if (action === "finish" || action === "retry") draft.input.reviewMode = "final";
+    draft.status = action === "archive" ? "ARCHIVED" : "QUEUED";
+    draft.stage = action === "archive" ? "Draft archived; saved media retained" : "Queued to resume planning";
     draft.version++; draft.updatedAt = new Date().toISOString(); draft.error = undefined;
+    draft.nextAttemptAt = undefined;
     return draft;
   });
 }
 
 let planning = false;
+const readyToPlan = (draft: CreationDraft) => (draft.status === "QUEUED" && (!draft.nextAttemptAt || Date.parse(draft.nextAttemptAt) <= Date.now())) || (draft.status === "PLANNING" && (draft.leaseUntil || 0) < Date.now());
 export async function processNextCreationDraft() {
   if (planning) return;
   planning = true;
@@ -166,14 +192,25 @@ export async function processNextCreationDraft() {
   try {
     const all = await listCreationDrafts();
     const approving = all.find(d => d.status === "APPROVING");
-    if (approving) { await dispatchApproved(approving); return; }
-    if (!all.some(d => d.status === "QUEUED" || (d.status === "PLANNING" && (d.leaseUntil || 0) < Date.now()))) return;
+    if (approving) {
+      try { await dispatchApproved(approving); }
+      catch (error) { await mutate(drafts => {
+        const current = drafts.find(d => d.id === approving.id);
+        if (!current || current.status !== "APPROVING") return;
+        current.status = "FAILED"; current.stage = "Could not queue render; retry safely";
+        current.error = error instanceof Error ? error.message : "Render dispatch failed.";
+        current.version++; current.updatedAt = new Date().toISOString();
+      }); }
+      return;
+    }
+    if (!all.some(readyToPlan)) return;
     const draft = await mutate(drafts => {
       if (drafts.some(d => d.status === "PLANNING" && (d.leaseUntil || 0) > Date.now())) return null;
-      const selected = drafts.find(d => d.status === "QUEUED" || (d.status === "PLANNING" && (d.leaseUntil || 0) < Date.now()));
+      const selected = drafts.find(readyToPlan);
       if (!selected) return null;
-      selected.status = "PLANNING"; selected.stage = "Planning locally — video will wait for your approval";
+      selected.status = "PLANNING"; selected.stage = selected.input.reviewMode === "final" ? "Planning — rendering will start automatically" : "Planning — video will wait for your approval";
       selected.leaseOwner = leaseOwner; selected.leaseUntil = Date.now() + leaseMs; selected.version++;
+      selected.nextAttemptAt = undefined;
       return selected;
     });
     if (!draft) return;
@@ -185,29 +222,71 @@ export async function processNextCreationDraft() {
     heartbeat = setInterval(() => void update({ leaseUntil: Date.now() + leaseMs }).catch(() => undefined), 30_000);
     heartbeat.unref();
     try {
-      await withLocalRenderSlot(async () => {
-        const script = draft.input.script?.trim() || (isStockDraft(draft)
-          ? await createStockScript(draft.input)
-          : await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType)));
-        draft.input = { ...draft.input, script };
-        await update({ input: draft.input, stage: "Preparing editable narration and scene previews" });
-        if (draft.input.creationType === "children-song" && draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
-          const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
-          draft.input.songAudioId = song.id;
-          await update({ input: draft.input });
+      let script = "";
+      // This phase is bounded text and catalogue metadata only: it must never
+      // download/decode media, submit singing, or invoke the video renderer.
+      const preparePlan = async () => {
+        if (isStockDraft(draft)) {
+          const prepared = await prepareStockCreation(draft.input, draft.scenes, async (input, scenes, stage) => {
+            draft.input = input; draft.scenes = scenes;
+            await update({ input, scenes, stage });
+          }, draft.input.reviewMode === "final");
+          draft.input = prepared.input; draft.scenes = prepared.scenes; script = prepared.input.script!;
+        } else {
+          script = draft.input.script?.trim() || await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType));
+          draft.input = { ...draft.input, script, scriptOrigin: draft.input.scriptOrigin || (draft.input.script?.trim() ? "owner" : "local-model") };
         }
-        if (draft.input.creationType === "children-song") await requireSongAudio(draft.input.songAudioId, draft.input.duration);
-        const scenes = draft.scenes.length ? draft.scenes : isStockDraft(draft)
-          ? await createStockStoryboard({ ...draft.input, script })
-          : (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, Math.min(18, Math.ceil(draft.input.duration / 7))))
-            .map(narration => ({ narration, query: "" }));
-        // Long lyric sheets are grouped without changing a word.
-        const grouped = (scenes.length > 18 ? narrationBeats(script.replace(/\s+/g, " "), 18).map(narration => ({ narration, query: "" })) : scenes).map(scene => ({ ...scene, narration: scene.narration.replace(/\s+/g, " ").trim() }));
-        validateDraftScenes(draft, grouped);
+        await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
+      };
+      if (writingModelIdentity().startsWith("groq:")) {
+        await withWritingSession(async () => {
+          // Recheck inside the pinned session. A concurrent settings change must
+          // never turn the remote-only exemption into an unreserved local model.
+          if (!writingModelIdentity().startsWith("groq:")) throw new Error("Writing settings changed before planning. Retry to use the selected writer safely.");
+          await preparePlan();
+        });
+      } else {
+        // Acquire the heavy slot BEFORE opening the local writer session; the
+        // opposite lock order can deadlock against a renderer that also writes.
+        await withLocalRenderSlot(() => withWritingSession(preparePlan), "Creation planning", reason => update({ stage: reason }));
+      }
+      if (draft.input.creationType === "children-song") {
+        // Singing generates/stages actual audio and is never RAM-exempt, even
+        // when the lyrics were prepared by Groq. Its own stricter guard stays.
+        await withLocalRenderSlot(async () => {
+          if (draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
+            const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
+            draft.input.songAudioId = song.id;
+            await update({ input: draft.input });
+          }
+          await requireSongAudio(draft.input.songAudioId, draft.input.duration);
+        }, "Song audio preparation", reason => update({ stage: reason }));
+      }
+      const scenes = draft.scenes.length ? draft.scenes
+        : (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, 18))
+          .map(narration => ({ narration, query: "" }));
+      // Long lyric sheets are grouped without changing a word.
+      const grouped = (scenes.length > 18 ? narrationBeats(script.replace(/\s+/g, " "), 18).map(narration => ({ narration, query: "" })) : scenes).map(scene => ({ ...scene, narration: scene.narration.replace(/\s+/g, " ").trim() }));
+      validateDraftScenes(draft, grouped);
+      if (draft.input.reviewMode === "final") {
+        await update({ scenes: grouped });
+        validateDraftScenes(draft, grouped, true);
+        draft.scenes = grouped;
+        await update({ scenes: grouped, status: "APPROVING", stage: "Visual plan ready — queuing render automatically", error: undefined, version: draft.version + 1 });
+      } else {
         await update({ scenes: grouped, status: "READY", stage: "Ready for your review — nothing will render until approved", error: undefined, version: draft.version + 1, leaseUntil: undefined, leaseOwner: undefined });
-      });
+      }
+      if (draft.input.reviewMode === "final") await dispatchApproved(draft);
     } catch (error) {
-      await update({ status: "FAILED", stage: "Planning failed — no video was rendered", error: error instanceof Error ? error.message : "Planning failed.", version: draft.version + 1, leaseUntil: undefined, leaseOwner: undefined });
+      await mutate(drafts => {
+        const current = drafts.find(d => d.id === draft.id);
+        if (!current || current.leaseOwner !== leaseOwner || !["PLANNING", "APPROVING"].includes(current.status)) return;
+        if (isWritingWaitError(error)) {
+          Object.assign(current, { status: "QUEUED", stage: error.message, error: undefined, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });
+          return;
+        }
+        Object.assign(current, { status: "FAILED", stage: "Creation preparation failed — retry resumes saved progress", error: error instanceof Error ? error.message : "Planning failed.", version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });
+      });
     }
   } finally { if (heartbeat) clearInterval(heartbeat); planning = false; }
 }

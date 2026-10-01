@@ -9,12 +9,21 @@ import { promisify } from "node:util";
 import { renderKidsVideo, type KidsRenderInput } from "./kidsRenderer";
 import { withFileLock } from "./fileLock";
 import { JobHistoryConflictError } from "./jobHistory";
-import { withLocalRenderSlot } from "./renderResources";
+import { tryWithLocalRenderSlot, retainExternalRender, finishExternalRender, reconcileHeavyLease } from "./renderResources";
 import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, checkStockScript } from "./stockBrief";
 import { createStockStoryboard, readStockShots, type StockBeat } from "./stockStoryboard";
+import { getCreativeGuidance } from "./qualityManager";
+import type { CreativeGuidance } from "./managerTypes";
+import { generateWritingModel, withWritingSession, isWritingWaitError } from "./writingModel";
+import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt } from "./stockEditorial";
+import { newsWritingContext, type NewsResearch } from "./newsResearch";
+import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
+import { parseSrt, validateTimedCaptions } from "./timedCaptions";
+import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
+import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief } from "./creativeBrief";
 import {
   ensureReviewFolders,
   getReviewFile,
@@ -28,6 +37,9 @@ import {
 export type { PublishingFormat } from "./publishingFormats";
 
 export type GenerationInput = {
+  research?: NewsResearch;
+  reviewMode?: "final" | "storyboard";
+  scriptLocked?: boolean;
   scriptApproved?: boolean;
   sceneNarration?: string[];
   songMode?: "recording" | "local-ace";
@@ -37,6 +49,12 @@ export type GenerationInput = {
   topic: string;
   script?: string;
   scriptOrigin?: "owner" | "local-model";
+  editorial?: EditorialReview;
+  editorialAttempts?: EditorialAttempt[];
+  creativeBrief?: CreativeBrief;
+  managerGuidance?: CreativeGuidance;
+  rendererProtocol?: 1;
+  stockPreparation?: StockPreparation;
   visualTerms?: string[];
   visualTermsOrigin?: "owner" | "local-model";
   storyboard?: StockBeat[];
@@ -68,6 +86,7 @@ export type LocalGenerationJob = {
   progress: number;
   stage: string;
   providerTaskId?: string;
+  resourceReleasedTaskId?: string;
   requestKey?: string;
   pollFailureCount?: number;
   providerLeaseOwner?: string;
@@ -353,6 +372,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false) {
     throw new Error("The local stock renderer needs the Phoenix storyboard update. Apply the integrations patch and restart MoneyPrinterTurbo before creating a stock video.");
   }
   if (approvedFootage && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.assetId) throw new Error("Restart the local renderer with the approved-footage update before rendering. Phoenix will not ignore your selected clips.");
+  if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
 }
 
 export async function generatorReachable() {
@@ -498,6 +518,8 @@ export async function regenerateGenerationJob(id: string) {
       if (input.scriptOrigin === "local-model") delete input.script;
       if (input.visualTermsOrigin === "local-model") delete input.visualTerms;
       delete input.storyboard;
+      delete input.stockPreparation;
+      delete input.editorial;
     }
     const pending = jobs.find(job => job.requestKey === requestKey && !job.archivedAt && ["QUEUED", "RUNNING"].includes(job.status));
     if (pending) return pending;
@@ -634,59 +656,67 @@ function countWords(value: string) {
 
 export function fitStockScriptToDuration(value: string, duration: number) {
   const cleaned = cleanScript(value);
-  // The bundled stock renderer's English voice averages about 2.7 words per
-  // second on this machine. Keep enough complete sentences to land inside the
-  // selected publishing window instead of silently producing a short file.
-  const maxWords = Math.max(120, Math.min(650, Math.round(duration * 3.1)));
-  const minWords = Math.max(100, Math.min(maxWords, Math.round(duration * 2.35)));
-  const sentences = cleaned
-    .match(/[^.!?]+[.!?]+(?:["'”’)]*)?(?=\s|$)/g)
-    ?.map((sentence) => sentence.trim())
-    .filter(Boolean) || [];
-  const selected: string[] = [];
-  let total = 0;
-  for (const sentence of sentences) {
-    const words = countWords(sentence);
-    if (!words) continue;
-    if (total + words > maxWords) break;
-    selected.push(sentence);
-    total += words;
-  }
-  return total >= minWords ? selected.join(" ") : "";
+  // Never discard the payoff to fit a word budget. The editor must rewrite
+  // the whole story or fail explicitly, rather than return its first N words.
+  return stockNarrationError(cleaned, duration) ? "" : cleaned;
 }
 
-export async function createStockScript(input: GenerationInput) {
-  if (input.script?.trim()) {
+export async function createStockScript(input: GenerationInput, onStage: (stage: string) => Promise<unknown> = async () => {}) {
+  const researchContext = newsWritingContext(input.research);
+  if (input.script?.trim() && (input.scriptOrigin !== "local-model" || input.scriptApproved)) {
     const script = cleanScript(input.script);
     const error = stockNarrationError(script, input.duration);
     if (error) throw new Error(error);
     return script;
   }
+  return withWritingSession(async () => {
   const targetWords = Math.max(125, Math.min(600, Math.round(input.duration * 2.78)));
-  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${input.topic}\nTarget ${targetWords} words (within 10%). Start with a clear hook, explain one coherent idea, give useful specifics, and finish with a concise takeaway. Plain spoken English only. No headings, lists, hashtags, stage directions, unsupported statistics, financial promises, or copied slogans.`;
+  const guidance = await getCreativeGuidance(input.creationType);
+  input.managerGuidance = guidance;
+  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${input.topic}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. Use the selected structure rather than turning every subject into a fictional character story. Each beat adds a distinct useful detail and follows logically from the previous one. Start with the concrete problem or useful detail immediately. Preserve the complete promised payoff. Explain why rather than merely listing things. Use short spoken sentences and specific examples where helpful. Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions.`;
   try {
-    const response = await fetch("http://127.0.0.1:11434/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    let rawScript = cleanScript(input.script || "");
+    if (!rawScript) {
+    await onStage("Considering three useful angles and planning the complete payoff");
+    input.creativeBrief = await planCreativeBrief({ ...input, feedbackRevision: guidance.revision, guidance: guidance.rules, saved: input.creativeBrief });
+    await onStage("Creative brief saved — writing the selected explanation and complete ending");
+    const response = await generateWritingModel({
         model: process.env.OLLAMA_MODEL || "qwen2.5:3b",
-        prompt,
-        stream: false,
-        options: { temperature: 0.55, num_predict: Math.ceil(targetWords * 2.35) + 64, num_thread: 2 },
-      }),
-      signal: AbortSignal.timeout(Math.max(150_000, input.duration * 1_200)),
+        prompt: `${prompt}\nSelected outline: ${creativeBriefInstructions(input.creativeBrief)}\nImprovements from your structured reviews: ${guidance.rules.join(" ") || "Keep useful specifics and a coherent explanation."}${researchContext}`,
+        options: { temperature: 0.55, num_predict: Math.ceil(targetWords * 2.35) + 64, num_thread: 2, num_ctx: 4096 },
+      }, { timeoutMs: Math.max(150_000, input.duration * 1_200) });
+    if (!response.ok) throw new Error(`The selected writer returned ${response.status}`);
+    rawScript = cleanScript(String((await response.json()).response || ""));
+    if (countWords(rawScript) < 40) throw new Error("Local script was incomplete");
+    // Persist completed writing before the next admission check. A resource wait
+    // in the editor should resume this draft, not ask the writer to replace it.
+    input.script = rawScript;
+    input.scriptOrigin = "local-model";
+    await onStage("Narration saved — preparing the editorial check");
+    }
+    if (countWords(rawScript) < 40) throw new Error("Local script was incomplete");
+    const { script, editorial } = await editStockNarration({ ...input, script: rawScript, feedbackRevision: guidance.revision, guidanceRules: guidance.rules, briefInstructions: input.creativeBrief ? creativeBriefInstructions(input.creativeBrief) : undefined }, onStage, async attempt => {
+      input.editorialAttempts = [...(input.editorialAttempts || []), attempt].slice(-20);
+      if (input.script && input.script !== attempt.script) {
+        input.storyboard = undefined;
+        input.stockPreparation = undefined;
+        if (input.visualTermsOrigin === "local-model") input.visualTerms = undefined;
+      }
+      input.script = attempt.script;
+      input.scriptOrigin = "local-model";
+      await onStage(attempt.error ? "Editorial attempt saved — local review needs attention" : "Editorial evidence and narration saved");
     });
-    if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
-    const rawScript = cleanScript(String((await response.json()).response || ""));
-    const script = fitStockScriptToDuration(rawScript, input.duration);
-    if (!script) throw new Error(`Local script did not contain enough complete sentences for ${input.duration} seconds`);
-    if (!topicTerms(input.topic).some((term) => script.toLowerCase().includes(term))) {
-      throw new Error("Local script did not match the requested topic");
+    input.editorial = editorial;
+    if (input.script && script !== input.script) {
+      input.storyboard = undefined;
+      if (input.visualTermsOrigin === "local-model") input.visualTerms = undefined;
     }
     return script;
   } catch (error) {
-    throw new Error(`Local narration needs another attempt: ${error instanceof Error ? error.message : String(error)}. No generic replacement script was used. Retry, or supply your own narration in Create a video.`);
+    if (isWritingWaitError(error)) throw error;
+    throw new Error(`Narration needs another attempt: ${error instanceof Error ? error.message : String(error)}. No generic replacement script was used. Retry, or supply your own narration in Create a video.`);
   }
+  });
 }
 
 async function replaceFile(temporary: string, destination: string) {
@@ -700,20 +730,20 @@ async function copyFileAtomically(source: string, destination: string) {
   await replaceFile(temporary, destination);
 }
 
-async function downloadLocalOutput(url: string, destination: string) {
+async function downloadLocalOutput(url: string, destination: string, maximumBytes = MAX_LOCAL_RENDER_BYTES) {
   const response = await fetch(absoluteProviderUrl(url), {
     headers: providerHeaders(),
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok || !response.body) throw new Error("The local stock-video render could not be downloaded.");
   const declared = Number(response.headers.get("content-length") || 0);
-  if (declared > MAX_LOCAL_RENDER_BYTES) throw new Error("The local renderer output exceeded the 2 GB safety limit.");
+  if (declared > maximumBytes) throw new Error("The local renderer artifact exceeded its size limit.");
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   let received = 0;
   const counter = new Transform({
     transform(chunk, _encoding, callback) {
       received += chunk.length;
-      if (received > MAX_LOCAL_RENDER_BYTES) callback(new Error("The local renderer output exceeded the 2 GB safety limit."));
+      if (received > maximumBytes) callback(new Error("The local renderer artifact exceeded its size limit."));
       else callback(null, chunk);
     },
   });
@@ -762,7 +792,32 @@ async function existingReadyOutput(job: LocalGenerationJob, input: GenerationInp
   }
 }
 
-async function completeStockJob(job: LocalGenerationJob, input: GenerationInput, videoUrl: string, shots?: unknown) {
+export async function retainStockArtifacts(id: string, destination: string, media: ProbeResult, raw: unknown) {
+  const data = raw as { version?: unknown; clean_video?: unknown; caption_file?: unknown; narration_file?: unknown; music_present?: unknown; music_file?: unknown; caption_count?: unknown } | undefined;
+  if (!data || data.version !== 1 || typeof data.clean_video !== "string" || typeof data.caption_file !== "string" || typeof data.narration_file !== "string" || typeof data.music_present !== "boolean" || (data.music_present && typeof data.music_file !== "string")) throw new Error("The local renderer did not return required clean-video, caption and audio artifacts. Retry after updating the renderer; no falsely complete review was created.");
+  const directory = path.join(root, "work", `stock-${id}`);
+  await fs.mkdir(directory, { recursive: true });
+  const clean = path.join(directory, "clean.mp4"), captions = path.join(directory, "captions.srt"), narration = path.join(directory, "narration.mp3");
+  await downloadLocalOutput(data.clean_video, clean);
+  const master = await probeVideo(clean);
+  if (!master.hasAudio || master.width !== media.width || master.height !== media.height || Math.abs(master.duration - media.duration) > .2) throw new Error("Clean stock master does not match the finished video's duration, dimensions or audio.");
+  await downloadLocalOutput(data.caption_file, captions, 2 * 1024 * 1024);
+  const cues = validateTimedCaptions(parseSrt(await fs.readFile(captions, "utf8")), media.duration);
+  if (data.caption_count !== cues.length) throw new Error("Saved captions do not match the renderer's reported caption artifact.");
+  await downloadLocalOutput(data.narration_file, narration, 64 * 1024 * 1024);
+  const requireAudio = async (filename: string) => {
+    const { stdout } = await execFileAsync(ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", filename], { timeout: 30_000, windowsHide: true, maxBuffer: 1024 * 1024 });
+    const probe = JSON.parse(stdout);
+    if (!probe.streams?.some((stream: { codec_type: string }) => stream.codec_type === "audio") || !(Number(probe.format?.duration) > 0)) throw new Error("The renderer returned an invalid narration or music artifact.");
+  };
+  await requireAudio(narration);
+  const music = data.music_present ? path.join(directory, "music-source.audio") : undefined;
+  if (music) { await downloadLocalOutput(data.music_file as string, music, 128 * 1024 * 1024); await requireAudio(music); }
+  const artifacts: ReviewArtifacts = { version: 1, renderRevision: "stock-artifacts-v1", finalVideo: artifactReference(destination), editing: { video: artifactReference(clean), offsetSeconds: 0, captionsBaked: false }, captions: artifactReference(captions), narration: artifactReference(narration), music: music ? artifactReference(music) : undefined };
+  return { artifacts, cues, musicPresent: data.music_present };
+}
+
+async function completeStockJob(job: LocalGenerationJob, input: GenerationInput, videoUrl: string, shots?: unknown, artifacts?: unknown) {
   const target = input.targetPlatform === "YouTube" ? "youtube" : "instagram";
   const accountHandle = target === "instagram" ? socialHandle("instagram") : undefined;
   const destination = outputPath(job.id, target);
@@ -770,6 +825,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   await downloadLocalOutput(videoUrl, destination);
   const media = await probeVideo(destination);
   const { format } = validatePublishingOutput(input, media);
+  const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts) : undefined;
   const review = makeReviewFile({
     id: job.id,
     title: input.topic.slice(0, 120),
@@ -777,14 +833,17 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     source: { kind: "pexels", filename: safeFilename(`stock-${job.id}.mp4`), licence: "Pexels free stock footage assembled by the local MoneyPrinterTurbo service" },
     audience: "general",
     quality: {
-      audio: "local-narration-music",
-      captions: captionLines(input.script),
+      audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
+      captions: retained ? retained.cues.map(cue => cue.text) : captionLines(input.script),
       hashtags: topicHashtags(input.topic, input.creationType),
-      postCopy: `${input.topic} — a locally assembled, ready-to-review social video.${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`,
-      checks: ["Original narration with no generic fallback", "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", "No paid AI video provider used"],
+      postCopy: stockPostCopy(input.script || "", input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\nIllustrative stock footage; not footage of this event. Single-source summary; verify developments before posting.` : ""),
+      research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
+      editorial: input.editorial,
+      managerGuidance: input.managerGuidance,
+      checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
       storyboard: input.storyboard?.length ? readStockShots(shots, media.duration) : undefined,
-      warning: "Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.",
+      warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
     },
     processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration).score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration).reason, status: "COMPLETED" },
     delivery: {
@@ -808,6 +867,9 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     },
   });
   review.outputs = { [target]: { filename: path.basename(destination), duration: media.duration, width: media.width, height: media.height } };
+  review.artifacts = retained?.artifacts;
+  review.captionCues = retained?.cues;
+  review.editableMaster = !!retained;
   review.status = "READY";
   await saveReviewFile(review);
   await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Stock video ready for review", duration: media.duration, error: undefined, finishedAt: new Date().toISOString() });
@@ -823,10 +885,13 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
   const result = await renderKidsVideo(job.id, {
     songMode: input.songMode,
     scriptApproved: input.scriptApproved,
+    scriptLocked: input.scriptLocked,
     sceneNarration: input.sceneNarration,
     songAudioId: input.songAudioId,
     topic: input.topic,
     duration: input.duration,
+    publishingFormat: input.publishingFormat,
+    targetPlatform: input.targetPlatform,
     creationType,
     script: input.script,
     voice: input.voice,
@@ -927,6 +992,11 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
   });
   review.outputs = { [target]: { filename: path.basename(destination), duration: media.duration, width: media.width, height: media.height } };
   review.status = "READY";
+  const kidsDirectory = path.dirname(result.file);
+  const kidsCaptions = validateTimedCaptions(parseSrt(await fs.readFile(path.join(kidsDirectory, "captions.srt"), "utf8")), media.duration);
+  review.artifacts = { version: 1, renderRevision: "kids-artifacts-v1", finalVideo: artifactReference(destination), editing: { video: artifactReference(path.join(kidsDirectory, "clean.mp4")), offsetSeconds: 0, captionsBaked: false }, captions: artifactReference(path.join(kidsDirectory, "captions.srt")) };
+  review.captionCues = kidsCaptions;
+  review.editableMaster = true;
   await saveReviewFile(review);
   await rerankCompletedSeries(input.seriesId);
   await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: `${episodeLabel}children's video ready for review`, requestJson: JSON.stringify({ ...input, script: result.script }), duration: media.duration, error: undefined, finishedAt: new Date().toISOString() });
@@ -936,14 +1006,14 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
   await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)));
-  await updateJob(job.id, { progress: 5, stage: "Writing a length-controlled script with local Ollama" });
-  const script = await createStockScript(input);
-  const scriptOrigin = input.scriptOrigin || (input.script?.trim() ? "owner" : "local-model");
-  await updateJob(job.id, { progress: 9, stage: "Planning literal footage for each narration section", requestJson: JSON.stringify({ ...input, script, scriptOrigin }) });
-  const storyboard = await createStockStoryboard({ ...input, script });
-  const prepared: GenerationInput = { ...input, script, scriptOrigin, storyboard, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
+  await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
+  const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, requestJson: JSON.stringify(saved) }));
+  const script = plan.input.script!;
+  const storyboard = plan.input.storyboard!;
+  const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
   await updateJob(job.id, { progress: 12, stage: "Submitting the script to the local stock-video renderer", requestJson: JSON.stringify(prepared) });
   let response: Response;
+  await retainExternalRender(job.id);
   try {
     response = await fetch(providerUrl(process.env.MPT_CREATE_PATH || "/api/v1/videos"), {
       method: "POST",
@@ -953,10 +1023,11 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       video_script: script,
       video_terms: stockSearchTerms(prepared),
       phoenix_storyboard: storyboard,
+      phoenix_artifacts_version: 1,
       video_language: prepared.language,
       video_aspect: prepared.aspect,
       voice_name: prepared.voice === "local-windows-voice" ? "en-US-JennyNeural-Female" : prepared.voice,
-      voice_rate: 1,
+      voice_rate: stockVoiceRate(script, prepared.duration),
       video_source: "pexels",
       match_materials_to_script: true,
       n_threads: 1,
@@ -965,7 +1036,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       video_transition_mode: null,
       video_count: 1,
       bgm_type: "random",
-      bgm_volume: 0.12,
+      bgm_volume: 0.06,
       subtitle_enabled: true,
       subtitle_position: "bottom",
       font_size: prepared.aspect === "9:16" ? 42 : 34,
@@ -979,6 +1050,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   } catch (error) {
     const reconciled = await findProviderTask(job.id, 3);
     if (reconciled) {
+      await retainExternalRender(job.id, reconciled);
       await updateJob(job.id, {
         providerTaskId: reconciled,
         progress: 18,
@@ -992,10 +1064,15 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
     throw new SubmissionUncertainError(error instanceof Error ? error.message : "The local renderer submission response was interrupted.");
   }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || "The free local stock renderer rejected the request.");
+  if (!response.ok) {
+    if (response.status >= 400 && response.status < 500 && response.status !== 408) await finishExternalRender(job.id);
+    else throw new SubmissionUncertainError(`Local renderer returned ${response.status}; reconciling the request before any retry.`);
+    throw new Error(payload.message || payload.error || "The free local stock renderer rejected the request.");
+  }
   const data = payload.data || payload;
   const taskId = String(data.task_id || data.taskId || data.id || await findProviderTask(job.id, 2) || "");
-  if (!taskId) throw new Error("The local stock renderer did not return a task ID.");
+  if (!taskId) throw new SubmissionUncertainError("The local stock renderer did not return a task ID; reconciling before another submission.");
+  await retainExternalRender(job.id, taskId);
   await updateJob(job.id, {
     providerTaskId: taskId,
     progress: 18,
@@ -1007,6 +1084,9 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
 }
 
 async function retryOrFail(job: LocalGenerationJob, error: unknown, failedStage: string) {
+  if (isWritingWaitError(error)) {
+    return updateJob(job.id, { status: "QUEUED", stage: error.message, error: undefined, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), startedAt: undefined, finishedAt: undefined, providerLeaseOwner: undefined, providerLeaseExpiresAt: undefined, localRenderLeaseOwner: undefined, localRenderLeaseExpiresAt: undefined });
+  }
   const message = error instanceof Error ? error.message : "Local creation failed";
   const attempt = job.retryCount + 1;
   const history = [...(job.attempts || []), { at: new Date().toISOString(), attempt, error: message }].slice(-12);
@@ -1017,7 +1097,7 @@ async function retryOrFail(job: LocalGenerationJob, error: unknown, failedStage:
   return updateJob(job.id, { status: "FAILED", stage: `${failedStage} after 3 local attempts`, error: message, retryCount: attempt, attempts: history, providerTaskId: undefined, pollFailureCount: 0, providerLeaseOwner: undefined, providerLeaseExpiresAt: undefined, localRenderLeaseOwner: undefined, localRenderLeaseExpiresAt: undefined, submissionUncertainSince: undefined, finishedAt: new Date().toISOString() });
 }
 
-export async function processNextGenerationJob() {
+async function processNextGenerationJobAdmitted() {
   const job = await claimQueuedJob();
   if (!job) return null;
   const input = JSON.parse(job.requestJson) as GenerationInput;
@@ -1027,7 +1107,7 @@ export async function processNextGenerationJob() {
     : null;
   localHeartbeat?.unref();
   try {
-    if (children) await withLocalRenderSlot(() => runChildrenJob(job, input));
+    if (children) await runChildrenJob(job, input);
     else await startStockJob(job, input);
     return (await listGenerationJobs()).find((item) => item.id === job.id) || null;
   } catch (error) {
@@ -1048,6 +1128,62 @@ export async function processNextGenerationJob() {
       await releaseLocalRenderLease(job.id);
     }
   }
+}
+
+export async function processNextGenerationJob() {
+  const result = await tryWithLocalRenderSlot(processNextGenerationJobAdmitted, "Video creation");
+  return result.acquired ? result.value : null;
+}
+
+/** Independent of normal job polling: even a failed status poll must not abandon
+ * a Python render and start competing work. Network uncertainty retains the slot.
+ */
+export async function reconcileRenderResources() {
+  await reconcileHeavyLease(async external => {
+    let taskId = external.taskId;
+    if (!taskId) {
+      const response = await fetch(providerUrl("/api/v1/tasks?page=1&page_size=100"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
+      if (!response.ok) throw new Error("Renderer task inventory unavailable");
+      const data = (await response.json()).data;
+      if (!Array.isArray(data?.tasks)) throw new Error("Invalid renderer task inventory");
+      taskId = data.tasks.find((task: { request_id?: string }) => task.request_id === external.jobId)?.task_id;
+      if (!taskId) {
+        // A complete successful inventory and grace period establish rejection;
+        // an incomplete page or unreachable endpoint does not.
+        if (Date.now() - Date.parse(external.submittedAt) > 60_000 && Number.isFinite(data.total) && data.total <= data.tasks.length) {
+          await updateJob(external.jobId, { submissionUncertainSince: undefined, status: "QUEUED", stage: "Submission was not accepted; safely queued again", nextAttemptAt: new Date(Date.now() + 5_000).toISOString() });
+          return { state: "terminal" };
+        }
+        return { state: "unknown", error: "Confirming the previous renderer submission; another render will not start yet." };
+      }
+      await updateJob(external.jobId, { providerTaskId: taskId, submissionUncertainSince: undefined, status: "RUNNING", stage: "Reconnected to existing stock task" });
+    }
+    const response = await fetch(providerUrl(`/api/v1/tasks/${encodeURIComponent(taskId!)}`), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
+    if (response.status === 404) {
+      await recordRendererTerminal(external.jobId, taskId!);
+      return { state: "terminal" };
+    }
+    if (!response.ok) throw new Error("Renderer status unavailable");
+    const data = (await response.json()).data;
+    const state = data?.state ?? data?.status;
+    const terminal = state === 1 || state === -1 || ["COMPLETED", "SUCCESS", "SUCCEEDED", "FINISHED", "FAILED", "ERROR", "CANCELLED"].includes(String(state).toUpperCase());
+    if (terminal) {
+      await recordRendererTerminal(external.jobId, taskId!);
+      return { state: "terminal" };
+    }
+    return { state: "running", taskId };
+  });
+}
+
+/** Terminal resource evidence must also reach archived tombstones. Ordinary job
+ * updates intentionally reject those; skipping the marker would adopt the same
+ * retired task again on every queue tick. This never revives or edits its status.
+ */
+async function recordRendererTerminal(jobId: string, taskId: string) {
+  await mutateJobs(jobs => {
+    const job = jobs.find(item => item.id === jobId);
+    if (job?.providerTaskId === taskId) job.resourceReleasedTaskId = taskId;
+  });
 }
 
 async function claimProviderJob() {
@@ -1101,6 +1237,8 @@ async function pollClaimedStockJob(job: LocalGenerationJob) {
     const route = (process.env.MPT_STATUS_PATH || "/api/v1/tasks/{taskId}").replace("{taskId}", encodeURIComponent(job.providerTaskId || ""));
     const response = await fetch(providerUrl(route), { headers: providerHeaders(), signal: AbortSignal.timeout(15_000) });
     if (response.status === 404) {
+      await updateJob(job.id, { resourceReleasedTaskId: job.providerTaskId });
+      await finishExternalRender(job.id, job.providerTaskId);
       await updateJob(job.id, {
         status: "FAILED",
         stage: "Local renderer task was lost after the renderer restarted",
@@ -1119,13 +1257,17 @@ async function pollClaimedStockJob(job: LocalGenerationJob) {
     const providerProgress = Math.max(0, Math.min(100, Number(data.progress || 0)));
     const progress = Math.max(18, Math.min(90, 18 + Math.round(providerProgress * 0.72)));
     if (["COMPLETED", "SUCCESS", "SUCCEEDED", "FINISHED"].includes(state)) {
+      await updateJob(job.id, { resourceReleasedTaskId: job.providerTaskId });
+      await finishExternalRender(job.id, job.providerTaskId);
       const input = JSON.parse(job.requestJson) as GenerationInput;
       // `videos` contains the final narration/music/subtitle mux. The
       // `combined_videos` files are picture-only intermediates.
-      const output = data.video_url || data.videoUrl || data.outputUrl || data.videos?.[0] || data.combined_videos?.[0];
+      const output = data.video_url || data.videoUrl || data.outputUrl || data.videos?.[0];
       if (!output) throw new Error("The local renderer completed without a video URL.");
-      await completeStockJob(job, input, String(output), data.phoenix_storyboard);
+      await completeStockJob(job, input, String(output), data.phoenix_storyboard, data.phoenix_artifacts);
     } else if (["FAILED", "ERROR", "CANCELLED"].includes(state)) {
+      await updateJob(job.id, { resourceReleasedTaskId: job.providerTaskId });
+      await finishExternalRender(job.id, job.providerTaskId);
       await retryOrFail(job, new Error(String(data.error || data.message || payload.message || "Rendering failed.")), "Stock-video render failed");
     } else {
       await updateJob(job.id, { progress, stage: typeof data.phoenix_stage === "string" ? data.phoenix_stage.slice(0, 200) : `Rendering locally · provider ${Math.round(providerProgress)}%`, error: undefined, pollFailureCount: 0, nextAttemptAt: undefined });
@@ -1195,7 +1337,7 @@ async function recoverInterruptedLocalJobs() {
       }
       if (job.submissionUncertainSince) {
         const uncertainFor = now - new Date(job.submissionUncertainSince).getTime();
-        if (uncertainFor < 60_000) {
+        if (uncertainFor >= 0) {
           await updateJob(job.id, {
             stage: "Still confirming the local renderer submission",
             nextAttemptAt: new Date(now + 5_000).toISOString(),

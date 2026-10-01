@@ -4,7 +4,6 @@ import { stockNarrationError } from "@/lib/stockBrief";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  createGenerationJobs,
   generatorReachable,
   listGenerationJobs,
   removeGenerationJob,
@@ -14,9 +13,11 @@ import {
   type GenerationInput,
 } from "@/lib/generation";
 import { JobHistoryConflictError } from "@/lib/jobHistory";
-import { createCreationDrafts } from "@/lib/creationDrafts";
+import { createCreationDrafts, DraftConflict } from "@/lib/creationDrafts";
 import { localSingingStatus } from "@/lib/localSinging";
 import { assertLocalRequest } from "@/lib/localRequest";
+import { readWritingSettings } from "@/lib/writingSettings";
+import { researchNews } from "@/lib/newsResearch";
 import { buildKidsStorySeries, inventKidsIdea, kidsRendererAvailable } from "@/lib/kidsRenderer";
 import {
   durationFitsPublishingFormat,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/publishingFormats";
 
 const schema = z.object({
+  newsId: z.string().regex(/^[a-f0-9]{32}$/).optional(),
   planOnly: z.boolean().default(false),
   songMode: z.enum(["recording", "local-ace"]).default("recording"),
   songStyle: z.string().trim().max(500).optional(),
@@ -69,9 +71,10 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
+    if (data.newsId && !["general", "business"].includes(data.creationType)) return NextResponse.json({ error: "News reports use real-footage explainers, not children's animation or songs." }, { status: 400 });
+    if (data.newsId && (data.script?.trim() || data.visualTerms?.length)) return NextResponse.json({ error: "Report mode writes from its source. Remove the custom narration and shot brief, or create an ordinary video without selecting a news report." }, { status: 400 });
     if (data.creationType === "children-song") {
       if (data.songMode === "local-ace") {
-        if (!data.planOnly) return NextResponse.json({ error: "Generate and listen to the song in a draft before approving its video." }, { status: 400 });
         const singing = await localSingingStatus();
         if (!singing.available) return NextResponse.json({ error: singing.reason }, { status: 503 });
       } else {
@@ -80,6 +83,11 @@ export async function POST(request: Request) {
       }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
+    const needsWriter = !data.script?.trim() || (!children && !data.visualTerms?.length);
+    if (needsWriter) {
+      const writer = readWritingSettings();
+      if (writer.provider === "groq" && (!writer.apiKey || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Groq Free-plan key in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });
+    }
     if (!children && data.script?.trim()) {
       const error = stockNarrationError(data.script, data.duration);
       if (error) return NextResponse.json({ error }, { status: 400 });
@@ -103,9 +111,9 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    if (children && !(await kidsRendererAvailable(data.creationType !== "children-song"))) {
+    if (children && !(await kidsRendererAvailable(data.creationType !== "children-song" && !data.script?.trim()))) {
       return NextResponse.json({
-        error: "The free local children renderer is unavailable. Start Ollama and keep FFmpeg installed.",
+        error: "The children renderer is unavailable. Check your selected writer, FFmpeg and Windows local voice in Studio health.",
       }, { status: 503 });
     }
     if (!children && !(await generatorReachable())) {
@@ -121,7 +129,10 @@ export async function POST(request: Request) {
     }
 
     const requestId = data.requestId || crypto.randomUUID();
+    const research = data.newsId ? await researchNews(data.newsId) : undefined;
     const common = {
+      research,
+      reviewMode: "final",
       songMode: data.songMode,
       songStyle: data.songStyle,
       songAudioId: data.songAudioId,
@@ -156,35 +167,24 @@ export async function POST(request: Request) {
         episodeBeat: episode.beat,
       }));
     } else {
-      inputs = [{ ...common, topic: baseTopic }];
+      inputs = [{ ...common, topic: research ? `Explain this report neutrally: ${research.title}` : baseTopic }];
     }
 
-    if (data.planOnly) {
-      const drafts = await createCreationDrafts(inputs);
-      return NextResponse.json({ draftIds: drafts.map(draft => draft.id), count: drafts.length, status: drafts[0].status, planOnly: true }, { status: 201 });
-    }
-    const jobs = await createGenerationJobs("local-owner", inputs);
-    console.log("[ai-creation] queued", {
-      count: jobs.length,
-      jobIds: jobs.map((job) => job.id),
-      type: data.creationType,
-      format: publishingFormat,
-      topic: baseTopic,
-    });
+    // Both modes use the durable planner. Normal creation proceeds to rendering
+    // automatically. Older clients' planOnly flag no longer creates an approval gate.
+    const drafts = await createCreationDrafts(inputs);
     return NextResponse.json({
-      projectId: jobs[0].projectId,
-      projectIds: jobs.map((job) => job.projectId),
-      jobId: jobs[0].id,
-      jobIds: jobs.map((job) => job.id),
-      count: jobs.length,
-      status: jobs[0].status,
+      draftIds: drafts.map(draft => draft.id),
+      count: drafts.length,
+      status: drafts[0].status,
+      planOnly: false,
       title: baseTopic,
     }, { status: 201 });
   } catch (error) {
     console.error("[ai-creation] queue failed", error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : "Could not queue local creation.",
-    }, { status: error instanceof JobHistoryConflictError ? 409 : 500 });
+    }, { status: error instanceof JobHistoryConflictError || error instanceof DraftConflict ? 409 : 500 });
   }
 }
 

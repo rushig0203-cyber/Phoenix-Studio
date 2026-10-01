@@ -14,6 +14,7 @@ const command = z.discriminatedUnion("action", [
   z.object({ ...common, action: z.literal("choose"), index: z.number().int().min(0).max(17), assetId: z.number().int().positive() }),
   z.object({ ...common, action: z.literal("approve"), reviewConfirmed: z.literal(true) }),
   z.object({ ...common, action: z.literal("retry") }),
+  z.object({ ...common, action: z.literal("finish") }),
   z.object({ ...common, action: z.literal("archive") }),
 ]);
 export async function PATCH(request: Request) {

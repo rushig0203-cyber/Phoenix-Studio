@@ -9,8 +9,25 @@ index a997b7b..9b152d5 100644
  /config.toml.bak
  /storage/
  /.idea/
+diff --git a/app/controllers/v1/video.py b/app/controllers/v1/video.py
+index 8c90c58..a3df813 100644
+--- a/app/controllers/v1/video.py
++++ b/app/controllers/v1/video.py
+@@ -280,6 +280,12 @@ def get_task(
+                 _task_file_to_uri(v, endpoint, task_dir, request_id)
+                 for v in task["combined_videos"]
+             ]
++        if isinstance(task.get("phoenix_artifacts"), dict):
++            artifacts = dict(task["phoenix_artifacts"])
++            for key in ("clean_video", "caption_file", "narration_file", "music_file"):
++                if artifacts.get(key):
++                    artifacts[key] = _task_file_to_uri(artifacts[key], endpoint, task_dir, request_id)
++            response_task["phoenix_artifacts"] = artifacts
+         return utils.get_response(200, response_task)
+ 
+     raise HttpException(
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..e170111 100644
+index c4d12e1..2d44dc1 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -41,15 +58,16 @@ index c4d12e1..e170111 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +101,7 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,8 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
 +    phoenix_storyboard: Optional[List[PhoenixStoryBeat]] = Field(default=None, min_length=1, max_length=18)
++    phoenix_artifacts_version: Optional[Literal[1]] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +138,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +139,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -62,7 +80,7 @@ index c4d12e1..e170111 100644
      video_script_prompt: str = Field(default="", max_length=2000)
      custom_system_prompt: str = Field(default="", max_length=8000)
 diff --git a/app/services/task.py b/app/services/task.py
-index a310390..04b4783 100644
+index a310390..f49eb63 100644
 --- a/app/services/task.py
 +++ b/app/services/task.py
 @@ -13,13 +13,14 @@ from loguru import logger
@@ -168,16 +186,30 @@ index a310390..04b4783 100644
          )
      )
  
-@@ -1493,6 +1513,7 @@ def _run_pipeline(
+@@ -1466,7 +1486,8 @@ def _run_pipeline(
+     # 7. 先完成视频生成任务，再按需提交跨平台发布。第三方上传可能耗时
+     # 数分钟，不应阻塞视频结果返回，也不能反向影响已经生成的成片。
+     cross_post_enabled = (
+-        upload_post.upload_post_service.is_configured()
++        not getattr(params, "phoenix_artifacts_version", None)
++        and upload_post.upload_post_service.is_configured()
+         and upload_post.upload_post_service.auto_upload
+     )
+     platforms = (
+@@ -1493,7 +1514,11 @@ def _run_pipeline(
          "cross_post_error": None,
          "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
          "warnings": generation_warnings or None,
 +        "phoenix_storyboard": public_storyboard,
      }
++    if getattr(params, "phoenix_artifacts_version", None) == 1:
++        from app.services.phoenix_artifacts import read_artifacts
++        kwargs["phoenix_artifacts"] = read_artifacts(final_video_paths[0])
      sm.state.update_task(
          task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs
+     )
 diff --git a/app/services/video.py b/app/services/video.py
-index 0a33dae..4f2e7d9 100644
+index 0a33dae..09f407a 100644
 --- a/app/services/video.py
 +++ b/app/services/video.py
 @@ -356,7 +356,7 @@ def concat_video_clips_with_ffmpeg(
@@ -211,7 +243,7 @@ index 0a33dae..4f2e7d9 100644
              )
  
              # Store clip duration before closing
-@@ -1352,7 +1358,7 @@ def generate_video(
+@@ -1352,10 +1358,14 @@ def generate_video(
              audio_fps=output_audio_fps,
              audio_bitrate=audio_bitrate,
              temp_audiofile_path=_get_temp_audio_dir(output_dir),
@@ -220,7 +252,14 @@ index 0a33dae..4f2e7d9 100644
              logger=None,
              fps=fps,
          )
-@@ -1385,7 +1391,13 @@ def render_image_zoom_video(image_path: str, clip_duration: int = 5) -> str:
++        if getattr(params, "phoenix_artifacts_version", None) == 1:
++            from app.services.phoenix_artifacts import retain_artifacts
++            retain_artifacts(video_path, output_file, audio_path, subtitle_path, utils.get_ffmpeg_binary(),
++                music_path=bgm_file, music_present=bool(bgm_enabled and bgm_file and bgm_mix_succeeded))
+         return bgm_mix_succeeded
+ 
+ 
+@@ -1385,7 +1395,13 @@ def render_image_zoom_video(image_path: str, clip_duration: int = 5) -> str:
          try:
              # Output the video to a file.
              video_file = f"{image_path}.mp4"
@@ -373,19 +412,168 @@ index 2176fa1..c6c0773 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..55d211a
+index 0000000..6e74292
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,413 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
++import hashlib
++import json
 +import math
 +import os
 +import re
++import shutil
 +import subprocess
 +import tempfile
 +import time
++import uuid
 +from pathlib import Path
++
++
++_SHOT_CACHE_BYTES = 256 * 1024 * 1024
++_SHOT_CACHE_FILES = 512
++_SHOT_CACHE_AGE = 7 * 24 * 60 * 60
++_SHOT_CACHE_NAME = re.compile(r"(?:shot-[0-9a-f]{64}\.(?:mp4|json)|\.tmp-shot-[0-9a-f]{32})\Z")
++
++
++def _shot_cache_directory():
++    from app.utils import utils
++
++    return Path(utils.storage_dir("phoenix_shot_cache"))
++
++
++def _file_digest(filename):
++    digest = hashlib.sha256()
++    with open(filename, "rb") as source:
++        for chunk in iter(lambda: source.read(256 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def _cache_regular_file(filename, directory):
++    # Cache cleanup may only touch our exact, flat filenames in this directory.
++    return (filename.parent.resolve() == directory.resolve()
++            and bool(_SHOT_CACHE_NAME.fullmatch(filename.name))
++            and not filename.is_symlink()
++            and not getattr(filename, "is_junction", lambda: False)()
++            and filename.is_file())
++
++
++def _prune_shot_cache(directory, reserve=0):
++    entries = []
++    for filename in directory.iterdir():
++        if _cache_regular_file(filename, directory):
++            stat = filename.stat()
++            entries.append((stat.st_mtime, stat.st_size, filename))
++    total, count, now = sum(item[1] for item in entries), len(entries), time.time()
++    for modified, size, filename in sorted(entries):
++        stale = modified < now - (_SHOT_CACHE_AGE if not filename.name.startswith(".tmp-") else 3600)
++        if stale or total + reserve > _SHOT_CACHE_BYTES or count + (2 if reserve else 0) > _SHOT_CACHE_FILES:
++            if _cache_regular_file(filename, directory):
++                filename.unlink()
++                total, count = total - size, count - 1
++
++
++class _ShotCache:
++    """Optional bounded disk reuse, never an admission requirement for rendering.
++
++    Content identity works across backend task directories. Timing uses the same
++    cumulative frame count as the encoder; moving an unchanged shot in a timeline
++    does not invalidate it unless its effective frame count changes.
++    """
++
++    def __init__(self, ffmpeg):
++        self.directory, self.source_digests = None, {}
++        try:
++            directory = _shot_cache_directory()
++            if directory.is_symlink() or getattr(directory, "is_junction", lambda: False)():
++                return
++            directory.mkdir(parents=True, exist_ok=True)
++            _prune_shot_cache(directory)
++            executable = Path(ffmpeg).resolve()
++            stat = executable.stat()
++            self.encoder = [str(executable), stat.st_size, stat.st_mtime_ns]
++            self.directory = directory
++        except (OSError, ValueError):
++            pass
++
++    def key(self, shot, frames, resolution):
++        if self.directory is None:
++            return None
++        try:
++            source = Path(shot["path"])
++            before = source.stat()
++            stamp = (str(source.resolve()), before.st_size, before.st_mtime_ns)
++            digest = self.source_digests.get(stamp)
++            if digest is None:
++                digest = _file_digest(source)
++                after = source.stat()
++                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
++                    return None
++                self.source_digests[stamp] = digest
++            recipe = {"version": 2, "source": digest, "source_start": shot["sourceStart"], "stretch": shot.get("visualStretch", 1.0),
++                      "frames": frames, "resolution": list(resolution), "fps": 30,
++                      "filter": "reset-pts,scale-increase,crop,setsar,bounded-slowdown-eof", "codec": "libx264",
++                      "preset": "veryfast", "crf": 20, "pixel_format": "yuv420p",
++                      "encoder": self.encoder}
++            return hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()
++        except (OSError, ValueError):
++            return None
++
++    def restore(self, key, destination):
++        if self.directory is None or key is None:
++            return False
++        try:
++            video = self.directory / f"shot-{key}.mp4"
++            metadata = video.with_suffix(".json")
++            if not all(_cache_regular_file(file, self.directory) for file in (video, metadata)):
++                return False
++            if metadata.stat().st_size > 8192:
++                return False
++            record = json.loads(metadata.read_text(encoding="utf-8"))
++            if (not isinstance(record, dict) or record.get("key") != key
++                    or not 0 < video.stat().st_size == record.get("bytes", 0) <= _SHOT_CACHE_BYTES
++                    or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("sha256", "")))):
++                return False
++            shutil.copyfile(video, destination)
++            # Validate the exact copied bytes, including same-size corruption.
++            if _file_digest(destination) != record["sha256"]:
++                return False
++            for file in (video, metadata):
++                os.utime(file, None)
++            return True
++        except (OSError, ValueError):
++            return False
++
++    def remember(self, key, source):
++        if self.directory is None or key is None:
++            return
++        staged = []
++        try:
++            size = source.stat().st_size
++            if not 0 < size < _SHOT_CACHE_BYTES - 8192:
++                return
++            _prune_shot_cache(self.directory, size + 8192)
++            video = self.directory / f"shot-{key}.mp4"
++            metadata = video.with_suffix(".json")
++            for _ in range(2):
++                staged.append(self.directory / f".tmp-shot-{uuid.uuid4().hex}")
++            shutil.copyfile(source, staged[0])
++            record = {"key": key, "bytes": size, "sha256": _file_digest(staged[0])}
++            staged[1].write_text(json.dumps(record), encoding="utf-8")
++            os.replace(staged[0], video)
++            os.replace(staged[1], metadata)
++            _prune_shot_cache(self.directory)
++        except (OSError, ValueError):
++            # A full/read-only/missing cache must never lose a successful render.
++            pass
++        finally:
++            for file in staged:
++                try:
++                    file.unlink(missing_ok=True)
++                except OSError:
++                    pass
 +
 +
 +def words(text):
@@ -560,6 +748,17 @@ index 0000000..55d211a
 +            used.add(identity)
 +            source = material._material_source_record(candidate, filename)
 +            sources.append(source)
++            # A tiny measured duration mismatch can use the same entire visual
++            # a little slower. Narration/audio timing remains unchanged. Large
++            # deficits still fail rather than repeating or borrowing footage.
++            remaining = beat["end"] - cursor
++            stretch = remaining / available
++            if approved_id and 1.0 < stretch <= 1.025:
++                timeline.append({**beat, "start": cursor, "end": beat["end"], "path": filename,
++                                 "sourceStart": 0.0, "sourcePage": source.get("source_page"),
++                                 "visualStretch": stretch, "timingAdjustment": "visual slowdown up to 2.5%; at most three end frames held for frame-rate rounding"})
++                cursor = beat["end"]
++                break
 +            # Advance within this same source, never restart footage to pad a section.
 +            source_start = 0.0
 +            while source_start < available - 0.05 and cursor < beat["end"] - 0.001:
@@ -584,6 +783,9 @@ index 0000000..55d211a
 +    for index, shot in enumerate(timeline):
 +        if not all(math.isfinite(shot[key]) for key in ("start", "end", "sourceStart")) or shot["sourceStart"] < 0 or shot["end"] <= shot["start"]:
 +            raise ValueError("Invalid storyboard shot timing.")
++        stretch = shot.get("visualStretch", 1.0)
++        if not isinstance(stretch, (float, int)) or not math.isfinite(stretch) or not 1.0 <= stretch <= 1.025:
++            raise ValueError("Storyboard visual slowdown exceeds the small timing-correction limit.")
 +        if index and abs(shot["start"] - timeline[index - 1]["end"]) > 0.001:
 +            raise ValueError("Storyboard contains a timing gap or overlap.")
 +    width, height = resolution
@@ -597,6 +799,7 @@ index 0000000..55d211a
 +
 +    output = Path(output_file)
 +    output.parent.mkdir(parents=True, exist_ok=True)
++    cache = _ShotCache(ffmpeg)
 +    with tempfile.TemporaryDirectory(prefix="phoenix-shots-", dir=output.parent) as temporary:
 +        parts = []
 +        for index, shot in enumerate(timeline):
@@ -605,24 +808,91 @@ index 0000000..55d211a
 +            if frames < 1:
 +                raise ValueError(f"Storyboard shot {index + 1} has no output frames.")
 +            part = Path(temporary) / f"shot-{index:03}.mp4"
-+            encoded = run(["-threads", "1", "-ss", str(shot["sourceStart"]), "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
-+            counts = re.findall(r"^frame=(\d+)", encoded.stdout.decode(errors="replace"), re.M)
-+            if not counts or int(counts[-1]) != frames:
-+                raise ValueError(f"Storyboard shot {index + 1} ended before its narration section. Choose longer footage and retry.")
++            cache_key = cache.key(shot, frames, resolution)
++            reused = cache.restore(cache_key, part)
++            if not reused:
++                # Older FFmpeg builds can drop the final one or two frames at
++                # resampling EOF. Bound correction to three frames, then verify
++                # the requested frame count. Never loop the source.
++                eof = ",tpad=stop_mode=clone:stop_duration=0.1" if shot.get("visualStretch", 1.0) > 1 else ""
++                encoded = run(["-threads", "1", "-ss", str(shot["sourceStart"]), "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"setpts=(PTS-STARTPTS)*{shot.get('visualStretch', 1.0)},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30{eof}", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
++                counts = re.findall(r"^frame=(\d+)", encoded.stdout.decode(errors="replace"), re.M)
++                if not counts or int(counts[-1]) != frames:
++                    raise ValueError(f"Storyboard shot {index + 1} ended before its narration section. Choose longer footage and retry.")
++                if cache_key == cache.key(shot, frames, resolution):
++                    cache.remember(cache_key, part)
 +            parts.append(part.name)
-+            progress(50 + 24 * (index + 1) / len(timeline), f"Rendering timed shot {index + 1}/{len(timeline)}")
++            progress(50 + 24 * (index + 1) / len(timeline), f"{'Reusing verified' if reused else 'Rendering timed'} shot {index + 1}/{len(timeline)}")
 +        manifest = Path(temporary) / "concat.txt"
 +        manifest.write_text("".join(f"file '{name}'\n" for name in parts), encoding="utf-8")
 +        assembled = Path(temporary) / "combined.mp4"
 +        run(["-f", "concat", "-safe", "1", "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
 +        os.replace(assembled, output)
 +    return str(output)
+diff --git a/app/services/phoenix_artifacts.py b/app/services/phoenix_artifacts.py
+new file mode 100644
+index 0000000..37cf817
+--- /dev/null
++++ b/app/services/phoenix_artifacts.py
+@@ -0,0 +1,49 @@
++"""Retain exact editable media for Phoenix, without encoding the picture again."""
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++
++
++def retain_artifacts(video_path, final_path, audio_path, subtitle_path, ffmpeg, music_path=None, music_present=False):
++    from app.services.phoenix_storyboard import subtitle_cues
++
++    final = Path(final_path)
++    captions = subtitle_cues(subtitle_path) if subtitle_path else []
++    if not captions:
++        raise ValueError("Phoenix requires actual timed subtitles; no captionless success is allowed.")
++    clean = final.with_name(f"{final.stem}-clean.mp4")
++    temporary = clean.with_suffix(".partial.mp4")
++    flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
++    try:
++        result = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
++            "-threads", "1", "-i", str(video_path), "-threads", "1", "-i", str(final),
++            "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-shortest", "-movflags", "+faststart", str(temporary)],
++            capture_output=True, timeout=120, creationflags=flags)
++        if result.returncode:
++            raise ValueError("Could not retain clean narrated master: " + result.stderr.decode(errors="replace")[-500:])
++        os.replace(temporary, clean)
++    finally:
++        temporary.unlink(missing_ok=True)
++    retained_music = None
++    if music_present and music_path:
++        source = Path(music_path)
++        retained_music = final.with_name(f"{final.stem}-music{source.suffix}")
++        shutil.copyfile(source, retained_music)
++    manifest = {"version": 1, "clean_video": str(clean), "caption_file": str(subtitle_path),
++        "narration_file": str(audio_path), "music_present": bool(music_present),
++        "music_file": str(retained_music) if retained_music else None,
++        "caption_count": len(captions)}
++    destination = final.with_suffix(".artifacts.json")
++    temporary_json = destination.with_suffix(".tmp")
++    temporary_json.write_text(json.dumps(manifest), encoding="utf-8")
++    os.replace(temporary_json, destination)
++    return manifest
++
++
++def read_artifacts(final_path):
++    result = json.loads(Path(final_path).with_suffix(".artifacts.json").read_text(encoding="utf-8"))
++    if result.get("version") != 1:
++        raise ValueError("Phoenix editing artifacts were not saved.")
++    return result
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
-index 0000000..488d5f0
+index 0000000..d532242
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,328 @@
++import json
++import os
++import shutil
 +import subprocess
 +import tempfile
 +import unittest
@@ -633,6 +903,39 @@ index 0000000..488d5f0
 +
 +
 +class TestPhoenixStoryboard(unittest.TestCase):
++    def test_small_measured_shortfall_uses_same_approved_visual_slightly_slower(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        params = VideoParams(video_subject="Repair", video_script="The replacement part is delayed.", phoenix_storyboard=[{"narration": "The replacement part is delayed.", "query": "repair part", "assetId": 123}])
++        candidate = MaterialInfo(url="approved", duration=10, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 10.2, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 10)), patch("app.services.task_artifacts.patch_script_data", return_value=True):
++            timeline, public = storyboard.prepare_timeline("unused-test", params, "unused.srt", 10.2, lambda *_: None)
++            self.assertEqual(len(timeline), 1)
++            self.assertAlmostEqual(timeline[0]["visualStretch"], 1.02)
++            self.assertEqual(timeline[0]["sourceStart"], 0)
++            self.assertEqual(public[0]["end"], 10.2)
++            self.assertIn("timingAdjustment", public[0])
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 11, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 10)):
++            with self.assertRaisesRegex(ValueError, "only 10.0s"):
++                storyboard.prepare_timeline("unused-test", params, "unused.srt", 11, lambda *_: None)
++
++    def test_slight_slowdown_renders_exact_frame_count(self):
++        from app.utils import utils
++        ffmpeg = utils.get_ffmpeg_binary()
++        flags = subprocess.CREATE_NO_WINDOW if storyboard.os.name == "nt" else 0
++        with tempfile.TemporaryDirectory(prefix="phoenix-small-timing-test-") as temporary:
++            root = Path(temporary)
++            source = root / "source.mp4"
++            subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=10", "-an", "-c:v", "libx264", "-threads", "1", str(source)], check=True, capture_output=True, creationflags=flags)
++            timeline = [{"start": 0, "end": 10.2, "sourceStart": 0, "path": str(source), "visualStretch": 1.02}]
++            with patch.object(storyboard, "_shot_cache_directory", return_value=root / "cache"):
++                output = root / "output.mp4"
++                storyboard.render_timeline(timeline, output, (160, 90), ffmpeg)
++                decoded = subprocess.run([ffmpeg, "-v", "error", "-threads", "1", "-i", str(output), "-vf", "scale=1:1", "-filter_threads", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"], capture_output=True, check=True, creationflags=flags).stdout
++                self.assertEqual(len(decoded), 306 * 3)
++                timeline[0]["visualStretch"] = 1.1
++                with self.assertRaisesRegex(ValueError, "slowdown"):
++                    storyboard.render_timeline(timeline, root / "invalid.mp4", (160, 90), ffmpeg)
++
 +    def test_approved_footage_never_triggers_a_new_search_or_silent_replacement(self):
 +        from app.models.schema import VideoParams, MaterialInfo
 +        params = VideoParams(video_subject="Morning", video_script="Open curtains.", phoenix_storyboard=[{"narration": "Open curtains.", "query": "opening curtains", "assetId": 123}])
@@ -692,7 +995,17 @@ index 0000000..488d5f0
 +            timeline=[{"start":0,"end":0.7,"sourceStart":0,"path":str(root/"red.mp4")},{"start":0.7,"end":2,"sourceStart":0.2,"path":str(root/"blue.mp4")}]
 +            output=root/"output.mp4"
 +            progress=[]
-+            storyboard.render_timeline(timeline, output, (160,90), ffmpeg, lambda percent, stage: progress.append((percent,stage)))
++            with patch.object(storyboard, "_shot_cache_directory", return_value=root / "cache"):
++                storyboard.render_timeline(timeline, output, (160,90), ffmpeg, lambda percent, stage: progress.append((percent,stage)))
++                # A different backend task/output reuses identical pictures but
++                # still concatenates the exact original measured frame timing.
++                reused = root / "next-task" / "output.mp4"
++                real_run = subprocess.run
++                with patch.object(storyboard.subprocess, "run", wraps=real_run) as render:
++                    storyboard.render_timeline(timeline, reused, (160,90), ffmpeg)
++                    self.assertEqual(len(render.call_args_list), 1)
++                    self.assertIn("concat", render.call_args.args[0])
++                self.assertEqual(output.read_bytes(), reused.read_bytes())
 +            decoded=subprocess.run([ffmpeg,"-v","error","-threads","1","-i",str(output),"-vf","scale=1:1","-filter_threads","1","-pix_fmt","rgb24","-f","rawvideo","-"],capture_output=True,check=True,creationflags=flags).stdout
 +            self.assertEqual(len(decoded),60*3)
 +            self.assertGreater(decoded[20*3],decoded[20*3+2]+100)
@@ -748,6 +1061,231 @@ index 0000000..488d5f0
 +            self.assertEqual(timed.call_args.args[0],shots)
 +            legacy.assert_not_called()
 +            self.assertEqual(final.call_args.kwargs["subtitle_path"],"captions.srt")
++
++
++class TestPhoenixShotCache(unittest.TestCase):
++    def setUp(self):
++        self.temporary = tempfile.TemporaryDirectory(prefix="phoenix-shot-cache-test-")
++        self.addCleanup(self.temporary.cleanup)
++        self.root = Path(self.temporary.name)
++        self.cache_dir = self.root / "cache"
++        self.ffmpeg = self.root / "ffmpeg-fixture"
++        self.ffmpeg.write_bytes(b"test encoder recipe")
++        self.source = self.root / "source.mp4"
++        self.source.write_bytes(b"test source content")
++        self.cache_patch = patch.object(storyboard, "_shot_cache_directory", return_value=self.cache_dir)
++        self.cache_patch.start()
++        self.addCleanup(self.cache_patch.stop)
++        self.shot = {"start": 0, "end": 1, "sourceStart": 0, "path": str(self.source)}
++        self.encoded_calls = []
++
++    def fake_render(self, arguments, **_kwargs):
++        destination = Path(arguments[-1])
++        if "-frames:v" in arguments:
++            frames = int(arguments[arguments.index("-frames:v") + 1])
++            self.encoded_calls.append(arguments)
++            destination.write_bytes(f"encoded picture frames:{frames}".encode())
++            return subprocess.CompletedProcess(arguments, 0, stdout=f"frame={frames}\n".encode(), stderr=b"")
++        destination.write_bytes(b"assembled fixture")
++        return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
++
++    def render(self, shots=None, task="first", resolution=(160, 90)):
++        return storyboard.render_timeline(shots or [self.shot], self.root / task / "output.mp4", resolution, str(self.ffmpeg))
++
++    def test_changed_task_or_source_path_reuses_content_identical_shot(self):
++        copy = self.root / "other-task-source.mp4"
++        shutil.copyfile(self.source, copy)
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render()
++            self.render([{**self.shot, "path": str(copy)}], task="second")
++        self.assertEqual(len(self.encoded_calls), 1)
++        self.assertEqual(len(list(self.cache_dir.glob("*.mp4"))), 1)
++
++    def test_failed_later_shot_keeps_successful_shot_for_next_attempt(self):
++        second = {**self.shot, "start": 1, "end": 2, "sourceStart": .5}
++        def fail_second(arguments, **kwargs):
++            if "-frames:v" in arguments and "0.5" in arguments:
++                raise subprocess.TimeoutExpired(arguments, 240)
++            return self.fake_render(arguments, **kwargs)
++        with patch.object(storyboard.subprocess, "run", side_effect=fail_second):
++            with self.assertRaises(subprocess.TimeoutExpired):
++                self.render([self.shot, second])
++        self.assertEqual(len(list(self.cache_dir.glob("*.mp4"))), 1)
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render([self.shot, second], task="retry")
++        self.assertEqual(len(self.encoded_calls), 2)
++        self.assertFalse(list(self.root.glob("*/phoenix-shots-*")))
++
++    def test_source_offset_frame_count_format_and_encoder_changes_invalidate(self):
++        cache = storyboard._ShotCache(str(self.ffmpeg))
++        key = cache.key(self.shot, 30, (160, 90))
++        self.assertNotEqual(key, cache.key({**self.shot, "sourceStart": .1}, 30, (160, 90)))
++        self.assertNotEqual(key, cache.key(self.shot, 31, (160, 90)))
++        self.assertNotEqual(key, cache.key(self.shot, 30, (90, 160)))
++        self.source.write_bytes(b"changed source same path")
++        self.assertNotEqual(key, cache.key(self.shot, 30, (160, 90)))
++        self.ffmpeg.write_bytes(b"changed encoder")
++        original = cache.key(self.shot, 30, (160, 90))
++        self.assertNotEqual(original, storyboard._ShotCache(str(self.ffmpeg)).key(self.shot, 30, (160, 90)))
++
++    def test_shifted_timeline_uses_frame_count_not_absolute_start(self):
++        cache = storyboard._ShotCache(str(self.ffmpeg))
++        self.assertEqual(cache.key(self.shot, 30, (160, 90)), cache.key({**self.shot, "start": 9, "end": 10}, 30, (160, 90)))
++
++    def test_same_size_corrupt_output_is_reencoded_not_reused(self):
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render()
++            cached = next(self.cache_dir.glob("*.mp4"))
++            cached.write_bytes(b"x" * cached.stat().st_size)
++            self.render(task="retry")
++        self.assertEqual(len(self.encoded_calls), 2)
++
++    def test_invalid_metadata_or_missing_video_is_only_cache_miss(self):
++        for corruption in ("invalid-json", "wrong-type", "missing-video", "oversized-json"):
++            with self.subTest(corruption=corruption), patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++                self.render()
++                metadata = next(self.cache_dir.glob("*.json"))
++                if corruption == "missing-video":
++                    metadata.with_suffix(".mp4").unlink()
++                else:
++                    metadata.write_text({"invalid-json": "{", "wrong-type": "[]", "oversized-json": " " * 8193}[corruption])
++                before = len(self.encoded_calls)
++                self.render(task="retry")
++                self.assertEqual(len(self.encoded_calls), before + 1)
++
++    def test_unwritable_or_missing_cache_never_blocks_rendering(self):
++        with patch.object(storyboard, "_shot_cache_directory", side_effect=PermissionError("read-only cache")), patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.assertTrue(Path(self.render()).is_file())
++        cache = storyboard._ShotCache(str(self.ffmpeg))
++        key = cache.key(self.shot, 30, (160, 90))
++        shutil.rmtree(self.cache_dir)
++        cache.remember(key, self.source)
++        self.assertFalse(cache.restore(key, self.root / "copied.mp4"))
++
++    def test_cache_write_failure_keeps_successful_output_and_no_partial_entry(self):
++        with patch.object(storyboard.shutil, "copyfile", side_effect=OSError("disk full")), patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.assertTrue(Path(self.render()).is_file())
++        self.assertFalse(list(self.cache_dir.iterdir()))
++
++    def test_changing_one_shot_only_reencodes_that_shot(self):
++        second = {**self.shot, "start": 1, "end": 2, "sourceStart": .5}
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render([self.shot, second])
++            before = len(self.encoded_calls)
++            self.render([self.shot, {**second, "sourceStart": .75}], task="repaired")
++        self.assertEqual(before, 2)
++        self.assertEqual(len(self.encoded_calls), 3)
++        self.assertIn("0.75", self.encoded_calls[-1])
++
++    def test_incomplete_frame_count_is_not_committed(self):
++        def incomplete(arguments, **kwargs):
++            result = self.fake_render(arguments, **kwargs)
++            result.stdout = b"frame=29\n"
++            return result
++        with patch.object(storyboard.subprocess, "run", side_effect=incomplete):
++            with self.assertRaisesRegex(ValueError, "ended before"):
++                self.render()
++        self.assertEqual(list(self.cache_dir.iterdir()), [])
++
++    def test_eviction_is_bounded_and_only_removes_owned_cache_files(self):
++        self.cache_dir.mkdir()
++        unrelated = self.cache_dir / "owner-video.mp4"
++        unrelated.write_bytes(b"keep user media")
++        external = self.root / "finished.mp4"
++        external.write_bytes(b"keep finished output")
++        old = self.cache_dir / ("shot-" + "a" * 64 + ".mp4")
++        old.write_bytes(b"old cached bytes")
++        os.utime(old, (1, 1))
++        with patch.object(storyboard, "_SHOT_CACHE_BYTES", 20000):
++            cache = storyboard._ShotCache(str(self.ffmpeg))
++            self.assertFalse(old.exists())
++            for index in range(8):
++                part = self.root / "encoded-part.mp4"
++                part.write_bytes(bytes([index]) * 5000)
++                cache.remember(f"{index:064x}", part)
++            owned = [file for file in self.cache_dir.iterdir() if storyboard._SHOT_CACHE_NAME.fullmatch(file.name)]
++            self.assertLessEqual(sum(file.stat().st_size for file in owned), 20000)
++        self.assertEqual(unrelated.read_bytes(), b"keep user media")
++        self.assertEqual(external.read_bytes(), b"keep finished output")
++        self.assertFalse(list(self.cache_dir.glob(".tmp-*")))
++
++    def test_cached_metadata_contains_only_content_identity_not_source_path(self):
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render()
++        record = json.loads(next(self.cache_dir.glob("*.json")).read_text())
++        self.assertEqual(set(record), {"key", "bytes", "sha256"})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test/services/test_phoenix_artifacts.py b/test/services/test_phoenix_artifacts.py
+new file mode 100644
+index 0000000..ccd859e
+--- /dev/null
++++ b/test/services/test_phoenix_artifacts.py
+@@ -0,0 +1,66 @@
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++import imageio_ffmpeg
++from app.services.phoenix_artifacts import retain_artifacts, read_artifacts
++
++
++class TestPhoenixArtifacts(unittest.TestCase):
++    def test_master_preserves_uncaptioned_picture_and_exact_final_audio(self):
++        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
++        with tempfile.TemporaryDirectory(prefix="phoenix-master-test-") as temporary:
++            directory = Path(temporary)
++            base, final = directory / "combined.mp4", directory / "final.mp4"
++            def run(arguments):
++                return subprocess.run([ffmpeg, "-v", "error", "-nostdin", "-y", *arguments], capture_output=True, check=True).stdout
++            run(["-f", "lavfi", "-i", "color=c=blue:s=160x90:r=12", "-t", "2", "-c:v", "libx264", "-threads", "1", str(base)])
++            run(["-f", "lavfi", "-i", "color=c=red:s=160x90:r=12", "-f", "lavfi", "-i", "sine=frequency=880:duration=2", "-t", "2", "-c:v", "libx264", "-threads", "1", "-c:a", "aac", str(final)])
++            captions = directory / "captions.srt"
++            captions.write_text("1\n00:00:00,000 --> 00:00:01,900\nOriginal words.\n", encoding="utf-8")
++            manifest = retain_artifacts(base, final, final, captions, ffmpeg)
++            self.assertFalse(manifest["music_present"])
++            self.assertEqual(manifest["caption_count"], 1)
++            self.assertEqual(read_artifacts(final), manifest)
++            def picture(file):
++                return run(["-i", str(file), "-map", "0:v:0", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
++            self.assertEqual(picture(base), picture(manifest["clean_video"]))
++            self.assertNotEqual(picture(final), picture(manifest["clean_video"]))
++            def sound(file):
++                return run(["-i", str(file), "-map", "0:a:0", "-f", "s16le", "-"])
++            self.assertEqual(sound(final), sound(manifest["clean_video"]))
++
++    def test_missing_subtitles_cannot_be_reported_as_finished(self):
++        with self.assertRaisesRegex(ValueError, "actual timed subtitles"):
++            retain_artifacts("unused.mp4", "unused-final.mp4", "unused.mp3", "", "unused")
++
++    def test_artifact_protocol_is_advertised_and_rejects_unknown_versions(self):
++        from app.models.schema import VideoParams
++        self.assertIn("phoenix_artifacts_version", VideoParams.model_json_schema()["properties"])
++        with self.assertRaises(ValueError):
++            VideoParams(video_subject="Test", phoenix_artifacts_version=99)
++
++    def test_task_response_converts_artifacts_to_download_urls(self):
++        from starlette.requests import Request
++        from app.controllers.v1 import video as controller
++        with tempfile.TemporaryDirectory(prefix="phoenix-artifact-url-test-") as temporary:
++            directory = Path(temporary) / "fixture"
++            directory.mkdir()
++            artifacts = {"version": 1, "music_present": False, "caption_count": 1}
++            for key, name in (("clean_video", "clean.mp4"), ("caption_file", "captions.srt"), ("narration_file", "voice.mp3")):
++                file = directory / name
++                file.write_bytes(b"fixture")
++                artifacts[key] = str(file)
++            task = {"task_id": "fixture", "state": 1, "phoenix_artifacts": artifacts}
++            request = Request({"type": "http", "method": "GET", "path": "/api/v1/tasks/fixture", "headers": []})
++            with patch.object(controller.base, "get_task_id", return_value="request"), patch.object(controller.sm.state, "get_task", return_value=task), patch.object(controller.utils, "task_dir", return_value=temporary), patch.dict(controller.config.app, {"endpoint": ""}):
++                response = controller.get_task(request, "fixture", None)
++            self.assertEqual(response["data"]["phoenix_artifacts"]["clean_video"], "/tasks/fixture/clean.mp4")
++            self.assertEqual(response["data"]["phoenix_artifacts"]["caption_file"], "/tasks/fixture/captions.srt")
++            self.assertEqual(task["phoenix_artifacts"]["clean_video"], str(directory / "clean.mp4"))
 +
 +
 +if __name__ == "__main__":

@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "concurrently \"next dev --webpack\" \"node run-worker.js\"",
-    "build": "next build --webpack",
-    "start": "concurrently \"next start\" \"node run-worker.js\"",
+    "predev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-phoenix.ps1 -ServicesOnly -NoBrowser",
+    "dev": "concurrently \"next dev --webpack --hostname 127.0.0.1\" \"node run-worker.js\"",
+    "build": "node --max-old-space-size=256 scripts/build-phoenix.cjs",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-phoenix.ps1 -NoBrowser",
     "lint": "eslint",
     "worker": "node run-worker.js",
     "owner:create": "node scripts/create-owner.js"

@@ -18,6 +18,7 @@ require("tsconfig-paths").register({ baseUrl: projectRoot, paths: { "@/*": ["src
 // Stores resolve process.cwd() at import time. No live server or user files are touched.
 process.chdir(testRoot);
 const ai = require(path.join(projectRoot, "src/lib/generation.ts"));
+const resources = require(path.join(projectRoot, "src/lib/renderResources.ts"));
 const source = require(path.join(projectRoot, "src/lib/sourceProcessing.ts"));
 const aiApi = require(path.join(projectRoot, "src/app/api/generations/route.ts"));
 const sourceApi = require(path.join(projectRoot, "src/app/api/source-processing/route.ts"));
@@ -32,7 +33,23 @@ const input = {
 };
 const write = (filename, value) => fs.writeFileSync(filename, JSON.stringify(value));
 const read = (filename) => JSON.parse(fs.readFileSync(filename, "utf8"));
-const request = (endpoint, id) => new Request(`http://localhost/api/${endpoint}?id=${id}`, { method: "DELETE" });
+const request = (endpoint, id) => new Request(`http://localhost/api/${endpoint}?id=${id}`, { method: "DELETE", headers: { origin: 'http://localhost' } });
+
+test('archived missing backend task releases its slot permanently without reviving history', async () => {
+  const archived = { ...job('FAILED'), archivedAt: '2026-09-07T00:00:00Z', providerTaskId: 'retired-task' };
+  write(aiPath, [archived]);
+  assert.equal((await resources.tryWithLocalRenderSlot(async () => assert.fail('legacy reservation skipped'))).acquired, false);
+  const originalFetch = global.fetch, originalBase = process.env.MPT_BASE_URL;
+  process.env.MPT_BASE_URL = 'http://127.0.0.1:8080';
+  global.fetch = async () => new Response('{}', { status: 404 });
+  try { await ai.reconcileRenderResources(); }
+  finally { global.fetch = originalFetch; if (originalBase === undefined) delete process.env.MPT_BASE_URL; else process.env.MPT_BASE_URL = originalBase; }
+  assert.equal(await resources.readHeavyLease(), null);
+  const stored = read(aiPath)[0];
+  assert.equal(stored.resourceReleasedTaskId, 'retired-task');
+  assert.equal(stored.status, 'FAILED'); assert.equal(stored.archivedAt, archived.archivedAt);
+  assert.deepEqual(await ai.listGenerationJobs(), []);
+});
 function job(status) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();

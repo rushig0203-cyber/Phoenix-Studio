@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import type { ReviewFile } from "@/lib/reviewFiles";
+import PostingActions from "./PostingActions";
 
 export function reviewTarget(file: ReviewFile) {
   if (file.delivery?.platform && file.outputs[file.delivery.platform]) return file.delivery.platform;
@@ -23,6 +24,16 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
     modal?.showModal();
     return () => modal?.close();
   }, []);
+
+  useEffect(() => {
+    const player = video.current;
+    return () => {
+      if (!player) return;
+      player.pause();
+      player.removeAttribute("src");
+      player.load();
+    };
+  }, [attempt]);
 
   useEffect(() => {
     if (phase !== "loading") return;
@@ -46,7 +57,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       <button type="button" autoFocus onClick={onClose} aria-label="Close video preview" className="rounded-lg border p-2"><X className="h-5 w-5" /></button>
     </div>
     <div className="bg-[#182015]">
-      <video key={attempt} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="auto" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(62dvh,620px)] w-full object-contain"
+      <video key={attempt} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(62dvh,620px)] w-full object-contain"
         onLoadedData={() => setPhase("ready")} onPlaying={() => setPhase("playing")} onWaiting={() => setPhase("loading")} onCanPlay={() => setPhase("ready")} onError={failed} />
     </div>
     <div className="space-y-3 p-5">
@@ -59,6 +70,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         <Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>
       </div>
       <p className="text-xs text-[#687657]">One player at a time keeps your laptop responsive. If autoplay is blocked, press Play in the video controls.</p>
+      <PostingActions file={file} />
     </div>
   </dialog>;
 }

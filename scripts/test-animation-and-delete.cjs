@@ -10,6 +10,50 @@ const { kidsAnimationSvg, planKidsAnimationScene } = require('../src/lib/kidsAni
 sharp.concurrency(1);
 sharp.cache({ memory: 16, files: 0, items: 16 });
 
+test('jump poses have grounded anticipation, airborne stretch and a soft landing', () => {
+  const { kidsHopPose } = require('../src/lib/kidsAnimation');
+  const anticipation = kidsHopPose(.09 * Math.PI), flight = kidsHopPose(.48 * Math.PI), landing = kidsHopPose(.86 * Math.PI);
+  assert.equal(anticipation.lift, 0); assert.ok(anticipation.scaleY < 1);
+  assert.ok(flight.lift > 33 && flight.scaleY > 1);
+  assert.equal(landing.lift, 0); assert.ok(landing.scaleY < 1);
+  assert.deepEqual(kidsHopPose(0), kidsHopPose(2 * Math.PI));
+  for (const pose of [anticipation, flight, landing]) assert.ok(Math.abs(pose.scaleX * pose.scaleY - 1) < .001);
+});
+
+test('reaction lines retain the previous emotion until the story changes it', () => {
+  const worried = planKidsAnimationScene('Bear and Bunny', 'Bear felt sad.');
+  const continued = planKidsAnimationScene('Bear and Bunny', 'Bunny sat beside him.', 1, worried);
+  assert.equal(continued.emotion, 'worried');
+  assert.equal(planKidsAnimationScene('Bear and Bunny', 'Bear smiled.', 2, continued).emotion, 'happy');
+});
+
+test('kite problem, reaction, resolution and flight have persistent distinct visual states', () => {
+  const topic = 'Bunny and Bird untangle a garden kite';
+  const stuck = planKidsAnimationScene(topic, 'The kite was tangled in a tree branch.');
+  const reaction = planKidsAnimationScene(topic, 'Bunny wondered what to do.', 1, stuck);
+  const free = planKidsAnimationScene(topic, 'They untangled the kite.', 2, reaction);
+  const flying = planKidsAnimationScene(topic, 'The kite rose above the garden.', 3, free);
+  assert.equal(stuck.kiteState, 'tangled');
+  assert.equal(stuck.kiteCaughtHigh, true);
+  assert.equal(reaction.kiteState, 'tangled');
+  assert.equal(free.kiteState, 'held');
+  assert.equal(free.kiteCaughtHigh, false);
+  assert.notEqual(free.emotion, 'worried');
+  assert.equal(flying.kiteState, 'flying');
+});
+
+test('narrated scenes no longer fake alternating speech or make both actors do every action', () => {
+  const { planKidsPerformance } = require('../src/lib/kidsAnimation');
+  const performance = planKidsPerformance('Benny reaches for the kite.', ['bunny', 'bird'], ['Benny', 'Tika']);
+  assert.deepEqual(performance.active, [true, false]);
+  assert.equal(performance.speaker, -1);
+  const svg = kidsAnimationSvg({ topic: 'Benny Bunny and Tika Bird fly a kite', caption: 'Benny reaches for the kite.', index: 1, frame: 5, cast: ['bunny', 'bird'], castNames: ['Benny', 'Tika'], aspect: '9:16' });
+  assert.match(svg, /data-actor="0" data-action="reach" data-speaking="false"/);
+  assert.match(svg, /data-actor="1" data-action="listen" data-speaking="false"/);
+  assert.deepEqual(planKidsPerformance('Bunny hops while Bear watches.', ['bunny', 'bear']).active, [true, false]);
+  assert.deepEqual(planKidsPerformance('Benny jumps while Tika quietly listens.', ['bunny', 'bird'], ['Benny', 'Tika']).active, [true, false]);
+});
+
 test('all seven character designs rasterize in both publishing formats', async () => {
   for (const kind of ['bunny', 'bird', 'bear', 'fox', 'dog', 'cat', 'fish']) {
     for (const aspect of ['16:9', '9:16']) {

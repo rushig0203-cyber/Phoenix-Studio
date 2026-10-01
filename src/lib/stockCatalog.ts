@@ -32,8 +32,9 @@ async function pexels(route: string) {
   return response.json();
 }
 
-export async function searchFootage(query: string, aspect: "9:16" | "16:9") {
-  const params = new URLSearchParams({ query, per_page: "8", page: "1", orientation: aspect === "9:16" ? "portrait" : "landscape" });
+export async function searchFootage(query: string, aspect: "9:16" | "16:9", anyOrientation = false, page = 1, pageSize = 8) {
+  const params = new URLSearchParams({ query, per_page: String(Math.min(40, Math.max(8, pageSize))), page: String(Math.max(1, Math.min(3, page))), orientation: aspect === "9:16" ? "portrait" : "landscape" });
+  if (anyOrientation) params.delete("orientation");
   const data = await pexels(`search?${params}`);
   const results: FootageChoice[] = [];
   for (const video of data.videos || []) {

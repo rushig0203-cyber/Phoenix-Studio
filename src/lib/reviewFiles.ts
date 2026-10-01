@@ -15,7 +15,10 @@ export type ReviewFile = {
   trashedAt?: string;
   editedFrom?: string;
   editableMaster?: boolean;
+  artifacts?: import("./reviewArtifacts").ReviewArtifacts;
   captionCues?: Array<{ start: number; end: number; text: string }>;
+  /** Retained editor choice; saved cues may exist even when subtitles are off. */
+  captionEditing?: { enabled: boolean; position: "top" | "bottom"; size: number; color: string };
   title: string;
   createdAt: string;
   updatedAt: string;
@@ -31,11 +34,20 @@ export type ReviewFile = {
   };
   outputs: Partial<Record<ReviewTarget, { filename: string; duration: number; width: number; height: number }>>;
   quality: {
+    subtitles?: { decision: "speech" | "none" | "uncertain"; reason: string };
+    postingAnalysis?: {
+      status: "QUEUED" | "ANALYZING" | "WAITING" | "FAILED" | "COMPLETE";
+      fingerprint?: string; updatedAt: string; attempts: number; nextAttemptAt?: string;
+      detail: string; model?: string; sampledAt?: number[]; observations?: string[];
+      alignment?: "consistent" | "mismatch" | "unknown"; alignmentReason?: string;
+    };
+    research?: { source: string; url: string; publishedAt: string; fetchedAt: string; limitation: string };
+    editorial?: import("./stockEditorial").EditorialReview;
     managerGuidance?: { revision: string; feedbackCount: number; rules: string[] };
     visualBrief?: string[];
     storyboard?: import("./stockStoryboard").StockShot[];
     sourceDuration?: number;
-    audio: "natural-audio-preserved" | "local-music-replaced" | "local-narration-music" | "supplied-song" | "no-audio" | "needs-review";
+    audio: "natural-audio-preserved" | "local-music-replaced" | "local-narration-music" | "local-narration" | "supplied-song" | "no-audio" | "needs-review";
     captions: string[];
     hashtags: string[];
     postCopy?: string;
@@ -59,7 +71,7 @@ export type ReviewFile = {
   delivery?: {
     publishingFormat: ReviewPublishingFormat;
     platform: ReviewTarget;
-    aspect: "9:16" | "16:9";
+    aspect: "9:16" | "16:9" | "1:1" | "original";
     requestedDuration: number;
     actualDuration: number;
     creationType: ReviewCreationType;
@@ -157,6 +169,18 @@ export async function saveReviewFile(file: ReviewFile) {
 
 export async function getReviewFile(id: string) {
   return (await readReviewFiles()).find((file) => file.id === id) || null;
+}
+
+/** Update only the intended metadata under the index lock; never resurrect a deleted output. */
+export async function updateReviewFile(id: string, change: (file: ReviewFile) => ReviewFile) {
+  return withFileLock(indexLockPath, async () => {
+    const files = await readReviewFiles(true);
+    const index = files.findIndex(file => file.id === id && !file.trashedAt);
+    if (index < 0) return null;
+    files[index] = change(files[index]);
+    await writeReviewFilesUnlocked(files);
+    return files[index];
+  });
 }
 
 export async function removeReviewFile(id: string) {

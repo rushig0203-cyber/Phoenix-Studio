@@ -8,6 +8,18 @@ import { writeAtomicJson } from "./atomicJson";
 import { getReviewFile, outputPath, reviewRoot, safeReviewId, saveReviewFile, sourcePath, type ReviewFile } from "./reviewFiles";
 import { FFMPEG_ENCODER_RESOURCE_ARGS, FFMPEG_FILTER_RESOURCE_ARGS, lowerChildProcessPriority, withLocalRenderSlot } from "./renderResources";
 import type { EditCue, ReviewEditDraft, ReviewEditJob, ReviewEditState } from "./reviewEditTypes";
+import { artifactReference, resolveArtifact } from "./reviewArtifacts";
+import { parseSrt, captionSrt } from "./timedCaptions";
+export { parseSrt } from "./timedCaptions";
+export class EditConflict extends Error {}
+export function editErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof z.ZodError) {
+    const issue = error.issues[0];
+    if (issue?.path[0] === "hashtags") return "Use up to 30 hashtags beginning with # and containing only letters, numbers or underscores.";
+    return issue ? `${issue.path.join(" ") || "Edit"}: ${issue.message}` : fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 const store = () => path.join(reviewRoot(), "review-edit-jobs.json");
 const draftPath = (id: string) => path.join(reviewRoot(), "work", `edit-draft-${id}.json`);
@@ -50,19 +62,18 @@ export async function listReviewEdits(reviewId?: string) {
   return (await json<ReviewEditJob[]>(store(), [])).filter(j => !j.archivedAt && (!reviewId || j.reviewId === reviewId)).map(timed);
 }
 
-export function parseSrt(text: string): EditCue[] {
-  const time = (h: string, m: string, s: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
-  return text.replace(/\r/g, "").split(/\n\s*\n/).flatMap(block => {
-    const match = block.match(/(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)\n([\s\S]*)/);
-    return match ? [{ start: time(...match.slice(1, 5) as [string,string,string,string]), end: time(...match.slice(5, 9) as [string,string,string,string]), text: match[9].replace(/\n/g, " ").trim() }] : [];
-  });
-}
-
 async function sourceFor(file: ReviewFile) {
   const target = file.delivery?.platform || (file.outputs.youtube ? "youtube" : "instagram");
   const output = file.outputs[target];
   if (!output) throw new Error("This review file has no finished video to edit.");
   const base = { path: outputPath(file.id, target), offset: 0, duration: output.duration, width: output.width, height: output.height, clean: false, captions: [] as EditCue[], music: undefined as string | undefined };
+  if (file.artifacts) {
+    const { editing, captions, version } = file.artifacts;
+    if (version !== 1 || !Number.isFinite(editing.offsetSeconds) || editing.offsetSeconds < 0) throw new Error("This saved editing manifest is incompatible or invalid.");
+    return { ...base, path: await resolveArtifact(editing.video), offset: editing.offsetSeconds, clean: !editing.captionsBaked,
+      captions: captions ? parseSrt(await fs.readFile(await resolveArtifact(captions), "utf8")) : [],
+      music: editing.replacementAudio ? await resolveArtifact(editing.replacementAudio) : undefined };
+  }
   if (file.editedFrom) {
     const clean = path.join(reviewRoot(), "work", `edit-${file.id}`, "clean.mp4");
     if (await exists(clean)) return { ...base, path: clean, clean: file.editableMaster === true, captions: file.captionCues || [] };
@@ -76,11 +87,15 @@ async function sourceFor(file: ReviewFile) {
       if (await exists(clean)) return { ...base, path: clean, clean: true, captions };
       return { ...base, captions };
     }
-    const jobs = await json<Array<{id:string;sourceFile:string;reviewIds:string[]}>>(path.join(reviewRoot(), "source-processing-jobs.json"), []);
+    const jobs = await json<Array<{id:string;sourceFile:string;reviewIds:string[];mode?:string;status?:string}>>(path.join(reviewRoot(), "source-processing-jobs.json"), []);
     const job = jobs.find(j => j.id === jobId);
     if (job) {
       const original = sourcePath(job.id, job.sourceFile);
-      const clipIndex = job.reviewIds.indexOf(file.id);
+      // Legacy completed highlights reversed the render-order IDs for display.
+      // Only undo that known historical transformation; new files use manifests.
+      const renderOrder = job.mode === "highlights" && job.status === "COMPLETED" ? [...job.reviewIds].reverse() : job.reviewIds;
+      const clipIndex = renderOrder.indexOf(file.id);
+      if (clipIndex < 0) return base;
       const directory = path.join(reviewRoot(), "work", `source-${job.id}`, `clip-${clipIndex + 1}`);
       const captions = await fs.readFile(path.join(directory, "captions.srt"), "utf8").then(parseSrt).catch(() => []);
       if (await exists(original)) {
@@ -99,13 +114,14 @@ export async function getReviewEditState(id: string): Promise<ReviewEditState> {
   const initial: ReviewEditDraft = {
     title: file.title, postCopy: file.quality.postCopy || "", hashtags: file.quality.hashtags,
     trimStart: 0, trimEnd: source.duration, format: "original", framing: "fit", cropPosition: .5, volume: 1,
-    captionsEnabled: source.clean && source.captions.length > 0, captionPosition: file.audience === "kids-3-6" ? "top" : "bottom", captionSize: 32,
-    captionColor: "#FFFFFF", cues: source.captions,
+    captionsEnabled: source.clean && (file.captionEditing?.enabled ?? source.captions.length > 0),
+    captionPosition: file.captionEditing?.position ?? (file.audience === "kids-3-6" ? "top" : "bottom"),
+    captionSize: file.captionEditing?.size ?? 32, captionColor: file.captionEditing?.color ?? "#FFFFFF", cues: source.captions,
   };
   const draft = await json<ReviewEditDraft>(draftPath(id), initial);
   return { draft, duration: source.duration, width: source.width, height: source.height, canReplaceCaptions: source.clean,
     previewIsClean: source.clean && !needsFinishedPreview(file, source),
-    captionNote: source.clean ? undefined : "This older export has captions baked into its picture. Trim, framing, audio and posting text can be edited. Regenerate the original job to create an editable caption master.",
+    captionNote: source.clean ? undefined : "This export has no saved clean caption master. Trim, framing, audio and posting text can be edited, but its baked-in captions cannot be replaced. New exports from the updated pipeline retain editing artifacts.",
     mediaUrl: `/api/review-files/${id}/media?editSource=1`, jobs: await listReviewEdits(id) };
 }
 export async function getEditorMedia(id: string) {
@@ -137,11 +153,20 @@ export async function saveReviewEditDraft(id: string, value: unknown) {
 }
 export async function queueReviewEdit(id: string, value: unknown) {
   await run(ffmpeg, ["-version"]); await run(ffprobe, ["-version"]);
-  const draft = await saveReviewEditDraft(id, value);
-  return mutate(jobs => {
+  const state = await getReviewEditState(id);
+  const draft = validateEdit(value, state.duration);
+  if (!state.canReplaceCaptions && draft.captionsEnabled) throw new Error("This video has no clean master for replacing its baked-in captions.");
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify(draft)).digest("hex");
+  return mutate(async jobs => {
     const existing = jobs.find(j => j.reviewId === id && !j.archivedAt && ["QUEUED","PROCESSING"].includes(j.status));
-    if (existing) return timed(existing);
-    const job: ReviewEditJob = { id: crypto.randomUUID(), reviewId: id, outputId: crypto.randomUUID(), title: draft.title, draft, status: "QUEUED", progress: 0, stage: "Queued for edited copy", createdAt: new Date().toISOString() };
+    if (existing) {
+      const prior = existing.draftFingerprint || crypto.createHash("sha256").update(JSON.stringify(existing.draft)).digest("hex");
+      if (prior !== fingerprint) throw new EditConflict("A different edit is already queued or rendering for this video. Let it finish, or remove the queued edit before exporting these changes.");
+      await atomicJson(draftPath(id), draft);
+      return timed(existing);
+    }
+    const job: ReviewEditJob = { id: crypto.randomUUID(), reviewId: id, outputId: crypto.randomUUID(), title: draft.title, draft, draftFingerprint: fingerprint, status: "QUEUED", progress: 0, stage: "Queued for edited copy", createdAt: new Date().toISOString() };
+    await atomicJson(draftPath(id), draft);
     jobs.push(job); return job;
   });
 }
@@ -177,13 +202,16 @@ export function trimmedCues(draft: ReviewEditDraft) {
 }
 function assFile(draft: ReviewEditDraft, width: number, height: number) {
   const color = draft.captionColor.slice(1); const bgr = `${color.slice(4)}${color.slice(2,4)}${color.slice(0,2)}`;
-  const font = Math.round(draft.captionSize * height / 720);
+  const font = Math.round(draft.captionSize * Math.min(width, height) / 720);
   return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${width}\nPlayResY: ${height}\nWrapStyle: 0\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,${font},&H00${bgr},&H00${bgr},&H00202020,&H88000000,-1,0,0,0,100,100,0,0,1,2,1,${draft.captionPosition === "top" ? 8 : 2},45,45,${Math.round(height*.07)},1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n` + trimmedCues(draft).map(c => `Dialogue: 0,${stamp(c.start)},${stamp(c.end)},Default,,0,0,0,,${c.text.replace(/\\/g,"/").replace(/[{}]/g,"").replace(/[\r\n]+/g,"\\N")}`).join("\n");
 }
 let inFlight: Promise<void> | null = null;
 export function processNextReviewEdit(): Promise<void> {
   if (inFlight) return inFlight;
-  inFlight = withLocalRenderSlot(async () => {
+  inFlight = (async () => {
+    // Idle polling must not queue behind rendering or wait for extra RAM.
+    if (!(await listReviewEdits()).some(job => ["QUEUED", "PROCESSING"].includes(job.status))) return;
+    await withLocalRenderSlot(async () => {
     const job = await mutate(jobs => {
       for (const pending of jobs.filter(j => j.status === "PROCESSING" && !j.archivedAt)) {
         let alive = false; try { if(pending.workerPid) { process.kill(pending.workerPid,0); alive=true; } } catch {}
@@ -223,15 +251,21 @@ export function processNextReviewEdit(): Promise<void> {
       const destination = outputPath(job.outputId,target);
       await fs.copyFile(final,`${destination}.partial`); await fs.rename(`${destination}.partial`,destination);
       const now = new Date().toISOString();
+      await fs.writeFile(path.join(directory, "captions.srt"), captionSrt(source.clean ? trimmedCues(draft) : []), "utf8");
       const file: ReviewFile = { ...original,id:job.outputId,title:draft.title,createdAt:now,updatedAt:now,status:"READY",targets:[target],
         outputs:{[target]:{filename:path.basename(destination),duration:Number(probe.format.duration),width:video.width,height:video.height}},
         editedFrom:original.id,editableMaster:source.clean,captionCues:source.clean?trimmedCues(draft):[],
-        quality:{...original.quality,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags,checks:[...original.quality.checks,"Manually edited copy: trim, framing, audio and caption settings applied"]},
-        delivery:original.delivery?{...original.delivery,aspect:height>width?"9:16":"16:9",actualDuration:duration,requestedDuration:duration}:undefined,
+        captionEditing: source.clean ? { enabled: draft.captionsEnabled, position: draft.captionPosition, size: draft.captionSize, color: draft.captionColor } : undefined,
+        artifacts: { version: 1, renderRevision: "editor-artifacts-v1", finalVideo: artifactReference(destination), editing: { video: artifactReference(path.join(directory, "clean.mp4")), offsetSeconds: 0, captionsBaked: !source.clean }, captions: source.clean ? artifactReference(path.join(directory, "captions.srt")) : undefined },
+        quality:{...original.quality,postingAnalysis:undefined,subtitles:undefined,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags,checks:[...original.quality.checks,"Manually edited copy: trim, framing, audio and caption settings applied"]},
+        delivery:original.delivery?{...original.delivery,aspect:draft.format === "original" ? (width === height ? "1:1" : Math.abs(width/height-9/16)<.02 ? "9:16" : Math.abs(width/height-16/9)<.02 ? "16:9" : "original") : draft.format,actualDuration:duration,requestedDuration:duration}:undefined,
         processing:undefined,monetizationReview:original.monetizationReview?{...original.monetizationReview,status:"NOT_REVIEWED"}:undefined };
       await saveReviewFile(file);
       await patchJob(job.id,{status:"COMPLETED",progress:100,stage:"Edited copy ready for review",finishedAt:now});
     } catch(error) { await patchJob(job.id,{status:"FAILED",stage:"Edited export failed",error:error instanceof Error?error.message:String(error),finishedAt:new Date().toISOString()}); }
-  }).finally(()=>{inFlight=null;});
+  }, "Manual video edit", reason => mutate(jobs => {
+    for (const job of jobs) if (job.status === "QUEUED" && !job.archivedAt) job.stage = `Queued · ${reason}`;
+  }));
+  })().finally(()=>{inFlight=null;});
   return inFlight;
 }

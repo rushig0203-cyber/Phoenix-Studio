@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertLocalRequest } from "@/lib/localRequest";
 import { JobHistoryConflictError } from "@/lib/jobHistory";
 import {
   createSourceJob,
@@ -43,6 +44,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   try {
     const filename = decodedHeader(request, "x-phoenix-filename");
     const title = decodedHeader(request, "x-phoenix-title");
@@ -84,6 +87,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   const parsed = z.string().uuid().safeParse(new URL(request.url).searchParams.get("id"));
   if (!parsed.success) return NextResponse.json({ error: "A valid job id is required." }, { status: 400 });
   try {

@@ -8,6 +8,7 @@ const project = path.resolve(__dirname, '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-approval-test-'));
 require('ts-node').register({ project: path.join(project, 'tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });
 require('tsconfig-paths').register({ baseUrl: project, paths: { '@/*': ['src/*'] } });
+require('./mock-model-admission.cjs');
 process.chdir(temporary);
 const drafts = require(path.join(project, 'src/lib/creationDrafts.ts'));
 const generation = require(path.join(project, 'src/lib/generation.ts'));
@@ -18,8 +19,16 @@ const { createContent } = require(path.join(project, 'src/lib/kidsRenderer.ts'))
 const root = path.join(temporary, 'storage', 'Phoenix Studio Review Files');
 const file = path.join(root, 'creation-drafts.json');
 const realFetch = global.fetch;
+
+test('news mode rejects custom-script bypass and children workflows before provider calls', async () => {
+  const route = require(path.join(project, 'src/app/api/generations/route.ts'));
+  for (const data of [{ creationType: 'children-story' }, { creationType: 'general', script: 'Custom narration' }, { creationType: 'general', visualTerms: ['random beach'] }]) {
+    const response = await route.POST(new Request('http://localhost:3000/api/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' }, body: JSON.stringify({ topic: 'A report', newsId: 'a'.repeat(32), ...data }) }));
+    assert.equal(response.status, 400);
+  }
+});
 const script = Array(12).fill('Open the curtains and let daylight into your room before you reach for your phone.').join(' ');
-const input = () => ({ requestId: crypto.randomUUID(), topic: 'Calm morning', script, visualTerms: ['opening curtains', 'writing morning plan'], language: 'English', duration: 75, aspect: '9:16', voice: 'local-windows-voice', subtitleStyle: 'clear', visualSource: 'stock', targetPlatform: 'YouTube', publishingFormat: 'youtube-short', creationType: 'general' });
+const input = () => ({ reviewMode: 'storyboard', requestId: crypto.randomUUID(), topic: 'Calm morning', script, visualTerms: ['opening curtains', 'writing morning plan'], language: 'English', duration: 75, aspect: '9:16', voice: 'local-windows-voice', subtitleStyle: 'clear', visualSource: 'stock', targetPlatform: 'YouTube', publishingFormat: 'youtube-short', creationType: 'general' });
 const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
 const write = value => fs.writeFileSync(file, JSON.stringify(value));
 const fixture = id => ({ id, duration: 120, image: 'https://images.pexels.com/videos/123/preview.jpeg', url: `https://www.pexels.com/video/${id}/`, user: { name: 'Fixture creator' }, video_files: [{ file_type: 'video/mp4', width: 720, height: 1280, link: `https://videos.pexels.com/video-files/${id}/720.mp4` }] });
@@ -41,6 +50,152 @@ test('planning persists a complete editable draft without rendering or submittin
   assert.equal(draft.status, 'READY');
   assert.equal(draft.scenes.map(s => s.narration).join(' '), script);
   assert.equal((await generation.listGenerationJobs()).length, 0);
+});
+
+test('final-review stock creation selects distinct exact assets and queues without human scene approval', async () => {
+  process.env.PEXELS_API_KEY = 'fixture-not-a-real-key';
+  let calls = 0;
+  global.fetch = async url => {
+    assert.equal(new URL(url).hostname, 'api.pexels.com');
+    calls++;
+    return Response.json({ videos: [fixture(101), fixture(102)] });
+  };
+  await drafts.createCreationDrafts([{ ...input(), reviewMode: 'final' }]);
+  await drafts.processNextCreationDraft();
+  const item = read()[0];
+  assert.equal(item.status, 'APPROVED');
+  assert.match(item.stage, /Automatically/);
+  const jobs = await generation.listGenerationJobs();
+  assert.equal(jobs.length, 1);
+  const request = JSON.parse(jobs[0].requestJson);
+  assert.equal(request.script, script);
+  assert.equal(request.scriptApproved, false);
+  assert.equal(request.scriptLocked, true);
+  assert.deepEqual(request.storyboard.map(beat => beat.assetId), [101, 102]);
+  assert.equal(calls, 2);
+  assert.equal(request.stockPreparation.scenes[0].footage.id,101);
+  const {prepareStockCreation}=require('../src/lib/stockPreparation.ts');
+  global.fetch=async()=>{throw new Error('Completed preparation must not search again');};
+  const reentered=await prepareStockCreation(request,request.stockPreparation.scenes);
+  assert.deepEqual(reentered.input.storyboard.map(beat=>beat.assetId),[101,102]);
+  await drafts.processNextCreationDraft();
+  assert.equal((await generation.listGenerationJobs()).length, 1);
+});
+test('generation entry point shares exact-asset preparation and persists before an interrupted search', async () => {
+  process.env.PEXELS_API_KEY='fixture-not-a-real-key';
+  const {prepareStockCreation}=require('../src/lib/stockPreparation.ts');
+  let calls=0, checkpoint;
+  global.fetch=async()=>{if(++calls===2)throw new Error('Interrupted');return Response.json({videos:[fixture(401),fixture(402)]});};
+  await assert.rejects(prepareStockCreation(input(),[],async(saved,scenes)=>{checkpoint=structuredClone({saved,scenes});}),/Interrupted/);
+  assert.equal(checkpoint.saved.script,script);assert.equal(checkpoint.scenes[0].footage.id,401);
+  global.fetch=async()=>Response.json({videos:[fixture(401),fixture(402)]});
+  const resumed=await prepareStockCreation(checkpoint.saved,checkpoint.saved.stockPreparation.scenes);
+  assert.deepEqual(resumed.input.storyboard.map(beat=>beat.assetId),[401,402]);
+});
+test('legacy owner-selected asset IDs are restored without substitution searches', async () => {
+  process.env.PEXELS_API_KEY='fixture-not-a-real-key';
+  const {prepareStockCreation}=require('../src/lib/stockPreparation.ts');
+  const supplied={...input(),storyboard:[{narration:script,query:'opening curtains',assetId:501}]};
+  global.fetch=async url=>{assert.ok(String(url).endsWith('/501'));return Response.json(fixture(501));};
+  const prepared=await prepareStockCreation(supplied);
+  assert.equal(prepared.input.storyboard[0].assetId,501);assert.equal(prepared.input.script,script);
+});
+
+test('failed automatic selection retains earlier scenes and retry resumes without duplicate exports', async () => {
+  process.env.PEXELS_API_KEY = 'fixture-not-a-real-key';
+  let calls = 0;
+  global.fetch = async () => { if (++calls === 2) throw new Error('Search interrupted'); return Response.json({ videos: [fixture(101), fixture(102)] }); };
+  await drafts.createCreationDrafts([{ ...input(), reviewMode: 'final' }]);
+  await drafts.processNextCreationDraft();
+  let item = read()[0];
+  assert.equal(item.status, 'FAILED');
+  assert.equal(item.scenes[0].footage.id, 101);
+  assert.match(item.error, /Search interrupted/);
+  assert.equal((await generation.listGenerationJobs()).length, 0);
+  await drafts.changeDraftStatus(item.id, item.version, 'retry');
+  await drafts.processNextCreationDraft();
+  item = read()[0];
+  assert.equal(item.status, 'APPROVED');
+  assert.equal(calls, 3);
+  // Simulate the process stopping between creating the render job and saving its ID.
+  write([{ ...item, status: 'APPROVING', approvedJobId: undefined }]);
+  await drafts.processNextCreationDraft();
+  assert.equal(read()[0].approvedJobId, item.approvedJobId);
+  assert.equal((await generation.listGenerationJobs()).length, 1);
+});
+
+test('metadata selection rejects too-short, repeated, and clearly off-topic clips and prefers continuity', () => {
+  const { rankFootage } = require(path.join(project, 'src/lib/automaticFootage.ts'));
+  const choice = id => ({ ...catalog.footageChoice(fixture(id)), sourcePage: `https://www.pexels.com/video/opening-bedroom-curtains-${id}/` });
+  const options = [{ ...choice(1), duration: 1 }, choice(2), { ...choice(3), sourcePage: 'https://www.pexels.com/video/drinking-coffee-3/' }, choice(4), { ...choice(5), creator: 'Other contributor' }];
+  const ranked = rankFootage(options, 'opening bedroom curtains', 20, '9:16', new Set([2]), choice(99));
+  assert.deepEqual(ranked.map(result => result.choice.id), [4, 5]);
+  assert.match(ranked[0].reason, /Metadata checks only/);
+});
+
+test('automatic selection expands the same query before failing on the first short portrait results', async () => {
+  process.env.PEXELS_API_KEY = 'fixture-not-a-real-key'; let calls = 0;
+  global.fetch = async url => {
+    const query = new URL(url).searchParams;
+    assert.equal(query.get('query'), 'opening curtains');
+    calls++;
+    if (calls === 1) return Response.json({ videos: [{ ...fixture(101), duration: 1 }] });
+    assert.equal(query.has('orientation'), false);
+    assert.equal(query.get('per_page'), '30');
+    return Response.json({ videos: [fixture(102)] });
+  };
+  const { selectAutomaticFootage } = require('../src/lib/automaticFootage');
+  const result = await selectAutomaticFootage([{ narration: 'Open the curtains.', query: 'opening curtains' }], 60, '9:16', async () => {});
+  assert.equal(result[0].footage.id, 102); assert.equal(calls, 2);
+});
+
+test('waiting legacy draft can opt into automatic completion without requiring a scene checkbox', async () => {
+  const item = await ready();
+  const response = await api.PATCH(new Request('http://localhost/api/creation-drafts', { method: 'PATCH', headers: { origin: 'http://localhost' }, body: JSON.stringify({ id: item.id, version: item.version, action: 'finish' }) }));
+  assert.equal(response.status, 200);
+  assert.equal(read()[0].input.reviewMode, 'final');
+  assert.equal(read()[0].status, 'QUEUED');
+});
+
+test('generation API always finishes automatically, including older plan-only submissions', async () => {
+  const kids = require(path.join(project, 'src/lib/kidsRenderer.ts'));
+  const original = kids.kidsRendererAvailable;
+  kids.kidsRendererAvailable = async () => true;
+  try {
+    const route = require(path.join(project, 'src/app/api/generations/route.ts'));
+    for (const planOnly of [false, true]) {
+      const response = await route.POST(new Request('http://localhost/api/generations', { method: 'POST', headers: { origin: 'http://localhost' }, body: JSON.stringify({ ...input(), creationType: 'children-story', planOnly }) }));
+      assert.equal(response.status, 201);
+      const body = await response.json();
+      assert.equal(body.planOnly, false);
+      assert.equal(read().find(d => d.id === body.draftIds[0]).input.reviewMode, 'final');
+    }
+    await drafts.processNextCreationDraft();
+    const request = JSON.parse((await generation.listGenerationJobs())[0].requestJson);
+    assert.equal(request.scriptLocked, true);
+    assert.equal(request.scriptApproved, false);
+    assert.equal(request.sceneNarration.join(' '), script);
+  } finally { kids.kidsRendererAvailable = original; }
+});
+
+test('worker migration resumes legacy approval gates once, retaining scenes and final-mode failures', async () => {
+  const draft = await ready();
+  const failed = { ...draft, id: crypto.randomUUID(), status: 'FAILED', input: { ...draft.input, reviewMode: 'final' }, error: 'Provider unavailable' };
+  const archived = { ...draft, id: crypto.randomUUID(), status: 'ARCHIVED' };
+  write([draft, failed, archived]);
+  assert.equal(await drafts.enableAutomaticCreation(), 1);
+  assert.equal(read()[0].status, 'QUEUED');
+  assert.equal(read()[0].input.reviewMode, 'final');
+  assert.deepEqual(read()[0].scenes, draft.scenes);
+  assert.equal(read()[1].status, 'FAILED');
+  assert.equal(read()[2].status, 'ARCHIVED');
+  assert.equal(await drafts.enableAutomaticCreation(), 0);
+});
+
+test('new internal submissions default to final-video review', async () => {
+  const value = input(); delete value.reviewMode;
+  const [draft] = await drafts.createCreationDrafts([value]);
+  assert.equal(draft.input.reviewMode, 'final');
 });
 test('duplicate plan clicks reuse drafts and archive tombstones prevent revival', async () => {
   const item = input();

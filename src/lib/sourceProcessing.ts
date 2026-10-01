@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import os from "node:os";
+import { artifactReference } from "./reviewArtifacts";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -30,6 +32,7 @@ export const MAX_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
 export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
 export type SourceJob = {
+  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number };
   id: string;
   title: string;
   sourceFile: string;
@@ -250,6 +253,12 @@ async function withJobMutation<T>(operation: () => Promise<T>): Promise<T> {
 
 export async function readSourceJobs(): Promise<SourceJob[]> {
   return (await readJobsUnlocked()).filter((job) => !job.archivedAt);
+}
+
+export async function findStockSourceJob(requestId: string) {
+  const job = (await readJobsUnlocked()).find(job => job.stockSource?.requestId === requestId);
+  if (job?.archivedAt || job?.status === "CANCELLED") throw new JobHistoryConflictError("This request was removed. Start a new stock reel rather than reviving a cancelled job.");
+  return job;
 }
 
 export function sourceJobWithTiming(job: SourceJob, now = Date.now()): SourceJobWithTiming {
@@ -493,7 +502,9 @@ async function probe(file: string): Promise<MediaInfo> {
 async function silences(file: string, hasAudio: boolean, duration: number) {
   if (!hasAudio) return [] as Silence[];
   const raw = await run(ffmpegPath, [
-    "-i", file,
+    "-hide_banner", "-nostats", ...FFMPEG_FILTER_RESOURCE_ARGS,
+    "-threads", "1", "-i", file,
+    "-map", "0:a:0", "-vn", "-sn", "-dn",
     "-af", "silencedetect=noise=-34dB:d=0.65",
     "-f", "null",
     "-",
@@ -516,10 +527,11 @@ async function silences(file: string, hasAudio: boolean, duration: number) {
 async function audioState(file: string, hasAudio: boolean, start: number, end: number): Promise<AudioState> {
   if (!hasAudio) return { usable: false, mean: -99, max: -99 };
   const raw = await run(ffmpegPath, [
+    "-hide_banner", "-nostats", ...FFMPEG_FILTER_RESOURCE_ARGS,
     "-ss", start.toFixed(3),
     "-t", Math.max(0.05, end - start).toFixed(3),
-    "-i", file,
-    "-vn",
+    "-threads", "1", "-i", file,
+    "-map", "0:a:0", "-vn", "-sn", "-dn",
     "-af", "volumedetect",
     "-f", "null",
     "-",
@@ -568,8 +580,8 @@ export function normaliseTranscriptSegments(items: TranscriptSegment[], duration
 
 async function cachedTranscript(output: string, duration: number, expectedModel = defaultWhisperModel) {
   try {
-    const data = JSON.parse(await fs.readFile(output, "utf8")) as { segments?: TranscriptSegment[]; complete?: boolean; model?: string };
-    if (!Array.isArray(data.segments) || data.complete === false || data.model !== expectedModel) return null;
+    const data = JSON.parse(await fs.readFile(output, "utf8")) as { segments?: TranscriptSegment[]; complete?: boolean; model?: string; duration?: number };
+    if (!Array.isArray(data.segments) || data.complete === false || data.model !== expectedModel || (data.duration !== undefined && Math.abs(data.duration - duration) > 1)) return null;
     return normaliseTranscriptSegments(data.segments, duration);
   } catch {
     return null;
@@ -582,6 +594,7 @@ async function transcribe(
   hasAudio: boolean,
   duration: number,
   onProgress: (progress: number, stage: string) => Promise<unknown>,
+  limitDuration = false,
 ) {
   if (!hasAudio) return [] as TranscriptSegment[];
   const directory = path.join(workRoot, `source-${jobId}`);
@@ -610,6 +623,7 @@ async function transcribe(
     "--input", file,
     "--output", output,
     "--model-dir", whisperModels,
+    ...(limitDuration ? ["--duration", String(duration)] : []),
   ], {
     onOutput: async (chunk) => {
       markerBuffer += chunk;
@@ -828,6 +842,19 @@ export function buildCaptionCues(part: BaseCut, segments: TranscriptSegment[]) {
   return safeCues;
 }
 
+/** Posting descriptions are never substituted for spoken words. Decide per output interval. */
+export function automaticSubtitles(part: BaseCut, segments: TranscriptSegment[], audioPreserved: boolean, analysisError?: string) {
+  if (!audioPreserved) return { cues: [] as CaptionCue[], decision: "none" as const, reason: "No source speech is audible in the output: source audio was absent or replaced with music." };
+  if (analysisError) return { cues: [] as CaptionCue[], decision: "uncertain" as const, reason: analysisError };
+  const candidates = clipText(part, segments);
+  const reliable = candidates.filter(segment => typeof segment.avgLogprob === "number" && segment.avgLogprob >= -0.9
+    && typeof segment.noSpeechProbability === "number" && segment.noSpeechProbability < 0.45
+    && /[\p{L}\p{N}]/u.test(segment.text) && !/^\s*[\[(].*[\])]\s*$/.test(segment.text));
+  const cues = buildCaptionCues(part, reliable);
+  return cues.length ? { cues, decision: "speech" as const, reason: "Subtitles added only for locally detected, confidently transcribed speech; check recognition accuracy before posting." }
+    : { cues, decision: candidates.length ? "uncertain" as const : "none" as const, reason: candidates.length ? "Speech recognition was uncertain. No guessed subtitles were burned in; review the audio." : "No confident speech was detected in this interval. No subtitles were added." };
+}
+
 function srtTime(seconds: number) {
   const milliseconds = Math.max(0, Math.round(seconds * 1000));
   const hours = Math.floor(milliseconds / 3_600_000);
@@ -841,6 +868,17 @@ function clipSrt(cues: CaptionCue[]) {
   return cues.map((cue, index) => `${index + 1}\n${srtTime(cue.start)} --> ${srtTime(cue.end)}\n${cue.lines.join("\n")}\n`).join("\n");
 }
 
+/** Use output-pixel coordinates; SRT's implicit 384x288 canvas inflated portrait captions. */
+export function sourceCaptionAss(cues: CaptionCue[], width: number, height: number) {
+  const font = Math.round(Math.min(width, height) * 0.042);
+  const margin = Math.round(width * 0.07);
+  const stamp = (seconds: number) => {
+    const cs = Math.max(0, Math.round(seconds * 100));
+    return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, "0")}:${String(Math.floor(cs / 100) % 60).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`;
+  };
+  return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${width}\nPlayResY: ${height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,${font},&H00FFFFFF,&H00FFFFFF,&H00202020,&H88000000,0,0,0,0,100,100,0,0,1,2,1,2,${margin},${margin},${Math.round(height * 0.08)},1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n` + cues.map(cue => `Dialogue: 0,${stamp(cue.start)},${stamp(cue.end)},Default,,0,0,0,,${cue.lines.map(line => line.replace(/\\/g, "/").replace(/[{}]/g, "").replace(/[\r\n]+/g, " ")).join("\\N")}`).join("\n");
+}
+
 function summary(title: string, text: string) {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean ? `${clean.slice(0, 210)}${clean.length > 210 ? "…" : ""}` : `${title} — review this visual segment before posting.`;
@@ -848,17 +886,19 @@ function summary(title: string, text: string) {
 
 function formatFor(info: MediaInfo) {
   if (info.height >= info.width * 1.15) {
-    return { name: "9:16" as const, filter: "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=#101710" };
+    return { name: "9:16" as const, width: 720, height: 1280, filter: "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=#101710" };
   }
   if (info.width >= info.height * 1.15) {
-    return { name: "16:9" as const, filter: "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=#101710" };
+    return { name: "16:9" as const, width: 1280, height: 720, filter: "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=#101710" };
   }
-  return { name: "original" as const, filter: "scale=trunc(iw/2)*2:trunc(ih/2)*2" };
+  const factor = Math.min(1, 720 / Math.max(info.width, info.height));
+  const width = Math.max(2, Math.floor(info.width * factor / 2) * 2), height = Math.max(2, Math.floor(info.height * factor / 2) * 2);
+  return { name: "original" as const, width, height, filter: `scale=${width}:${height}` };
 }
 
 function clipSignature(job: SourceJob, part: Cut, format: string, cues: CaptionCue[]) {
   return crypto.createHash("sha256").update(JSON.stringify({
-    version: 3,
+    version: 5,
     jobId: job.id,
     start: part.start.toFixed(3),
     end: part.end.toFixed(3),
@@ -941,15 +981,16 @@ async function renderClip(
   const duration = part.end - part.start;
   const subtitlePath = path.join(clipDirectory, "captions.srt");
   if (cues.length) await fs.writeFile(subtitlePath, clipSrt(cues), "utf8");
+  if (cues.length) await fs.writeFile(path.join(clipDirectory, "captions.ass"), sourceCaptionAss(cues, format.width, format.height), "utf8");
   const musicPath = path.join(clipDirectory, "music.wav");
   if (!part.metrics.audio.usable) await fs.writeFile(musicPath, localMusicWav(duration, false));
 
   const subtitleFilter = cues.length
-    ? ",subtitles=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101A20,BackColour=&H88000000,BorderStyle=3,Outline=2,Shadow=1,Alignment=2,MarginV=72'"
+    ? ",ass=captions.ass"
     : `,drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':text='${jobTitle.replace(/[':%\\]/g, " ").slice(0, 55)}':fontcolor=white:fontsize=38:box=1:boxcolor=black@0.6:boxborderw=14:x=(w-text_w)/2:y=h-(text_h*3)`;
   const destination = outputPath(item.id, "instagram");
   const temporary = `${destination}.partial-${crypto.randomUUID()}.mp4`;
-  const args = ["-y", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", part.start.toFixed(3), "-t", duration.toFixed(3), "-i", source];
+  const args = ["-y", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", part.start.toFixed(3), "-t", duration.toFixed(3), "-threads", "1", "-i", source];
   if (!part.metrics.audio.usable) args.push("-i", musicPath);
   args.push("-vf", `${format.filter}${subtitleFilter}`, "-map", "0:v:0", "-map", part.metrics.audio.usable ? "0:a:0" : "1:a:0");
   if (part.metrics.audio.usable) args.push("-af", "loudnorm=I=-16:TP=-1.5:LRA=11");
@@ -1000,6 +1041,9 @@ async function renderClip(
     validOutput(youtube, duration),
   ]);
   if (!instagramInfo || !youtubeInfo) throw new Error("The rendered clip did not pass local duration, video, and audio validation.");
+  item.artifacts = { version: 1, renderRevision: "source-artifacts-v1", finalVideo: artifactReference(destination),
+    editing: { video: artifactReference(source), offsetSeconds: part.start, captionsBaked: false, replacementAudio: part.metrics.audio.usable ? undefined : artifactReference(musicPath) },
+    captions: cues.length ? artifactReference(subtitlePath) : undefined, original: artifactReference(source), music: part.metrics.audio.usable ? undefined : artifactReference(musicPath) };
   return { destination, youtube, instagramInfo, youtubeInfo };
 }
 
@@ -1015,6 +1059,7 @@ function buildReviewItem(
   format: ReturnType<typeof formatFor>,
   cues: CaptionCue[],
   existing?: ReviewFile,
+  subtitles?: ReviewFile["quality"]["subtitles"],
 ) {
   const signature = clipSignature(job, part, format.name, cues);
   const readableCaptions = cues.map((cue) => cue.lines.join(" "));
@@ -1028,14 +1073,15 @@ function buildReviewItem(
   const item: ReviewFile = makeReviewFile({
     title: clipTitle,
     targets: ["instagram", "youtube"],
-    source: { kind: "upload", filename: job.sourceFile, licence: "Local file supplied by studio owner" },
+    source: job.stockSource ? { kind: job.stockSource.provider, filename: job.sourceFile, providerUrl: job.stockSource.sourcePage, providerMediaId: job.stockSource.mediaId, licence: `${job.stockSource.provider === "pexels" ? "Pexels License" : "Pixabay Content License"} · ${job.stockSource.creator} · verify reuse rights before posting`, downloadedAt: job.createdAt } : { kind: "upload", filename: job.sourceFile, licence: "Local file supplied by studio owner" },
     audience: "general",
     quality: {
       sourceDuration: part.end - part.start,
       audio: audioDecision,
       captions: readableCaptions,
+      subtitles,
       hashtags: ["#Shorts", "#PhoenixStudio", ...keywords.map((word) => `#${word[0].toUpperCase()}${word.slice(1)}`)].slice(0, 8),
-      postCopy: `${summary(clipTitle, copyText)} Prepared for ${socialHandle("instagram")} and YouTube Shorts.`,
+      postCopy: job.stockSource ? `${job.stockSource.caption}\nFootage: ${job.stockSource.creator} / ${job.stockSource.provider}.` : `${summary(clipTitle, copyText)} Prepared for ${socialHandle("instagram")} and YouTube Shorts.`,
       checks: [
         `${job.mode === "coverage" ? "Contiguous coverage" : "Highlight candidate"} ${part.start.toFixed(3)}s–${part.end.toFixed(3)}s`,
         `End boundary selected from ${part.boundary === "target" ? "the balanced duration target" : part.boundary}`,
@@ -1043,9 +1089,9 @@ function buildReviewItem(
         part.metrics.audio.usable
           ? `This clip's source audio was preserved and normalized (${part.metrics.audio.mean.toFixed(1)} dB mean before normalization)`
           : "This clip's weak or missing source audio was replaced with a locally generated music bed",
-        cues.length
+        subtitles?.reason || (cues.length
           ? `${cues.length} readable, de-duplicated caption cue${cues.length === 1 ? "" : "s"} transcribed locally with Whisper`
-          : "No speech caption cues were available for this interval",
+          : "No speech caption cues were available for this interval"),
         `Pipeline signature ${signature}`,
       ],
       warning: part.metrics.audio.usable
@@ -1059,21 +1105,27 @@ function buildReviewItem(
       format: format.name,
       score: part.score,
       rank: part.rank,
-      reason: clipReason(part),
+      reason: job.stockSource ? "Real stock footage; subtitles depend on speech detection, not the stock title. Attention potential has not been assessed; check composition, sound and relevance yourself." : clipReason(part),
       status: "PROCESSING",
     },
     monetizationReview: {
       status: "NOT_REVIEWED",
       madeForKids: false,
-      originality: "owner-supplied",
-      rightsBasis: "Source episode supplied locally by the studio owner; ownership and upload rights must be confirmed manually.",
+      originality: job.stockSource ? "licensed-transformed" : "owner-supplied",
+      rightsBasis: job.stockSource ? `Provider source retained: ${job.stockSource.sourcePage}. A stock licence does not guarantee originality or monetization eligibility.` : "Source episode supplied locally by the studio owner; ownership and upload rights must be confirmed manually.",
       checks: ["Confirm ownership or commercial reuse rights for the source episode", "Watch the complete clip and captions before posting", "Confirm any music and voices in the source are cleared for the target platform"],
       manualReviewRequired: true,
       syntheticDisclosureReview: "NOT_APPLICABLE",
-      warning: "Phoenix cannot verify ownership of an uploaded episode. Confirm commercial rights before posting.",
+      warning: job.stockSource ? "Review provider rights and any identifiable people, brands or music. A captioned stock clip is not guaranteed to qualify for monetization." : "Phoenix cannot verify ownership of an uploaded episode. Confirm commercial rights before posting.",
     },
   });
   item.id = existing?.id || deterministicReviewId(signature);
+  if (existing?.artifacts) item.artifacts = existing.artifacts;
+  if (existing && reusableReview(existing, signature)) {
+    item.quality.postingAnalysis = existing.quality.postingAnalysis;
+    item.quality.postCopy = existing.quality.postCopy;
+    item.quality.hashtags = existing.quality.hashtags;
+  }
   if (existing) item.createdAt = existing.createdAt;
   item.updatedAt = new Date().toISOString();
   return item;
@@ -1085,13 +1137,14 @@ export async function createSourceJob(
   mode: ProcessingMode,
   title?: string,
   expectedBytes?: number,
+  stockSource?: SourceJob["stockSource"],
 ) {
   await ensure();
   if (expectedBytes && expectedBytes > MAX_SOURCE_BYTES) throw new SourceUploadTooLargeError();
   const id = crypto.randomUUID();
   const name = safeFilename(filename);
   const source = sourcePath(id, name);
-  const limiter = new SourceByteLimitTransform(MAX_SOURCE_BYTES);
+  const limiter = new SourceByteLimitTransform(stockSource ? 500 * 1024 * 1024 : MAX_SOURCE_BYTES);
   try {
     await pipeline(Readable.fromWeb(stream as never), limiter, createWriteStream(source, { flags: "wx" }));
     const stat = await fs.stat(source);
@@ -1099,6 +1152,7 @@ export async function createSourceJob(
     if (expectedBytes && stat.size !== expectedBytes) throw new SourceUploadInterruptedError(stat.size, expectedBytes);
     const now = new Date().toISOString();
     const job: SourceJob = {
+      stockSource,
       id,
       title: title?.trim() || filename.replace(/\.[^.]+$/, ""),
       sourceFile: name,
@@ -1114,12 +1168,19 @@ export async function createSourceJob(
       attempts: 0,
       queuedAt: now,
     };
-    await withJobMutation(async () => {
+    const accepted = await withJobMutation(async () => {
       const jobs = await readJobsUnlocked();
+      if (stockSource) {
+        const existing = jobs.find(item => item.stockSource?.requestId === stockSource.requestId);
+        if (existing?.archivedAt || existing?.status === "CANCELLED") throw new JobHistoryConflictError("This stock request was cancelled or removed. Start a new request.");
+        if (existing) return existing;
+      }
       jobs.unshift(job);
       await saveJobsUnlocked(jobs);
+      return job;
     });
-    return job;
+    if (accepted.id !== job.id) await fs.rm(source, { force: true }); // This attempt's duplicate staging file only.
+    return accepted;
   } catch (error) {
     await fs.rm(source, { force: true }).catch(() => undefined);
     throw error;
@@ -1232,7 +1293,7 @@ async function processClaimedSourceJob(job: SourceJob) {
   const report = (progress: number, stage: string, change: Partial<SourceJob> = {}) => updateJob(job.id, { ...change, progress, stage });
   try {
     const preflight = await sourceProcessingPreflight(true);
-    if (!preflight.ready) {
+    if (!(job.stockSource ? preflight.dependencies.ffmpeg && preflight.dependencies.ffprobe : preflight.ready)) {
       return updateJob(job.id, {
         status: "BLOCKED",
         stage: "Local dependency preflight failed",
@@ -1240,7 +1301,7 @@ async function processClaimedSourceJob(job: SourceJob) {
         finishedAt: new Date().toISOString(),
       });
     }
-    await report(4, preflight.firstModelDownloadRequired
+    await report(4, !job.stockSource && preflight.firstModelDownloadRequired
       ? "Dependencies ready · Whisper model will download once before transcription"
       : "Dependencies and cached Whisper model are ready");
 
@@ -1255,11 +1316,18 @@ async function processClaimedSourceJob(job: SourceJob) {
       hasAudio: info.hasAudio,
     });
     await report(11, info.hasAudio ? "Mapping silence for natural clip boundaries" : "No source audio · planning visual boundaries and local music");
-    const quiet = await silences(source, info.hasAudio, info.duration);
+    const quiet = job.stockSource ? [] : await silences(source, info.hasAudio, info.duration);
     await report(13, `Natural-boundary scan complete · ${quiet.length} silence interval${quiet.length === 1 ? "" : "s"}`);
-    const transcript = await transcribe(source, job.id, info.hasAudio, info.duration, (progress, stage) => report(progress, stage));
-    await report(32, "Planning contiguous 2–3 minute coverage intervals");
-    const base = planCoverageCuts(info.duration, quiet, transcript);
+    let transcript: TranscriptSegment[] = [];
+    let subtitleAnalysisError: string | undefined;
+    if (job.stockSource && info.hasAudio && (!preflight.dependencies.fasterWhisper || !preflight.whisperModel.cached || os.freemem() < 900 * 1024 * 1024)) {
+      subtitleAnalysisError = "Automatic speech check unavailable: the cached local speech model or safe RAM headroom was missing. No stock title was burned in as subtitles. Review the audio.";
+    } else {
+      try { transcript = await transcribe(source, job.id, info.hasAudio, job.stockSource ? Math.min(info.duration, job.stockSource.maxDuration) : info.duration, (progress, stage) => report(progress, stage), !!job.stockSource); }
+      catch (error) { if (!job.stockSource) throw error; subtitleAnalysisError = "Local speech analysis failed. No guessed subtitles were burned in; review the audio."; }
+    }
+    await report(32, job.stockSource ? "Keeping the original footage — no AI visuals or generated narration" : "Planning contiguous 2–3 minute coverage intervals");
+    const base = planCoverageCuts(job.stockSource ? Math.min(info.duration, job.stockSource.maxDuration) : info.duration, quiet, transcript);
     if (!base.length) throw new Error("No usable video interval was found.");
 
     const audioByCut: AudioState[] = [];
@@ -1269,20 +1337,22 @@ async function processClaimedSourceJob(job: SourceJob) {
       audioByCut.push(await audioState(source, info.hasAudio, part.start, part.end));
     }
     const scored = scoreCuts(base, quiet, transcript, audioByCut);
+    if (job.stockSource) for (const part of scored) part.score = 0;
     const parts = chooseCuts(scored, job.mode, info.duration);
     await report(48, job.mode === "coverage"
       ? `Coverage plan ready · ${parts.length} contiguous clip${parts.length === 1 ? "" : "s"} · no tail dropped`
       : `Highlight ranking ready · selected ${parts.length} of ${scored.length} candidates`, { totalClips: parts.length });
 
-    const format = formatFor(info);
+    const format = job.stockSource ? { name: "9:16" as const, width: 720, height: 1280, filter: "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=#101710" } : formatFor(info);
     const reviewFiles = await readReviewFiles();
     const reviewIds: string[] = [];
     const usedReviewIds = new Set<string>();
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
-      const cues = buildCaptionCues(part, transcript);
+      const subtitles = automaticSubtitles(part, transcript, part.metrics.audio.usable, subtitleAnalysisError);
+      const cues = subtitles.cues;
       const existing = findMatchingReview(reviewFiles, job, part, format.name, usedReviewIds);
-      const item = buildReviewItem(job, part, format, cues, existing);
+      const item = buildReviewItem(job, part, format, cues, existing, { decision: subtitles.decision, reason: subtitles.reason });
       usedReviewIds.add(item.id);
       const instagram = outputPath(item.id, "instagram");
       const youtube = outputPath(item.id, "youtube");
@@ -1318,7 +1388,7 @@ async function processClaimedSourceJob(job: SourceJob) {
       }
 
       await saveReviewFile(item);
-      const clipDirectory = path.join(workRoot, `source-${job.id}`, `clip-${index + 1}`);
+      const clipDirectory = path.join(workRoot, `source-${job.id}`, `clip-${item.id}`);
       await report(49 + index / parts.length * 49, `Rendering clip ${index + 1} of ${parts.length} · 0%`);
       const rendered = await renderClip(
         source,
@@ -1384,7 +1454,7 @@ async function processNextSourceJobUnlocked() {
 /** Concurrent timer ticks share this promise, so only one source job runs in-process. */
 export function processNextSourceJob() {
   if (processorPromise) return processorPromise;
-  processorPromise = withLocalRenderSlot(processNextSourceJobUnlocked).finally(() => {
+  processorPromise = withLocalRenderSlot(processNextSourceJobUnlocked, "Source-video processing").finally(() => {
     processorPromise = null;
   });
   return processorPromise;

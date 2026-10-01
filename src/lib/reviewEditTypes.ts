@@ -21,6 +21,7 @@ export type ReviewEditJob = {
   outputId: string;
   title: string;
   draft: ReviewEditDraft;
+  draftFingerprint?: string;
   status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
   progress: number;
   stage: string;

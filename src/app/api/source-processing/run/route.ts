@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { retrySourceJob } from "@/lib/sourceProcessing";
+import { assertLocalRequest } from "@/lib/localRequest";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   const body = await request.json().catch(() => null) as { id?: unknown } | null;
-  if (!body || typeof body.id !== "string" || !body.id.trim()) {
+  if (!body || !z.string().uuid().safeParse(body.id).success) {
     return NextResponse.json({ error: "Job id is required." }, { status: 400 });
   }
-  const result = await retrySourceJob(body.id.trim());
+  const result = await retrySourceJob(String(body.id));
   if (!result) return NextResponse.json({ error: "Job not found." }, { status: 404 });
   if (!result.queued) {
     return NextResponse.json({

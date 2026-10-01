@@ -31,19 +31,13 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    ".next-lumina/types/**/*.ts",
-    ".next-lumina/dev/types/**/*.ts",
-    ".next-phoenix-review-update/types/**/*.ts",
-    ".next-phoenix-review-update/dev/types/**/*.ts",
-    ".next-approval/types/**/*.ts",
-    ".next-approval/dev/types/**/*.ts",
-    ".next-storybook/types/**/*.ts",
-    ".next-storybook/dev/types/**/*.ts"
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.mts",
+    "next.config.ts",
+    "prisma.config.ts",
+    ".next-build-20261001094026074/types/**/*.ts",
+    ".next-build-20261001094026074/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

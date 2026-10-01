@@ -6,8 +6,11 @@ import { requireSongAudio, songAudioPath } from "./songAudio";
 import { preparePixabayAnimationBackground, type PixabayAnimationCredit } from "./pixabayAnimation";
 import { prepareKidsAnimation, KIDS_ANIMATION_FPS } from "./kidsAnimation";
 import { getCreativeGuidance } from "./qualityManager";
+import { generateWritingModel, isWritingWaitError, isWritingConfigurationError, writingModelIdentity } from "./writingModel";
+import { readWritingSettings } from "./writingSettings";
 import type { CreativeGuidance } from "./managerTypes";
 import { checkKidsScript } from "./scriptChecks";
+import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
   FFMPEG_FILTER_RESOURCE_ARGS,
@@ -16,6 +19,7 @@ import {
 
 export type KidsRenderInput = {
   scriptApproved?: boolean;
+  scriptLocked?: boolean;
   sceneNarration?: string[];
   songMode?: "recording" | "local-ace";
   songAudioId?: string;
@@ -25,6 +29,8 @@ export type KidsRenderInput = {
   script?: string;
   voice?: string;
   aspect?: "9:16" | "16:9";
+  publishingFormat?: PublishingFormat;
+  targetPlatform?: string;
   seriesId?: string;
   seriesTitle?: string;
   episodeNumber?: number;
@@ -170,6 +176,8 @@ export async function kidsRendererAvailable(requireModel = true) {
       fs.access(windowsPowerShell),
     ]);
     if (!requireModel) return true;
+    const writer = readWritingSettings();
+    if (writer.provider === "groq") return !!writer.apiKey && writer.freePlanConfirmed;
     const response = await fetch("http://127.0.0.1:11434/api/tags", {
       signal: AbortSignal.timeout(4000),
     });
@@ -431,7 +439,7 @@ function followsEpisodeBeat(script: string, input: KidsRenderInput) {
 }
 
 export async function createContent(input: KidsRenderInput, guidance: CreativeGuidance) {
-  if (input.scriptApproved) {
+  if (input.scriptApproved || input.scriptLocked) {
     if (!input.script?.trim()) throw new Error("The approved narration is empty. Reopen the draft.");
     return input.script.trim();
   }
@@ -470,17 +478,11 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
     : "";
   const prompt = `Write only ${format} for children ages 3 to 6 about: "${input.topic}". Aim for ${targetWords} words.${seriesDirection} Name and consistently use the characters and adventure in the idea. Open with action in the first sentence. Use plain grammatical prose, not poetry or forced rhyme. Keep it safe, visual, playful, and easy to narrate. Use only the two main animal characters. This is a limited 2D renderer: use visible actions such as hop, clap, wave, walk, reach, or rest with flowers, stars, ball, kite, drum, toys, bridge or bus. Never copy, name, paraphrase, or imitate an existing franchise or character. No headings, notes, or explanation. Production improvements from owner ratings: ${guidance.rules.join(' ') || 'Use clear visual cause and effect and a specific ending.'}`;
   try {
-    const response = await fetch("http://127.0.0.1:11434/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const response = await generateWritingModel({
         model: process.env.OLLAMA_MODEL || "qwen2.5:3b",
         prompt,
-        stream: false,
-        options: { temperature: 0.35, num_predict: Math.min(1100, Math.ceil(targetWords * 2.15) + 80), num_thread: 2 },
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+        options: { temperature: 0.35, num_predict: Math.min(1100, Math.ceil(targetWords * 2.15) + 80), num_thread: 2, num_ctx: 4096 },
+      }, { timeoutMs: 120_000 });
     const data = (await response.json()) as { response?: string };
     const text = cleanModelText(String(data.response || ""));
     const words = wordCount(text);
@@ -492,9 +494,11 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
       isRelevant(text, input.topic) &&
       followsEpisodeBeat(text, input)
     ) return text;
-  } catch {
+  } catch (error) {
+    if (isWritingWaitError(error) || isWritingConfigurationError(error) || writingModelIdentity().startsWith("groq:")) throw error;
     // The topic-specific local fallback below keeps the job useful and offline.
   }
+  if (writingModelIdentity().startsWith("groq:")) throw new Error("The Groq story did not pass length, topic or episode checks. Retry the saved job; no unrelated replacement story was used.");
   return fallbackStory(input,guidance);
 }
 
@@ -674,17 +678,19 @@ function timestamp(seconds: number) {
 
 type CaptionCue = { text: string; start: number; end: number; duration: number };
 
-function captionCues(captions: string[], seconds: number, startPadding = 0, endPadding = 0): CaptionCue[] {
+/** Word-weighted estimates, not forced alignment to spoken or sung words. */
+export function kidsCaptionCues(captions: string[], seconds: number): CaptionCue[] {
   if (!captions.length) throw new Error("The local script did not contain any usable caption text.");
-  const usableSeconds = Math.max(1, seconds - startPadding - endPadding);
+  if (!Number.isFinite(seconds) || seconds <= 0) throw new Error("Caption timing needs a positive measured video duration.");
+  const usableSeconds = seconds;
   const weights = captions.map((caption) => Math.max(2, wordCount(caption)));
   const total = weights.reduce((sum, value) => sum + value, 0);
   const minimum = Math.min(1.35, (usableSeconds / captions.length) * 0.72);
   const flexibleSeconds = Math.max(0, usableSeconds - minimum * captions.length);
-  let cursor = startPadding;
+  let cursor = 0;
   return captions.map((text, index) => {
     const duration = minimum + (flexibleSeconds * weights[index]) / total;
-    const end = index === captions.length - 1 ? seconds - endPadding : cursor + duration;
+    const end = index === captions.length - 1 ? seconds : cursor + duration;
     const cue = { text, start: cursor, end, duration: end - cursor };
     cursor = end;
     return cue;
@@ -745,19 +751,60 @@ function hashtags(input: KidsRenderInput) {
   ])].slice(0, 9);
 }
 
-function atempoChain(sourceSeconds: number, targetSeconds: number) {
-  let factor = sourceSeconds / targetSeconds;
-  const filters: string[] = [];
-  while (factor > 2) {
-    filters.push("atempo=2");
-    factor /= 2;
+export function boundedNarrationTempo(sourceSeconds: number, targetSeconds: number) {
+  if (!Number.isFinite(sourceSeconds) || sourceSeconds <= 0 || !Number.isFinite(targetSeconds) || targetSeconds <= 0) {
+    throw new Error("Narration timing needs valid measured audio and target durations.");
   }
-  while (factor < 0.5) {
-    filters.push("atempo=0.5");
-    factor /= 0.5;
+  const factor = sourceSeconds / targetSeconds;
+  if (factor < 0.92 - 1e-9 || factor > 1.08 + 1e-9) {
+    throw new Error(`Narration lasts ${sourceSeconds.toFixed(1)} seconds but the video requests ${targetSeconds.toFixed(1)} seconds. ` +
+      `That needs a ${Math.abs(factor - 1) * 100 > 0 ? (Math.abs(factor - 1) * 100).toFixed(1) : "0"}% tempo change; Phoenix allows at most 8% to protect the voice and ending. ` +
+      `Choose a duration near ${Math.round(sourceSeconds)} seconds or ${factor > 1 ? "shorten" : "expand"} the script, then retry. Your script and recorded narration are retained.`);
   }
-  filters.push(`atempo=${factor.toFixed(5)}`);
-  return filters.join(",");
+  return `atempo=${factor.toFixed(5)}`;
+}
+
+/** Duration follows measured speech within the chosen publishing range. */
+export function kidsNarrationTiming(input: Pick<KidsRenderInput, "duration" | "creationType" | "aspect" | "publishingFormat" | "targetPlatform">, sourceSeconds: number) {
+  if (!Number.isFinite(sourceSeconds) || sourceSeconds <= 0 || !Number.isFinite(input.duration) || input.duration <= 0) {
+    throw new Error("Narration timing needs valid measured audio and target durations.");
+  }
+  if (input.creationType === "children-song") {
+    return { targetSeconds: input.duration, tempoFactor: 1, decision: "requested-song-excerpt" as const };
+  }
+  const profile = publishingProfile(inferPublishingFormat(input));
+  // Legacy/direct render callers can request lengths outside today's creation
+  // profiles. Keep their explicit contract rather than silently reclassify them.
+  const inProfile = input.duration >= profile.minDuration && input.duration <= profile.maxDuration;
+  const targetSeconds = inProfile ? clamp(sourceSeconds, profile.minDuration, profile.maxDuration) : input.duration;
+  try {
+    boundedNarrationTempo(sourceSeconds, targetSeconds);
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : "Narration cannot fit naturally."}${inProfile ? ` ${profile.label} needs ${profile.minDuration}–${profile.maxDuration} seconds; revise the script to that range before retrying.` : ""}`);
+  }
+  return {
+    targetSeconds,
+    tempoFactor: sourceSeconds / targetSeconds,
+    decision: Math.abs(sourceSeconds - targetSeconds) < 1e-9 ? "measured-narration" as const : "bounded-profile-correction" as const,
+  };
+}
+
+/** Uses the recording unchanged in time; story correction is deliberately small. */
+export function kidsAudioFilter(narrationSeconds: number, targetSeconds: number, song: boolean) {
+  if (!Number.isFinite(narrationSeconds) || narrationSeconds <= 0 || !Number.isFinite(targetSeconds) || targetSeconds <= 0) {
+    throw new Error("Audio timing needs valid measured audio and target durations.");
+  }
+  if (song) {
+    if (narrationSeconds + 0.15 < targetSeconds) throw new Error("The sung recording is shorter than the video. Choose a video duration within the recording; songs are not stretched or replaced with spoken lyrics.");
+    return `[1:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-16:LRA=9:TP=-1.5[a]`;
+  }
+  const tempo = boundedNarrationTempo(narrationSeconds, targetSeconds);
+  return `[1:a]${tempo},apad,atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-15:LRA=7:TP=-1.5,apad[n];` +
+    `[2:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-29:LRA=10:TP=-2,apad[m];` +
+    // Bundled FFmpeg can discard a short loudnorm branch when amix observes its
+    // EOF during buffered-sample flushing. Post-normalization padding keeps both
+    // branches alive; the explicit mixed trim bounds their lifetime and output.
+    `[n][m]amix=inputs=2:duration=longest,atrim=duration=${targetSeconds},alimiter=limit=0.95,loudnorm=I=-16:LRA=9:TP=-1,atrim=duration=${targetSeconds}[a]`;
 }
 
 function clockSeconds(value: string) {
@@ -824,13 +871,11 @@ export async function renderKidsVideo(
     await requireSongAudio(input.songAudioId, input.duration);
     if (!input.script?.trim()) throw new Error("Add the lyrics from the sung recording.");
   }
-  if (!(await kidsRendererAvailable(input.creationType !== "children-song"))) {
-    throw new Error("Free local kids renderer is unavailable. Ollama, FFmpeg, and Windows local voice must be running.");
+  if (!(await kidsRendererAvailable(input.creationType !== "children-song" && !input.script?.trim()))) {
+    throw new Error("The children renderer is unavailable. Check the selected writer, FFmpeg and Windows local voice in Studio health.");
   }
 
-  // API requests use whole seconds, but retaining the numeric value here also
-  // makes direct callers get the duration they actually requested.
-  const targetSeconds = input.duration;
+  const requestedSeconds = input.duration;
   const format = input.aspect || "9:16";
   // Compose both orientations natively, then export at 720p to preserve detail
   // without making this laptop encode a needless 1080p image.
@@ -850,13 +895,7 @@ export async function renderKidsVideo(
   if (!followsEpisodeBeat(script, input)) throw new Error("The generated script did not follow this episode's distinct story beat.");
   const captions = captionChunks(script, input.creationType,managerGuidance.maxCaptionWords);
   const song = input.creationType === "children-song";
-  const captionPadding = song ? 1.25 : 0;
-  const cues = captionCues(captions, targetSeconds, captionPadding, captionPadding);
   if (input.sceneNarration?.length && input.sceneNarration.join(" ").replace(/\s+/g, " ") !== script.replace(/\s+/g, " ")) throw new Error("The approved visual scenes do not match the narration. Reopen the draft.");
-  const visualCues = input.sceneNarration?.length ? captionCues(input.sceneNarration, targetSeconds, captionPadding, captionPadding) : cues;
-  if (cues.some((cue) => cue.duration < 0.85)) {
-    throw new Error("The script is too dense to display as readable captions in the requested duration.");
-  }
   await fs.writeFile(path.join(directory, "narration.txt"), script, "utf8");
 
   await onProgress(24, song ? "Preparing the supplied sung recording at its original pitch" : "Creating a friendly local narration");
@@ -868,15 +907,33 @@ export async function renderKidsVideo(
     "-Rate", "0",
   ];
   if (input.voice && input.voice !== "local-windows-voice") voiceArgs.push("-Voice", input.voice);
-  const voiceTimeoutMs = clamp(Math.ceil(60_000 + targetSeconds * 750), 90_000, 300_000);
+  const voiceTimeoutMs = clamp(Math.ceil(60_000 + requestedSeconds * 750), 90_000, 300_000);
   try {
     if (song) {
-      await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), "-t", String(targetSeconds), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
+      await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), "-t", String(requestedSeconds), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
     } else await run(windowsPowerShell, voiceArgs, { timeoutMs: voiceTimeoutMs });
   } catch (error) {
     throw new Error(`${song ? "Song audio preparation" : "Windows local voice synthesis"} failed: ${error instanceof Error ? error.message : "unknown error"}`);
   }
   const narrationSeconds = await mediaDuration(narration);
+  const timing = kidsNarrationTiming(input, narrationSeconds);
+  const targetSeconds = timing.targetSeconds;
+  // Fail before drawing frames if speech cannot fit naturally. Never spend a
+  // full render hiding an extreme tempo correction or a cut-off ending.
+  const audioFilter = kidsAudioFilter(narrationSeconds, targetSeconds, song);
+  // Establish caption and animation timing only after measuring the voice.
+  // There is no invented intro gap; word timing remains explicitly estimated.
+  const cues = kidsCaptionCues(captions, targetSeconds);
+  const visualCues = input.sceneNarration?.length ? kidsCaptionCues(input.sceneNarration, targetSeconds) : cues;
+  if (cues.some((cue) => cue.duration < 0.85)) {
+    throw new Error("The script is too dense to display as readable captions alongside the measured narration. Shorten the script or use fewer caption breaks and retry; the narration is retained.");
+  }
+  await onProgress(29, song ? "Keeping the supplied singing at its original speed" : `Timing scenes around ${targetSeconds.toFixed(1)} seconds of measured narration`);
+  await fs.writeFile(path.join(directory, "audio-timing.json"), JSON.stringify({
+    sourceSeconds: narrationSeconds, requestedSeconds, ...timing,
+    captionTiming: "estimated-word-weighted", captionStartSeconds: 0,
+    note: "Captions follow proportional word timing, not measured word alignment; review against the audio before posting.",
+  }, null, 2), "utf8");
 
   let animationBackground: Awaited<ReturnType<typeof preparePixabayAnimationBackground>> = null;
   try {
@@ -904,7 +961,7 @@ export async function renderKidsVideo(
   let animationPercent = 38;
   await prepareKidsAnimation({
     directory, topic: input.topic, cues: visualCues, duration: targetSeconds, aspect: format,
-    cast: [cast[0].kind, cast[1].kind], song, transparent: !!animationBackground,
+    cast: [cast[0].kind, cast[1].kind], castNames: [cast[0].name, cast[1].name], song, transparent: !!animationBackground,
     onProgress: async (value) => {
       const percent = 38 + Math.floor(value * 0.17);
       if (percent <= animationPercent) return;
@@ -928,23 +985,6 @@ export async function renderKidsVideo(
     ? `[3:v]scale=${width}:${height}:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=${width}:${height},fps=${OUTPUT_FPS},trim=duration=${targetSeconds},setpts=PTS-STARTPTS[bg];` +
       `[0:v]scale=${width}:${height}:flags=fast_bilinear,fps=${OUTPUT_FPS},format=rgba[fg];[bg][fg]overlay=0:0:shortest=1`
     : `[0:v]scale=${width}:${height}:flags=fast_bilinear`;
-  const vocalWindow = Math.max(1, targetSeconds - captionPadding * 2);
-  const tempo = atempoChain(narrationSeconds, vocalWindow);
-  // The bundled FFmpeg uses the older mono adelay syntax (milliseconds only).
-  const vocalDelay = song ? `,adelay=${Math.round(captionPadding * 1000)}` : "";
-  // Songs need an unmistakable instrumental bed.  Earlier mixes placed the
-  // spoken chant above the accompaniment, which made the result sound like a
-  // disembodied voice.  Keep stories narration-forward, but make songs
-  // music-forward while retaining clear words for ages 3–6.
-  const vocalTarget = song ? "-17" : "-15";
-  const musicTarget = song ? "-13" : "-29";
-  const finalTarget = song ? "-14" : "-16";
-  const audioFilter = song
-    ? `[1:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-16:LRA=9:TP=-1.5[a]`
-    :
-    `[1:a]${tempo}${vocalDelay},apad,atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=${vocalTarget}:LRA=7:TP=-1.5[n];` +
-    `[2:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=${musicTarget}:LRA=10:TP=-2[m];` +
-    `[n][m]amix=inputs=2:duration=first,alimiter=limit=0.95,loudnorm=I=${finalTarget}:LRA=9:TP=-1[a]`;
   const filter = `${picture},setsar=1,fps=${OUTPUT_FPS},trim=duration=${targetSeconds},setpts=PTS-STARTPTS[v];` + audioFilter;
   const renderProgress = ffmpegProgressReporter(targetSeconds, onProgress, 58, 82);
   const renderTimeoutMs = clamp(Math.ceil(targetSeconds * 3_500), 360_000, 900_000);
@@ -1003,7 +1043,7 @@ export async function renderKidsVideo(
   const finalDuration = rendered.duration;
   if (Math.abs(finalDuration - targetSeconds) > 0.12) {
     await fs.rm(output, { force: true }).catch(() => undefined);
-    throw new Error(`Final video is ${finalDuration.toFixed(3)}s; requested exactly ${targetSeconds}s.`);
+    throw new Error(`Final video is ${finalDuration.toFixed(3)}s; the measured audio timeline requires ${targetSeconds.toFixed(3)}s.`);
   }
   if (rendered.video.width !== width || rendered.video.height !== height) {
     await fs.rm(output, { force: true }).catch(() => undefined);
@@ -1015,7 +1055,7 @@ export async function renderKidsVideo(
   const visualDescription = animationBackground
     ? `${animationBackground.credits.length} licensed moving Pixabay scenery backgrounds with articulated original characters`
     : "original 2D animation with moving limbs, expressions, and caption-matched action props";
-  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? "Uses supplied audio at its original pitch; verify singing and lyric timing yourself. " : ""}Needs your visual and listening review.`;
+  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? "Uses supplied audio at its original pitch and speed. " : ""}Caption timings are word-weighted estimates, not measured word alignment; check them against the audio. Needs your visual and listening review.`;
   return {
     file: output,
     duration: finalDuration,
