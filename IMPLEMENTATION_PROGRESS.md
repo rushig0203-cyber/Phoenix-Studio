@@ -34,6 +34,13 @@
   busy-job rejection and holding the lifecycle mutex through recovery/startup.
   Automatic service termination was rejected even after owner consent; no other
   kill method was used to evade that rejection. Owner-run helper remains available.
+- Owner ran Apply Phoenix Update and reported completion. Live verification now
+  confirms port 3000 matches the selected `.next-build-20261001094026074`, Lumina
+  has a new healthy heartbeat, the renderer is ready, the dedicated browser and
+  guardian identities are live, and all three service roles are registered.
+  No newer build was selected: the final small frontend source follow-ups remain
+  pending a safe guarded build. At verification only 207 MiB free was reported;
+  no additional build/render was started. Live close/reopen has not been tested.
 
 ## October 1: posting analysis and conditional subtitles
 

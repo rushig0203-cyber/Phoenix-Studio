@@ -16,8 +16,9 @@ These notes distinguish shipped code from demonstrated output. No release here i
   tests passed. No memory guard was weakened.
 - Blank optional stock descriptions work; edited exports retain subtitle off/style
   without losing editable timed cues. Seventy-four focused app tests passed.
-- Source is updated locally. A staged bundle was verified on temporary port 3001,
-  but normal-port activation and the final small frontend rebuild are pending.
+- Source is updated locally. Owner-run activation now serves the verified staged
+  bundle on port 3000, with a healthy new worker, ready renderer and live desktop
+  guardian. The final small frontend follow-up rebuild remains pending safe RAM.
 
 ## 2026-10-01 — Posting copy from footage and conditional subtitles
 
