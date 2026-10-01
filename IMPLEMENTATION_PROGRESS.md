@@ -1,5 +1,37 @@
 # Quality-first implementation — September 16, 2026
 
+## October 1: disconnected dashboard recovery
+
+- The app browser and guardian were alive while registered website, worker and
+  renderer processes had exited. The desktop session record remained. Available
+  logs do not identify the exit cause; no RAM crash or window-close cleanup is
+  inferred. Missing services were started without terminating the app or retrying
+  failed video jobs. All six dashboard data endpoints returned HTTP 200.
+- Fixed the launcher early "already open" exit: service health, matching fresh
+  worker heartbeat, installed/running build identity and current guardian revision
+  must match. Missing dependencies are repaired while reusing the existing window.
+- Guardian v2 uses native process-lifetime/window checks and indexed descendant
+  inventory every ten seconds. Timestamped logs identify exits, close cleanup and
+  recovery attempts. Recovery is bounded to three attempts, requires the same
+  verified open session, 768 MiB free RAM and no active/unknown heavy-work lease.
+  Missing/released leases permit recovery; corrupt/external/model reservations
+  block it. Recovery does not build, preload models or explicitly retry failed jobs.
+- `reload-desktop-session.ps1` activated guardian v2 (PID 11788) with browser PID
+  17932 and existing services retained. Old guardian PID 15872 exited naturally;
+  new guardian logged readiness with an empty error log. No actual service-failure
+  or close-trigger shutdown was executed; recovery safety is covered by mocks.
+- Dashboard source now collapses six network errors into one actionable offline
+  notice. Saved snapshots remain explicitly stale, connection retry is GET-only,
+  creation/preparation mutations are disabled offline, polling avoids overlap,
+  pauses hidden pages and backs off to fifteen seconds. Cleanup aborts do not
+  update unmounted state. Twenty-four focused monitor/navigation/startup/lifecycle/
+  rebuild tests passed; the final preparation-control regression also passed in
+  a ten-test monitor/navigation recheck.
+- Website still serves `.next-build-20261001094026074`. The frontend error-message
+  change is NOT in that bundle yet. Free memory remains below the guarded build
+  threshold; no unsafe rebuild was started. Script changes are live without a
+  website rebuild. Private settings, videos, logs and runtime records stay out of Git.
+
 ## October 1: desktop shutdown and canonical project consolidation
 
 - Desktop launch uses an isolated Chrome/Edge profile and hidden guardian.

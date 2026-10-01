@@ -2,6 +2,21 @@
 
 These notes distinguish shipped code from demonstrated output. No release here is a guarantee of artistic quality, audience growth, or earnings.
 
+## 2026-10-01 — Disconnected dashboard and service recovery
+
+- Restored missing website, worker and renderer while retaining the app window.
+  All six dashboard data endpoints returned HTTP 200. The cause of the earlier
+  simultaneous exits remains unknown; no RAM-crash cause is asserted.
+- Launcher verifies service health and running/installed build identity before
+  returning "already open". Guardian v2 uses cheaper checks and logs failures,
+  with up to three token-guarded recovery attempts and existing RAM/work guards.
+- Refreshed the live guardian without stopping services; the old guardian exited
+  passively. Live service-failure/close recovery has not been deliberately tested.
+- Replaced duplicate fetch errors with an actionable offline notice, stale-list
+  labels, read-only connection retry, hidden-page pause and 15-second backoff.
+  Source tests pass; this frontend change is pending a safe production rebuild.
+- No failed video job was manually retried, provider changed or paid service added.
+
 ## 2026-10-01 — Desktop lifecycle and current-project consolidation
 
 - Dedicated app browser/guardian stops verified Phoenix-owned background work

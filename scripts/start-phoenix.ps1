@@ -1,4 +1,4 @@
-param([switch]$NoBrowser, [switch]$ServicesOnly)
+param([switch]$NoBrowser, [switch]$ServicesOnly, [string]$DesktopSessionToken)
 
 $ErrorActionPreference = 'Stop'
 $phoenixUrl = 'http://localhost:3000/dashboard'
@@ -22,6 +22,7 @@ function Test-PhoenixPort([int]$Port) {
 }
 
 function Start-PhoenixService([string]$Name, [string]$Executable, [string[]]$Arguments, [string]$Directory) {
+    if ($DesktopSessionToken -and -not (Test-PhoenixDesktopSessionActive $phoenixRoot $DesktopSessionToken)) { throw 'Desktop recovery cancelled because the app window closed or its session changed.' }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WorkingDirectory $Directory -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $phoenixStorage "$Name-$stamp.log") -RedirectStandardError (Join-Path $phoenixStorage "$Name-$stamp-error.log")
     try { $process.PriorityClass = 'BelowNormal' } catch { }
@@ -44,23 +45,41 @@ try {
 
     New-Item -ItemType Directory -Path $phoenixStorage -Force | Out-Null
     $script:phoenixOwnedServices = @(Read-PhoenixOwnedServices $phoenixOwnershipFile)
-    # A dedicated app session is already open. Double-clicks do not create more
-    # browser windows or competing guardians.
-    if (-not $NoBrowser -and -not $ServicesOnly -and (Test-Path -LiteralPath $phoenixDesktopSession)) {
-        try {
-            $existingSession = Get-Content -LiteralPath $phoenixDesktopSession -Raw | ConvertFrom-Json
-            if ($existingSession.root -eq $phoenixRoot -and (Get-PhoenixProcessByIdentity $existingSession.browser) -and (Get-PhoenixProcessByIdentity $existingSession.guardian)) {
-                Write-Output 'Phoenix Studio is already open in its desktop app window.'
-                exit 0
-            }
-        } catch { }
-    }
     $phoenixNode = (Get-Command node.exe -ErrorAction Stop).Source
     $phoenixWarnings = @()
     $phoenixConfigText = & $phoenixNode (Join-Path $PSScriptRoot 'launch-config.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'Phoenix launcher settings are invalid. Check the local renderer URL and private writer settings. No fallback writer was selected.' }
     $phoenixConfig = $phoenixConfigText | ConvertFrom-Json
     $phoenixNeedsOllama = Test-PhoenixNeedsOllama $phoenixConfig.writerProvider
+    $phoenixReuseBrowser = $null
+    if ($DesktopSessionToken -and -not (Test-PhoenixDesktopSessionActive $phoenixRoot $DesktopSessionToken)) { throw 'Desktop recovery cancelled because its app window is no longer open.' }
+    # A dedicated app session is already open. Double-clicks do not create more
+    # browser windows or competing guardians.
+    if (-not $NoBrowser -and -not $ServicesOnly -and (Test-Path -LiteralPath $phoenixDesktopSession)) {
+        try {
+            $existingSession = Get-Content -LiteralPath $phoenixDesktopSession -Raw | ConvertFrom-Json
+            if ($existingSession.root -eq $phoenixRoot -and (Get-PhoenixProcessByIdentity $existingSession.browser) -and (Test-PhoenixDesktopWindow $existingSession.browser)) {
+                $phoenixReuseBrowser = $existingSession.browser
+                $heartbeatFile = Join-Path $phoenixStorage 'worker-heartbeat.json'
+                $workerId = 0
+                try { $workerId = (Get-Content -LiteralPath $heartbeatFile -Raw | ConvertFrom-Json).pid } catch { }
+                $existingWorker = @($script:phoenixOwnedServices | Where-Object { $_.role -eq 'worker' -and $_.pid -eq $workerId }) | Select-Object -First 1
+                $allReady = (Test-PhoenixHttp $phoenixUrl) -and $existingWorker -and (Test-PhoenixWorkerHeartbeat $heartbeatFile $workerId) -and (Test-PhoenixServiceHttp ($phoenixConfig.backendUrl + '/openapi.json') 'renderer')
+                if ($phoenixNeedsOllama) { $allReady = $allReady -and (Test-PhoenixServiceHttp 'http://127.0.0.1:11434/api/tags' 'ollama') }
+                $currentBuildMatches = $false
+                try {
+                    $installedBuild = (Get-Content -LiteralPath (Join-Path $phoenixStorage 'active-build.json') -Raw | ConvertFrom-Json).directory
+                    $liveBuild = (Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8).build
+                    $currentBuildMatches = $installedBuild -match '^\.next-[a-z0-9-]+$' -and $installedBuild -eq $liveBuild
+                } catch { }
+                if ($allReady -and $currentBuildMatches -and $existingSession.guardianRevision -eq 'desktop-session-v2' -and (Get-PhoenixProcessByIdentity $existingSession.guardian)) {
+                    Write-Output 'Phoenix Studio is already open and its website, manager and renderer are ready.'
+                    exit 0
+                }
+                Write-Output 'The Phoenix app window is open. Checking and repairing its missing services before reusing it.'
+            }
+        } catch { }
+    }
     # Preserve Unicode in redirected Python logs on Windows.
     $env:PYTHONUTF8 = '1'
     $env:PYTHONIOENCODING = 'utf-8'
@@ -181,7 +200,10 @@ try {
     elseif ($phoenixNeedsOllama) { Write-Output 'Phoenix Studio, Lumina manager, Ollama and MoneyPrinterTurbo are ready. Existing services were reused.' }
     else { Write-Output 'Phoenix Studio, Lumina manager and MoneyPrinterTurbo are ready. Groq writing is selected; verify its setup in Studio health. Existing services were reused.' }
 
-    if (-not $NoBrowser) {
+    if (-not $NoBrowser -and $phoenixReuseBrowser) {
+        Start-PhoenixDesktopGuardian $phoenixRoot $phoenixReuseBrowser | Out-Null
+        Write-Output 'Phoenix services are ready in the existing app window. Its desktop guardian was refreshed.'
+    } elseif (-not $NoBrowser) {
         $browsers = @(
             (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
             (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
@@ -201,14 +223,7 @@ try {
                 if (-not $browserIdentity) { Start-Sleep -Milliseconds 150 }
             }
             if ($browserIdentity) {
-                $session = @{ version = 1; token = [guid]::NewGuid().ToString('N'); root = $phoenixRoot; browser = $browserIdentity }
-                New-Item -ItemType Directory -Path (Split-Path -Parent $phoenixDesktopSession) -Force | Out-Null
-                Write-PhoenixSessionJson $phoenixDesktopSession $session
-                $guardianScript = Join-Path $PSScriptRoot 'watch-desktop-session.ps1'
-                $guardian = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $guardianScript + '"'), '-SessionFile', ('"' + $phoenixDesktopSession + '"')) -WorkingDirectory $phoenixRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $phoenixStorage ("desktop-session-" + $session.token + '.log')) -RedirectStandardError (Join-Path $phoenixStorage ("desktop-session-" + $session.token + '-error.log'))
-                $guardianCim = Get-CimInstance Win32_Process -Filter "ProcessId = $($guardian.Id)" -ErrorAction SilentlyContinue
-                $session.guardian = Get-PhoenixProcessIdentity $guardianCim 'desktop-guardian'
-                Write-PhoenixSessionJson $phoenixDesktopSession $session
+                Start-PhoenixDesktopGuardian $phoenixRoot $browserIdentity | Out-Null
                 Write-Output 'Closing the Phoenix app window stops its owned services and releases memory. Saved jobs resume next time. Previously running services with unknown ownership are preserved.'
             } else { $phoenixWarnings += 'The app browser ownership could not be verified. Automatic shutdown is disabled; services were left running.' }
         } else {

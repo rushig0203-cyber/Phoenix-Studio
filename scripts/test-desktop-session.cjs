@@ -92,9 +92,69 @@ test('desktop close is serialized with reopen and headless launches never attach
   const launcher = fs.readFileSync(path.join(project, 'scripts/start-phoenix.ps1'), 'utf8');
   const guardian = fs.readFileSync(path.join(project, 'scripts/watch-desktop-session.ps1'), 'utf8');
   const helpers = fs.readFileSync(path.join(project, 'scripts/desktop-session.ps1'), 'utf8');
-  assert.match(launcher, /if \(-not \$NoBrowser\) \{[\s\S]*--user-data-dir=[\s\S]*watch-desktop-session\.ps1/);
-  assert.match(launcher, /desktop-session-.*session\.token/);
+  assert.match(launcher, /elseif \(-not \$NoBrowser\) \{[\s\S]*--user-data-dir=[\s\S]*Start-PhoenixDesktopGuardian/);
+  assert.match(helpers, /desktop-session-.*session\.token/);
   assert.match(guardian, /Get-PhoenixLifecycleMutexName[\s\S]*WaitOne[\s\S]*\$latest\.token -ne \$session\.token[\s\S]*Stop-PhoenixOwnedSession/);
   assert.match(helpers, /Stop-Process -InputObject \$native/);
   assert.doesNotMatch(helpers + guardian, /^\s*taskkill|Stop-Process\s+-Name|Remove-Item[^\n]+-Recurse/m);
+});
+
+test('recovery admission rejects closed windows, replaced sessions and reused browser PIDs', { skip: process.platform !== 'win32' }, () => {
+  const code = String.raw`
+    $ErrorActionPreference = 'Stop'
+    . ./scripts/desktop-session.ps1
+    $script:fixtureTime = [DateTime]::UtcNow.AddMinutes(-1)
+    $script:window = 123
+    $script:token = 'owner-session'
+    $script:browserStart = $script:fixtureTime
+    function Get-Process { param($Id, $ErrorAction)
+      $native = [pscustomobject]@{ Id=123; StartTime=$script:browserStart; MainWindowHandle=[IntPtr]$script:window }
+      $native | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
+      return $native
+    }
+    function Get-Content { param($LiteralPath, [switch]$Raw)
+      return (@{version=1;root='C:\fixture';token=$script:token;browser=@{pid=123;startTicks=$script:fixtureTime.ToUniversalTime().Ticks.ToString()}} | ConvertTo-Json -Depth 4)
+    }
+    if (-not (Test-PhoenixDesktopSessionActive 'C:\fixture' 'owner-session')) { throw 'Open owned session rejected' }
+    $script:window = 0
+    if (Test-PhoenixDesktopSessionActive 'C:\fixture' 'owner-session') { throw 'Closed window admitted recovery' }
+    $script:window = 123; $script:token = 'replacement'
+    if (Test-PhoenixDesktopSessionActive 'C:\fixture' 'owner-session') { throw 'Replaced session admitted recovery' }
+    $script:token = 'owner-session'; $script:browserStart = $script:fixtureTime.AddSeconds(30)
+    if (Test-PhoenixDesktopSessionActive 'C:\fixture' 'owner-session') { throw 'Reused browser PID admitted recovery' }
+    'recovery admission checks passed'
+  `;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', code], { cwd: project, windowsHide: true, encoding: 'utf8', timeout: 15000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /recovery admission checks passed/);
+});
+
+test('recovery distinguishes missing, null, corrupt, live and unknown external reservations', { skip: process.platform !== 'win32' }, () => {
+  const code = String.raw`
+    $ErrorActionPreference = 'Stop'
+    . ./scripts/desktop-session.ps1
+    $script:exists = $false; $script:payload = 'null'; $script:live = @()
+    function Test-Path { param($LiteralPath) return $script:exists }
+    function Get-Content { param($LiteralPath, [switch]$Raw) return $script:payload }
+    function Get-Process { param($Id, $ErrorAction) if ($Id -in $script:live) { return [pscustomobject]@{Id=$Id} } }
+    if (Test-PhoenixRecoveryBusy 'C:\fixture') { throw 'Missing lease blocked recovery' }
+    $script:exists = $true
+    if (Test-PhoenixRecoveryBusy 'C:\fixture') { throw 'Released null lease blocked recovery' }
+    $script:payload = '{broken'
+    if (-not (Test-PhoenixRecoveryBusy 'C:\fixture')) { throw 'Corrupt lease admitted recovery' }
+    $script:payload = '{"version":1,"token":"owned","pid":123,"childPids":[]}'
+    if (Test-PhoenixRecoveryBusy 'C:\fixture') { throw 'Dead local lease blocked recovery' }
+    $script:live = @(123)
+    if (-not (Test-PhoenixRecoveryBusy 'C:\fixture')) { throw 'Live dispatcher admitted recovery' }
+    $script:live = @(456); $script:payload = '{"version":1,"token":"owned","pid":123,"childPids":[456]}'
+    if (-not (Test-PhoenixRecoveryBusy 'C:\fixture')) { throw 'Live render child admitted recovery' }
+    $script:live = @(); $script:payload = '{"version":1,"token":"owned","pid":123,"external":{"jobId":"saved"}}'
+    if (-not (Test-PhoenixRecoveryBusy 'C:\fixture')) { throw 'Unknown external render admitted recovery' }
+    $script:payload = '{"version":1,"token":"owned","pid":123,"localModel":{"model":"local"}}'
+    if (-not (Test-PhoenixRecoveryBusy 'C:\fixture')) { throw 'Unknown local-model reservation admitted recovery' }
+    'recovery reservation checks passed'
+  `;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', code], { cwd: project, windowsHide: true, encoding: 'utf8', timeout: 15000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /recovery reservation checks passed/);
 });

@@ -12,7 +12,7 @@ test('launcher loads only allowed settings, with no secret leakage or hosted pro
 test('Windows startup scripts parse and service checks require identity and readiness', { skip: process.platform !== 'win32' }, () => {
   const code = `
     $ErrorActionPreference = 'Stop'
-    foreach ($file in @('scripts/start-phoenix.ps1', 'scripts/startup-health.ps1', 'scripts/desktop-session.ps1', 'scripts/watch-desktop-session.ps1')) {
+    foreach ($file in @('scripts/start-phoenix.ps1', 'scripts/startup-health.ps1', 'scripts/desktop-session.ps1', 'scripts/watch-desktop-session.ps1', 'scripts/reload-desktop-session.ps1')) {
       $parseErrors = $null; $tokens = $null
       [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) $file), [ref]$tokens, [ref]$parseErrors) | Out-Null
       if ($parseErrors.Count) { throw ($parseErrors | Out-String) }

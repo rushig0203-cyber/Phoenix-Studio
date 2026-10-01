@@ -15,6 +15,24 @@ do not stop merely because a browser tab closes. Use **Phoenix Studio.lnk** for
 close-with-the-app behavior. This launcher update takes effect next time that
 shortcut opens a fresh app window; ordinary browser tabs are not desktop sessions.
 
+An open window is not treated as proof that services are healthy. Reopening the
+shortcut checks the website, matching manager heartbeat, renderer and installed
+build before reusing the window. The guardian logs unexpected service exits and
+can request up to three bounded repairs while the verified app window stays open.
+Recovery waits for at least 768 MiB free RAM and no active/unknown heavy-work
+reservation; it does not rebuild, preload a model or explicitly retry failed jobs.
+Healthy polling uses cheap process/window checks, with descendant inventory every
+10 seconds. Logs are in `storage/desktop-session-*.log` and
+`storage/desktop-recovery-*.log`. The original simultaneous service-exit cause has
+not been established.
+
+`scripts/reload-desktop-session.ps1` refreshes the guardian for a verified existing
+app window without stopping its services. The replaced guardian exits on the new
+session token. Browser-message changes still require a guarded production build:
+the updated dashboard reports one offline notice, labels cached lists as stale,
+backs off to 15-second retries and disables creation/preparation queue controls
+until the server reconnects.
+
 On the owner's laptop, `Desktop/PhoenixStudio` now points to the same current
 project as `Documents/Codex/2026-07-29/cehd/PhoenixStudio`. The older Desktop copy,
 including its local changes and media, was preserved as

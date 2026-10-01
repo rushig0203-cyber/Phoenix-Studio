@@ -20,6 +20,7 @@ import StudioHealth, { type StudioHealthState } from "@/components/StudioHealth"
 import ReviewPlayer from "@/components/ReviewPlayer";
 import { completedTransitions } from "@/lib/creationIntent";
 import PostingActions from "@/components/PostingActions";
+import { dashboardMonitorReport, fetchDashboardSnapshot, startDashboardPolling } from "@/lib/dashboardMonitor";
 
 
 type SourceJob = {
@@ -112,6 +113,9 @@ export default function DashboardClient() {
   const [removingJob, setRemovingJob] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [monitorError, setMonitorError] = useState("");
+  const [offline, setOffline] = useState(false);
+  const offlineRef = useRef(false);
+  const monitorRequest = useRef<AbortController | null>(null);
   const [health, setHealth] = useState<StudioHealthState | null>(null);
   const [loading, setLoading] = useState(false);
   const [jobFilter, setJobFilter] = useState("all");
@@ -120,6 +124,7 @@ export default function DashboardClient() {
   const monitorMounted = useRef(true);
 
   const load = useCallback(async (silent = false) => {
+    if (silent && document.hidden) return;
     if (!silent) setLoading(true);
     if (refreshInFlight.current) {
       try {
@@ -130,15 +135,12 @@ export default function DashboardClient() {
       return;
     }
 
+    const controller = new AbortController(); monitorRequest.current = controller;
     const request = (async () => {
     try {
       // A failed edit-queue poll must not blank the independent video library.
-      const results = await Promise.allSettled(["/api/review-files", "/api/source-processing", "/api/generations", "/api/review-edits", "/api/creation-drafts", "/api/studio-health"].map(async endpoint => {
-        const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new Error(`${endpoint}: HTTP ${response.status}`);
-        return response.json();
-      }));
-      if (!monitorMounted.current) return;
+      const results = await fetchDashboardSnapshot(controller.signal);
+      if (!monitorMounted.current || controller.signal.aborted) return;
       const [review, source, ai, edits, preparation, studio] = results;
       if (review.status === "fulfilled") setFiles(Array.isArray(review.value) ? review.value.filter((file: ReviewFile) => file.status === "READY") : []);
       if (source.status === "fulfilled") setSourceJobs(source.value.jobs || []);
@@ -146,9 +148,10 @@ export default function DashboardClient() {
       if (edits.status === "fulfilled") setEditJobs(Array.isArray(edits.value) ? edits.value : []);
       if (preparation.status === "fulfilled") setDrafts(Array.isArray(preparation.value) ? preparation.value : []);
       setHealth(studio.status === "fulfilled" ? studio.value : null);
-      setMonitorError(results.flatMap(result => result.status === "rejected" ? [String(result.reason?.message || "Local request timed out")] : []).join("; "));
+      const report = dashboardMonitorReport(results);
+      offlineRef.current = report.offline; setOffline(report.offline); setMonitorError(report.message);
     } catch (error) {
-      if (monitorMounted.current) {
+      if (monitorMounted.current && !controller.signal.aborted) {
         setMonitorError(error instanceof Error ? error.message : "Could not refresh Workflow Manager.");
       }
     }
@@ -157,6 +160,7 @@ export default function DashboardClient() {
     try {
       await request;
     } finally {
+      if (monitorRequest.current === controller) monitorRequest.current = null;
       if (refreshInFlight.current === request) refreshInFlight.current = null;
       if (!silent && monitorMounted.current) setLoading(false);
     }
@@ -164,15 +168,22 @@ export default function DashboardClient() {
 
   useEffect(() => {
     monitorMounted.current = true;
-    void load();
-    const timer = window.setInterval(() => void load(true), 3000);
+    let firstPoll = true;
+    const polling = startDashboardPolling({ refresh: () => { const silent = !firstPoll; firstPoll = false; return load(silent); }, offline: () => offlineRef.current, visible: () => !document.hidden });
+    const resume = () => { if (!document.hidden) void polling.retry(); };
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
     return () => {
-      window.clearInterval(timer);
+      polling.stop();
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
       monitorMounted.current = false;
+      monitorRequest.current?.abort();
     };
   }, [load]);
 
   async function retry(job: DisplayJob, regenerate = false) {
+    if (offlineRef.current) { setNotice("Reconnect Phoenix before retrying a job."); return; }
     if (retrying) return;
     setRetrying(`${job.kind}-${job.id}`);
     try {
@@ -200,6 +211,7 @@ export default function DashboardClient() {
   }
 
   async function removeJob(job: DisplayJob) {
+    if (offlineRef.current) { setNotice("Reconnect Phoenix before changing job history."); return; }
     if (removingJob) return;
     setRemovingJob(`${job.kind}-${job.id}`);
     try {
@@ -271,9 +283,13 @@ export default function DashboardClient() {
           <div><p className="text-xs font-semibold uppercase tracking-[.2em] text-[#7a856a]">Studio / {sections.find(item => item.id === section)?.label}</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">{pageCopy[section][0]}</h1><p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p></div>
           <a href="#jobs" className="flex items-center gap-2 rounded-full border border-[#d4dcc6] bg-[#fffdf7] px-4 py-2 text-xs font-medium"><span className={`h-2 w-2 rounded-full ${activeCount ? "animate-pulse bg-[#708a43]" : "bg-[#a8b395]"}`} />{activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
         </header>
-        {monitorError ? <p role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">Some live data could not refresh: {monitorError}. Available videos remain usable; retrying automatically.</p> : null}
-        <StudioHealth health={health} detailed={section === "settings"} />
-        <div hidden={section !== "create"} data-studio-screen="create">
+        {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
+          <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>
+          <p className="mt-1">{offline ? "The local server is not responding. Open the Phoenix Studio shortcut on your Desktop, then retry the connection. Displayed lists are last received snapshots; previews, downloads and jobs need the server. Phoenix checks again every 15 seconds." : monitorError}</p>
+          <Button type="button" variant="outline" className="mt-2" disabled={loading} onClick={() => void load()}>{loading ? "Checking connection…" : "Retry connection"}</Button>
+        </div> : null}
+        {!offline ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
+        <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
         <section aria-label="Creation workflows" className="grid gap-4 xl:grid-cols-3">
           <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
             <FileVideo className="h-7 w-7 text-[#536b35]" />
@@ -297,10 +313,10 @@ export default function DashboardClient() {
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => { setNotice(message); navigate("jobs"); void load(); }} /> : null}
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={(message) => { setNotice(message || "Video queued. Preparation and rendering run automatically."); navigate("jobs"); void load(); }} /> : null}
         {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
-        </div>
+        </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
         {section === "jobs" ? <>
-        <CreationDrafts drafts={drafts} onRefresh={load} />
+        <fieldset disabled={offline} className="min-w-0 border-0 p-0" aria-label="Video preparation controls"><CreationDrafts drafts={drafts} onRefresh={load} /></fieldset>
 
         <section className="mt-5 rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -311,7 +327,7 @@ export default function DashboardClient() {
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
             </Button>
           </div>
-          <p className="mt-2 text-sm text-[#687657]">Updates every three seconds. Completed and failed jobs remain in chronological order; new work appears below older work.</p>
+          <p className="mt-2 text-sm text-[#687657]">{offline ? "Connection unavailable; displaying the last received job status." : "Updates every three seconds while this window is visible."} Completed and failed jobs remain in chronological order; new work appears below older work.</p>
           {notice ? <p role="status" className="mt-3 rounded-xl bg-[#eef3df] p-3 text-sm text-[#4f5c31]">{notice}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
             {[["all", "All"], ["active", "Active"], ["failed", "Failed"], ["completed", "Completed"]].map(([value, label]) => <button type="button" key={value} aria-pressed={jobFilter === value} onClick={() => setJobFilter(value)} className={`rounded-lg border px-3 py-2 ${jobFilter === value ? "bg-[#394a2a] text-white" : "bg-white"}`}>{label} · {jobs.filter(job => value === "all" || (value === "active" ? ["QUEUED", "RUNNING", "PROCESSING"].includes(job.status) : value === "failed" ? ["FAILED", "BLOCKED"].includes(job.status) : job.status === "COMPLETED")).length}</button>)}
@@ -337,18 +353,18 @@ export default function DashboardClient() {
                     {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
                     {job.status === "COMPLETED" ? <div className="mt-3 space-y-3">{files.filter(file => job.kind === "edit" ? file.id === job.outputId : file.id === job.id || file.processing?.jobId === job.id).map((file, index) => <div key={file.id}><Button type="button" variant="outline" size="sm" onClick={() => setPreview(file)}>Watch video{job.kind === "source" ? ` ${index + 1}` : ""}</Button><PostingActions file={file} /></div>)}</div> : null}
                     {failed && job.kind !== "edit" ? (
-                      <Button type="button" variant="outline" size="sm" disabled={retrying !== null} onClick={() => void retry(job)} className="mt-3">
+                      <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null} onClick={() => void retry(job)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Retry"}
                       </Button>
                     ) : null}
                     {job.kind === "edit" && failed ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} className="mt-3 inline-block text-xs">Open the original video’s editor to export again.</Link> : null}
                     {job.kind === "ai" && job.status === "COMPLETED" ? (
-                      <Button type="button" variant="outline" size="sm" disabled={retrying !== null} onClick={() => void retry(job, true)} className="mt-3">
+                      <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null} onClick={() => void retry(job, true)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Regenerate"}
                       </Button>
                     ) : null}
                     {!["RUNNING", "PROCESSING"].includes(job.status) ? (
-                      <Button type="button" variant="outline" size="sm" disabled={removingJob !== null} onClick={() => void removeJob(job)} className="ml-2 mt-3" aria-label={`${job.status === "QUEUED" ? "Cancel queued job" : "Remove job from history"}: ${job.title}`}>
+                      <Button type="button" variant="outline" size="sm" disabled={offline || removingJob !== null} onClick={() => void removeJob(job)} className="ml-2 mt-3" aria-label={`${job.status === "QUEUED" ? "Cancel queued job" : "Remove job from history"}: ${job.title}`}>
                         <Trash2 className="mr-1 h-3.5 w-3.5" />{removingJob === retryKey ? "Removing…" : job.status === "QUEUED" ? "Cancel queued job" : "Remove from history"}
                       </Button>
                     ) : <p className="mt-2 text-xs text-[#687657]">History removal is available when this active render finishes.</p>}
