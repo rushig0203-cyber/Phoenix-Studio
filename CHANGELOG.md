@@ -2,6 +2,29 @@
 
 These notes distinguish shipped code from demonstrated output. No release here is a guarantee of artistic quality, audience growth, or earnings.
 
+## 2026-10-02 — Connection and writing reliability (source follow-up)
+
+- Private Instagram token form accepts raw/quoted/Bearer header formats and
+  Enter submission, retaining failed input for correction. Identity verification
+  distinguishes direct Instagram Login from linked Facebook User/Page paths;
+  no Facebook username is impersonated as an Instagram account.
+- Safe permission/expiry/quota/network diagnoses, 256 KiB provider responses,
+  single-flight actions and cancellation markers prevent stale OAuth/token checks
+  from undoing Disconnect or a replacement connection.
+- YouTube's existing browser-bound OAuth/PKCE/read-only channel verification and
+  explicit expired-token renewal are covered by isolated tests. No new publisher,
+  automatic account login, paid provider or enlarged permission scope.
+- Editorial phase/evidence checkpoints retain rewritten narration and resume
+  after quota waits without repeating completed stages. Initial and final reviews
+  are separate; approval and checkpoint removal are persisted together. Recognized
+  structured-output failure codes are safely classified without retaining raw
+  provider errors. The earlier generic HTTP 400's exact cause remains unproven.
+- Source tests use isolated stores, fake tokens and mocked platforms. No real
+  account was connected, video posted or saved failed job retried. All 92 serial
+  regression tests passed. Full TypeScript checks exceeded their reduced process
+  heap caps; the production build refused below its unchanged safe RAM floor.
+  Build/type verification and activation remain pending; the existing site stays up.
+
 ## 2026-10-02 — Buyer follow-up and verified local activation
 
 - Correct stock categories/provider credits, fresh posting text in open previews,

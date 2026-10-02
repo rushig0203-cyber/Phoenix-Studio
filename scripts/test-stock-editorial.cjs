@@ -253,3 +253,117 @@ test('owner narration never enters automatic rewriting', async () => {
   assert.equal(await createStockScript(input), script);
   assert.equal(input.editorialAttempts, undefined);
 });
+
+test('quota waits resume each editorial phase without repeating completed provider work', async () => {
+  const writer = require('../src/lib/writingModel.ts'), original = writer.generateWritingModel;
+  const { WritingWaitError } = require('../src/lib/groqWriter.ts');
+  const bad = verdict({ specificTakeaway: { passed: false, evidence: '', reason: 'The promised ending is missing.' } });
+  const oversized = script + ' ' + Array(35).fill('extra').join(' ') + '.';
+  try {
+    for (const phase of ['rewrite', 'length-correction', 'final-review']) {
+      const input = { ...brief }, calls = [], history = [];
+      let outputs = phase === 'rewrite' ? [bad, new WritingWaitError('quota', 60000)]
+        : phase === 'length-correction' ? [bad, {script: oversized}, new WritingWaitError('quota', 60000)]
+        : [bad, {script}, new WritingWaitError('quota', 60000)];
+      writer.generateWritingModel = async body => {
+        calls.push(body.prompt);
+        assert.ok(outputs.length, 'No unplanned repeated stage is allowed');
+        const value = outputs.shift(); if(value instanceof Error) throw value;
+        return Response.json({response:JSON.stringify(value)});
+      };
+      const attempt = async value => {history.push(value); input.editorialAttempts = [...history];};
+      const checkpoint = async value => {input.editorialCheckpoint = value; if(value) input.script = value.script;};
+      await assert.rejects(editor.editStockNarration(input, async()=>{}, attempt, checkpoint), WritingWaitError);
+      assert.equal(input.editorialCheckpoint.phase, phase);
+      const before = calls.length;
+      outputs = phase === 'rewrite' ? [{script}, verdict()] : phase === 'length-correction' ? [{script}, verdict()] : [verdict()];
+      const result = await editor.editStockNarration(input, async()=>{}, attempt, checkpoint);
+      assert.equal(result.script, script); assert.equal(result.editorial.revised, true);
+      assert.equal(calls.length - before, phase === 'final-review' ? 1 : 2);
+      assert.equal(input.editorialCheckpoint, undefined);
+      if(phase==='length-correction') assert.match(calls[before], /Correct only the length/);
+      if(phase==='final-review') assert.match(calls[before], /Act as a careful script editor/);
+    }
+  } finally { writer.generateWritingModel = original; }
+});
+
+test('retained preliminary findings require exact context, six real findings and current local guards', async () => {
+  const history=[]; responses([verdict()]);
+  await editor.editStockNarration(brief, async()=>{}, async attempt=>history.push(attempt));
+  const saved=structuredClone(history[0]);
+  const cached=responses([]);
+  assert.equal((await editor.editStockNarration({...brief,editorialAttempts:[saved]})).script,script);assert.equal(cached(),0);
+  for(const mutate of [
+    input=>{input.duration=46;}, input=>{input.feedbackRevision='new';},input=>{input.guidanceRules=['Different rule'];},
+    input=>{input.script=script+' Read the result aloud.';},input=>{input.editorialAttempts[0].error='failed';},
+    input=>{input.editorialAttempts[0].findings=[];},input=>{input.editorialAttempts[0].findings[0].evidence='Invented quotation';},
+    input=>{input.editorialAttempts[0].findings[0].severity='warning';},
+    input=>{input.editorialAttempts[0].findings=[null];},
+    input=>{input.editorialAttempts=[null];},
+  ]) {
+    const input={...brief,editorialAttempts:[structuredClone(saved)]}; mutate(input);
+    const count=responses([verdict()]); await editor.editStockNarration(input); assert.equal(count(),1);
+  }
+  const short='Name a small task and stop. '+script.split(' ').slice(0,40).join(' ')+'.';
+  const input={...brief,script:short};
+  const forged={...saved,script:short,fingerprint:editor.editorialFingerprint(input)};
+  forged.findings=forged.findings.map(item=>({...item,evidence:'Name a small task'}));
+  const count=responses([{script},verdict()]);
+  assert.equal((await editor.editStockNarration({...input,editorialAttempts:[forged]})).script,script);
+  assert.equal(count(),2,'local length failure is recomputed even with matching saved model findings');
+});
+
+test('malformed review correction survives quota without starting another initial review', async () => {
+  const writer=require('../src/lib/writingModel.ts'),original=writer.generateWritingModel;
+  const {WritingWaitError,WritingOutputValidationError}=require('../src/lib/groqWriter.ts');
+  try {
+    for(const invalid of [verdict({causalOrder:{evidence:''}}),new WritingOutputValidationError('fixed category')]){
+      const input={...brief},history=[],prompts=[];
+      let values=[invalid,new WritingWaitError('quota',60000)];
+      writer.generateWritingModel=async body=>{
+        prompts.push(body.prompt);assert.ok(values.length);const value=values.shift();
+        if(value instanceof Error)throw value;return Response.json({response:JSON.stringify(value)});
+      };
+      const save=async checkpoint=>{input.editorialCheckpoint=checkpoint;};
+      const attempt=async value=>{history.push(value);input.editorialAttempts=history;};
+      await assert.rejects(editor.editStockNarration(input,async()=>{},attempt,save),WritingWaitError);
+      assert.equal(input.editorialCheckpoint.phase,'initial-review');assert.ok(input.editorialCheckpoint.reviewCorrection);
+      values=[verdict()];
+      const result=await editor.editStockNarration(input,async()=>{},attempt,save);
+      assert.equal(result.script,script);assert.equal(prompts.length,3);assert.match(prompts[2],/Correct the REVIEW only/);
+    }
+  } finally {writer.generateWritingModel=original;}
+});
+
+test('generation saves revised narration and invalidates stale visuals before a quota wait', async () => {
+  const writer=require('../src/lib/writingModel.ts'),original=writer.generateWritingModel;
+  const {WritingWaitError}=require('../src/lib/groqWriter.ts');
+  const revised=script.replace('loose spoons','clean spoons'), snapshots=[];
+  const input={...brief,scriptOrigin:'local-model',creationType:'general',storyboard:[{marker:'old'}],stockPreparation:{marker:'old'},visualTerms:['old'],visualTermsOrigin:'local-model'};
+  const bad=verdict({topicAnswer:{passed:false,evidence:'',reason:'The topic needs a clearer action.'}});
+  let values=[bad,{script:revised},new WritingWaitError('quota',60000)];
+  writer.generateWritingModel=async()=>{assert.ok(values.length);const value=values.shift();if(value instanceof Error)throw value;return Response.json({response:JSON.stringify(value)});};
+  try {
+    await assert.rejects(createStockScript(input,async()=>snapshots.push(structuredClone(input))),WritingWaitError);
+    assert.equal(input.script,revised);assert.equal(input.editorialCheckpoint.phase,'final-review');
+    assert.equal(input.storyboard,undefined);assert.equal(input.stockPreparation,undefined);assert.equal(input.visualTerms,undefined);
+    assert.ok(snapshots.some(snapshot=>snapshot.script===revised&&snapshot.editorialCheckpoint?.phase==='length-correction'));
+    values=[verdict()];assert.equal(await createStockScript(input,async()=>snapshots.push(structuredClone(input))),revised);assert.equal(input.editorialCheckpoint,undefined);
+    assert.ok(snapshots.some(snapshot=>snapshot.editorial?.revised===true&&!snapshot.editorialCheckpoint),'phase removal and approved verdict are persisted together');
+  } finally {writer.generateWritingModel=original;}
+});
+
+test('a completed final review survives an interrupted final checkpoint write', async()=>{
+  const history=[],input={...brief};
+  responses([verdict({topicAnswer:{passed:false,evidence:'',reason:'A clearer action is required.'}}),{script},verdict()]);
+  await assert.rejects(editor.editStockNarration(input,async()=>{},async attempt=>{
+    history.push(attempt);input.editorialAttempts=[...history];
+  },async checkpoint=>{
+    if(!checkpoint)throw new Error('Disk interrupted');
+    input.editorialCheckpoint=checkpoint;input.script=checkpoint.script;
+  }),/Disk interrupted/);
+  assert.equal(input.editorialCheckpoint.phase,'final-review');
+  const count=responses([]);
+  const resumed=await editor.editStockNarration(input);
+  assert.equal(resumed.editorial.revised,true);assert.equal(count(),0,'validated final evidence is retained, not requested again');
+});

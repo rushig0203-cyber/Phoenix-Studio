@@ -1,5 +1,36 @@
 # Phoenix Studio
 
+### Connection and writing reliability (October 2 source follow-up)
+
+Instagram's private token form accepts a raw token, matching outer quotes or an
+`Authorization: Bearer ...` header, including Enter submission. Verification
+requires an actual Instagram identity: Instagram Login works directly, while
+Facebook User/Page tokens must resolve a linked professional Instagram account.
+A Facebook profile name alone is never treated as an Instagram connection.
+Expired/revoked tokens, missing permissions, quota and network failures have
+distinct safe messages; credentials never appear in connection status. Repeated
+submissions are single-flight, and cancelled/replaced checks cannot reconnect an
+account after Disconnect. Provider responses are bounded to 256 KiB.
+
+YouTube connection setup still requires your Google OAuth client and account
+consent. Its backend verifies the channel using read-only access, checks
+browser-bound state/PKCE, and renews an expired saved connection only when you
+choose **Check connection**. Connecting does not upload or publish a video;
+reviewed outputs retain their manual platform-upload links. No paid AI service
+or additional publishing permission is enabled by these changes.
+
+The stock script editor now saves initial review, rewrite, length adjustment and
+final review separately. A quota wait resumes the unfinished phase rather than
+repeating completed calls. Reuse requires matching script/model/policy/brief and
+real saved evidence; local length/disclosure guards are recomputed. Invalid review
+JSON gets at most one correction. Provider error text is not retained or exposed;
+only recognized error codes receive a safe structured-output diagnosis. The
+cause of the earlier generic HTTP 400 is not established retroactively.
+
+This follow-up is tested source, not yet the running production bundle. Check
+`IMPLEMENTATION_PROGRESS.md` before assuming it is active. A guarded build and
+idle activation are still required; old failed jobs are not retried automatically.
+
 ### Original reels and expressive stories (October 2 local update)
 
 Stock search now supports one useful moment or up to six ordered, related shots,
@@ -294,11 +325,13 @@ Uploads, MP4s, queue state, captions, and feedback live under `storage/Phoenix S
 - **Desktop opens an older version:** compare Settings health with `storage/active-build.json`, use the current project (not a backup/ZIP), and activate a verified build while jobs are idle. A Git pull does not rebuild or replace an already running website. See staged builds below.
 - **Low memory or noisy rendering:** avoid simultaneous builds, renders and model downloads. Local FFmpeg thread counts are bounded and animation rasterization uses one worker with a 24 MB image cache, but this is not a guarantee against system-wide memory pressure from other apps.
 - **Automatic song option is unavailable:** this laptop does not meet Phoenix's singing memory guard. Import a sung recording, or use a separately installed local engine on suitable hardware. No paid service is enabled automatically.
-- **A channel is not connected:** use **Connection setup**, configure the required app credentials privately, and complete account consent yourself. Opening a platform upload page does not connect or publish to that account.
+- **Instagram rejects a pasted token:** use the masked field in **Settings → Your channels → Connection setup**. Paste a complete access token, not an app secret, URL, curl command or JSON object. Read the specific verification error. A Facebook Login token needs the appropriate linked Instagram professional account/permissions; a direct Instagram Login token does not need a Facebook Page. Never paste a real token into chat or Git.
+- **YouTube is not connected:** use **Connection setup**, configure your Web application OAuth client privately, add the exact displayed callback URI and complete consent using the account owning the channel. **Check connection** can renew a saved expired connection. Opening an upload page does not connect or publish to that account.
 
 ## Checks
 
 ```powershell
+node --max-old-space-size=192 --test --test-concurrency=1 scripts/test-channel-connections.cjs scripts/test-channel-connections-ui.cjs scripts/test-groq-writer.cjs scripts/test-stock-editorial.cjs scripts/test-creation-drafts.cjs
 node --test --test-concurrency=1 scripts/test-review-library.cjs scripts/test-quality-manager.cjs scripts/test-queue-history.cjs scripts/test-review-workflows.cjs scripts/test-stock-storyboard.cjs scripts/test-creation-drafts.cjs scripts/test-animation-and-delete.cjs scripts/test-worker-startup.cjs scripts/test-natural-stock.cjs
 node scripts/verify-kids-animation.cjs --stills-only
 node scripts/verify-kids-animation.cjs

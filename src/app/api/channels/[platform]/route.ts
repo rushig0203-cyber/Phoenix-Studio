@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   assertLocalChannelRequest, beginChannelOAuth, channelError, connectInstagramToken,
-  disconnectChannel, isChannelPlatform, listChannels, saveChannelCredentials, verifyChannel,
+  disconnectChannel, isChannelPlatform, listChannels, normalizeInstagramToken, saveChannelCredentials, verifyChannel,
 } from "@/lib/channelConnections";
 
 export const runtime = "nodejs";
@@ -12,7 +12,10 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("configure"), clientId: z.string().trim().min(3).max(500), clientSecret: z.string().trim().max(2000).default("") }),
   z.object({ action: z.literal("connect") }),
   z.object({ action: z.literal("verify") }),
-  z.object({ action: z.literal("instagram-token"), accessToken: z.string().trim().min(20).max(10000).regex(/^[A-Za-z0-9._~+\/-]+$/, "Enter the token only, without a Bearer prefix.") }),
+  z.object({ action: z.literal("instagram-token"), accessToken: z.string().max(16000).transform((value, context) => {
+    try { return normalizeInstagramToken(value); }
+    catch { context.addIssue({ code: "custom", message: "Paste the complete Instagram access token, not a URL, command, JSON response, or app secret." }); return z.NEVER; }
+  }) }),
 ]);
 
 export async function POST(request: Request, context: Context) {
@@ -21,7 +24,8 @@ export async function POST(request: Request, context: Context) {
     const { platform } = await context.params;
     if (!isChannelPlatform(platform)) return NextResponse.json({ error: "Unknown channel." }, { status: 404 });
     if (Number(request.headers.get("content-length") || 0) > 16000) return NextResponse.json({ error: "Channel settings are too large." }, { status: 413 });
-    const parsed = input.safeParse(await request.json());
+    const rawBody = await request.json().catch(() => ({}));
+    const parsed = input.safeParse(rawBody);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid channel request." }, { status: 400 });
     const data = parsed.data, origin = new URL(request.url).origin;
     if (data.action === "configure") await saveChannelCredentials(platform, data.clientId, data.clientSecret);

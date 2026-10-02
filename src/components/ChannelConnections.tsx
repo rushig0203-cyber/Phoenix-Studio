@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Camera, Link2, Loader2, RefreshCw, Play } from "lucide-react";
 import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 
@@ -12,6 +12,7 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<ChannelPlatform | null>(null);
+  const actionInFlight = useRef(false);
   const [notice, setNotice] = useState("");
   const [setup, setSetup] = useState<ChannelPlatform | null>(null);
   const [credentials, setCredentials] = useState({ clientId: "", clientSecret: "", accessToken: "" });
@@ -36,7 +37,14 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
     setCredentials({ clientId: channel.clientId, clientSecret: "", accessToken: "" });
     setNotice("");
   }
+  function connectInstagram() {
+    if (!credentials.accessToken.trim()) { setNotice("Paste your Instagram access token into the private input first."); return; }
+    // The backend normalizes quoted tokens and Authorization/Bearer headers.
+    void action("instagram", { action: "instagram-token", accessToken: credentials.accessToken });
+  }
   async function action(platform: ChannelPlatform, data: Record<string, string>, method = "POST") {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(platform); setNotice("");
     try {
       const response = await fetch(`/api/channels/${platform}`, { method, headers: { "Content-Type": "application/json" }, ...(method === "POST" ? { body: JSON.stringify(data) } : {}) });
@@ -48,7 +56,7 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
       setNotice(method === "DELETE" ? "Disconnected from Phoenix. You can also remove Phoenix access in your platform account settings." : data.action === "configure" ? "App credentials saved securely on this PC. Now select Connect." : "Connection verified successfully.");
       if (data.action === "instagram-token") setSetup(null);
     } catch (error) { setNotice(error instanceof Error ? error.message : "The channel action failed."); await load(); }
-    finally { setBusy(null); }
+    finally { actionInFlight.current = false; setBusy(null); }
   }
 
   return <section id="channels" className="scroll-mt-5 rounded-2xl border border-white/10 bg-[#18191d] p-5 text-white">
@@ -63,12 +71,13 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
           {channel.verifiedAt && <p className="mt-1 text-[10px] text-slate-500">Last verified {new Date(channel.verifiedAt).toLocaleString()}</p>}
           {channel.error && <p className="mt-2 text-xs text-amber-300">{channel.error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            {channel.connected ? <><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, { action: "verify" })}>{busy === platform ? <Loader2 className="h-3 w-3 animate-spin"/> : <RefreshCw className="h-3 w-3"/>}Check connection</button><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, {}, "DELETE")}>Disconnect</button></> : <button className={button} disabled={Boolean(busy)} onClick={() => channel.configured && channel.oauthAvailable ? void action(platform, { action: "connect" }) : showSetup(channel)}>{busy === platform ? "Connecting…" : `Connect ${names[platform]}`}</button>}
+            {(channel.connected || channel.state === "needs_attention") && <><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, { action: "verify" })}>{busy === platform ? <Loader2 className="h-3 w-3 animate-spin"/> : <RefreshCw className="h-3 w-3"/>}Check connection</button><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, {}, "DELETE")}>Disconnect</button></>}
+            {!channel.connected && <button className={button} disabled={Boolean(busy)} onClick={() => channel.configured && channel.oauthAvailable ? void action(platform, { action: "connect" }) : showSetup(channel)}>{busy === platform ? "Connecting…" : `Connect ${names[platform]}`}</button>}
             <a className={button} href={platform === "youtube" ? "https://www.youtube.com/upload" : "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer">{platform === "youtube" ? "Open YouTube upload" : "Open Instagram · Create"}<ExternalLink className="h-3 w-3"/></a>
             <button className={button} disabled={Boolean(busy)} onClick={() => showSetup(channel)}>{setup === platform ? "Close setup" : "Connection setup"}</button>
           </div>
           {setup === platform && <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
-            {platform === "youtube" ? <><p className="text-xs leading-5 text-slate-400">In Google Cloud, enable YouTube Data API v3, configure the OAuth consent screen with your account as a test user, then create a Web application OAuth client. Add this exact redirect URI:</p><code className="block break-all rounded-lg bg-black/20 p-2 text-[11px] text-slate-300">{channel.redirectUri}</code><a className="inline-flex items-center gap-1 text-xs text-violet-300 underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Open Google credentials<ExternalLink className="h-3 w-3"/></a><p className="text-xs text-slate-400">Phoenix requests read-only channel access. This does not enable a paid AI service or publish videos.</p></> : <><p className="text-xs leading-5 text-slate-400">Use an Instagram Creator or Business account. In Meta for Developers, create an app with Instagram API with Instagram Login, add your account as a tester, and generate its access token. Paste that token here; Phoenix verifies the profile before saving it.</p><a className="inline-flex items-center gap-1 text-xs text-violet-300 underline" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">Open Meta developer apps<ExternalLink className="h-3 w-3"/></a><label className="block text-xs">Instagram access token<input type="password" autoComplete="off" className={field} value={credentials.accessToken} onChange={(event) => setCredentials({ ...credentials, accessToken: event.target.value })} placeholder="Paste the token here, not in chat"/></label><button className={button} disabled={Boolean(busy) || !credentials.accessToken.trim()} onClick={() => void action(platform, { action: "instagram-token", accessToken: credentials.accessToken })}>Verify and connect Instagram</button><p className="text-xs text-slate-500">This works with local HTTP. Browser OAuth requires an HTTPS callback; {channel.oauthAvailable ? `register ${channel.redirectUri}` : "use the token option on this PC"}.</p></>}
+            {platform === "youtube" ? <><p className="text-xs leading-5 text-slate-400">In Google Cloud, enable YouTube Data API v3, configure the OAuth consent screen with your account as a test user, then create a Web application OAuth client. Add this exact redirect URI:</p><code className="block break-all rounded-lg bg-black/20 p-2 text-[11px] text-slate-300">{channel.redirectUri}</code><a className="inline-flex items-center gap-1 text-xs text-violet-300 underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Open Google credentials<ExternalLink className="h-3 w-3"/></a><p className="text-xs text-slate-400">Phoenix requests read-only channel access. This does not enable a paid AI service or publish videos.</p></> : <><p className="text-xs leading-5 text-slate-400">Use a Creator or Business account. An Instagram Login token connects directly without a Facebook Page. A Facebook User/Page token needs a linked Instagram account and the correct Page permissions.</p><a className="inline-flex items-center gap-1 text-xs text-violet-300 underline" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Open Graph API Explorer · Facebook Login tokens<ExternalLink className="h-3 w-3"/></a><form onSubmit={(event) => { event.preventDefault(); if (!busy) connectInstagram(); }} className="space-y-3"><label className="block text-xs">Instagram access token<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={16000} className={field} value={credentials.accessToken} onChange={(event) => setCredentials({ ...credentials, accessToken: event.target.value })} placeholder="Paste token or Authorization: Bearer header"/></label><button type="submit" className={button} disabled={Boolean(busy)}>{busy === platform ? <Loader2 className="h-3 w-3 animate-spin"/> : null}Verify and connect Instagram</button></form><p className="text-xs text-slate-500">Local HTTP is supported for token verification. No token is displayed in connection status and nothing is posted by connecting.</p></>}
             {(platform === "youtube" || channel.oauthAvailable) && <><label className="block text-xs">{platform === "youtube" ? "OAuth client ID" : "Instagram app ID"}<input className={field} value={credentials.clientId} onChange={(event) => setCredentials({ ...credentials, clientId: event.target.value })} autoComplete="off"/></label><label className="block text-xs">{platform === "youtube" ? "OAuth client secret" : "Instagram app secret"}<input type="password" className={field} value={credentials.clientSecret} onChange={(event) => setCredentials({ ...credentials, clientSecret: event.target.value })} autoComplete="off" placeholder={channel.hasClientSecret ? "Saved · leave blank to keep" : "Enter the app secret"}/></label><div className="flex flex-wrap gap-2"><button className={button} disabled={Boolean(busy) || !credentials.clientId.trim()} onClick={() => void action(platform, { action: "configure", clientId: credentials.clientId, clientSecret: credentials.clientSecret })}>Save app credentials</button>{channel.configured && <button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, { action: "connect" })}>Connect {names[platform]}</button>}</div></>}
             <p className="text-[10px] leading-4 text-slate-500">Secrets are encrypted in this computer&apos;s private storage. Download the reviewed MP4 and copy its posting text before opening the upload page.</p>
           </div>}

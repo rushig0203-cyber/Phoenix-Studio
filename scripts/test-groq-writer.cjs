@@ -117,6 +117,16 @@ test('provider error bodies are never exposed and never cause fallback',async()=
     await assert.rejects(router.generateWritingModel(prompt),error=>!error.message.includes('gsk_')&&!error.message.includes('private prompt')&&!router.isWritingWaitError(error));
   }
 });
+
+test('only allowlisted provider error codes distinguish structured failure without exposing private text',async()=>{
+  const secret=`private prompt ${selected.apiKey}`;
+  for(const [code,kind] of [['json_validate_failed',transport.WritingOutputValidationError],['context_length_exceeded',Error],['unexpected_private_'+secret,Error]]){
+    global.fetch=async()=>Response.json({error:{code,message:secret,failed_generation:secret}},{status:400});
+    await assert.rejects(router.generateWritingModel(prompt),error=>error instanceof kind&&!error.message.includes(selected.apiKey)&&!error.message.includes('private prompt')&&(code!=='json_validate_failed'||error.code==='PHOENIX_WRITER_OUTPUT_VALIDATION'));
+  }
+  global.fetch=async()=>new Response('invalid '+secret,{status:422});
+  await assert.rejects(router.generateWritingModel(prompt),error=>/HTTP 422/.test(error.message)&&!error.message.includes(secret));
+});
 test('network failure is bounded/actionable with no raw error or fallback',async()=>{
   global.fetch=async()=>{throw new Error(`request ${selected.apiKey}`);};
   await assert.rejects(router.generateWritingModel(prompt),error=>/interrupted or timed out/.test(error.message)&&!error.message.includes(selected.apiKey));

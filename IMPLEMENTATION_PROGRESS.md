@@ -1,5 +1,44 @@
 # Quality-first implementation — September 16, 2026
 
+## October 2: channel connections and editorial quota resumption (source follow-up)
+
+- Instagram's backend normalizes raw/quoted/Authorization-Bearer tokens. The
+  masked form submits with Enter, preserves failed input and prevents duplicate
+  in-flight mutations. Verification proves an Instagram identity through direct
+  Instagram Login or a Facebook User/Page's linked professional account, not a
+  Facebook username. Errors distinguish expiry, permissions, quota and network;
+  provider JSON reads are capped at 256 KiB without exposing credentials.
+- OAuth and direct-token attempts have claimed cancellation markers. Disconnect,
+  changed app credentials or a replacement connection prevent old in-flight work
+  from saving an account. Browser binding, single-use state, YouTube PKCE,
+  read-only scope and explicit refresh stay in place. No publisher or new scopes.
+- Editorial checkpoints retain each completed initial review/rewrite/length/final
+  review phase. Matching evidence is validated, deterministic guards recomputed,
+  and final/initial verdicts never confused even if a rewrite repeats its input.
+  Approval and checkpoint removal share one persisted snapshot. Only recognized
+  safe provider error codes are classified; raw error text is neither shown nor
+  saved. Unknown HTTP 400 still remains generic, not guessed into a repair loop.
+- Ninety-two isolated channel/UI/writer/editor/draft/build-safety tests passed
+  in one serial run with a 192 MiB Node heap cap. Platform credentials and
+  providers were fake/mocked, with Windows DPAPI exercised only in a random
+  temporary vault. Tests cover retained writing, quota correction, forged
+  evidence, owner narration, interruption persistence and shared preparation.
+  Full semantic TypeScript probes at 320/512 MiB exhausted those process heap
+  caps and did not complete; this is not a successful type check or evidence
+  that the running website crashed. Do not increase a build's memory pressure
+  on this laptop to force activation.
+- Live account status currently shows neither platform connected and no saved
+  YouTube app credentials. There is no failed Instagram token in the private vault
+  to safely test against the real provider. Owner entry/consent is still required.
+- Selected and running build remain `.next-build-20261002093727067`; the manager
+  is healthy. This follow-up is not active until a guarded build/idle restart.
+  The guarded build explicitly refused at 1,138 MiB free before compilation;
+  its unchanged floor is 1,664 MiB. Subsequent health still reported the same
+  live build with healthy manager/worker, and 1,235 MiB free. Production build
+  and full semantic TypeScript verification remain pending safe memory.
+  No service or unrelated app was stopped, no provider changed or failed job
+  retried, and no new paid service/model/dependency was added.
+
 ## October 2: real stock proof, buyer fixes and local activation
 
 - After the owner closed Brave, free RAM rose to 2,509 MiB. Tests, real rendering

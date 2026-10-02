@@ -17,6 +17,9 @@ export class WritingWaitError extends Error {
   readonly code = "PHOENIX_WRITER_WAIT";
   constructor(message: string, readonly retryAfterMs: number) { super(message); }
 }
+export class WritingOutputValidationError extends Error {
+  readonly code = "PHOENIX_WRITER_OUTPUT_VALIDATION";
+}
 
 function assertSettings(settings: WritingSettings) {
   if (settings.provider !== "groq" || settings.model !== WRITING_GROQ_MODEL) {
@@ -70,6 +73,21 @@ export function groqHttpError(status: number): Error {
   return new Error(`Groq writing service returned HTTP ${status}. Retry the saved job later; no fallback was used.`);
 }
 const httpError = groqHttpError;
+
+/** Retain only an allowlisted error category. Provider text/generated output can
+ * echo private prompts or keys; never expose or persist that response body. */
+export async function groqResponseError(response: Response): Promise<Error> {
+  if (![400, 413, 422].includes(response.status)) {
+    await response.body?.cancel().catch(() => undefined);
+    return httpError(response.status);
+  }
+  let code: unknown;
+  try { code = (await boundedJson(response) as { error?: { code?: unknown } })?.error?.code; }
+  catch { return httpError(response.status); }
+  if (code === "json_validate_failed") return new WritingOutputValidationError("Groq could not produce valid structured writing (json_validate_failed). Saved work is retained; no approval or replacement script was accepted.");
+  if (code === "context_length_exceeded") return new Error(`Groq rejected the writing request (HTTP ${response.status}: context_length_exceeded). The combined prompt and requested answer exceed the model context; saved work is retained.`);
+  return httpError(response.status);
+}
 
 /** Read-only authentication/model check. It neither generates tokens nor verifies billing tier. */
 export async function probeGroqWriter(settings: WritingSettings): Promise<{ state: "ready" | "offline" | "blocked"; detail: string }> {
@@ -181,7 +199,7 @@ export async function generateGroqText(settings: WritingSettings, body: LocalGen
         await writeAtomicJson(privatePath("groq-cooldown.json"), { identity, until: Date.now() + retryAfterMs });
         throw new WritingWaitError("Groq's free-plan limit was reached. Waiting for quota; saved work is retained and no other provider is used.", retryAfterMs);
       }
-      if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw httpError(response.status); }
+      if (!response.ok) throw await groqResponseError(response);
       const remaining = groqRateWindow(response.headers, identity);
       if (remaining.tokens !== undefined || remaining.requests !== undefined) {
         try { await writeAtomicJson(privatePath("groq-rate-window.json"), remaining); }

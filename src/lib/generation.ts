@@ -18,7 +18,7 @@ import { createStockStoryboard, readStockShots, type StockBeat } from "./stockSt
 import { getCreativeGuidance } from "./qualityManager";
 import type { CreativeGuidance } from "./managerTypes";
 import { generateWritingModel, withWritingSession, isWritingWaitError } from "./writingModel";
-import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt } from "./stockEditorial";
+import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
@@ -53,6 +53,7 @@ export type GenerationInput = {
   scriptOrigin?: "owner" | "local-model";
   editorial?: EditorialReview;
   editorialAttempts?: EditorialAttempt[];
+  editorialCheckpoint?: EditorialCheckpoint;
   creativeBrief?: CreativeBrief;
   creativeBriefAttempt?: CreativeBriefAttempt;
   kidsStoryAttempt?: KidsStoryAttempt;
@@ -709,6 +710,15 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
       input.script = attempt.script;
       input.scriptOrigin = "local-model";
       await onStage(attempt.error ? "Editorial attempt saved — local review needs attention" : "Editorial evidence and narration saved");
+    }, async (checkpoint, completed) => {
+      if (checkpoint && input.script !== checkpoint.script) {
+        input.storyboard = undefined; input.stockPreparation = undefined;
+        if (input.visualTermsOrigin === "local-model") input.visualTerms = undefined;
+        input.script = checkpoint.script; input.scriptOrigin = "local-model";
+      }
+      if (completed) { input.script = completed.script; input.editorial = completed.editorial; }
+      input.editorialCheckpoint = checkpoint;
+      await onStage(checkpoint ? "Editorial progress saved — next writing stage can resume" : "Editorial checks complete");
     });
     input.editorial = editorial;
     if (input.script && script !== input.script) {
