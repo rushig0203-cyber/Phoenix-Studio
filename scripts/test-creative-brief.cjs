@@ -40,6 +40,7 @@ test('broader planner saves three angles and an appropriate structure, without a
   assert.equal(brief.structure, 'explanation'); assert.equal(brief.angles.length, 3);
   const narrationData = JSON.parse(creativeBriefInstructions(brief));
   assert.deepEqual(narrationData.beats, outline.beats.map(beat => beat.point));
+  assert.deepEqual(narrationData.visualConstraints, outline.beats.map(beat => beat.visual), 'visual feasibility survives the handoff to narration');
   assert.equal(narrationData.visual, undefined);
   assert.equal((await planCreativeBrief({ ...input, saved: brief })).fingerprint, brief.fingerprint);
   assert.equal(calls, 1);
@@ -131,4 +132,34 @@ test('quota encountered during repair remains a resumable quota wait', async () 
   };
   try { await assert.rejects(planCreativeBrief(input), error => error === wait); assert.equal(calls, 2); }
   finally { writer.generateWritingModel = originalGenerate; }
+});
+
+test('children planning uses supported original 2D and keeps action/reaction visual constraints', async () => {
+  const children = { ...outline, structure: 'story', audience: 'Children ages 3–6', viewerQuestion: 'How can the two friends pass the garden ball safely?',
+    opening: 'The ball rolled away while Pip reached too quickly.',
+    beats: [
+      { point: 'Pip reaches for the ball and it rolls past him.', visual: 'Wide view: Pip reaches; the ball stays grounded.' },
+      { point: 'Coco notices the mistake and offers a slower turn.', visual: 'Reaction view: Coco listens, then holds the ball.' },
+      { point: 'Pip waits, and Coco hands the ball to him.', visual: 'Prop-detail view: the ball transfers from Coco to Pip.' },
+    ], payoff: 'They pass the ball safely instead of rushing together.', avoid: ['Do not add a third speaking character or duplicate the ball.'] };
+  global.fetch = async (_url, init) => {
+    const prompt = JSON.parse(init.body).prompt;
+    assert.match(prompt, /original limited 2D/);
+    assert.match(prompt, /attempt, consequence, reaction and revised action/);
+    assert.match(prompt, /give\/pass\/hand should visibly transfer/);
+    assert.doesNotMatch(prompt, /For each give a literal visual the current renderer can obtain: actual stock/);
+    return Response.json({ response: JSON.stringify(children) });
+  };
+  const brief = await planCreativeBrief({ ...input, topic: 'Pip and Coco pass a ball', creationType: 'children-story' });
+  assert.equal(brief.structure, 'story');
+  assert.deepEqual(JSON.parse(creativeBriefInstructions(brief)).visualConstraints, children.beats.map(beat => beat.visual));
+});
+
+test('changed planning policy does not reuse an older saved outline', async () => {
+  let calls = 0;
+  global.fetch = async () => { calls++; return Response.json({ response: JSON.stringify(outline) }); };
+  const current = await planCreativeBrief(input);
+  const renewed = await planCreativeBrief({ ...input, saved: { ...current, version: 1 } });
+  assert.equal(calls, 2);
+  assert.equal(renewed.version, 2);
 });

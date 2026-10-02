@@ -6,7 +6,7 @@ import { z } from "zod";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import { getReviewFile, outputPath, reviewRoot, safeReviewId, saveReviewFile, sourcePath, type ReviewFile } from "./reviewFiles";
-import { FFMPEG_ENCODER_RESOURCE_ARGS, FFMPEG_FILTER_RESOURCE_ARGS, lowerChildProcessPriority, withLocalRenderSlot } from "./renderResources";
+import { FFMPEG_ENCODER_RESOURCE_ARGS, FFMPEG_FILTER_RESOURCE_ARGS, lowerChildProcessPriority, tryWithLocalRenderSlot } from "./renderResources";
 import type { EditCue, ReviewEditDraft, ReviewEditJob, ReviewEditState } from "./reviewEditTypes";
 import { artifactReference, resolveArtifact } from "./reviewArtifacts";
 import { parseSrt, captionSrt } from "./timedCaptions";
@@ -211,7 +211,7 @@ export function processNextReviewEdit(): Promise<void> {
   inFlight = (async () => {
     // Idle polling must not queue behind rendering or wait for extra RAM.
     if (!(await listReviewEdits()).some(job => ["QUEUED", "PROCESSING"].includes(job.status))) return;
-    await withLocalRenderSlot(async () => {
+    await tryWithLocalRenderSlot(async () => {
     const job = await mutate(jobs => {
       for (const pending of jobs.filter(j => j.status === "PROCESSING" && !j.archivedAt)) {
         let alive = false; try { if(pending.workerPid) { process.kill(pending.workerPid,0); alive=true; } } catch {}
@@ -263,9 +263,7 @@ export function processNextReviewEdit(): Promise<void> {
       await saveReviewFile(file);
       await patchJob(job.id,{status:"COMPLETED",progress:100,stage:"Edited copy ready for review",finishedAt:now});
     } catch(error) { await patchJob(job.id,{status:"FAILED",stage:"Edited export failed",error:error instanceof Error?error.message:String(error),finishedAt:new Date().toISOString()}); }
-  }, "Manual video edit", reason => mutate(jobs => {
-    for (const job of jobs) if (job.status === "QUEUED" && !job.archivedAt) job.stage = `Queued · ${reason}`;
-  }));
+  }, "Manual video edit");
   })().finally(()=>{inFlight=null;});
   return inFlight;
 }

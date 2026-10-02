@@ -40,11 +40,17 @@ test('Groq routes all nested writing without local memory admission and allows o
     assert.equal(body.messages.length,2);
   }
 });
-test('JSON stage is constrained to JSON object and preserves downstream validation',async()=>{
+test('supplied schemas are enforced without changing optional fields, while plain JSON stays JSON-only',async()=>{
   global.fetch=async(url,init)=>{calls.push({url,init});return answer('{"queries":["bag packing"]}');};
   const value=await (await router.generateWritingModel({...prompt,format:{type:'object',properties:{queries:{type:'array'}}}})).json();
   assert.equal(value.provider,'groq');assert.equal(value.done,true);assert.deepEqual(JSON.parse(value.response),{queries:['bag packing']});
-  assert.deepEqual(JSON.parse(calls[0].init.body).response_format,{type:'json_object'});
+  const format=JSON.parse(calls[0].init.body).response_format;
+  assert.equal(format.type,'json_schema');assert.equal(format.json_schema.strict,false);
+  const schema={type:'object',properties:{queries:{type:'array',items:{type:'string'}}},required:['queries'],additionalProperties:false};
+  await router.generateWritingModel({...prompt,format:schema});
+  assert.deepEqual(JSON.parse(calls[1].init.body).response_format,{type:'json_schema',json_schema:{name:'phoenix_writing',strict:true,schema}});
+  await router.generateWritingModel({...prompt,format:'json'});
+  assert.deepEqual(JSON.parse(calls[2].init.body).response_format,{type:'json_object'});
 });
 test('missing key and missing Free confirmation never contact a provider',async()=>{
   for(const invalid of [{apiKey:''},{freePlanConfirmed:false}]){

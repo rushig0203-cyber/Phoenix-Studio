@@ -4,7 +4,7 @@ import path from "node:path";
 import { reviewRoot } from "./reviewFiles";
 import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
-import { withLocalRenderSlot } from "./renderResources";
+import { HeavyWorkWaitError, heavyWorkStatus, tryWithLocalRenderSlot } from "./renderResources";
 import { createGenerationJobs, type GenerationInput } from "./generation";
 import { createContent, type KidsRenderInput } from "./kidsRenderer";
 import { getCreativeGuidance } from "./qualityManager";
@@ -175,6 +175,8 @@ export async function changeDraftStatus(id: string, version: number, action: "re
     if (action === "retry" && draft.status !== "FAILED") throw new DraftConflict("Only failed plans can be retried.");
     if (action === "finish" && !["READY", "FAILED"].includes(draft.status)) throw new DraftConflict("Only waiting or failed plans can be finished automatically.");
     if (action === "finish" || action === "retry") draft.input.reviewMode = "final";
+    if (action === "retry" && draft.input.kidsStoryAttempt?.repairAttempted) draft.input.kidsStoryAttempt.repairAttempted = false;
+    if (action === "retry" && draft.input.creativeBriefAttempt?.repairAttempted) draft.input.creativeBriefAttempt.repairAttempted = false;
     draft.status = action === "archive" ? "ARCHIVED" : "QUEUED";
     draft.stage = action === "archive" ? "Draft archived; saved media retained" : "Queued to resume planning";
     draft.version++; draft.updatedAt = new Date().toISOString(); draft.error = undefined;
@@ -185,6 +187,22 @@ export async function changeDraftStatus(id: string, version: number, action: "re
 
 let planning = false;
 const readyToPlan = (draft: CreationDraft) => (draft.status === "QUEUED" && (!draft.nextAttemptAt || Date.parse(draft.nextAttemptAt) <= Date.now())) || (draft.status === "PLANNING" && (draft.leaseUntil || 0) < Date.now());
+const readyForPlanningResources = (draft: CreationDraft, resources: { waitingForMemory: boolean }) => readyToPlan(draft)
+  && (!resources.waitingForMemory || (writingModelIdentity().startsWith("groq:") && draft.input.creationType !== "children-song"));
+
+/** Bounded cloud text planning may run while local media work awaits RAM. */
+export async function creationDraftWorkflowReady(resources: { waitingForMemory: boolean }) {
+  const drafts = await listCreationDrafts();
+  if (drafts.some(draft => draft.status === "APPROVING")) return true;
+  if (drafts.some(draft => draft.status === "PLANNING" && (draft.leaseUntil || 0) > Date.now())) return false;
+  return drafts.some(draft => readyForPlanningResources(draft, resources));
+}
+
+async function attemptPlanningSlot(work: () => Promise<unknown>, kind: string) {
+  const admitted = await tryWithLocalRenderSlot(work, kind);
+  if (!admitted.acquired) throw new HeavyWorkWaitError(`${(await heavyWorkStatus()).reason}; saved planning will continue automatically.`);
+}
+
 export async function processNextCreationDraft() {
   if (planning) return;
   planning = true;
@@ -203,10 +221,11 @@ export async function processNextCreationDraft() {
       }); }
       return;
     }
-    if (!all.some(readyToPlan)) return;
+    const resources = await heavyWorkStatus();
+    if (!all.some(draft => readyForPlanningResources(draft, resources))) return;
     const draft = await mutate(drafts => {
       if (drafts.some(d => d.status === "PLANNING" && (d.leaseUntil || 0) > Date.now())) return null;
-      const selected = drafts.find(readyToPlan);
+      const selected = drafts.find(draft => readyForPlanningResources(draft, resources));
       if (!selected) return null;
       selected.status = "PLANNING"; selected.stage = selected.input.reviewMode === "final" ? "Planning — rendering will start automatically" : "Planning — video will wait for your approval";
       selected.leaseOwner = leaseOwner; selected.leaseUntil = Date.now() + leaseMs; selected.version++;
@@ -233,7 +252,10 @@ export async function processNextCreationDraft() {
           }, draft.input.reviewMode === "final");
           draft.input = prepared.input; draft.scenes = prepared.scenes; script = prepared.input.script!;
         } else {
-          script = draft.input.script?.trim() || await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType));
+          script = draft.input.script?.trim() || await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType), async planned => {
+            draft.input = { ...draft.input, creativeBrief: planned.creativeBrief, creativeBriefAttempt: planned.creativeBriefAttempt, kidsStoryAttempt: planned.kidsStoryAttempt };
+            await update({ input: draft.input, stage: planned.creativeBriefAttempt ? "Story plan correction saved · checking supported visuals" : planned.kidsStoryAttempt ? "Narration correction saved · checking visible actions and dialogue" : "Original story direction saved · preparing dialogue" });
+          });
           draft.input = { ...draft.input, script, scriptOrigin: draft.input.scriptOrigin || (draft.input.script?.trim() ? "owner" : "local-model") };
         }
         await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
@@ -248,19 +270,19 @@ export async function processNextCreationDraft() {
       } else {
         // Acquire the heavy slot BEFORE opening the local writer session; the
         // opposite lock order can deadlock against a renderer that also writes.
-        await withLocalRenderSlot(() => withWritingSession(preparePlan), "Creation planning", reason => update({ stage: reason }));
+        await attemptPlanningSlot(() => withWritingSession(preparePlan), "Creation planning");
       }
       if (draft.input.creationType === "children-song") {
         // Singing generates/stages actual audio and is never RAM-exempt, even
         // when the lyrics were prepared by Groq. Its own stricter guard stays.
-        await withLocalRenderSlot(async () => {
+        await attemptPlanningSlot(async () => {
           if (draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
             const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
             draft.input.songAudioId = song.id;
             await update({ input: draft.input });
           }
           await requireSongAudio(draft.input.songAudioId, draft.input.duration);
-        }, "Song audio preparation", reason => update({ stage: reason }));
+        }, "Song audio preparation");
       }
       const scenes = draft.scenes.length ? draft.scenes
         : (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, 18))

@@ -2,18 +2,23 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { kidsCharacterSvg, kidsRigMotion, type KidsRigPose } from "./kidsCharacterRig";
+import { kidsNarratedActions, reportsKiteFlight, reportsKiteResolution } from "./kidsObjectEvents";
+import { kidsMouthState, kidsPoseBudgets, kidsShotFor, kidsStoryBeat, mix, ramp, quantizeKidsProgress, unit, KIDS_MAX_UNIQUE_FRAMES, type KidsAnimationPerformanceFrame, type KidsExpression, type KidsShot, type KidsStoryIntent } from "./kidsAnimationTimeline";
+export type { KidsAnimationPerformanceFrame } from "./kidsAnimationTimeline";
 
 export type KidsAnimationCue = { text: string; start: number; end: number };
 export type KidsAnimationKind = "dog" | "cat" | "bunny" | "bird" | "bear" | "fox" | "fish";
 export type KidsAnimationAction = "clap" | "hop" | "wave" | "march" | "sway" | "flap" | "drum" | "reach" | "sleep" | "listen";
 type Prop = "rain" | "umbrella" | "flower" | "drum" | "kite" | "ball" | "star" | "gift" | "toys" | "bridge" | "letter" | "bus" | "none";
-type Scene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean; emotion: "happy" | "worried" | "curious"; kiteState: "tangled" | "held" | "flying"; kiteCaughtHigh: boolean };
+export type KidsAnimationScene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean; emotion: KidsExpression; emotionFrom?: KidsExpression; kiteState: "tangled" | "held" | "flying"; kiteCaughtHigh: boolean; kiteFrom?: "tangled" | "held" | "flying"; kiteFromHigh?: boolean; intent: KidsStoryIntent; objectState: "grounded" | "held" | "offered" | "received" | "arranged"; objectOwner: 0 | 1; objectFrom?: 0 | 1; shot: KidsShot; focus?: 0 | 1 };
+type Scene = KidsAnimationScene;
 type Stage = { width: number; height: number; ground: number; y: number; size: number };
 
-// Draw animation on twos, as in limited 2D cartoons. Reusing a four-second pose
-// cycle keeps a three-minute video small and avoids thousands of render jobs.
+// Limited animation at 12fps, with a finite action and a held reaction per cue.
+// Quantized poses and audio mouth forms share a fixed raster budget.
 export const KIDS_ANIMATION_FPS = 12;
-const CYCLE_FRAMES = KIDS_ANIMATION_FPS * 4;
+const ACTION_PREVIEW_FRAMES = KIDS_ANIMATION_FPS * 4;
 const ink = "#485365";
 const tau = Math.PI * 2;
 const n = (value: number) => Number(value.toFixed(2));
@@ -24,9 +29,9 @@ const line = (x1: number, y1: number, x2: number, y2: number, fill: string, widt
 
 export function planKidsAnimationScene(topic: string, text: string, index = 0, previous?: Scene): Scene {
   topic = topic.toLowerCase();
-  const words = text.toLowerCase();
+  const words = kidsNarratedActions(text).toLowerCase();
   const theme = /ocean|underwater|fish|shark/.test(topic) ? "ocean" : /bedtime|sleep|moon|night|star/.test(topic) ? "night" : /clean|tidy|playroom|toy/.test(topic) ? "room" : "garden";
-  const action: KidsAnimationAction = /clap|pat your/.test(words) ? "clap"
+  let action: KidsAnimationAction = /clap|pat your/.test(words) ? "clap"
     : /drum|bucket|tap.*beat/.test(words) ? "drum"
     : /fly|flies/.test(words) && /kite/.test(`${topic} ${words}`) ? "reach"
     : /flap|wing|fly|flies/.test(words) ? "flap"
@@ -34,7 +39,7 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
     : /sleep|breathe|hush|rest|close.*eyes/.test(words) ? "sleep"
     : /wave|hello|goodbye|goodnight/.test(words) ? "wave"
     : /march|step|walk|cross|follow|hurri|tiptoe/.test(words) ? "march"
-    : /reach|pick|lift|carry|carried|hold|held|share|help|give|gave|pass/.test(words) ? "reach" : "sway";
+    : /reach|pick|lift|carry|carried|hold|held|share|help|give|gave|pass|hands?|handed/.test(words) ? "reach" : "sway";
   const prop: Prop = /kite/.test(topic) && /ribbon|string|spool|tangle/.test(words) ? "kite"
     : /\b(bus|wheel|vehicle|car)\b/.test(words) ? "bus"
     : /umbrella/.test(words) ? "umbrella"
@@ -50,24 +55,44 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
     : /present|gift|basket|snack/.test(words) ? "gift"
     // Keep the central object visible across pronouns and reaction lines.
     : /kite/.test(topic) ? "kite" : /ball/.test(topic) ? "ball"
-    : /star|moon/.test(topic) ? "star" : /flower|garden/.test(topic) ? "flower" : "none";
-  const resolved = /untangled|freed|set.*free|no longer.*tangl|strings? (?:was |were )?straight/.test(words);
+    : /star|moon/.test(topic) ? "star" : /flower|garden/.test(topic) ? "flower" : previous?.prop || "none";
+  const resolved = reportsKiteResolution(words);
   const tangled = !resolved && /\b(?:tangled?|stuck|caught|snagged|knotted)\b/.test(words);
-  const kiteState = tangled ? "tangled" : /\b(?:flies|flying|flew|soar\w*|rose|rises|aloft)\b/.test(words) ? "flying" : resolved || /\b(?:holds?|held|carr\w*|pick\w*|build\w*)\b/.test(words) ? "held" : previous?.kiteState || "held";
+  const flight = reportsKiteFlight(words);
+  const heldKite = /\b(?:holds?|held|carried|carries|picked up|built|made)\s+(?:(?:the|their|our|my|a)\s+)?kite\b(?!\s+(?:string|ribbon|spool|tail|line)\b)/.test(words);
+  const kiteState = tangled || previous?.kiteState === "tangled" && !resolved ? "tangled"
+    : flight ? "flying" : resolved || heldKite ? "held" : previous?.kiteState || "held";
   const kiteCaughtHigh = kiteState === "tangled" && (/branch|tree|vine/.test(words) || !!previous?.kiteCaughtHigh);
-  const emotion = resolved || /\b(?:smil\w*|laugh\w*|relieved|happy|solved|cheer\w*)\b/.test(words) ? "happy"
-    : /lost|stuck|torn|\btangle|problem|afraid|dim|sad|wrong|wobbl/.test(words) ? "worried"
+  const emotion: KidsExpression = resolved || /\b(?:smil\w*|laugh\w*|happy|solved|cheer\w*)\b/.test(text.toLowerCase()) ? "happy"
+    : /relieved|phew/.test(words) ? "relieved" : /determined|carefully|try again|tried again/.test(words) ? "determined"
+    : /gasp|surprised|amazed/.test(words) ? "surprised" : /tired|sleepy|yawn/.test(words) ? "tired"
+    : /lost|stuck|torn|\btangle|problem|afraid|dim|sad|wrong|wobbl|worried/.test(words) ? "worried"
     : /look|notice|wonder|clue|find|surpris/.test(words) ? "curious" : previous?.emotion || "happy";
-  return { action, prop, theme, close: index % 4 === 2 && prop === "none", emotion, kiteState, kiteCaughtHigh };
+  const intent: KidsStoryIntent = /give|gave|pass|offer|share|\bhands?\b|handed/.test(words) ? "offer"
+    : /receive|accept|took|takes/.test(words) ? "receive" : resolved || /untangl|unty|unwind/.test(words) ? "untangle"
+    : /comfort|beside|hug|reassur/.test(words) ? "comfort" : /look|notice|wonder|sad|afraid|worried/.test(words) || action === "sway" && /watch|listen/.test(words) ? "observe"
+    : action === "sleep" ? "rest" : action === "wave" ? "greet" : action === "march" ? "approach"
+    : /cheer|laugh|hooray|celebrat/.test(words) ? "celebrate" : action === "reach" ? "explore" : "perform";
+  if (intent === "untangle") action = "reach";
+  const objectState = intent === "offer" ? "offered" : intent === "receive" ? "received"
+    : /tidied|sorted|cleaned|put.*away/.test(words) ? "arranged" : /hold|held|carry|carried|pick|lift/.test(words) ? "held"
+    : previous?.prop === prop ? previous.objectState : "grounded";
+  const previousOwner = previous?.prop === prop ? previous.objectOwner : 0;
+  const objectOwner: 0 | 1 = intent === "offer" ? (previousOwner ? 0 : 1) : previousOwner;
+  const objectFrom = intent === "offer" ? previousOwner : undefined;
+  const shot = kidsShotFor(intent, index, -1, prop !== "none");
+  const kiteFrom = prop === "kite" && previous?.kiteState !== kiteState ? previous?.kiteState : undefined;
+  return { action, prop, theme, close: shot === "reaction", emotion, emotionFrom: previous?.emotion !== emotion ? previous?.emotion : undefined, kiteState, kiteCaughtHigh, kiteFrom, kiteFromHigh: kiteFrom ? previous?.kiteCaughtHigh : undefined, intent, objectState, objectOwner, objectFrom, shot };
 }
 
 export function planKidsPerformance(text: string, cast: [KidsAnimationKind, KidsAnimationKind], names?: [string, string], song = false) {
   const lower = text.toLowerCase();
   const aliases = cast.map((kind, index) => [kind, names?.[index], kind === "bunny" ? "rabbit" : kind === "dog" ? "puppy" : kind === "cat" ? "kitten" : ""].filter(Boolean).map(name => name!.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   const mentioned = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\b`).test(lower)));
+  const subject = aliases.findIndex(values => values.some(name => new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly)\\s+)?(?:give[sn]?|gave|hands?|handed|passes?|passed|offers?|offered|holds?|held|carries|carried|picks?|picked|lifts?|lifted)\\b`).test(lower)));
   const observing = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\s+(?:(?:quietly|patiently|just)\\s+)?(?:watch(?:es|ed)?|listen(?:s|ed)?|wait(?:s|ed)?|looks? on)\\b`).test(lower)));
   const shared = song || /\b(?:together|both|they|friends)\b/.test(lower) || !mentioned.some(Boolean);
-  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
+  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
 }
 
 function kitePosition(stage: Stage, scene: Scene, phase: number) {
@@ -193,7 +218,7 @@ function backdrop(stage: Stage, scene: Scene, phase: number, transparent: boolea
   return body;
 }
 
-/** Anticipation, flight and landing on the same bounded four-second pose cycle. */
+/** Legacy phase helper for saved pose callers. Production uses the finite rig. */
 export function kidsHopPose(phase: number) {
   const t = ((phase / Math.PI) % 1 + 1) % 1;
   const flight = t >= .18 && t < .78 ? Math.sin((t - .18) / .6 * Math.PI) : 0;
@@ -202,102 +227,18 @@ export function kidsHopPose(phase: number) {
   return { lift: flight * 34, scaleY: 1 + squash, scaleX: 1 / (1 + squash) };
 }
 
-function puppet(kind: KidsAnimationKind, action: KidsAnimationAction, phase: number, singing: boolean, second = false, emotion: Scene["emotion"] = "happy", speaking = true) {
-  const fur = kind === "bear" ? "#b9815c" : kind === "fox" ? "#e99555" : kind === "cat" ? "#efb370" : kind === "dog" ? "#d0a174" : kind === "bird" ? "#f4d46c" : kind === "fish" ? (second ? "#a7a1df" : "#f5b66e") : "#eee6de";
-  const pale = kind === "bear" ? "#edceac" : "#fff3df";
-  const shirt = second ? "#d792a3" : "#76aeb2";
-  const beat = Math.sin(phase * 2);
-  const step = Math.sin(phase * 2);
-  const jump = kidsHopPose(phase);
-  const hop = action === "hop" ? -jump.lift : action === "flap" && kind === "bird" ? -8 - Math.sin(phase * 2) * 10 : -Math.abs(beat) * 3;
-  const tilt = action === "listen" ? Math.sin(phase) : action === "sleep" ? Math.sin(phase) * 3 : action === "sway" ? Math.sin(phase) * 7 : Math.sin(phase) * 2;
-  const mouthOpen = action === "sleep" ? 1 : singing ? 4 + Math.max(0, Math.sin(phase * 10)) * 8 : speaking ? 2 + Math.max(0, Math.sin(phase * 9)) * 5 : 1.5;
-  const eyePhase = (phase + (second ? 1.7 : 0)) % tau;
-  const blink = eyePhase > 5.4 && eyePhase < 5.65 || action === "sleep";
-  if (kind === "fish") {
-    return `<g transform="translate(${n(Math.sin(phase) * 18)} ${n(hop)}) rotate(${n(tilt)})">` +
-      `<path d="M-50 0 L${n(-93 + Math.sin(phase * 2) * 9)} -39 L${n(-93 - Math.sin(phase * 2) * 9)} 39Z" fill="${fur}" stroke="${ink}" stroke-width="3"/>` +
-      `<path d="M-22 -36 Q-5 -70 26 -37" fill="${shirt}" stroke="${ink}" stroke-width="2"/>` + ellipse(0, 0, 67, 46, fur, ink) + ellipse(8, 17, 47, 23, "#fff1da") +
-      Array.from({ length: 9 }, (_, i) => `<path d="M${-47 + i % 3 * 17} ${-20 + Math.floor(i / 3) * 17} q10 7 0 14" stroke="#bd947b" stroke-width="1.3" fill="none" opacity=".65"/>`).join("") +
-      `<g transform="rotate(${n(Math.sin(phase * 2) * 12)} -8 8)"><path d="M-8 8 Q-43 9 -9 34 Q4 20 -8 8" fill="${shirt}" stroke="${ink}" stroke-width="2"/><path d="M-12 13 L-13 25" stroke="#f2d7c4" stroke-width="2"/></g>` +
-      ellipse(30, -13, 12, 15, "#fff") + ellipse(33, -12, 6, blink ? 1 : 9, ink) + ellipse(35, -16, 2.5, 3, "#fff") + ellipse(49, 9, 8, 4, "#e49c9a") + ellipse(54, 16, 6, mouthOpen / 2, "#9a5761") + "</g>";
-  }
-  const footLift = action === "march" ? step * 15 : action === "sway" ? step * 4 : 0;
-  let hands: [[number, number], [number, number]] = [[-73, 103], [73, 103]];
-  if (action === "clap") hands = [[-25 + beat * 21, 76], [25 - beat * 21, 76]];
-  if (action === "wave") hands = [[-72, 100], [76 + Math.sin(phase * 4) * 15, 5]];
-  if (action === "reach") hands = [[-12, 94 + beat * 7], [16, 88 + beat * 7]];
-  if (action === "sway") hands = [[-79, 74 + beat * 22], [79, 74 - beat * 22]];
-  if (action === "flap") hands = [[-89, 48 + beat * 39], [89, 48 + beat * 39]];
-  if (action === "drum") hands = [[-23, 77 + beat * 16], [25, 77 - beat * 16]];
-  if (action === "sleep") hands = [[12, 39], [31, 34]];
-  if (action === "march") hands = [[-65, 91 + step * 17], [65, 91 - step * 17]];
-  if (action === "hop") hands = [[-75, 100 - jump.lift], [75, 100 - jump.lift]];
-  const arm = (side: -1 | 1) => {
-    const [hx, hy] = hands[side < 0 ? 0 : 1];
-    return `<path d="M${side * 39} 63 Q${side * 61} ${n((63 + hy) / 2)} ${n(hx)} ${n(hy)}" fill="none" stroke="${ink}" stroke-width="20" stroke-linecap="round"/>` +
-      `<path d="M${side * 39} 63 Q${side * 61} ${n((63 + hy) / 2)} ${n(hx)} ${n(hy)}" fill="none" stroke="${kind === "bird" ? shirt : fur}" stroke-width="15" stroke-linecap="round"/>` +
-      `<path d="M${side * 37} 61 L${side * 48} ${n(63 + (hy - 63) * .2)}" fill="none" stroke="${shirt}" stroke-width="19" stroke-linecap="round"/>` +
-      (kind === "bird" ? `<path d="M${n(hx - 10)} ${n(hy - 9)} Q${n(hx - 24)} ${n(hy + 3)} ${n(hx - 10)} ${n(hy + 9)} Q${n(hx - 4)} ${n(hy + 15)} ${n(hx + 1)} ${n(hy + 9)} Q${n(hx + 14)} ${n(hy + 14)} ${n(hx + 16)} ${n(hy)} Q${n(hx + 12)} ${n(hy - 12)} ${n(hx - 10)} ${n(hy - 9)}Z" fill="${fur}" stroke="${ink}" stroke-width="2"/>`
-      : ellipse(hx, hy, 13, 11, pale, ink, 2) + ellipse(hx - side * 9, hy - 6, 6, 5, pale, ink, 1.5) + `<path d="M${n(hx + side * 4)} ${n(hy + 5)} v-3 M${n(hx + side * 8)} ${n(hy + 3)} v-3" stroke="#bcaa99" stroke-width="1.2" stroke-linecap="round"/>`);
-  };
-  const furId = `fur-${kind}-${second ? 1 : 0}`;
-  let body = `<defs><radialGradient id="${furId}" cx=".32" cy=".22" r=".9"><stop stop-color="${pale}"/><stop offset=".35" stop-color="${fur}"/><stop offset="1" stop-color="${kind === "bunny" ? "#d4c8c8" : kind === "bird" ? "#daa557" : "#ac7e62"}"/></radialGradient><linearGradient id="shirt-${furId}" x2=".8" y2="1"><stop stop-color="${shirt}"/><stop offset="1" stop-color="${second ? "#b57491" : "#4e858f"}"/></linearGradient></defs><g data-character="${kind}" transform="translate(0 ${n(hop)}) rotate(${n(tilt)} 0 90)">`;
-  if (kind === "bunny") body += ellipse(45, 110, 19, 18, pale, ink, 2) + ellipse(48, 105, 11, 10, "#fff8ec");
-  if (kind === "cat" || kind === "fox" || kind === "dog") body += `<path d="M36 111 Q100 ${n(100 + beat * 12)} 77 ${n(61 + beat * 12)}" fill="none" stroke="${ink}" stroke-width="23" stroke-linecap="round"/><path d="M36 111 Q100 ${n(100 + beat * 12)} 77 ${n(61 + beat * 12)}" fill="none" stroke="${fur}" stroke-width="17" stroke-linecap="round"/>`;
-  for (const side of [-1, 1]) {
-    const fy = 163 + side * footLift;
-    const kneeX = side * 26 + (action === "march" ? Math.max(0, -side * step) * 14 : 0);
-    const leg = `M${side * 23} 114 Q${n(kneeX)} ${n(140 + side * footLift / 2)} ${side * 31} ${n(fy)}`;
-    body += `<path d="${leg}" fill="none" stroke="${ink}" stroke-width="25" stroke-linecap="round"/><path d="${leg}" fill="none" stroke="${fur}" stroke-width="19" stroke-linecap="round"/>` +
-      `<path d="M${side * 23} 116 L${n(side * 28)} ${n(140 + side * footLift * .45)}" fill="none" stroke="${second ? "#bd8298" : "#5f929b"}" stroke-width="24"/><path d="M${side * 28 - 10} ${n(141 + side * footLift * .45)} h20" stroke="${second ? "#e0b1be" : "#a2c8c2"}" stroke-width="4"/>` + ellipse(side * 36, fy + 4, 24, 12, pale, ink, 2);
-    body += `<path d="M${side * 36 - 18} ${n(fy + 9)} q18 6 36 0 M${side * 36 - 9} ${n(fy + 1)} v-4 M${side * 36 - 3} ${n(fy + 1)} v-4" stroke="#c6b4a3" stroke-width="1.4" fill="none" stroke-linecap="round"/>`;
-  }
-  body += `<path d="M-31 42 Q-47 52 -47 91 Q-51 128 -22 135 H22 Q51 128 47 91 Q47 52 31 42 Q0 36 -31 42Z" fill="url(#shirt-${furId})" stroke="${ink}" stroke-width="3"/><path d="M-29 47 Q0 70 29 47" fill="none" stroke="#ffedcf" stroke-width="6"/>`;
-  // Tailored overalls: straps, button highlights, a stitched pocket and seams.
-  body += `<path d="M-29 49 L-21 88 M29 49 L21 88" stroke="${second ? "#edbdc3" : "#b0d3cc"}" stroke-width="8"/><path d="M-23 86 H23 V110 Q0 126 -23 110Z" fill="${second ? "#cd8b9f" : "#72a5aa"}" stroke="${second ? "#e3b0ba" : "#a0c6c0"}" stroke-width="2"/><path d="M-17 92 H17 V108 Q0 118 -17 108Z M0 124 V133" fill="none" stroke="#f5e8cb" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>`;
-  for (const side of [-1, 1]) body += ellipse(side * 23, 80, 5, 5, "#f1d99d", ink, 1) + ellipse(side * 23 - 1, 78, 1.7, 1.4, "#fff4d1");
-  body += `<path d="M0 95 l3 5 6 1 -5 4 1 6 -5 -3 -5 3 1 -6 -5 -4 6 -1Z" fill="#f8dd9b"/>`;
-  body += `<path d="M-35 79 Q-42 103 -25 121" stroke="white" stroke-width="6" fill="none" opacity=".22" stroke-linecap="round"/><path d="M20 124 Q36 119 40 108" stroke="${ink}" stroke-width="5" fill="none" opacity=".12"/>`;
-  body += arm(-1) + arm(1);
-  const earWiggle = Math.sin(phase * 2) * 5;
-  if (kind === "bunny") body += `<g transform="rotate(${n(-7 + earWiggle)} -26 -26)">${ellipse(-26, -65, 16, 47, fur, ink)}${ellipse(-26, -67, 7, 30, "#dfb4be")}</g><g transform="rotate(${n(7 - earWiggle)} 26 -26)">${ellipse(26, -65, 16, 47, fur, ink)}${ellipse(26, -67, 7, 30, "#dfb4be")}</g>`;
-  else if (kind === "cat" || kind === "fox") body += `<path d="M-49 -5 L-42 -61 L-12 -32 M49 -5 L42 -61 L12 -32" fill="${fur}" stroke="${ink}" stroke-width="3"/><path d="M-40 -20 L-37 -46 L-21 -29 M40 -20 L37 -46 L21 -29" fill="#e7abb0"/>`;
-  else if (kind === "bear") body += ellipse(-38, -32, 23, 24, fur, ink) + ellipse(38, -32, 23, 24, fur, ink) + ellipse(-38, -32, 13, 14, pale) + ellipse(38, -32, 13, 14, pale);
-  else if (kind === "bird") body += `<path d="M-15 -38 Q-30 -77 3 -44 Q10 -78 22 -42" fill="${fur}" stroke="${ink}" stroke-width="3"/>`;
-  body += `<path d="M-52 -9 C-52 -62 47 -65 54 -9 Q62 25 33 40 Q0 57 -33 40 Q-62 25 -52 -9Z" fill="url(#${furId})" stroke="${ink}" stroke-width="3"/>`;
-  if (kind !== "bird") body += `<path d="M-48 13 l-8 5 9 2 -5 7 10 -1 M48 13 l8 5 -9 2 5 7 -10 -1" fill="${fur}" stroke="${ink}" stroke-width="1.6" stroke-linejoin="round"/>`;
-  body += `<path d="M-37 -19 Q-25 -36 -5 -35" fill="none" stroke="${pale}" stroke-width="5" stroke-linecap="round" opacity=".55"/>`;
-  if (kind === "dog") body += `<g transform="rotate(${n(earWiggle)} -47 -17)">${ellipse(-48, 0, 18, 37, "#9a7154", ink)}</g><g transform="rotate(${n(-earWiggle)} 47 -17)">${ellipse(48, 0, 18, 37, "#9a7154", ink)}</g>`;
-  body += ellipse(0, 22, 32, 23, pale) + ellipse(-34, 17, 10, 5, "#e5a6a3") + ellipse(34, 17, 10, 5, "#e5a6a3");
-  if (kind === "cat" || kind === "fox") body += `<path d="M-33 19 l-20 -3 M-33 24 l-18 5 M33 19 l20 -3 M33 24 l18 5 M-12 -41 l5 10 M0 -45 v13 M12 -41 l-5 10" fill="none" stroke="#a27468" stroke-width="1.7" stroke-linecap="round"/>`;
-  if (kind === "bear" || kind === "dog") body += ellipse(-12, 20, 1.7, 1.7, "#ac8d77") + ellipse(-17, 24, 1.5, 1.5, "#ac8d77") + ellipse(12, 20, 1.7, 1.7, "#ac8d77") + ellipse(17, 24, 1.5, 1.5, "#ac8d77");
-  if (blink) body += `<path d="M-27 -5 Q-20 2 -13 -5 M13 -5 Q20 2 27 -5" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
-  else for (const side of [-1, 1]) {
-    const gaze = (second ? -1.5 : 1.5) + Math.sin(phase) * .7;
-    body += ellipse(side * 21, -5, 12, 16, "#fffaf1") + ellipse(side * 21 + gaze, -3, 7, 10, kind === "bunny" ? "#8a6e65" : "#557c7b") + ellipse(side * 21 + gaze, -3, 4.5, 8, "#394653") + ellipse(side * 21 + gaze + 2, -7, 2.8, 3.2, "#fff") + ellipse(side * 21 + gaze - 2, 2, 1.3, 1.6, "#d9e9dd");
-    body += `<path d="M${side * 21 - 10} -15 q10 -8 20 0" fill="none" stroke="${ink}" stroke-width="2" stroke-linecap="round"/>`;
-  }
-  if (emotion === "worried") body += `<path d="M-29 -22 Q-21 -30 -13 -24 M13 -24 Q21 -30 29 -22" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
-  else if (emotion === "curious") body += `<path d="M-29 -23 Q-21 -30 -13 -25 M13 -28 Q21 -34 29 -29" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
-  else body += `<path d="M-29 -26 q8 -4 15 -1 M14 -27 q8 -3 15 1" fill="none" stroke="${ink}" stroke-width="2" stroke-linecap="round"/>`;
-  body += kind === "bird" ? `<path d="M-9 13 L9 13 L0 ${n(22 + mouthOpen)}Z" fill="#e59d48" stroke="${ink}" stroke-width="2"/>`
-    : `<path d="M-7 14 Q0 10 7 14 Q7 21 0 22 Q-7 21 -7 14Z" fill="${ink}"/>${ellipse(-2, 14, 2.5, 1.3, "#adaba8")}` + (speaking || singing ? ellipse(0, 32, 10, mouthOpen, "#7b4d5b") + ellipse(0, 34 + mouthOpen / 2, 6, mouthOpen / 3, "#e994a1") : `<path d="M-9 29 Q0 ${emotion === "worried" ? 23 : 38} 9 29" fill="none" stroke="${ink}" stroke-width="2.5" stroke-linecap="round"/>`);
-  if (action === "hop") body = body.replace(`rotate(${n(tilt)} 0 90)`, `rotate(${n(tilt)} 0 90) translate(0 179) scale(${n(jump.scaleX)} ${n(jump.scaleY)}) translate(0 -179)`);
-  return body + "</g>";
-}
 
-function sceneProp(stage: Stage, scene: Scene, phase: number) {
+function sceneProp(stage: Stage, scene: Scene, phase: number, contact?: { x: number; y: number; transfer: number }) {
   const prop = scene.prop;
   const { width: w, ground, height: h } = stage;
-  const x = w / 2, y = h > w ? ground - 260 : ground - 130;
+  const x = contact?.x ?? w / 2, y = contact?.y ?? (h > w ? ground - 260 : ground - 130);
   if (prop === "rain") return Array.from({ length: 16 }, (_, i) => {
     const dx = 30 + (i * 61) % (w - 60), dy = h * 0.24 + ((i * 29 + phase / tau * 110) % 130);
     return line(dx, dy, dx - 5, dy + 14, "#72bdda", 3);
   }).join("") + ellipse(x, ground + 14, w * 0.16, 10, "#86cadd") + ellipse(x, ground + 12, 30 + phase * 4, 5, "none", "#d4f4f7", 2);
-  if (prop === "flower") return petalFlower(x, ground - 48, 25, phase, "#e7a4ba");
-  if (prop === "umbrella") return `<g transform="translate(${x} ${y - 25}) rotate(${n(Math.sin(phase) * 9)})"><path d="M-69 0 Q0 -100 69 0 Q45 -14 23 0 Q0 -14 -23 0 Q-45 -14 -69 0Z" fill="#b8a1df" stroke="${ink}" stroke-width="3"/><path d="M0 0 V88 Q0 109 19 98" fill="none" stroke="${ink}" stroke-width="5"/></g>`;
-  if (prop === "ball") return `<g transform="translate(${x + Math.sin(phase) * 38} ${ground - 20 - Math.abs(Math.sin(phase)) * 52}) rotate(${n(phase * 50)})">${ellipse(0, 0, 28, 28, "#eab674", ink)}<path d="M-28 0 H28 M0 -28 V28" stroke="#fff0d4" stroke-width="5"/></g>`;
+  if (prop === "flower") return petalFlower(x, contact ? y - 28 : ground - 48, 25, phase * .15, "#e7a4ba");
+  if (prop === "umbrella") return `<g transform="translate(${n(contact ? x - 19 : x)} ${n(contact ? y - 98 : y - 25)}) rotate(${n(contact ? 0 : Math.sin(phase) * 9)})"><path d="M-69 0 Q0 -100 69 0 Q45 -14 23 0 Q0 -14 -23 0 Q-45 -14 -69 0Z" fill="#b8a1df" stroke="${ink}" stroke-width="3"/><path d="M0 0 V88 Q0 109 19 98" fill="none" stroke="${ink}" stroke-width="5"/></g>`;
+  if (prop === "ball") return `<g data-object-state="${scene.objectState}" transform="translate(${n(x)} ${n(contact ? y : ground - 28)}) rotate(${n((contact?.transfer || 0) * 90)})">${ellipse(0, 0, 28, 28, "#eab674", ink)}<path d="M-28 0 H28 M0 -28 V28" stroke="#fff0d4" stroke-width="5"/></g>`;
   if (prop === "kite") {
     const position = kitePosition(stage, scene, phase);
     const branch = scene.kiteCaughtHigh ? `<path d="M${w * .85} ${ground} Q${w * .89} ${position.y} ${position.x + 115} ${position.y - 54} M${position.x + 120} ${position.y - 40} L${position.x - 15} ${position.y - 27}" fill="none" stroke="#997b61" stroke-width="12" stroke-linecap="round"/>` : "";
@@ -307,78 +248,162 @@ function sceneProp(stage: Stage, scene: Scene, phase: number) {
   if (prop === "star") return `<g transform="translate(${x} ${y - 5}) rotate(${n(Math.sin(phase) * 9)}) scale(${n(1 + 0.05 * Math.sin(phase * 2))})"><path d="M0 -45 L14 -14 L47 -12 L23 11 L30 43 L0 27 L-30 43 L-23 11 L-47 -12 L-14 -14Z" fill="#f9dd83" stroke="${ink}" stroke-width="3"/>${ellipse(-10, -2, 3, 5, ink)}${ellipse(10, -2, 3, 5, ink)}<path d="M-9 11 Q0 19 9 11" fill="none" stroke="${ink}" stroke-width="2"/></g>`;
   if (prop === "drum") return `<g transform="translate(${x} ${ground - 36})"><path d="M-42 -34 H42 V18 Q0 37 -42 18Z" fill="#cf889f" stroke="${ink}" stroke-width="3"/>${ellipse(0, -34, 42, 15, "#ffebc9", ink)}<path d="M-36 -20 L-15 23 L7 -20 L28 23 L38 -20" fill="none" stroke="#ffdfa6" stroke-width="3"/>${line(-35, -80 + Math.sin(phase * 2) * 18, -8, -35, ink, 4)}${line(35, -80 - Math.sin(phase * 2) * 18, 8, -35, ink, 4)}</g>`;
   if (prop === "bridge") return `<path d="M0 ${ground + 4} Q${w / 2} ${ground - 34} ${w} ${ground + 4}" fill="none" stroke="#8bc6ce" stroke-width="45"/>` + Array.from({ length: 7 }, (_, i) => `<rect x="${x - 112 + i * 32}" y="${ground - 10}" width="28" height="21" rx="3" fill="#bb906b" stroke="${ink}" stroke-width="2"/>`).join("");
-  if (prop === "letter") return `<g transform="translate(${x} ${y}) rotate(${n(Math.sin(phase) * 6)})"><rect x="-42" y="-28" width="84" height="56" rx="5" fill="#fff5d9" stroke="${ink}" stroke-width="3"/><path d="M-42 -28 L0 7 L42 -28" fill="none" stroke="${ink}" stroke-width="3"/>${ellipse(0, 8, 8, 8, "#de91aa")}</g>`;
-  if (prop === "gift" || prop === "toys") return `<g transform="translate(${x} ${ground - 33})"><rect x="-40" y="-27" width="80" height="62" rx="5" fill="#e2b887" stroke="${ink}" stroke-width="3"/><rect x="-23" y="-54" width="35" height="35" rx="5" fill="#84b8c4" transform="rotate(${n(Math.sin(phase) * 6)})" stroke="${ink}" stroke-width="2"/>${ellipse(19, -30, 18, 18, "#d398b6", ink, 2)}</g>`;
+  if (prop === "letter") return `<g data-object-state="${scene.objectState}" transform="translate(${n(x)} ${n(y)})"><rect x="-42" y="-28" width="84" height="56" rx="5" fill="#fff5d9" stroke="${ink}" stroke-width="3"/><path d="M-42 -28 L0 7 L42 -28" fill="none" stroke="${ink}" stroke-width="3"/>${ellipse(0, 8, 8, 8, "#de91aa")}</g>`;
+  if (prop === "gift" || prop === "toys") return `<g data-object-state="${scene.objectState}" transform="translate(${n(x)} ${n(contact ? y : ground - 33)})"><rect x="-40" y="-27" width="80" height="62" rx="5" fill="#e2b887" stroke="${ink}" stroke-width="3"/><rect x="-23" y="-54" width="35" height="35" rx="5" fill="#84b8c4" stroke="${ink}" stroke-width="2"/>${ellipse(19, -30, 18, 18, "#d398b6", ink, 2)}</g>`;
   return "";
 }
 
-export function kidsAnimationSvg(options: { topic: string; caption: string; index: number; frame: number; aspect: "9:16" | "16:9"; cast: [KidsAnimationKind, KidsAnimationKind]; castNames?: [string, string]; scene?: Scene; song?: boolean; transparent?: boolean }) {
+export type KidsAnimationSvgOptions = {
+  topic: string; caption: string; index: number; frame: number; aspect: "9:16" | "16:9";
+  cast: [KidsAnimationKind, KidsAnimationKind]; castNames?: [string, string]; scene?: Scene;
+  song?: boolean; transparent?: boolean; sceneProgress?: number;
+  performance?: KidsAnimationPerformanceFrame; speaker?: -1 | 0 | 1; mouthOpen?: number;
+};
+
+/** The same coordinate contacts drive the rig, strings and held objects. */
+export function kidsAnimationContact(aspect: "9:16" | "16:9", progress: number, owner: 0 | 1 = 0, transfer = false) {
+  const vertical = aspect === "9:16", width = vertical ? 540 : 960, ground = vertical ? 734 : 442, size = vertical ? 1.12 : 1.04;
+  const positions = [width * (vertical ? .26 : transfer ? .36 : .29), width * (vertical ? .74 : transfer ? .64 : .71)];
+  const fromX = positions[owner] + (owner ? -1 : 1) * 86 * size;
+  const toX = positions[1 - owner] + (owner ? 1 : -1) * 86 * size;
+  const amount = transfer ? ramp(progress, .35, .78) : 0;
+  return { x: mix(fromX, toX, amount), y: ground - 91 * size, transfer: amount };
+}
+
+function actorPose(action: KidsAnimationAction, progress: number, scene: Scene, actor: number, mouth: ReturnType<typeof kidsMouthState>, contact: ReturnType<typeof kidsAnimationContact> | undefined, x: number, y: number, size: number): KidsRigPose {
+  const facing = actor ? -1 : 1;
+  const emotion = scene.emotionFrom && progress < .58 ? scene.emotionFrom : action === "listen" && scene.emotion === "happy" && progress < .58 ? "curious" : scene.emotion;
+  return { action, progress, emotion, facing, second: actor === 1,
+    speaking: mouth.speaker === actor, mouthOpen: mouth.mouthOpen,
+    handTarget: contact ? [(contact.x - x) / size, (contact.y - y) / size] : undefined,
+    blink: progress > (actor ? .81 : .76) && progress < (actor ? .85 : .80),
+  };
+}
+
+export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const vertical = options.aspect === "9:16";
   const stage: Stage = vertical ? { width: 540, height: 960, ground: 734, y: 532, size: 1.12 } : { width: 960, height: 540, ground: 442, y: 272, size: 1.04 };
-  const { width: w, height: h, ground } = stage;
-  const scene = options.scene || planKidsAnimationScene(options.topic.toLowerCase(), options.caption, options.index);
-  const performance = planKidsPerformance(options.caption, options.cast, options.castNames, options.song);
-  const phase = options.frame % CYCLE_FRAMES / CYCLE_FRAMES * tau;
-  const colors = scene.theme === "night" ? ["#344875", "#7b90ac"] : scene.theme === "ocean" ? ["#73bdce", "#b5e8e0"] : ["#a2d7e5", "#e8f5e8"];
-  let body = backdrop(stage, scene, phase, !!options.transparent);
-  if (scene.prop === "kite" && scene.action === "reach") {
-    const handX = w * (vertical ? .26 : .29) + 16 * stage.size;
-    const handY = ground - 88 * stage.size;
-    const { x: kiteX, y: kiteY } = kitePosition(stage, scene, phase);
-    body += `<path d="M${n(kiteX)} ${n(kiteY)} Q${n((kiteX + handX) / 2)} ${n(handY - 27)} ${n(handX)} ${n(handY)}" fill="none" stroke="#867a71" stroke-width="1.4"/>`;
-  }
-  // Drums are held in front of each player's hands, not floating in the gap.
-  if (scene.prop !== "drum") body += sceneProp(stage, scene, phase);
+  const { width: w, height: h, ground, size } = stage;
+  const scene = options.scene || planKidsAnimationScene(options.topic, options.caption, options.index);
+  const planned = planKidsPerformance(options.caption, options.cast, options.castNames, options.song);
+  const performance = options.performance || { speaker: options.speaker, mouthOpen: options.mouthOpen };
+  const mouth = kidsMouthState(performance, planned.speaker, !!options.song);
+  const active = performance.active || planned.active;
+  const p = unit(options.sceneProgress ?? options.frame / (ACTION_PREVIEW_FRAMES - 1));
+  const phase = p * tau; // A single passage of ambient wind, never a modulo loop.
+  const beat = kidsStoryBeat(p);
+  const visibleScene = scene.prop === "kite" && scene.kiteFrom && p < .58 ? { ...scene, kiteState: scene.kiteFrom, kiteCaughtHigh: !!scene.kiteFromHigh } : scene;
+  const colors = scene.theme === "night" ? ["#344875", "#7b90ac"] : scene.theme === "ocean" ? ["#73bdce", "#b5e8e0"] : ["#b4d9da", "#f7ebce"];
+  const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star"].includes(scene.prop);
+  const interacting = portable && (scene.action === "reach" || ["held", "offered", "received"].includes(scene.objectState));
+  const directSubject = planned.subject === 0 || planned.subject === 1 ? planned.subject : undefined;
+  const owner = !options.scene && scene.intent === "offer" && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
+  const transfer = scene.intent === "offer";
+  const contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer) : undefined;
+  const shot = options.scene?.shot || kidsShotFor(scene.intent, options.index, mouth.speaker, scene.prop !== "none");
+  const focus = shot === "speaker" ? (scene.focus ?? Math.max(0, planned.speaker, mouth.speaker)) : shot === "reaction" ? (active[0] !== active[1] ? (active[0] ? 1 : 0) : options.index % 2) : -1;
+  const focusX = focus >= 0 ? w * (focus ? (vertical ? .74 : .71) : (vertical ? .26 : .29)) : w / 2;
+  const zoom = shot === "wide" ? 1 : shot === "reaction" || shot === "speaker" ? (vertical ? 1.16 : 1.24) : shot === "detail" ? (vertical ? 1.07 : 1.18) : (vertical ? 1.02 : 1.06);
+  const camera = { zoom: zoom + (shot === "detail" ? .035 * beat.action : 0), x: mix(w / 2, focusX, .42), y: vertical ? ground - 163 : ground - 132 };
+  let world = backdrop(stage, scene, phase * .13, !!options.transparent);
+  if (!interacting && scene.prop !== "drum" && scene.prop !== "bus") world += sceneProp(stage, visibleScene, phase * .2);
   if (scene.prop === "bus") {
-    const busX = w / 2 + Math.sin(phase) * 12, busY = ground - 97;
-    body += `<g transform="translate(${busX} ${busY})"><rect x="-190" y="-85" width="380" height="157" rx="30" fill="#f3ce80" stroke="${ink}" stroke-width="4"/><path d="M-182 33 H180" stroke="#d78f66" stroke-width="8"/><rect x="-166" y="-65" width="96" height="67" rx="12" fill="#b7e2e7"/><rect x="-44" y="-65" width="96" height="67" rx="12" fill="#b7e2e7"/><rect x="77" y="-65" width="81" height="127" rx="10" fill="#a8d5de" stroke="${ink}" stroke-width="3"/>`;
-    body += `<defs><clipPath id="passengers"><rect x="-166" y="-65" width="96" height="67" rx="12"/><rect x="-44" y="-65" width="96" height="67" rx="12"/></clipPath></defs><g clip-path="url(#passengers)">`;
-    for (const [i, kind] of options.cast.entries()) body += `<g transform="translate(${-120 + i * 122} -28) scale(0.48)">${puppet(kind, "wave", phase + i, !!options.song, i === 1)}</g>`;
-    body += "</g>";
-    for (const wx of [-120, 123]) body += `<g transform="translate(${wx} 76) rotate(${n(phase * 360 / tau)})">${ellipse(0, 0, 35, 35, ink)}${ellipse(0, 0, 22, 22, "#dce2e7")}${line(-18, 0, 18, 0, "#8396a6", 5)}${line(0, -18, 0, 18, "#8396a6", 5)}</g>`;
-    body += "</g>";
+    const drive = ramp(p, .16, .72), busX = mix(w * .43, w * .57, drive), busY = ground - 97;
+    world += `<g data-object-state="travelling" transform="translate(${n(busX)} ${busY})"><rect x="-190" y="-85" width="380" height="157" rx="30" fill="#f3ce80" stroke="${ink}" stroke-width="4"/><path d="M-182 33 H180" stroke="#d78f66" stroke-width="8"/><rect x="-166" y="-65" width="96" height="67" rx="12" fill="#b7e2e7"/><rect x="-44" y="-65" width="96" height="67" rx="12" fill="#b7e2e7"/><rect x="77" y="-65" width="81" height="127" rx="10" fill="#a8d5de" stroke="${ink}" stroke-width="3"/><defs><clipPath id="passengers"><rect x="-166" y="-65" width="96" height="67" rx="12"/><rect x="-44" y="-65" width="96" height="67" rx="12"/></clipPath></defs><g clip-path="url(#passengers)">`;
+    for (const [i, kind] of options.cast.entries()) {
+      const pose = actorPose("wave", p, scene, i, mouth, undefined, 0, 0, .48);
+      if (options.song && mouth.mouthOpen > 0) pose.speaking = true;
+      world += `<g transform="translate(${-120 + i * 122} -28) scale(.48)">${kidsCharacterSvg(kind, pose)}</g>`;
+    }
+    world += "</g>";
+    for (const wx of [-120, 123]) world += `<g transform="translate(${wx} 76) rotate(${n(drive * 240)})">${ellipse(0, 0, 35, 35, ink)}${ellipse(0, 0, 22, 22, "#dce2e7")}${line(-18, 0, 18, 0, "#8396a6", 5)}${line(0, -18, 0, 18, "#8396a6", 5)}</g>`;
+    world += "</g>";
   } else {
     for (const [i, kind] of options.cast.entries()) {
-      const action = performance.active[i] ? scene.action : "listen";
-      const charPhase = phase + (i ? Math.PI * 0.15 : 0);
-      const travel = action === "march" ? Math.sin(phase) * (vertical ? 13 : 27) : 0;
-      const x = w * (i ? (vertical ? 0.74 : 0.71) : (vertical ? 0.26 : 0.29)) + travel;
-      const size = stage.size * (scene.close ? 1.1 : 1);
-      const y = ground - 176 * size;
-      body += ellipse(x, ground + 4, 62 - (action === "hop" ? kidsHopPose(charPhase).lift * .3 : 0), 9, "#43697b22");
-      body += `<g data-actor="${i}" data-action="${action}" data-speaking="${performance.speaker === i || !!options.song}" transform="translate(${n(x)} ${n(y)}) scale(${size})">${puppet(kind, action, charPhase, !!options.song, i === 1, scene.emotion, performance.speaker === i)}</g>`;
-      if (scene.prop === "drum") {
-        body += `<g transform="translate(${n(x)} ${n(y + 108 * size)}) scale(${size})"><path d="M-38 0 H38 V34 Q0 48 -38 34Z" fill="#d692a9" stroke="${ink}" stroke-width="3"/>${ellipse(0, 0, 38, 12, "#ffedce", ink)}<path d="M-31 12 L-13 36 L4 12 L24 36 L32 12" fill="none" stroke="#ffedce" stroke-width="3"/>${line(-23, -31 + Math.sin(charPhase * 2) * 16, -11, -8, ink, 3)}${line(25, -31 - Math.sin(charPhase * 2) * 16, 11, -8, ink, 3)}</g>`;
+      const receiving = transfer && i !== owner && p >= .4;
+      let action = receiving || interacting && i === owner ? "reach" : active[i] ? scene.action : "listen";
+      if (scene.prop === "kite" && i === owner && scene.objectState === "held") action = "reach";
+      if (scene.prop === "kite" && i !== owner && scene.intent !== "untangle" && action === "reach") action = "listen";
+      const travel = action === "march" ? (i ? -1 : 1) * ramp(p, .14, .70) * (vertical ? 18 : 39) : 0;
+      const x = w * (i ? (vertical ? .74 : transfer ? .64 : .71) : (vertical ? .26 : transfer ? .36 : .29)) + travel, y = ground - 176 * size;
+      const rigContact = scene.prop === "kite" && action === "reach" ? kidsAnimationContact(options.aspect, p, scene.intent === "untangle" ? i as 0 | 1 : owner) : contact;
+      const pose = actorPose(action, p, scene, i, mouth, rigContact, x, y, size);
+      if (transfer && i === owner && pose.handTarget) {
+        const release = ramp(p, .62, .87), direction = i ? -1 : 1;
+        pose.handTarget = [mix(pose.handTarget[0], direction * 66, release), mix(pose.handTarget[1], 105, release)];
       }
+      if (options.song && mouth.mouthOpen > 0) pose.speaking = true;
+      const motion = kidsRigMotion(pose);
+      world += ellipse(x, ground + 3, 53 - motion.lift * .28, 8, "#3f5b6226");
+      world += `<g data-actor="${i}" data-action="${action}" data-speaking="${pose.speaking}" data-beat="${beat.stage}"${pose.handTarget ? ` data-hand-target="${n(pose.handTarget[0])},${n(pose.handTarget[1])}"` : ""} transform="translate(${n(x)} ${n(y)}) scale(${size})">${kidsCharacterSvg(kind, pose)}</g>`;
+      if (scene.prop === "drum") world += `<g transform="translate(${n(x)} ${n(y + 108 * size)}) scale(${size})"><path d="M-38 0 H38 V34 Q0 48 -38 34Z" fill="#d692a9" stroke="${ink}" stroke-width="3"/>${ellipse(0, 0, 38, 12, "#ffedce", ink)}<path d="M-31 12 L-13 36 L4 12 L24 36 L32 12" fill="none" stroke="#ffedce" stroke-width="3"/>${line(motion.hands[0][0], motion.hands[0][1] - 108, -11, -8, ink, 3)}${line(motion.hands[1][0], motion.hands[1][1] - 108, 11, -8, ink, 3)}</g>`;
     }
+    if (scene.prop === "kite" && (scene.action === "reach" || scene.objectState === "held")) {
+      const holder = kidsAnimationContact(options.aspect, p, owner);
+      const position = kitePosition(stage, visibleScene, phase * .2);
+      world += `<path data-contact="kite-string" d="M${n(position.x)} ${n(position.y)} Q${n((position.x + holder.x) / 2)} ${n(holder.y - 27)} ${n(holder.x)} ${n(holder.y)}" fill="none" stroke="#867a71" stroke-width="1.5"/>`;
+    }
+    if (contact) world += `<g data-contact="hands" data-transfer="${n(contact.transfer)}">${sceneProp(stage, scene, phase * .2, contact)}</g>`;
   }
-  body += foreground(stage, scene, phase);
+  world += foreground(stage, scene, phase * .13);
+  // Preserve a caption-safe top region; crop the story world around the actors.
+  const cameraTransform = `translate(${n(w / 2)} ${n(camera.y)}) scale(${n(camera.zoom)}) translate(${n(-camera.x)} ${n(-camera.y)})`;
+  const body = (options.transparent ? "" : `<rect width="${w}" height="${h}" fill="url(#sky)"/>`) + `<g data-shot="${shot}" data-scene-progress="${n(p)}" data-timeline="finite" transform="${cameraTransform}">${world}</g>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient><linearGradient id="leaves" x2=".7" y2="1"><stop stop-color="#bed795"/><stop offset=".5" stop-color="#84b48c"/><stop offset="1" stop-color="#558c7a"/></linearGradient></defs>${body}</svg>`;
 }
 
-export async function prepareKidsAnimation(options: { directory: string; topic: string; cues: KidsAnimationCue[]; duration: number; aspect: "9:16" | "16:9"; cast: [KidsAnimationKind, KidsAnimationKind]; castNames?: [string, string]; song: boolean; transparent?: boolean; onProgress?: (percent: number) => Promise<unknown> }) {
+export type PrepareKidsAnimationOptions = {
+  directory: string; topic: string; cues: KidsAnimationCue[]; duration: number; aspect: "9:16" | "16:9";
+  cast: [KidsAnimationKind, KidsAnimationKind]; castNames?: [string, string]; song: boolean;
+  transparent?: boolean; performanceFrames?: KidsAnimationPerformanceFrame[]; onProgress?: (percent: number) => Promise<unknown>;
+};
+
+export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions) {
+  if (!Number.isFinite(options.duration) || options.duration <= 0 || options.duration > 210) throw new Error("Animation duration must be positive and at most 210 seconds.");
+  if (!options.cues.length || options.cues.some(cue => !Number.isFinite(cue.start) || !Number.isFinite(cue.end) || cue.end <= cue.start)) throw new Error("Animation needs valid timed narration scenes.");
   sharp.concurrency(1);
   sharp.cache({ memory: 24, files: 0, items: 32 });
+  try {
   const folder = path.join(options.directory, "animation");
   await fs.mkdir(folder, { recursive: true });
-  const rendered = new Set<string>();
-  const timeline: string[] = [];
-  const frames = Math.ceil(options.duration * KIDS_ANIMATION_FPS);
+  const rendered = new Set<string>(), timeline: string[] = [], frames = Math.ceil(options.duration * KIDS_ANIMATION_FPS);
+  const scenes: Scene[] = [], performances = options.cues.map(cue => planKidsPerformance(cue.text, options.cast, options.castNames, options.song));
+  const signatures = options.cues.map(() => new Set<string>());
   let cueIndex = 0;
+  for (let frame = 0; frame < frames; frame++) {
+    while (cueIndex < options.cues.length - 1 && frame / KIDS_ANIMATION_FPS >= options.cues[cueIndex].end) cueIndex++;
+    const mouth = kidsMouthState(options.performanceFrames?.[frame], performances[cueIndex].speaker, options.song);
+    signatures[cueIndex].add(JSON.stringify([mouth, options.performanceFrames?.[frame]?.active || performances[cueIndex].active]));
+  }
+  const poseBudgets = kidsPoseBudgets(signatures.map(values => values.size || 1));
+  for (const [index, cue] of options.cues.entries()) {
+    const scene = planKidsAnimationScene(options.topic, cue.text, index, scenes[index - 1]);
+    const active = performances[index].active;
+    const subject = performances[index].subject;
+    const actor = subject === 0 || subject === 1 ? subject : active[0] !== active[1] ? (active[1] ? 1 : 0) : undefined;
+    if (scene.objectState === "held" && /hold|held|carry|carried|pick|lift/i.test(cue.text) && actor !== undefined && (subject >= 0 || !/[“"]/.test(cue.text))) scene.objectOwner = actor;
+    if (scene.intent === "offer" && actor !== undefined) { scene.objectFrom = actor; scene.objectOwner = actor ? 0 : 1; }
+    const speaking = options.performanceFrames?.slice(Math.floor(cue.start * KIDS_ANIMATION_FPS), Math.ceil(cue.end * KIDS_ANIMATION_FPS)).find(value => (value.speaker ?? -1) >= 0)?.speaker ?? performances[index].speaker;
+    scene.shot = kidsShotFor(scene.intent, index, speaking, scene.prop !== "none");
+    if (speaking === 0 || speaking === 1) scene.focus = speaking;
+    scenes.push(scene);
+  }
+  cueIndex = 0;
   let lastFile = "";
-  const scenes: Scene[] = [];
-  for (const [index, cue] of options.cues.entries()) scenes.push(planKidsAnimationScene(options.topic, cue.text, index, scenes[index - 1]));
   for (let frame = 0; frame < frames; frame++) {
     const time = frame / KIDS_ANIMATION_FPS;
     while (cueIndex < options.cues.length - 1 && time >= options.cues[cueIndex].end) cueIndex++;
-    const cue = options.cues[cueIndex];
-    const scene = scenes[cueIndex];
-    const pose = frame % CYCLE_FRAMES;
-    const performance = planKidsPerformance(cue.text, options.cast, options.castNames, options.song);
-    const key = createHash("sha1").update(JSON.stringify([6, scene, pose, performance, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
+    const cue = options.cues[cueIndex], scene = scenes[cueIndex], planned = performances[cueIndex];
+    const performance = options.performanceFrames?.[frame];
+    const mouth = kidsMouthState(performance, planned.speaker, options.song);
+    const active = performance?.active || planned.active;
+    const actionSeconds = Math.min(cue.end - cue.start, 4.5);
+    const progress = quantizeKidsProgress((time - cue.start) / actionSeconds, poseBudgets[cueIndex]);
+    const key = createHash("sha1").update(JSON.stringify([8, scene, progress, mouth, active, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
     const filename = `animation/${key}.png`;
     if (!rendered.has(key)) {
-      const svg = kidsAnimationSvg({ topic: options.topic, caption: cue.text, index: cueIndex, frame: pose, aspect: options.aspect, cast: options.cast, castNames: options.castNames, scene, song: options.song, transparent: options.transparent });
+      if (rendered.size >= KIDS_MAX_UNIQUE_FRAMES) throw new Error("Animation exceeded the bounded drawing budget; split the narration into fewer visual scenes.");
+      const svg = kidsAnimationSvg({ topic: options.topic, caption: cue.text, index: cueIndex, frame, sceneProgress: progress, performance: { ...mouth, active: active as [boolean, boolean] }, aspect: options.aspect, cast: options.cast, castNames: options.castNames, scene, song: options.song, transparent: options.transparent });
       await sharp(Buffer.from(svg)).png({ compressionLevel: 1 }).toFile(path.join(options.directory, filename));
       rendered.add(key);
     }
@@ -389,6 +414,16 @@ export async function prepareKidsAnimation(options: { directory: string; topic: 
   }
   timeline.push(`file '${lastFile}'`);
   await fs.writeFile(path.join(options.directory, "scenes.txt"), timeline.join("\n") + "\n", "utf8");
-  await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({ version: 6, fps: KIDS_ANIMATION_FPS, uniqueFrames: rendered.size, frames, scenes: options.cues.map((cue, index) => ({ ...cue, ...scenes[index], performance: planKidsPerformance(cue.text, options.cast, options.castNames, options.song) })) }, null, 2));
+  await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({
+    version: 8, timeline: "finite-action-reaction-hold", fps: KIDS_ANIMATION_FPS, rasterBudget: KIDS_MAX_UNIQUE_FRAMES, uniqueFrames: rendered.size, frames,
+    speechAnimation: options.performanceFrames ? "measured-performance" : "text-speaker-estimate",
+    scenes: options.cues.map((cue, index) => ({ ...cue, ...scenes[index], poseSamples: poseBudgets[index], actionSeconds: Math.min(cue.end - cue.start, 4.5), performance: performances[index] })),
+  }, null, 2));
+  await options.onProgress?.(100);
   return { uniqueFrames: rendered.size, frames };
+  } finally {
+    // The frame files are on disk now. Do not retain a native image cache while
+    // speech/encoding or another queued job needs the same laptop memory.
+    sharp.cache(false);
+  }
 }

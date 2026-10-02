@@ -51,6 +51,15 @@ async function mutateLease<T>(change: (lease: HeavyLease | null) => { lease: Hea
 
 function alive(pid: number) { try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; } }
 
+/** Admission must remain possible after a crashed ordinary local operation. */
+export async function reconcileReleasedLocalLease() {
+  await mutateLease(current => {
+    if (!current || current.external || current.localModel || (!current.ownerReleased && alive(current.pid))
+      || current.childPids?.some(alive)) return { lease: current, result: undefined };
+    return { lease: null, result: undefined };
+  });
+}
+
 export async function heavyWorkStatus() {
   const lease = await readHeavyLease();
   const freeBytes = os.freemem(), reserveBytes = minimumFreeBytes();
@@ -161,6 +170,12 @@ async function runWithLease<T>(lease: HeavyLease, operation: () => Promise<T>) {
 export async function tryWithLocalRenderSlot<T>(operation: () => Promise<T>, kind = "Video creation"): Promise<{ acquired: false } | { acquired: true; value: T }> {
   const lease = await acquire(kind);
   return lease ? { acquired: true, value: await runWithLease(lease, operation) } : { acquired: false };
+}
+
+/** Queue callers defer instead of holding the workflow dispatcher in a sleep loop. */
+export class HeavyWorkWaitError extends Error {
+  readonly code = "PHOENIX_HEAVY_WORK_WAIT";
+  readonly retryAfterMs = 5000;
 }
 
 function configuredThreads() {

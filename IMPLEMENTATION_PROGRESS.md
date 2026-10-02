@@ -1,5 +1,68 @@
 # Quality-first implementation — September 16, 2026
 
+## October 2: original channel-quality work (not yet activated)
+
+- Travel/cartoon public profile artwork was inspected. Individual reel playback
+  required Instagram login, so reference motion/audio was not evaluated. The
+  objective is attractive original content, not copies or guaranteed growth.
+- Stock source changes add one to six ordered trimmed shots, portrait-first
+  search, conservative near-native crop/full-frame fitting, original ambience,
+  optional quiet local instrumentals and brief transitions. All source credits,
+  clean edit masters, deterministic outputs and shared streaming byte limits are
+  retained. Silent outputs no longer get an unwanted boxed posting-title overlay.
+- New original rigs, finite action/reaction/holds and measured character speech
+  replace repeated sine-wave mouths. One Windows process assembles small PCM
+  utterances with an 8 KiB buffer. Native 16 kHz avoids the legacy .NET resampling
+  clock mismatch; real tests also exposed voice-change clock resets. Absolute
+  offsets now come from written samples. No new model or paid provider was added.
+- Caption starts use measured word events when every token matches. Natural
+  brief captions merge without rewriting speech; unmergeable short cues are
+  recorded for review rather than aborting an otherwise valid story. Songs and
+  unavailable speech timings remain explicitly estimated, not forced alignment.
+- Manager direction preserves visual constraints and requires named fixed-cast
+  dialogue in prompts. Automatic story planning is checkpointed before writing;
+  isolated tests prove quota resume without repeated planning and final-only
+  dispatch. Series no longer bypass this planning when writing is available;
+  explicit local offline composition remains. Owner-locked scripts stay verbatim.
+- Actual manager trials exposed unsupported plans and ambiguous attribution.
+  Automatic child plans/narration now receive conservative production checks and
+  speaker-labeled JSON. Rejected content is checkpointed before one bounded
+  correction; quota waits resume that correction without a new outline. Strict
+  Groq output is used only for fully closed schemas. A provider validation error
+  was observed in isolated trials; successful output is not a reliability guarantee.
+- Submitted source/generation/edit/planning/posting workflows use one bounded FIFO
+  dispatcher. Heartbeat and resource checks remain independent, including live
+  external progress. Empty/RAM-blocked media queues return promptly. Crashed ordinary
+  leases recover without releasing live children or uncertain model/external work.
+  A waiting song can be passed by eligible bounded Groq text planning. Sharp cache
+  is cleared before encoding; music avoids a duplicated PCM/header buffer. No new
+  dependency/model/paid VM was added and no memory safety threshold was lowered.
+- Full project semantic TypeScript checking passed after these integrations.
+  148 focused story/visual/stock/queue/editor/dispatcher tests passed; a later
+  63-test monitor/settings/queue recheck and seven admission regressions also passed.
+  These suites overlap; their totals are not a unique-test count.
+  Actual stock fixture: 3.000 seconds, 720×1280, 72 decoded frames, preserved
+  landscape edge markers and quiet source tone. It is not real travel footage.
+- Latest actual-manager story: 71.8 seconds, H264/AAC, two installed voices,
+  440 unique raster frames, measured caption/viseme timing and editable master.
+  Node parent observed peak 158 MiB RSS, minimum observed system free RAM
+  1,223 MiB. These observations are not a process-group RAM bound, measured
+  optimization gains or a full listening review. The automatic writer's final
+  script passed current production checks; this is not a singing proof.
+- Earlier authored-fixture visual samples revealed premature kite untangling,
+  missing final flight and a stretched non-owner reach. Those corrections now pass
+  raster/contact tests. Four snapshots from the actual-manager MP4 show complete
+  characters, petals, retained knots during attempts and a final airborne kite.
+  Full motion/listening and real travel-reel acceptance remain outstanding.
+- Ports 3000/8080 were absent when checked; an existing Ollama server remains
+  untouched. No service was stopped and no failed production job was retried.
+  The guarded production build declined at 1,374 MiB free after bootstrap versus
+  its 1,664 MiB requirement; no compilation started or active bundle was replaced.
+  Last verified bundle remains `.next-build-20261001094026074`. Worker changes load
+  from source on the next canonical launch; no live-worker activation is claimed.
+  Website source changes still need a safe build. Do not weaken the memory guard
+  or claim a finished release from source, snapshots or isolated tests alone.
+
 ## October 1: disconnected dashboard recovery
 
 - The app browser and guardian were alive while registered website, worker and

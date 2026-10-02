@@ -53,7 +53,7 @@ export type ReviewFile = {
     postCopy?: string;
     checks: string[];
     visualSources?: Array<{
-      provider: "pixabay";
+      provider: "pexels" | "pixabay";
       providerMediaId: string;
       providerUrl: string;
       creator: string;

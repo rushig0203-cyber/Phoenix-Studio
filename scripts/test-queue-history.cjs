@@ -50,6 +50,43 @@ test('archived missing backend task releases its slot permanently without revivi
   assert.equal(stored.status, 'FAILED'); assert.equal(stored.archivedAt, archived.archivedAt);
   assert.deepEqual(await ai.listGenerationJobs(), []);
 });
+
+test('external render diagnostics advance live progress but neither finalize outputs nor revive failed history', async () => {
+  const active = { ...job('RUNNING'), providerTaskId: 'active-task', progress: 18 };
+  const leaseFile = path.join(reviewRoot, 'heavy-work-lease.json');
+  const reserved = { version: 1, token: 'external-progress-proof', pid: process.pid, kind: 'Video creation', acquiredAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(),
+    external: { jobId: active.id, taskId: 'active-task', submittedAt: new Date().toISOString() } };
+  write(aiPath, [active]); write(leaseFile, reserved);
+  const originalFetch = global.fetch, originalBase = process.env.MPT_BASE_URL;
+  process.env.MPT_BASE_URL = 'http://127.0.0.1:8080';
+  let state = 0;
+  global.fetch = async url => {
+    assert.ok(String(url).endsWith('/api/v1/tasks/active-task'), 'Only bounded status reads are allowed');
+    return Response.json({ data: { state, progress: 80, phoenix_stage: 'Encoding source shot 3 of 4' } });
+  };
+  try {
+    await ai.reconcileRenderResources();
+    let stored = read(aiPath)[0];
+    assert.equal(stored.status, 'RUNNING'); assert.equal(stored.progress, 76);
+    assert.equal(stored.stage, 'Encoding source shot 3 of 4'); assert.ok(await resources.readHeavyLease());
+    for (const change of [{ status: 'FAILED', error: 'Owner retry required' }, { archivedAt: new Date().toISOString() }]) {
+      write(aiPath, [{ ...active, ...change }]);
+      await ai.reconcileRenderResources();
+      stored = read(aiPath)[0];
+      assert.equal(stored.progress, 18); assert.equal(stored.status, change.status || active.status);
+      assert.equal(stored.archivedAt, change.archivedAt);
+    }
+    write(aiPath, [active]); state = 1;
+    await ai.reconcileRenderResources();
+    assert.equal(await resources.readHeavyLease(), null);
+    assert.equal(read(aiPath)[0].status, 'RUNNING', 'Finalization belongs to the serialized production workflow');
+    assert.deepEqual(read(reviewPath), []);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalBase === undefined) delete process.env.MPT_BASE_URL; else process.env.MPT_BASE_URL = originalBase;
+    write(leaseFile, null);
+  }
+});
 function job(status) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();

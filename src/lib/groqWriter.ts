@@ -114,6 +114,26 @@ export function groqPacingDelay(window: RateWindow, estimatedTokens: number, now
 }
 function keyIdentity(settings: WritingSettings) { return createHash("sha256").update(`${settings.model}:${settings.apiKey}`).digest("hex"); }
 
+/** Use provider schema enforcement, not just a JSON-looking answer. Never turn
+ * optional fields into invented required values to make strict mode work. */
+export function groqStructuredFormat(schema: object) {
+  const closed = (value: unknown, depth = 0): boolean => {
+    if (depth > 20 || !value || typeof value !== "object" || Array.isArray(value)) return false;
+    const node = value as Record<string, unknown>;
+    if (node.type === "object" || node.properties) {
+      const properties = node.properties as Record<string, unknown> | undefined;
+      if (!properties || typeof properties !== "object" || Array.isArray(properties) || node.additionalProperties !== false || !Array.isArray(node.required)
+        || node.required.length !== Object.keys(properties).length || Object.keys(properties).some(key => !(node.required as unknown[]).includes(key))) return false;
+      if (!Object.values(properties).every(child => closed(child, depth + 1))) return false;
+    }
+    if (node.type === "array" && !closed(node.items, depth + 1)) return false;
+    for (const key of ["anyOf", "oneOf", "allOf"]) if (node[key] && (!Array.isArray(node[key]) || !(node[key] as unknown[]).every(child => closed(child, depth + 1)))) return false;
+    if (node.$defs && !Object.values(node.$defs as Record<string, unknown>).every(child => closed(child, depth + 1))) return false;
+    return true;
+  };
+  return { type: "json_schema", json_schema: { name: "phoenix_writing", strict: closed(schema), schema } };
+}
+
 export async function generateGroqText(settings: WritingSettings, body: LocalGenerateBody, options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Response> {
   assertSettings(settings);
   options.signal?.throwIfAborted();
@@ -128,7 +148,7 @@ export async function generateGroqText(settings: WritingSettings, body: LocalGen
     stream: false, include_reasoning: false, reasoning_effort: "low",
     temperature: Math.max(0, Math.min(1, Number(body.options?.temperature) || 0.4)),
     max_completion_tokens: Math.max(1536, Math.min(4096, (Number(body.options?.num_predict) || 1500) + 768)),
-    ...(json ? { response_format: { type: "json_object" } } : {}),
+    ...(schema ? { response_format: groqStructuredFormat(schema) } : json ? { response_format: { type: "json_object" } } : {}),
   };
   const identity = keyIdentity(settings);
   try {

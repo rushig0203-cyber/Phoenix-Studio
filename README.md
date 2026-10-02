@@ -1,5 +1,44 @@
 # Phoenix Studio
 
+### Original reels and expressive stories (October 2 source update)
+
+Stock search now supports one useful moment or up to six ordered, related shots,
+with interval controls, portrait-first results, full-picture framing for unsafe
+crops, original ambience and optional quiet locally composed music. Sources are
+streamed to disk sequentially with a shared 500 MB limit. Selected endings survive
+proportional shortening at the chosen cap. No loops, generated voice or automatic
+publication are added. Shot/theme selection is manual; Phoenix does not claim to
+identify the best moment or prove that different footage depicts the same place.
+
+Original vector character rigs have complete limbs, directional expressions,
+finite action/reaction sequences, camera compositions and persistent prop states.
+Stories use the installed Windows voices. Bounded per-utterance PCM assembly
+avoids legacy voice-switch/resampling clocks; measured word events drive caption
+starts and visemes drive named character mouths. Brief captions merge where they
+remain readable. Unknown speakers remain narration; imported songs retain their
+explicit timing limitations. This is limited 2D, not a new 3D/anime model or a
+professional singing synthesizer. Genuine songs still require a suitable sung
+recording or the separately configured local singing engine and its RAM needs.
+
+Automatic child writing, including series, now receives exact cast identities,
+saved visual constraints and opening → attempt → consequence → reaction → payoff
+direction. Stock writing emphasizes concrete information and an answered promise.
+Automatic child plans and narration also receive conservative supported-action,
+object-continuity and dialogue checks. Rejected content is saved before one
+bounded correction; a quota interruption resumes the correction rather than
+discarding the plan. Speaker-labeled JSON retains the exact two-character cast.
+Closed schemas use Groq structured output; optional schemas remain non-strict.
+These checks are not a semantic or artistic judge. Owner-locked text stays exact.
+No guarantee of factual accuracy, quality, growth or income; review finished videos.
+
+A three-second isolated stock encode and a complete 71.8-second actual-manager
+story rendered successfully, with real audio/video, two installed voices,
+440 unique raster frames and measured speech timing. The latest render observed
+158 MiB parent Node RSS and 1,223 MiB minimum system free memory; these are
+observations, **not** total process-group RAM bounds or measured optimization gains.
+Full motion/listening acceptance and live-build activation are still pending.
+See `IMPLEMENTATION_PROGRESS.md` for the exact installed/running release status.
+
 ### Desktop lifecycle and one current project
 
 The Desktop shortcut opens an isolated Phoenix app window. Closing that window
@@ -120,7 +159,12 @@ The desktop shortcut and `npm start` reuse the installed production build; they
 do not build the website on each launch. Startup uses single-thread local render
 and transcription defaults, below-normal process priority, and 512 MiB Node heap
 ceilings for the website and worker (not a total system-RAM cap). Heavy jobs share
-one slot. Local writing releases Phoenix-owned model weights before rendering;
+one slot. Submitted source, generation, editing, planning and posting-analysis
+workflows additionally use a bounded one-at-a-time dispatcher. Heartbeat and
+status reconciliation remain responsive, including live external-render progress.
+Idle or RAM-blocked media queues return without holding the dispatcher; crashed
+ordinary leases recover only when no live owner/child or uncertain model/render
+remains. Local writing releases Phoenix-owned model weights before rendering;
 completed planning and clips are reused on retry. Long episode transcription reads
 five-minute audio windows, not the whole episode at once.
 
@@ -131,12 +175,16 @@ full 8 GB laptop cannot run it safely merely by lowering the admission threshold
 Installing a code update requires a separate one-time build and more free RAM than
 opening the existing app. No paid hosting or replacement provider is enabled.
 
-With Groq selected, draft script/shot planning and stock-catalogue metadata do not
-reserve local rendering RAM or wait for another render to finish. Local Ollama
+With Groq selected, bounded draft text/stock-catalogue planning does not load or
+reserve RAM for a local writing model. It can pass RAM-blocked local workflows,
+but intentionally does not overlap another active production workflow. Local Ollama
 writing, audio generation and video rendering still use the shared heavy-work
 slot and their existing memory safeguards. Only one draft is planned at a time;
-provider quota waits retain saved progress. This avoids an unnecessary resource
-gate; it does not guarantee that an almost-full laptop can render immediately.
+a memory-blocked song cannot starve a later eligible Groq text plan. Provider quota
+waits retain saved progress. Drawing clears its bounded Sharp cache before encoding
+and music WAV generation uses one PCM/header buffer instead of duplicating it.
+These changes reduce avoidable overlap/temporary buffers, not all system memory.
+No paid VM/new dependency is needed, and a nearly full laptop may still have to wait.
 
 The stock renderer also reuses unchanged encoded shots across attempts. Its
 optional disk cache is capped at 256 MiB/512 files, with seven-day expiry. Source

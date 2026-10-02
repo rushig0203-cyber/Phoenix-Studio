@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { renderKidsVideo, type KidsRenderInput } from "./kidsRenderer";
 import { withFileLock } from "./fileLock";
 import { JobHistoryConflictError } from "./jobHistory";
-import { tryWithLocalRenderSlot, retainExternalRender, finishExternalRender, reconcileHeavyLease } from "./renderResources";
+import { tryWithLocalRenderSlot, retainExternalRender, finishExternalRender, reconcileHeavyLease, reconcileReleasedLocalLease } from "./renderResources";
 import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
@@ -23,7 +23,9 @@ import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
 import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
-import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief } from "./creativeBrief";
+import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief, type CreativeBriefAttempt } from "./creativeBrief";
+import { stockNarrationDirection } from "./creativeDirection";
+import type { KidsStoryAttempt } from "./kidsStoryQuality";
 import {
   ensureReviewFolders,
   getReviewFile,
@@ -52,6 +54,8 @@ export type GenerationInput = {
   editorial?: EditorialReview;
   editorialAttempts?: EditorialAttempt[];
   creativeBrief?: CreativeBrief;
+  creativeBriefAttempt?: CreativeBriefAttempt;
+  kidsStoryAttempt?: KidsStoryAttempt;
   managerGuidance?: CreativeGuidance;
   rendererProtocol?: 1;
   stockPreparation?: StockPreparation;
@@ -673,7 +677,7 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   const targetWords = Math.max(125, Math.min(600, Math.round(input.duration * 2.78)));
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${input.topic}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. Use the selected structure rather than turning every subject into a fictional character story. Each beat adds a distinct useful detail and follows logically from the previous one. Start with the concrete problem or useful detail immediately. Preserve the complete promised payoff. Explain why rather than merely listing things. Use short spoken sentences and specific examples where helpful. Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions.`;
+  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
     if (!rawScript) {
@@ -883,6 +887,9 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
     : "";
   await updateJob(job.id, { progress: 2, stage: `${episodeLabel}starting free local children renderer`, error: undefined });
   const result = await renderKidsVideo(job.id, {
+    creativeBrief: input.creativeBrief,
+    creativeBriefAttempt: input.creativeBriefAttempt,
+    kidsStoryAttempt: input.kidsStoryAttempt,
     songMode: input.songMode,
     scriptApproved: input.scriptApproved,
     scriptLocked: input.scriptLocked,
@@ -1139,6 +1146,7 @@ export async function processNextGenerationJob() {
  * a Python render and start competing work. Network uncertainty retains the slot.
  */
 export async function reconcileRenderResources() {
+  await reconcileReleasedLocalLease();
   await reconcileHeavyLease(async external => {
     let taskId = external.taskId;
     if (!taskId) {
@@ -1171,6 +1179,19 @@ export async function reconcileRenderResources() {
       await recordRendererTerminal(external.jobId, taskId!);
       return { state: "terminal" };
     }
+    // Production workflows wait behind the external render; its lightweight
+    // status probe must still advance the UI without downloading/finalizing it.
+    const reported = Number(data?.progress || 0);
+    const providerProgress = Number.isFinite(reported) ? Math.max(0, Math.min(100, reported)) : 0;
+    const progress = Math.max(18, Math.min(90, 18 + Math.round(providerProgress * 0.72)));
+    await mutateJobs(jobs => {
+      const job = jobs.find(item => item.id === external.jobId);
+      if (!job || job.archivedAt || job.status !== "RUNNING" || job.providerTaskId !== taskId) return;
+      job.progress = Math.max(job.progress, progress);
+      job.stage = typeof data?.phoenix_stage === "string" ? data.phoenix_stage.slice(0, 200) : `Rendering locally · provider ${Math.round(providerProgress)}%`;
+      job.error = undefined; job.pollFailureCount = 0; job.nextAttemptAt = undefined;
+      job.updatedAt = new Date().toISOString();
+    });
     return { state: "running", taskId };
   });
 }

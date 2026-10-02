@@ -2,6 +2,32 @@
 
 These notes distinguish shipped code from demonstrated output. No release here is a guarantee of artistic quality, audience growth, or earnings.
 
+## 2026-10-02 — Original reel and cartoon quality (source; activation pending)
+
+- One-to-six shot stock sequences, useful trims, portrait-first results, safe
+  framing, quiet original sound, varied original local music and retained credits.
+  Removed unwanted posting-title overlays from no-subtitle exports.
+- New complete vector character rigs, expressions, finite acting and prop
+  continuity, plus named dialogue mouths and caption starts from installed
+  Windows speech events. PCM sample offsets correct voice-switch clock resets;
+  native output avoids legacy resampling drift. No additional local model.
+- Saved creative direction now reaches automatic story writing and series;
+  story/stock prompts request a specific opening, progression and payoff rather
+  than generic filler. Owner narration remains unchanged; quota work is retained.
+- Conservative child plan/narration production checks, exact speaker-labeled
+  output and one checkpointed correction stop unsupported automatic actions
+  before rendering. Strict Groq schema output is used only for closed schemas.
+- One-at-a-time submitted workflow dispatcher with bounded reminders; independent
+  heartbeat/status checks keep external progress live. Empty/RAM-blocked queues
+  do not hold dispatch; stale ordinary leases recover safely. Waiting song/local
+  tasks do not starve eligible cloud text planning. No memory guard was lowered.
+- Drawing releases its cache before encoding; local music avoids a duplicate PCM
+  allocation. No paid hosting, new model or new dependency was added.
+- Project type checking passed. Real isolated stock encoding and a complete
+  71.8-second actual-manager story succeeded (440 raster frames, two voices).
+  Motion/listening acceptance and live release verification remain pending.
+  Static/short fixture results are not a claim of reference-channel quality.
+
 ## 2026-10-01 — Disconnected dashboard and service recovery
 
 - Restored missing website, worker and renderer while retaining the app window.

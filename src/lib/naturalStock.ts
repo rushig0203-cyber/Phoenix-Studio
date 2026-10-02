@@ -1,5 +1,6 @@
 import { searchFootage, selectedFootage } from "./stockCatalog";
 import type { FootageChoice } from "./creationDraftTypes";
+import { stockPortraitScore } from "./stockReel";
 
 export type NaturalStock = FootageChoice & { provider: "pexels" | "pixabay"; title: string };
 export const configuredStock = () => ({ pexels: !!process.env.PEXELS_API_KEY?.trim(), pixabay: !!process.env.PIXABAY_API_KEY?.trim() });
@@ -30,10 +31,21 @@ async function pixabay(parameters: Record<string, string>) {
   return response.json();
 }
 
+export function portraitFirstStock(videos: NaturalStock[]) {
+  return videos.filter((video, index) => videos.findIndex(other => other.provider === video.provider && other.id === video.id) === index)
+    .sort((a, b) => stockPortraitScore(b) - stockPortraitScore(a));
+}
+
 export async function searchNaturalStock(provider: "pexels" | "pixabay", query: string): Promise<NaturalStock[]> {
-  if (provider === "pexels") return (await searchFootage(query, "9:16", true)).map(file => ({ ...file, provider, title: pexelsTitle(file) }));
+  if (provider === "pexels") {
+    // Prefer footage actually filmed vertically. A bounded landscape fallback remains available,
+    // retaining the search subject rather than padding the reel with unrelated footage.
+    const portrait = await searchFootage(query, "9:16", false, 1, 12);
+    const fallback = portrait.length < 8 ? await searchFootage(query, "9:16", true, 1, 12).catch(error => { if (!portrait.length) throw error; return []; }) : [];
+    return portraitFirstStock([...portrait, ...fallback].map(file => ({ ...file, provider, title: pexelsTitle(file) })));
+  }
   const data = await pixabay({ q: query, per_page: "12", page: "1" });
-  return (data.hits || []).flatMap((video: PixabayVideo) => { try { return [pixabayChoice(video)]; } catch { return []; } });
+  return portraitFirstStock((data.hits || []).flatMap((video: PixabayVideo) => { try { return [pixabayChoice(video)]; } catch { return []; } }));
 }
 
 export async function resolveNaturalStock(provider: "pexels" | "pixabay", id: number): Promise<NaturalStock> {

@@ -98,6 +98,19 @@ test('memory admission is nonblocking and never runs the operation', async () =>
   assert.match(state.reason, /Waiting for free memory/);
 });
 
+test('diagnostics clear crashed ordinary leases without admitting new work', async () => {
+  write(leaseFile, lease({ pid: 99999999 }));
+  os.freemem = () => 128 * 1024 ** 2;
+  await resources.reconcileReleasedLocalLease();
+  assert.equal(await resources.readHeavyLease(), null);
+  for (const extra of [{}, { pid: 99999999, childPids: [process.pid] }, { pid: 99999999, external: { jobId: 'job', submittedAt: new Date().toISOString() } },
+    { pid: 99999999, localModel: { model: 'qwen2.5:3b', baseUrl: 'http://127.0.0.1:11434', submittedAt: new Date().toISOString() } }]) {
+    write(leaseFile, lease(extra));
+    await resources.reconcileReleasedLocalLease();
+    assert.ok(await resources.readHeavyLease(), 'A live owner/child or uncertain external/model must retain its lease');
+  }
+});
+
 test('returned owner does not hold the slot forever after its last child exits', async () => {
   write(leaseFile, lease({ ownerReleased:true, childPids:[99999999] }));
   assert.equal((await resources.tryWithLocalRenderSlot(async()=>42)).value,42);

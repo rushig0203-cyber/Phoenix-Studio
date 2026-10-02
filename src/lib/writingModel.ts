@@ -3,6 +3,7 @@ import { generateLocalModel, withLocalWritingSession, type LocalGenerateBody } f
 import { isLocalModelResourceWaitError, LocalModelConfigurationError } from "./localModelResources";
 import { readWritingSettings, type WritingSettings } from "./writingSettings";
 import { generateGroqText, WritingConfigurationError, WritingWaitError } from "./groqWriter";
+import { HeavyWorkWaitError } from "./renderResources";
 
 type SessionOptions = { model?: string; baseUrl?: string; signal?: AbortSignal };
 const context = new AsyncLocalStorage<{ settings: WritingSettings; signal?: AbortSignal; closed: boolean }>();
@@ -13,7 +14,7 @@ export function writingModelIdentity() {
   return `${settings.provider}:${settings.model}`;
 }
 export function isWritingWaitError(error: unknown): error is { message: string; retryAfterMs: number } {
-  return isLocalModelResourceWaitError(error) || error instanceof WritingWaitError;
+  return isLocalModelResourceWaitError(error) || error instanceof WritingWaitError || error instanceof HeavyWorkWaitError;
 }
 export function isWritingConfigurationError(error: unknown) {
   return error instanceof WritingConfigurationError || error instanceof LocalModelConfigurationError

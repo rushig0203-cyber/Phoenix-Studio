@@ -16,46 +16,65 @@ require("tsconfig-paths/register");
 
 console.log("Phoenix Studio: Programmatic worker loader initialized.");
 
-// Source-video processing is intentionally independent from the AI generator.
-// It produces real local review files only when FFmpeg is available.
+// Load entry points without accepting work; --preflight exercises this loader.
 const { processNextSourceJob } = require("./src/lib/sourceProcessing.ts");
 const { pollGenerationJobs, reconcileRenderResources } = require("./src/lib/generation.ts");
 const { writeWorkerHeartbeat } = require("./src/lib/studioHealth.ts");
 const { processNextReviewEdit } = require("./src/lib/reviewEdits.ts");
-const { processNextCreationDraft, enableAutomaticCreation } = require("./src/lib/creationDrafts.ts");
+const { processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady } = require("./src/lib/creationDrafts.ts");
 const { processNextPostingAnalysis } = require("./src/lib/videoPostingAnalysis.ts");
+const { heavyWorkStatus, reconcileLocalModelWork } = require("./src/lib/renderResources.ts");
+const { createWorkerDispatcher } = require("./scripts/worker-workflows.cjs");
 
 // Exercise the real loader and every entry point without accepting any work.
 if (process.argv.includes("--preflight")) {
+  if (typeof creationDraftWorkflowReady !== "function") throw new Error("Draft workflow readiness helper is unavailable.");
   console.log("Phoenix worker preflight passed: source, generation, edits and drafts loaded.");
   process.exit(0);
 }
 
-void writeWorkerHeartbeat().catch(console.error);
-setInterval(() => void writeWorkerHeartbeat().catch(console.error), 5000);
-let resourceCheckRunning = false;
-async function checkResources() {
-  if (resourceCheckRunning) return;
-  resourceCheckRunning = true;
-  try { await reconcileRenderResources(); }
-  catch (error) { console.error("Phoenix render reconciliation:", error.message); }
-  finally { resourceCheckRunning = false; }
-}
-void checkResources();
-setInterval(() => void checkResources(), 5000);
-
-setInterval(() => void processNextSourceJob().catch((error) => console.error("Phoenix source processor:", error.message)), 5000);
-void processNextSourceJob().catch((error) => console.error("Phoenix source processor startup:", error.message));
-
-// Manual AI Creation jobs must be polled even when the old autonomous manager
-// is disabled. Without this, a real provider task remains frozen at 5%.
-setInterval(() => void pollGenerationJobs().catch((error) => console.error("Phoenix AI processor:", error.message)), 3000);
-void pollGenerationJobs().catch(console.error);
-// Posting analysis never blocks a finished MP4 or performs publication.
-setInterval(() => void processNextPostingAnalysis().catch(error => console.error("Phoenix posting analysis:", error.message)), 15000);
-setInterval(() => void processNextReviewEdit().catch((error) => console.error("Phoenix manual editor:", error.message)), 3000);
-void processNextReviewEdit().catch(console.error);
-console.log("Phoenix Studio: Lumina local production manager active; processing submitted jobs with final-video review. Cloud publishing, S3 exports, and unsolicited autonomous generation are disabled.");
 let preparationReady = false;
-setInterval(() => { if (preparationReady) void processNextCreationDraft().catch(error => console.error("Phoenix draft planner:", error.message)); }, 5000);
-void enableAutomaticCreation().then(() => { preparationReady = true; return processNextCreationDraft(); }).catch(error => console.error("Phoenix draft planner startup:", error.message));
+const dispatcher = createWorkerDispatcher({
+  workflows: {
+    source: { run: processNextSourceJob, intervalMs: 5000, immediate: true },
+    // Keep terminal stock artifact downloads/probes inside the same gate too.
+    generation: { run: pollGenerationJobs, intervalMs: 3000, immediate: true },
+    edits: { run: processNextReviewEdit, intervalMs: 3000, immediate: true },
+    drafts: { run: async () => {
+      if (!preparationReady) {
+        await enableAutomaticCreation();
+        preparationReady = true;
+        // Legacy READY drafts must migrate before normal readiness is checked.
+        // Their actual planning gets a fresh turn/admission, not a bypass.
+        dispatcher.queue.enqueue("drafts");
+        return;
+      }
+      await processNextCreationDraft();
+    }, intervalMs: 5000, immediate: true },
+    posting: { run: processNextPostingAnalysis, intervalMs: 15000 },
+  },
+  diagnostics: {
+    heartbeat: { run: writeWorkerHeartbeat, intervalMs: 5000 },
+    resources: { run: async () => {
+      await reconcileLocalModelWork();
+      // This status-only path releases terminal external reservations without
+      // downloading/probing outputs or submitting another renderer task.
+      await reconcileRenderResources();
+    }, intervalMs: 5000 },
+  },
+  canRunWorkflow: async key => {
+    const resources = await heavyWorkStatus();
+    if (resources.lease) return false; // External work can outlive its submission.
+    if (key === "drafts" && !preparationReady) return true; // Bounded store migration only.
+    return key === "drafts" ? creationDraftWorkflowReady(resources) : !resources.waitingForMemory;
+  },
+  onError: (key, error) => console.error(`Phoenix ${key} worker:`, error instanceof Error ? error.message : String(error)),
+});
+function stopDispatch() {
+  // Drain already-started work; do not kill its model/encoder or lose its lease.
+  process.exitCode = 0;
+  void dispatcher.stop();
+}
+process.once("SIGINT", stopDispatch);
+process.once("SIGTERM", stopDispatch);
+console.log("Phoenix Studio: Lumina local production manager active; submitted workflows run one at a time with final-video review. Cloud publishing, S3 exports, and unsolicited autonomous generation are disabled.");

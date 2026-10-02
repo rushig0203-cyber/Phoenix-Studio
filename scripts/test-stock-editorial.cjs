@@ -168,6 +168,56 @@ test('literal rainy weather and rocket science are not banned topics', () => {
   assert.deepEqual(editor.editorialIssues('A rainy day leaves drops on the window. Rocket science studies propulsion.'), []);
 });
 
+test('engagement bait is a visible editorial issue while a concrete question is allowed', () => {
+  assert.match(editor.editorialIssues("You won't believe this. Watch until the end.").join(' '), /engagement bait/);
+  assert.deepEqual(editor.editorialIssues('Why does this shadow get longer? The light reaches the ground from a lower angle.'), []);
+});
+
+test('honest visual provenance is allowed without hiding actual production instructions', () => {
+  assert.deepEqual(editor.editorialIssues('BBC News reports continuing talks. The visuals are illustrative stock footage, not images of the reported event.'), []);
+  assert.match(editor.editorialIssues('The visuals are illustrative stock footage; the camera shows a skyline.').join(' '), /production instructions/);
+  assert.match(editor.editorialIssues('Use stock footage of an office for this narration.').join(' '), /production instructions/);
+});
+
+test('business writing retains feasible visuals and the reviewer evaluates the promised payoff with real evidence', async () => {
+  const outline = {
+    viewerQuestion: 'How can a repair update give a customer a useful next step?', audience: 'Repair shop owners',
+    angles: [
+      { angle: 'Compare a vague update with an actionable update', value: 'Give the customer a clear status and next check.' },
+      { angle: 'Explain why an expected date needs a condition', value: 'Keep the message honest when a part is delayed.' },
+      { angle: 'Show the information to gather before calling', value: 'Separate known facts from an estimate.' },
+    ], selectedAngle: 0, structure: 'comparison', opening: 'A vague task is easier to act on when its next action is named.',
+    beats: [
+      { point: 'Name the specific situation instead of making a broad promise.', visual: 'Hands writing a repair note in a notebook.' },
+      { point: 'Give one next action and the condition it depends on.', visual: 'A mechanic checks a replacement component.' },
+      { point: 'State when the next update will happen.', visual: 'A person making an illustrative phone call.' },
+    ], payoff: 'A useful update gives a status, next action and next check.', avoid: ['Do not claim the catalogue actor is the actual customer.'],
+  };
+  const prompts = [];
+  global.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body); prompts.push(body.prompt);
+    if (prompts.length === 1) return Response.json({ response: JSON.stringify(outline) });
+    if (prompts.length === 2) {
+      assert.match(body.prompt, /specific customer or working problem/);
+      assert.match(body.prompt, /do not claim personal travel, testing, ownership or experience/);
+      assert.match(body.prompt, /visualConstraints/);
+      assert.ok(body.prompt.includes(outline.beats[0].visual));
+      return Response.json({ response: script });
+    }
+    assert.match(body.prompt, /without treating them as evidence/);
+    assert.match(body.prompt, /first sentence/);
+    assert.match(body.prompt, /exact opening promise/);
+    assert.match(body.prompt, /real-person quotations/);
+    return Response.json({ response: JSON.stringify(verdict()) });
+  };
+  const input = { topic: 'Repair updates with a clear next action', duration: 45, creationType: 'business' };
+  assert.equal(await createStockScript(input), script);
+  assert.equal(prompts.length, 3);
+  assert.equal(input.editorial.version, 5);
+  assert.ok(input.editorial.findings.every(finding => script.includes(finding.evidence)));
+  assert.notEqual(editor.editorialFingerprint(brief), editor.editorialFingerprint({ ...brief, creationType: 'business' }));
+});
+
 test('the bounded rewrite retains selected feedback and fingerprints its actual rules', async () => {
   const previous=global.fetch;
   const guidanceRules=['Each beat adds new information; remove repeated motivational filler.'];

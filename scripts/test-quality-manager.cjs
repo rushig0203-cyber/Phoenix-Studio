@@ -83,6 +83,10 @@ test('general feedback preserves explanation/comparison freedom while children k
   assert.doesNotMatch(general.rules.join(' '),/Use one clear problem, a visible attempt/);
   const children=manager.guidanceFromFeedback([{...record,creationType:'children-story'}],'children-story');
   assert.match(children.rules.join(' '),/visible attempt/);
+  assert.match(children.rules.join(' '),/consequence, the other lead's reaction/);
+  assert.match(children.rules.join(' '),/short attributed dialogue/);
+  assert.match(children.rules.join(' '),/object states continuous/);
+  assert.equal(children.policyVersion,3);
   assert.notEqual(general.revision,children.revision);
 });
 

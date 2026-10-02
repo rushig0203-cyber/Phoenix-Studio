@@ -12,8 +12,13 @@ lease.finishLocalModelWork = async value => reservations.push(['finish', value])
 const { generateLocalModel, withLocalWritingSession, isLocalModelSessionUncertainError } = require('../src/lib/localModelSession.ts');
 const { LocalModelResourceWaitError } = require('../src/lib/localModelResources.ts');
 const realFetch = global.fetch, realFree = os.freemem, originalModel = process.env.OLLAMA_MODEL;
+const writingSettings = require('../src/lib/writingSettings.ts');
+const realSettings = writingSettings.readWritingSettings;
+// Never let integration fixtures inherit the owner's cloud key/provider.
+writingSettings.readWritingSettings = () => ({ provider: 'ollama', model, freePlanConfirmed: false });
 after(() => {
   global.fetch = realFetch; os.freemem = realFree;
+  writingSettings.readWritingSettings = realSettings;
   lease.retainLocalModelWork = originalRetain; lease.finishLocalModelWork = originalFinish;
   if (originalModel === undefined) delete process.env.OLLAMA_MODEL; else process.env.OLLAMA_MODEL = originalModel;
 });
