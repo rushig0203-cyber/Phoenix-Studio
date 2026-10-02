@@ -2,7 +2,24 @@
 
 These notes distinguish shipped code from demonstrated output. No release here is a guarantee of artistic quality, audience growth, or earnings.
 
-## 2026-10-02 — Original reel and cartoon quality (source; activation pending)
+## 2026-10-02 — Buyer follow-up and verified local activation
+
+- Correct stock categories/provider credits, fresh posting text in open previews,
+  monotonic asynchronous posting snapshots and retention of every footage URL.
+- Twenty-four targeted tests, production compilation and TypeScript checks passed.
+  Selected/live build is `.next-build-20261002093727067`; manager heartbeat and
+  renderer readiness were verified after starting missing services.
+- A real four-shot portrait reel rendered through the stock API/queue: 45 seconds,
+  720×1280, 1,080 decoded frames. Live browser playback reached the end without a
+  media error, and the downloaded output matched its saved hash. Owner-permitted
+  frame analysis produced video-specific copy/tags with all source credits.
+- Observed minimum free RAM during that sequential render was 2,188 MiB. No new
+  model/dependency/paid VM or weaker memory guard. This is not a comparative RAM
+  benchmark, full listening review or automatic footage-coherence acceptance.
+- An interrupted business draft resumed on normal startup but failed with Groq
+  HTTP 400. Saved work/error remain; no failed job was explicitly retried.
+
+## 2026-10-02 — Original reel and cartoon quality (implementation checkpoint)
 
 - One-to-six shot stock sequences, useful trims, portrait-first results, safe
   framing, quiet original sound, varied original local music and retained credits.

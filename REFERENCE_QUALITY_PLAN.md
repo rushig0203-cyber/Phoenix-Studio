@@ -41,9 +41,21 @@ exposed unsupported plans and ambiguous dialogue; the pipeline now saves rejecte
 content and permits one bounded correction with quota-resume checkpoints. An
 actual-manager 71.8-second story rendered with two voices and 440 unique frames.
 Its narration and prop timeline were inspected, but full listening/visual acceptance
-and actual travel-reel proof remain outstanding.
+and current-cartoon playback from the product remain outstanding.
+
+A real four-shot portrait Pexels/Pixabay reel now rendered through the production
+stock API/queue: 45 seconds, 720×1280, 1,080 decoded frames, retained source credits,
+locally composed music and no title overlay. Live product playback reached the end
+without a media error, and download hash matched the saved output. The updated
+manager generated video-specific copy/tags from three permitted samples. This
+proof used manually selected/refined shots and does not demonstrate automatic
+manager semantic footage selection or full listening acceptance.
 
 Submitted workflows are now serialized with independent live diagnostics; cache
 and music buffers are released/bounded without a new model, dependency or paid VM.
-Activation and product playback remain outstanding. No item is declared achieved
-solely because its implementation or isolated tests exist.
+Guarded build/typecheck passed and the selected/live build matches
+`.next-build-20261002093727067`; healthy manager and renderer were verified.
+Twenty-four additional posting/library/preview tests passed. An interrupted business
+draft resumed normally but failed in Groq editorial writing with HTTP 400; the raw
+rejection was not retained, so its cause remains unconfirmed. No item is declared
+achieved solely because its implementation, playback or isolated tests exist.

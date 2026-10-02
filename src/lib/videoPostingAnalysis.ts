@@ -23,7 +23,8 @@ const resultSchema = z.object({
 });
 export function parseVisualPosting(value: unknown) { return resultSchema.parse(value); }
 export function visualPostCopy(caption: string, file: ReviewFile) {
-  const source = file.source.providerUrl ? `\nFootage source: ${file.source.providerUrl}` : "";
+  const sources = [...new Set([...(file.quality.visualSources || []).map(source => source.providerUrl), file.source.providerUrl].filter((url): url is string => !!url))];
+  const source = sources.length ? `\nFootage source${sources.length > 1 ? "s" : ""}: ${sources.join("\n")}` : "";
   const report = file.quality.research ? `\nReport source: ${file.quality.research.source} (${file.quality.research.publishedAt}) ${file.quality.research.url}\n${file.quality.research.limitation}` : "";
   return `${caption}${source}${report}`;
 }

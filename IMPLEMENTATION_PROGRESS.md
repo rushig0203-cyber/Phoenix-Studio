@@ -1,6 +1,47 @@
 # Quality-first implementation — September 16, 2026
 
-## October 2: original channel-quality work (not yet activated)
+## October 2: real stock proof, buyer fixes and local activation
+
+- After the owner closed Brave, free RAM rose to 2,509 MiB. Tests, real rendering
+  and the production build were run sequentially, never concurrently. No app was
+  closed by the agent and no memory admission guard was weakened.
+- The opt-in `scripts/verify-real-stock-reel.cjs` staged four actual portrait assets
+  through the production stock API. Source stills exposed a slow forest-only
+  opening; this proof's trims/order were refined before rendering. The completed
+  production source job `96ccb19a-da43-41c8-b8ab-4d2eed8e5aa2` owns review output
+  `b73114a7-d5ae-5cdc-a4d1-06473f1714ae`: 45 seconds, 720×1280, 1,080 decoded frames,
+  four intact source credits, a quiet original reflective instrumental, no invented
+  speech subtitles or posting-title overlay. All four source tracks were absent/
+  effectively silent. Minimum observed free RAM was 2,188 MiB, not a whole-process
+  memory bound or a before/after optimization measurement. It is an owner-selected
+  thematic sequence, not evidence of automatic semantic shot selection.
+- Buyer fixes classify new provider sources correctly in Library, distinguish
+  Pexels/Pixabay credits and equal numeric IDs, refresh posting text in an already
+  open player, and merge asynchronous snapshots without reverting newer caption
+  analysis/owner edits. Frame-based copy retains every footage URL, not only the
+  first. Twenty-four focused real-handler/SSR/analysis tests passed.
+- Guarded production compilation and full TypeScript checking passed; selected
+  and live website both report `.next-build-20261002093727067`. Canonical headless
+  startup started missing website/manager/renderer without stopping shared Ollama.
+  Health confirmed website PID 2888, fresh manager PID 9808 and renderer PID 17132.
+  No failed job was explicitly retried. An old interrupted PLANNING draft resumed
+  normally and encountered a Groq HTTP 400 during editorial writing; its saved
+  error alone cannot establish the rejected schema/prompt cause. This remains
+  outstanding and is not a RAM-render failure or successful business-video proof.
+- Live browser verified the new reel belongs in Stock video, plays to its 45-second
+  end with readyState 4/no media error, and exposes edit, download, captions/tags,
+  copy confirmation and both manual platform handoffs. The downloaded MP4 SHA-256
+  matches the canonical output. Browser clipboard inspection returned empty, so
+  native clipboard contents were not independently established; isolated handler
+  tests verify the copied string. No external posting was performed.
+- The normal worker completed owner-permitted three-frame Groq analysis for this
+  new output on its first attempt. Specific forest/waterfall copy, five relevant
+  tags and all four source URLs are visible; there is no invented location or
+  same-place claim. Full listening/creative quality acceptance, current cartoon
+  playback from the product and automatic manager footage coherence remain open.
+  The actual-manager cartoon MP4 was shown for owner quality feedback.
+
+## October 2: original channel-quality implementation (earlier checkpoint)
 
 - Travel/cartoon public profile artwork was inspected. Individual reel playback
   required Instagram login, so reference motion/audio was not evaluated. The

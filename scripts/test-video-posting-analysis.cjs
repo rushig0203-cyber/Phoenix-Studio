@@ -50,6 +50,13 @@ test('new posting copy retains report citations and footage attribution',()=>{
   const text=analysis.visualPostCopy('A scene-specific caption.',{source:{providerUrl:'https://pixabay.com/videos/fixture/'},quality:{research:{source:'BBC',publishedAt:'2026-10-01',url:'https://www.bbc.com/news/fixture',limitation:'Single report; illustrative visuals.'}}});
   assert.match(text,/A scene-specific caption/);assert.match(text,/pixabay.com/);assert.match(text,/Report source: BBC/);assert.match(text,/Single report/);
 });
+
+test('video-specific copy retains every mixed-provider source once instead of only the first clip',()=>{
+  const first='https://www.pexels.com/video/fixture-1/',second='https://pixabay.com/videos/fixture-2/';
+  const text=analysis.visualPostCopy('Actual visible waterfalls.',{source:{providerUrl:first},quality:{visualSources:[{providerUrl:first},{providerUrl:second},{providerUrl:first}]}});
+  assert.equal(text.split(first).length-1,1);assert.equal(text.split(second).length-1,1);
+  assert.match(text,/Footage sources:/);assert.match(text,/Actual visible waterfalls/);
+});
 test('a competing heavy job leaves analysis queued and never transmits frames',async()=>{
   const resources=require('../src/lib/renderResources'); const reviews=require('../src/lib/reviewFiles');
   const originalStatus=resources.heavyWorkStatus, originalAdmission=resources.tryWithLocalRenderSlot;

@@ -106,6 +106,7 @@ export default function DashboardClient() {
   }, []);
   const [files, setFiles] = useState<ReviewFile[]>([]);
   const [preview, setPreview] = useState<ReviewFile | null>(null);
+  const previewFile = preview ? files.find(file => file.id === preview.id) ?? preview : null;
   const previousJobs = useRef(new Map<string, string>());
   const [sourceJobs, setSourceJobs] = useState<SourceJob[]>([]);
   const [aiJobs, setAiJobs] = useState<AiJob[]>([]);
@@ -378,7 +379,7 @@ export default function DashboardClient() {
         </> : null}
         {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link></div></div><ChannelConnections /></div> : null}
       </main>
-      {preview ? <ReviewPlayer file={preview} onClose={() => setPreview(null)} /> : null}
+      {previewFile ? <ReviewPlayer key={previewFile.id} file={previewFile} onClose={() => setPreview(null)} /> : null}
     </div>
   );
 }

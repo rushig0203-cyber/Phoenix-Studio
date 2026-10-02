@@ -3,6 +3,26 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import { postingDownload, postingText } from "@/lib/posting";
 
+function snapshotTime(value?: string) {
+  const time = Date.parse(value || "");
+  // All snapshots come from this laptop. Corrupt/far-future dates must not
+  // permanently outrank later legitimate owner edits or analysis results.
+  return Number.isFinite(time) && time > 0 && time <= Date.now() + 60_000 ? time : 0;
+}
+
+function mergePostingSnapshot(current: ReviewFile, incoming: ReviewFile) {
+  if (current.id !== incoming.id) return current;
+  const currentFileTime = snapshotTime(current.updatedAt), incomingFileTime = snapshotTime(incoming.updatedAt);
+  const currentPostingTime = Math.max(currentFileTime, snapshotTime(current.quality.postingAnalysis?.updatedAt));
+  const incomingPostingTime = Math.max(incomingFileTime, snapshotTime(incoming.quality.postingAnalysis?.updatedAt));
+  const base = incomingFileTime > 0 && incomingFileTime >= currentFileTime ? incoming : current;
+  // Analysis transitions do not always update file.updatedAt. Conversely, a
+  // newer owner edit/reset is authoritative even when it removes analysis.
+  const posting = incomingPostingTime > currentPostingTime ? incoming : current;
+  if (base === posting) return base;
+  return { ...base, quality: { ...base.quality, postCopy: posting.quality.postCopy, hashtags: posting.quality.hashtags, postingAnalysis: posting.quality.postingAnalysis } };
+}
+
 export function FinishedPostingActions({ id }: { id: string }) {
   const [file, setFile] = useState<ReviewFile | null>(null);
   const [error, setError] = useState("");
@@ -25,7 +45,7 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
   const [file, setFile] = useState(supplied);
   const [busy, setBusy] = useState(false);
   const requesting = useRef(false);
-  useEffect(() => { setFile(supplied); }, [supplied]);
+  useEffect(() => { setFile(current => current.id === supplied.id ? mergePostingSnapshot(current, supplied) : supplied); }, [supplied]);
   const analysis = file.quality.postingAnalysis;
   useEffect(() => {
     if (!postingDownload(file) || !["QUEUED", "ANALYZING", "WAITING"].includes(analysis?.status || "")) return;
@@ -33,7 +53,10 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
     const interval = setInterval(() => {
       if (pending || document.hidden) return; pending = true;
       void fetch(`/api/review-files/${encodeURIComponent(file.id)}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) }).then(async response => {
-        if (response.ok) setFile(await response.json());
+        if (response.ok) {
+          const incoming: ReviewFile = await response.json();
+          if (!controller.signal.aborted) setFile(current => current.id === file.id ? mergePostingSnapshot(current, incoming) : current);
+        }
       }).catch(() => undefined).finally(() => { pending = false; });
     }, 15000);
     return () => { clearInterval(interval); controller.abort(); };
@@ -45,7 +68,7 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
     try {
       const response = await fetch(`/api/review-files/${encodeURIComponent(file.id)}/posting-analysis`, { method: "POST", signal: AbortSignal.timeout(15000) });
       const value = await response.json(); if (!response.ok) throw new Error(value.error || "Could not queue analysis.");
-      setFile(value); setNotice("Queued to analyze this video's frames. The finished video stays available.");
+      setFile(current => current.id === file.id ? mergePostingSnapshot(current, value) : current); setNotice("Queued to analyze this video's frames. The finished video stays available.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not queue video analysis."); }
     finally { requesting.current = false; setBusy(false); }
   }

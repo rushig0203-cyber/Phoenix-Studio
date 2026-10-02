@@ -9,7 +9,7 @@ import ReviewPlayer, { reviewTarget } from "./ReviewPlayer";
 import PostingActions from "./PostingActions";
 
 const pageSize = 6;
-const category = (file: ReviewFile) => file.editedFrom ? "edited" : file.delivery?.creationType?.startsWith("children") || file.audience.startsWith("kids") ? "children" : file.source.filename.startsWith("stock-") ? "stock" : "source";
+const category = (file: ReviewFile) => file.editedFrom ? "edited" : file.delivery?.creationType?.startsWith("children") || file.audience.startsWith("kids") ? "children" : file.source.kind === "pexels" || file.source.kind === "pixabay" || file.source.filename.startsWith("stock-") ? "stock" : "source";
 const categoryNames: Record<string, string> = { children: "Children’s animation", stock: "Stock video", source: "Source clip", edited: "Edited copy" };
 const seconds = (value?: number) => {
   if (value === undefined || !Number.isFinite(value)) return "";
@@ -116,7 +116,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
               <p>{file.quality.captions[0] || "No caption text recorded."}</p>
               {file.quality.storyboard?.length ? <div><p className="font-semibold">Narration-timed footage plan</p><ol className="mt-2 space-y-3">{file.quality.storyboard.map((shot, index) => <li key={index}><p className="font-medium">{shot.start.toFixed(1)}–{shot.end.toFixed(1)}s · {shot.query}</p><p>{shot.narration}</p>{shot.timing === "within-caption-estimate" ? <p className="text-amber-800">Timing estimated within a caption line.</p> : null}{shot.sourcePage ? <a href={shot.sourcePage} target="_blank" rel="noreferrer" className="underline">Original stock footage ↗</a> : null}</li>)}</ol></div> : file.quality.visualBrief?.length ? <div><p className="font-semibold">Legacy visual search brief · not timed to narration</p><ol className="list-inside list-decimal">{file.quality.visualBrief.map((term, index) => <li key={`${index}-${term}`}>{term}</li>)}</ol></div> : null}
               {file.processing ? <p>{file.processing.scoreKind === "script-checks" || file.source.filename.startsWith("local-cartoon-") ? "Text checks only—not animation or singing quality." : "Manager recommendation—not a prediction of views."} {file.processing.reason}</p> : null}
-              {file.quality.visualSources?.map(source => <a key={source.providerMediaId} className="mr-2 inline-block underline" href={source.providerUrl} target="_blank" rel="noreferrer">Pixabay #{source.providerMediaId}</a>)}
+              {file.quality.visualSources?.map(source => <a key={`${source.provider}:${source.providerMediaId}`} className="mr-2 inline-block underline" href={source.providerUrl} target="_blank" rel="noreferrer">{source.provider === "pexels" ? "Pexels" : "Pixabay"} #{source.providerMediaId}</a>)}
               {file.quality.warning ? <p className="text-amber-800">{file.quality.warning}</p> : null}
               {file.delivery?.creationType === "children-song" && file.quality.audio === "local-narration-music" ? <p className="text-amber-800">Older speech-only song: narration is not singing. Use a sung recording for a new version.</p> : null}
               <p>{file.monetizationReview?.warning || "Review the full video and rights before posting. Earnings are not guaranteed."}</p>

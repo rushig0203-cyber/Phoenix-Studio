@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Original reels and expressive stories (October 2 source update)
+### Original reels and expressive stories (October 2 local update)
 
 Stock search now supports one useful moment or up to six ordered, related shots,
 with interval controls, portrait-first results, full-picture framing for unsafe
@@ -31,12 +31,18 @@ Closed schemas use Groq structured output; optional schemas remain non-strict.
 These checks are not a semantic or artistic judge. Owner-locked text stays exact.
 No guarantee of factual accuracy, quality, growth or income; review finished videos.
 
-A three-second isolated stock encode and a complete 71.8-second actual-manager
-story rendered successfully, with real audio/video, two installed voices,
-440 unique raster frames and measured speech timing. The latest render observed
-158 MiB parent Node RSS and 1,223 MiB minimum system free memory; these are
-observations, **not** total process-group RAM bounds or measured optimization gains.
-Full motion/listening acceptance and live-build activation are still pending.
+A real four-shot Pexels/Pixabay reel rendered through the production stock API and
+queue: 45 seconds, 720×1280, 1,080 decoded frames, all source credits, local music
+and no unwanted title overlay. It played to the end without a browser media error;
+the downloaded MP4 matched the saved output hash. The running website matches
+the new guarded build, with a healthy manager and ready renderer. Sampled-frame
+analysis generated specific posting copy and hashtags while retaining every source.
+A complete 71.8-second actual-manager story also rendered, with two installed
+voices, 440 unique raster frames and measured speech timing. Its Node parent peak
+was 158 MiB RSS; observed minimum system free RAM was 1,223 MiB for that story and
+2,188 MiB for the real reel. These are **not** process-group RAM bounds or measured
+optimization gains. Full artistic/motion/listening acceptance remains pending;
+technical playback and three sampled frames do not establish engaging content.
 See `IMPLEMENTATION_PROGRESS.md` for the exact installed/running release status.
 
 ### Desktop lifecycle and one current project
@@ -224,11 +230,11 @@ videos are retained and are not retroactively given nonexistent clean masters.
 - **Source video:** streamed large uploads; coverage/highlights selection; speech and silence analysis; natural clip boundaries; FFmpeg exports, captions, posting copy and review recommendations.
 - **App-style workspace:** Create, Jobs, Library and Settings are separate screens with persistent navigation. Forms retain their state when switching screens. Six recommendations appear inside the creation form for the selected type, with More ideas and a saved rotation between visits. These come from 152 local editorial starting points, not live trends or unlimited AI inventions.
 - **Final review only:** creation persists its plan, selects footage, then queues rendering automatically. Older waiting plans resume when the worker starts. No plan editor or manual finish button is shown; even older `planOnly: true` API submissions now proceed automatically. Failed jobs retain their cause and a retry action instead of looping indefinitely. Duplicate submissions and interrupted dispatch reuse the same job identity.
-- **Real stock reels:** **Find real footage** searches both configured Pexels/Pixabay libraries. One selected source streams to disk and enters the real source-processing queue, with no generated visuals or narration. Usable sound is normalized/preserved; missing or weak sound gets a local instrumental bed. A descriptive overlay, matching post copy, hashtags and provider provenance are saved with the MP4. Landscape footage is fitted inside vertical 720p rather than blindly cropped; short footage is not looped to fake duration.
+- **Real stock reels:** **Find real footage** searches both configured Pexels/Pixabay libraries, favoring native portrait results. Select one to six shots, order them and set useful trims; sources stream to disk under one shared byte limit and enter the real source-processing queue, with no generated replacement visuals or narration. Preserve source sound, select a quiet local instrumental, or combine usable ambience with music. Automatic music replacement applies when all selected sound is absent/effectively silent, not merely quiet. Conservative framing keeps the full picture when a crop would discard too much. Posting copy, hashtags and every provider credit remain separate from on-screen subtitles; silent footage has no posting-title overlay. Short footage is not looped to fake duration.
 - **Broader ideas:** 42 original starting points across 10 categories, including nature, places, food, crafts, business, practical skills, learning, hobbies and children’s stories. Initial suggestions mix categories, and exact previously used titles are demoted using local review history. Any search/topic is allowed; these are not live trend predictions.
 - **Children's stories:** local narration and original 2D animation for ages 3–6, with one standalone story or a ten-part series. Version 4 adds fuller characters, expressive eyes, detailed paws/wings, stitched clothing, eight-petal flowers, and layered scenery. It is limited 12 fps illustration, **not** anime or professional 3D animation. New renders use the updated artwork; existing exports are not overwritten.
 - **Children's songs:** import a recording that already contains singing/music and matching lyrics. A local-only ACE-Step adapter is included, but its engine/models are **not installed or bundled**. Phoenix disables this automatic mode below 12 GB usable RAM or 4 GB free RAM; these are conservative Phoenix guards. The current laptop cannot enable it. There is no paid fallback, and speech is not a substitute for singing.
-- **Business/general:** local Ollama narration (or your supplied script), a consistent-setting shot brief, automatically selected Pexels footage, music and subtitles via the patched MoneyPrinterTurbo backend. Selection filters duplicate/short/low-resolution clips and ranks descriptive catalog matches, format fit and contributor continuity. Exact selected IDs are sent to the renderer; unavailable or too-short footage fails instead of being silently replaced. These are metadata heuristics, not frame-level visual understanding. Watch the final crop and audio yourself.
+- **Business/general:** narration from the selected writer (configured Groq Free account or local Ollama), or your supplied script, with a topic-appropriate continuity/comparison brief, automatically selected Pexels footage, music and subtitles via the patched MoneyPrinterTurbo backend. Selection filters duplicate/short/low-resolution clips and ranks descriptive catalog matches, format fit and contributor continuity. Exact selected IDs are sent to the renderer; unavailable or too-short footage fails instead of being silently replaced. These are metadata heuristics, not frame-level visual understanding. Watch the final crop and audio yourself.
 - **Review library:** real cached thumbnails, one focused video player, visible loading/error/retry states, search, category filters, pagination, posting details, and manual editing.
 - **Trash:** one confirmation when moving a video to Trash; rapid repeated clicks are ignored while saving. Undo and Restore do not ask another deletion confirmation. Media remains on disk and continues to occupy space. Older versions permanently deleted files; this change cannot restore those earlier deletions.
 - **Live jobs:** queued/running/completed/failed history, progress, elapsed time and available ETA estimates, plus retry and eligible history-removal controls. Draft planning and finished-video rendering are separate stages.
@@ -241,15 +247,15 @@ Attention recommendations and text checks do not measure artistic quality or gua
 
 For an episode, choose **Choose a video**, upload the source, and select full coverage or best highlights when offered. This source-processing workflow cuts the original footage; it does not request generated replacement visuals.
 
-For a natural/real-footage reel, choose **Find real footage**, enter any concrete search, and select **Search real videos**. Choose a result, edit its descriptive caption, and select **Create reel from this footage**. It uses the selected real source and its actual duration up to your chosen maximum. The caption is an overlay, not a fabricated speech transcript. Both providers use their own private free keys (`PEXELS_API_KEY`, `PIXABAY_API_KEY`). Partial search failures are shown without hiding successful results from the other provider.
+For a natural/real-footage reel, choose **Find real footage**, enter any concrete search, and select **Search real videos**. Add one to six results, order and trim the shots, choose sound/framing, and create the reel. It uses those real sources up to your chosen duration cap without looping short assets. An optional description seeds draft posting copy; it is not an overlay or a fabricated speech transcript. With sampled-frame permission, later analysis can produce video-specific posting text. Both providers use their own private free keys (`PEXELS_API_KEY`, `PIXABAY_API_KEY`). Partial search failures are shown without hiding successful results from the other provider.
 
 For a new creation:
 
-1. Choose **Create a video**, the content type, publishing format and length. The default is now one general video—not a ten-part animation batch. Children's stories still offer a ten-part series.
+1. Choose **Create a video**, describe your idea, and select publishing format and length. There is no content-type picker; conservative prompt keywords select the workflow. The default is one video—not a ten-part animation batch. Explicit children's story prompts still offer a ten-part series.
 2. Enter an idea or use the suggested ideas. You can supply your own narration; stock videos also accept a visual search brief. Songs need sung audio and matching lyrics unless a supported local singing engine is available.
 3. Click **Create video** (or **Create 10 story videos**). Phoenix automatically prepares the narration, visuals and render.
 4. The app opens **Jobs** after submission. Preparation and rendering are automatic. Failed preparation retains its cause and saved progress for **Retry job**.
-5. Play the finished video in **Library**. Use **Edit video** for supported final-video edits, **Copy post + tags**, or **Download**. Posting remains manual.
+5. Play the finished video from **Jobs** or **Library**. Use **Edit video** for supported final-video edits, **Copy caption + hashtags**, or **Download**. Posting remains manual.
 
 The app's creation presets—not a statement of platform-wide limits—are:
 
