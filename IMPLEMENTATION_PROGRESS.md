@@ -1,6 +1,37 @@
 # Quality-first implementation — September 16, 2026
 
-## October 10 visual-review follow-up — source ready, not yet live
+## October 10 final footage/posting follow-up — verified installed/live
+
+- Current selected/live bundle `.next-build-gh-37999466131-1`, BUILD_ID
+  `Oc6siF0NdCHxo6HCYPInk`, exact runtime source
+  `6663636fd57f1b3267d9e44ecdd1b2d9f87a913d`. Windows run `37999466131`
+  passed 493/493 serial tests, scoped lint, full TypeScript, production compile,
+  32 static pages, tracing and synthetic/public FFmpeg proofs. The five download
+  sizes/digests and all 488 installed file hashes were verified before activation.
+- Archive SHA256 `aa6dd24fa587e91453426043b259c388700928c1adfda9f8cc892a39a71a7160`,
+  manifest SHA256 `e88b1255bfe8c3a5977e27faa4c17d41247ac5bd97850994e176cb3f79e81ec6`.
+  The final public proof is five shots, 12.416667 seconds / 298 frames, all native
+  rate with continuous instrumental audio. Full decode, exact final intervals,
+  original provenance, actual rendered-use identities and byte-identical isolated
+  retry passed. Every final cut's midpoint was viewed locally; no skyline/plaza,
+  roadside or known grey/winter insert remained. This does not guarantee semantic
+  understanding, artistic quality or growth; no duration was padded/slowed.
+- Activation exited zero after transient stale-heartbeat launcher warnings;
+  independent checks confirmed selected/live equality, healthy worker/Lumina,
+  dashboard HTTP 200 and automatic posting off. Instagram stored connection is
+  ready with successful local posting history; no fresh token probe or actual
+  upload was performed. YouTube still has no saved OAuth connection.
+- All five review/source/AI/edit/draft metadata hashes match the pre-activation
+  baseline. No owner job was retried, media deleted/rewritten, post submitted,
+  credentials/provider changed, paid service added or local model started.
+  Ollama reports zero loaded models. No laptop compile or RAM-guard reduction;
+  runtime memory fluctuated around the unchanged 512 MiB reserve.
+- Removed only five identity-checked task-created unpublished transfer releases
+  after install verification; local downloads/proof, installed/recovery bundles,
+  originals and owner files remain. Later documentation-only commits do not change
+  this installed runtime's source identity.
+
+## October 10 visual-review follow-up — source checkpoint, now included above
 
 - Final follow-up also records the verified rendered sources separately from the
   original downloaded recipe. Completed-use/diversity counters omit discarded
@@ -32,12 +63,12 @@
   Fixed shared YouTube 5000 UTF-8-byte/forbidden bracket validation and final
   approval binding to the displayed output revision (not silent disk changes).
 - 127 local edit/audio/order tests, 107 catalogue/route tests (overlap), 142
-  posting/copy/UI tests and scoped lint passed serially. New public proof/full
-  build/visual review/activation remain pending. No guard was lowered, unrelated
+  posting/copy/UI tests and scoped lint passed serially. Final public proof/full
+  build/visual review/activation passed as recorded above. No guard was lowered, unrelated
   app closed, owner video deleted, failed job retried, credentials changed or
   post submitted.
 
-## October 10 second footage pass — source checkpoint, verification/activation pending
+## October 10 second footage pass — source checkpoint, now included above
 
 - Read-only recheck confirms no new owner visual-v1 render has completed; the
   newest Parks output still predates the prior activation. No saved owner job
@@ -68,12 +99,12 @@
   retry idempotency. No owner media/keys/settings/jobs are sent to that runner.
   Only edited MP4/contact sheet/provenance retained; downloaded originals and
   isolated queues removed after proof. That real proof/build/live activation is
-  pending at this source entry. No RAM guard lowered, owner failure retried, paid
+  pending at this historical source checkpoint and is completed above. No RAM guard lowered, owner failure retried, paid
   provider switched or post submitted.
 
-## October 10: footage-reel quality follow-up — verified installed/live
+## Earlier October 10 footage-reel release — superseded
 
-- Current selected/live bundle is `.next-build-gh-37987565078-1`, BUILD_ID
+- Previous selected/live bundle was `.next-build-gh-37987565078-1`, BUILD_ID
   `DGYvzNhP5IFaiDkVUi8JO`, from exact source
   `295e73a36c7af704bba32a9e2e079552d2583dc6`. Windows run `37987565078`
   passed 421/421 tests, scoped lint, production compilation, full TypeScript,

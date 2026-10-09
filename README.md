@@ -1,6 +1,47 @@
 # Phoenix Studio
 
-### October 10 visual-review follow-up — release verification pending
+### October 10 final footage/posting follow-up — installed and live
+
+Current selected and served release: `.next-build-gh-37999466131-1`, BUILD_ID
+`Oc6siF0NdCHxo6HCYPInk`, built from exact source commit
+`6663636fd57f1b3267d9e44ecdd1b2d9f87a913d`.
+[Windows release run 37999466131](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/37999466131)
+passed 493/493 serial regressions, scoped lint, TypeScript, production compilation,
+32 static pages and both FFmpeg proofs. Downloaded asset digests and all 488
+installed file hashes passed. Independent live checks confirm the selected bundle,
+healthy worker/Lumina, HTTP 200 dashboard and automatic posting off. Both Desktop
+launch/update workflows use the canonical project and selected release.
+
+The public licensed-footage proof produced five coherent park/garden shots,
+12.416667 seconds / 298 frames, at native speed with continuous instrumental
+audio. Every cut was visually reviewed; full video/audio decoding, exact final
+source intervals, original provenance and byte-identical isolated retry passed.
+Skyline/plaza, roadside and known grey/winter sources were excluded, rather than
+padding the edit or slowing footage to meet a duration. Synthetic tests also
+verify bounded 1.25x video/audio acceleration. This is not a claim of semantic
+scene understanding, universal artistic quality or guaranteed engagement.
+
+Completed reuse accounting now counts only verified rendered sources; discarded
+downloads no longer consume completed-use slots. Active jobs still reserve all
+original sources, and malformed or legacy completed records remain conservative.
+Existing completed videos are not rewritten: these edits apply to new automatic
+reels. All five owner review/job/draft metadata hashes were unchanged.
+
+Instagram is marked connected/publish-ready and has successful saved Reel/Story
+history; this release did not freshly validate its token or publish a test post.
+YouTube has **no saved connection** and needs OAuth setup in Settings. Metadata
+validation and final-approval revision handling were tested without real uploads.
+No paid service, credentials change, owner retry or local AI model load was added.
+Ollama reported zero loaded models; tiny frame checks run sequentially and the
+release was built off-laptop. Available RAM still fluctuates around the unchanged
+512 MiB runtime reserve: cloud builds do not eliminate runtime memory limits.
+
+The launcher briefly warned of a stale worker heartbeat, but final activation and
+independent health checks passed. Only this task's five unpublished build transfers
+were removed; local proof downloads, installed/recovery bundles and owner media
+remain. Documentation-only commits do not change the runtime source identity.
+
+### Included October 10 visual-review fixes
 
 The first public-footage proof exposed faults that unit tests cannot judge: a
 green-park edit acquired a skyline/sky pan, roadside traffic, grey bare trees and
@@ -22,10 +63,11 @@ Instagram has completed uploads in local history; YouTube has no saved connectio
 in this installation. No owner upload/retry was submitted to test these fixes.
 
 Serial checks passed: 127 edit/audio/order regressions, 107 catalogue/route checks
-(with overlap), and 142 posting/copy/UI checks; scoped lint passed. The further
-public-footage render, full release build, visual check and activation are pending.
+(with overlap), and 142 posting/copy/UI checks; scoped lint passed. The final
+public-footage render, full release build, visual check and activation passed as
+recorded above.
 
-### October 10 second footage pass — source ready, release checks pending
+### Included October 10 second footage pass
 
 Automatic assembly now tries real portrait catalogue metadata first, then up to
 three all-orientation pages when the usable coherent pool is sparse. Subject,
@@ -46,12 +88,12 @@ Serial local checks: 122 focused selection/catalogue/movement/order tests and
 Release verification now includes an isolated public-Pexels edited-reel proof
 on the existing standard Windows runner, with no owner files or keys uploaded.
 Only the edited proof video, contact sheet and public provenance JSON are kept
-in a temporary unpublished transfer. Production activation and visual inspection
-of that new proof remain pending here; the verified release below is still live.
+in a temporary unpublished transfer. Final visual inspection and production
+activation passed; the transfer was removed after the verified local install.
 
-### October 10 footage-reel quality follow-up — installed and live
+### Earlier October 10 footage-reel release — superseded
 
-Current selected and served release: `.next-build-gh-37987565078-1`, BUILD_ID
+Previous selected and served release: `.next-build-gh-37987565078-1`, BUILD_ID
 `DGYvzNhP5IFaiDkVUi8JO`, built from exact source commit `295e73a`.
 [Windows release run 37987565078](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/37987565078)
 passed 421/421 tests, scoped lint, production compilation, full TypeScript,
