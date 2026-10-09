@@ -245,6 +245,30 @@ test('Parks anchor keeps park scenes and rejects parking lots and amusement park
   assert.deepEqual(identities(automatic.automaticStockChoices([parkAnchor, sources[0], sources[1]], 'Parks')), ['pexels:1']);
 });
 
+test('ordinary Parks search excludes parking areas, spaces and bare parking while explicit parking remains available', () => {
+  const park = video(1, 'lush green park with trees');
+  const parking = [
+    video(40115707, 'aerial view of lush park with parking area'),
+    video(2, 'car parking spaces beside a city park'),
+    video(3, 'parking in a green park'),
+  ];
+  assert.deepEqual(identities(automatic.automaticStockChoices([park, ...parking], 'Parks')), ['pexels:1']);
+  assert.deepEqual(identities(automatic.automaticStockCompanions(park, [...parking, video(4, 'green park walkway')], 'park')), ['pexels:4']);
+  assert.deepEqual(identities(automatic.automaticStockChoices([park, ...parking], 'parking')),
+    ['pexels:40115707', 'pexels:2', 'pexels:3'], 'A parking request keeps real parking evidence, not an ordinary garden park');
+  const parkingAnchor = video(5, 'car park parking spaces');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(parkingAnchor, [park, parking[1]], 'parking')), ['pexels:2']);
+});
+
+test('ordinary park and broad Nature starting cards do not imply amusement or parking intent', () => {
+  const park = video(1, 'lush green park with trees');
+  const amusement = video(12145278, 'amusement park on grassland');
+  const parking = video(40115707, 'aerial view of lush park with parking area');
+  assert.deepEqual(identities(automatic.automaticStockChoices([park, amusement, parking], 'Parks')), ['pexels:1']);
+  assert.deepEqual(identities(automatic.automaticStockChoices([park, amusement, parking], 'Nature')), ['pexels:1']);
+  assert.deepEqual(identities(automatic.automaticStockChoices([park, amusement, parking], 'amusement park')), ['pexels:12145278']);
+});
+
 test('explicit day phase stays consistent across companions even when the anchor phase is unlabeled', () => {
   const anchor = video(1, 'city park greenery');
   const choices = automatic.automaticStockCompanions(anchor, [
@@ -271,6 +295,77 @@ test('a natural field anchor does not admit a different animal subject family', 
   assert.deepEqual(identities(automatic.automaticStockCompanions(field, [
     video(2, 'horse grazing in a field at sunrise'), video(3, 'empty field of grass at sunrise'),
   ], 'nature')), ['pexels:3']);
+});
+
+test('a Nature animal anchor retains its named subject instead of becoming a background montage', () => {
+  const horse = video(1, 'horse grazing in a green meadow');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(horse, [
+    video(2, 'empty meadow field of grass'), video(3, 'horses grazing in green pasture'),
+    video(4, 'dog exploring a green meadow'),
+  ], 'nature')), ['pexels:3']);
+  assert.equal(automatic.automaticStockCompanionQuery(horse, 'nature'), 'meadow horse');
+});
+
+test('named anchor animals remain required for ordinary broad topics and authoritative companions', async () => {
+  const dog = video(1, 'dog exploring a green park');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(dog, [
+    video(2, 'empty path in green park'), video(3, 'dog playing in a green park'),
+  ], 'park')), ['pexels:3']);
+  assert.equal(automatic.automaticStockCompanionQuery(dog, 'park'), 'park dog');
+  const resolved = [];
+  const sources = await automatic.automaticStockSources(dog, 'park', ['pexels'], {
+    async search(provider, query) { assert.equal(query, 'park dog'); return Array.from({ length: 8 }, (_, index) => video(index + 2, 'dog playing in green park')); },
+    async resolve(provider, id) { resolved.push(id); return video(id, id === 2 ? 'empty path in green park' : 'dog playing in green park'); },
+  });
+  assert.equal(sources[0].id, dog.id);
+  assert.equal(sources.some(source => source.id === 2), false, 'A changed authoritative title cannot lose the selected dog');
+  assert.deepEqual(resolved, [2, 3, 4, 5, 6, 7, 8, 9]);
+});
+
+test('explicit hiking stays hiking, and coherent subject evidence precedes portrait preference', () => {
+  const hiking = video(1, 'hikers hiking through a forest');
+  const ordinaryPortrait = video(2, 'people walking through a forest');
+  const emptyPortrait = video(3, 'forest trees and woodland');
+  const hikingLandscape = video(4, 'hikers hiking through forest woodland', { width: 1920, height: 1080 });
+  const hikingPortrait = video(5, 'hiking through woodland forest');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(hiking, [ordinaryPortrait, emptyPortrait, hikingLandscape, hikingPortrait], 'nature')),
+    ['pexels:5', 'pexels:4'], 'An unrelated portrait cannot beat a matching landscape');
+  assert.equal(automatic.automaticStockCompanionQuery(hiking, 'nature'), 'forest hiking');
+  const trail = video(6, 'hikers hiking on a mountain trail');
+  assert.equal(automatic.automaticStockCompanionQuery(trail, 'mountain trail'), 'mountain trail hiking');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(trail, [
+    video(7, 'empty mountain trail'), video(8, 'hikers hiking the mountain trail'),
+  ], 'mountain trail')), ['pexels:8']);
+});
+
+test('activity locks are grounded in the anchor and do not require generic park visitors', () => {
+  const park = video(1, 'people enjoying their day in a park');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(park, [
+    video(2, 'empty swing in green park'), video(3, 'man strolling in green park'),
+  ], 'park')), ['pexels:2', 'pexels:3']);
+  for (const [activity, first, matching, changed] of [
+    ['cycling', 'cyclists cycling through a forest', 'bicycles cycling through forest woodland', 'people walking in a forest'],
+    ['climbing', 'climbers climbing a mountain', 'climbers climbing another mountain', 'mountain scenery'],
+    ['skating', 'skaters skating in a park', 'skateboarding in a green park', 'empty green park'],
+    ['skiing', 'skiers skiing on a snowy mountain', 'skiing on snow covered mountain peaks', 'snow covered mountain panorama'],
+  ]) {
+    const selected = video(10, first);
+    assert.deepEqual(identities(automatic.automaticStockCompanions(selected, [video(11, changed), video(12, matching)], 'nature')), ['pexels:12'], activity);
+    assert.match(automatic.automaticStockCompanionQuery(selected, 'nature'), new RegExp(`\\b${activity}\\b`));
+  }
+});
+
+test("a bird's-eye camera view is not a bird subject in title or URL evidence", () => {
+  const park = video(1, "Bird's-eye view of green city park");
+  assert.deepEqual(identities(automatic.automaticStockCompanions(park, [
+    video(2, 'green city park greenery'),
+    video(3, 'city park aerial view', { sourcePage: 'https://www.pexels.com/video/city-park-bird-s-eye-view-3/' }),
+    video(4, 'birds flying over a green city park'),
+  ], 'park')), ['pexels:2', 'pexels:3']);
+  assert.equal(automatic.automaticStockCompanionQuery(park, 'park'), 'park');
+  const birdEye = video(5, 'closeup bird eye in a forest');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(birdEye, [video(6, 'bird perched in a forest')], 'birds')), ['pexels:6'],
+    'An actual bird-eye detail is not erased as a camera phrase');
 });
 
 test('native full-frame portrait companions outrank landscape candidates after relevance filtering', () => {
@@ -517,6 +612,10 @@ function harness(options = {}) {
       if (options.search) return options.search(provider, query);
       return provider === 'pexels' ? [anchor, video(2), video(3), video(4)] : [5, 6, 7, 8].map(id => video(id, 'Sun City skyline', { provider: 'pixabay' }));
     },
+    async searchNaturalStockPool(provider, query, enough) {
+      if (options.searchPool) { calls.push(['search', provider, query]); return options.searchPool(provider, query, enough); }
+      return catalog.searchNaturalStock(provider, query);
+    },
     async searchNaturalStockPage(provider, query, page) {
       calls.push(['page', provider, query, page]);
       if (options.searchPage) return options.searchPage(provider, query, page);
@@ -575,6 +674,29 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 40, 'cinematic', undefined, h.queued[0].input.options.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
   assert.ok(plan.every(interval => interval.speed === 1), 'Unmeasured catalog previews do not authorize speed changes');
+});
+
+test('automatic POST page stopping counts coherent usable companions against the resolved anchor, not raw cards', async () => {
+  const h = harness({
+    configured: { pexels: true, pixabay: false },
+    resolve: async (provider, id) => video(id, 'horse grazing in a green meadow', { provider }),
+    searchPool: async (provider, query, enough) => {
+      assert.equal(provider, 'pexels'); assert.equal(query, 'meadow horse'); assert.equal(typeof enough, 'function');
+      const unrelated = Array.from({ length: 12 }, (_, index) => video(index + 10, 'empty green meadow and grass'));
+      const small = Array.from({ length: 12 }, (_, index) => video(index + 25, 'horse grazing in a green meadow', { width: 540, height: 960 }));
+      const coherent = Array.from({ length: 9 }, (_, index) => video(index + 40, 'horse grazing in a green meadow'));
+      assert.equal(enough(unrelated), false, 'Twelve portrait backgrounds cannot stop a horse search');
+      assert.equal(enough(small), false, 'Twelve matching SD cards are not usable native720 sources');
+      assert.equal(enough([...unrelated, ...small, ...coherent.slice(0, 8)]), false, 'The bounded search may continue until nine coherent companions');
+      assert.equal(enough([...unrelated, ...small, ...coherent]), true);
+      return [...unrelated, ...small, ...coherent];
+    },
+  });
+  const response = await h.api.POST(request({ ...automaticPayload, query: 'Nature' }));
+  assert.equal(response.status, 201); assert.equal(h.queued.length, 1); assert.equal(h.fetches.length, 0);
+  assert.equal(h.queued[0].downloads[0].mediaId, '1', 'The resolved selected anchor stays first');
+  assert.equal(h.queued[0].downloads.length, 8);
+  assert.ok(h.queued[0].downloads.slice(1).every(source => Number(source.mediaId) >= 40));
 });
 
 test('automatic companion media stays lazy and uses bounded sequential stream factories in the existing reel queue', async () => {

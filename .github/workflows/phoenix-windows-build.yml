@@ -73,6 +73,9 @@ jobs:
           scripts/test-groq-writer.cjs
           scripts/test-startup.cjs
           scripts/test-automatic-stock-reel.cjs
+          scripts/test-automatic-stock-pool.cjs
+          scripts/test-stock-catalog-paging.cjs
+          scripts/test-natural-stock-relevance.cjs
           scripts/test-stock-reel-adaptive.cjs
           scripts/test-stock-motion.cjs
           scripts/test-stock-visual-continuity.cjs
@@ -91,7 +94,8 @@ jobs:
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
           src/app/api/review-files/[id]/publish/route.ts
           src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockVisualContinuity.ts src/lib/stockTemporaryCleanup.ts
-          src/lib/automaticStockReel.ts src/lib/sourceProcessing.ts
+          src/lib/automaticStockReel.ts src/lib/naturalStock.ts src/lib/sourceProcessing.ts
+          src/app/api/stock-reels/route.ts
           src/lib/stockProductionGuidance.ts src/components/StockReels.tsx
           src/lib/cloudflareWriter.ts src/lib/writingSettings.ts
           src/lib/writingModel.ts src/lib/localServiceHealth.ts
@@ -100,6 +104,10 @@ jobs:
           src/app/dashboard/DashboardClient.tsx
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
+      - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys
+        env:
+          PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node --max-old-space-size=192 scripts/verify-public-stock-quality.cjs
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
       - name: Package only the verified production bundle
@@ -110,7 +118,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PHOENIX_ARTIFACT_DIR: ${{ runner.temp }}/phoenix-bundle-${{ github.run_id }}-${{ github.run_attempt }}
+          PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           $tag = "phoenix-build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          gh release create $tag "$env:PHOENIX_ARTIFACT_DIR/phoenix-build.tar.gz" "$env:PHOENIX_ARTIFACT_DIR/phoenix-build-manifest.json" --draft --target $env:GITHUB_SHA --title "Phoenix verified Windows build $env:GITHUB_RUN_ID" --notes "Temporary local-installation bundle from exact commit $env:GITHUB_SHA. No credentials, videos or models are included. This draft is not published."
+          gh release create $tag "$env:PHOENIX_ARTIFACT_DIR/phoenix-build.tar.gz" "$env:PHOENIX_ARTIFACT_DIR/phoenix-build-manifest.json" "$env:PHOENIX_QUALITY_PROOF_DIR/coherent-reel.mp4" "$env:PHOENIX_QUALITY_PROOF_DIR/after.jpg" "$env:PHOENIX_QUALITY_PROOF_DIR/proof.json" --draft --target $env:GITHUB_SHA --title "Phoenix verified Windows build $env:GITHUB_RUN_ID" --notes "Temporary local-installation bundle and edited public-Pexels quality proof from exact commit $env:GITHUB_SHA. No credentials, owner files, downloaded originals or models are included. This draft is not published."
           if ($LASTEXITCODE -ne 0) { throw 'Could not save the verified installation bundle' }

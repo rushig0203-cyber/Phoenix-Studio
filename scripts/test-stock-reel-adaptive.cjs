@@ -60,6 +60,35 @@ test('optional instrumental rhythm snaps only nearby cumulative cuts and preserv
   assert.throws(() => reel.planStockIntervals(shots, 40, 'cinematic', undefined, 'adaptive-v2', { bpm: 500 }), /40 and 180 BPM/);
 });
 
+test('visual ordering preserves the exact source boundaries that supplied appearance evidence', () => {
+  const shots = Array.from({ length: 6 }, (_item, index) => automatic(20, {
+    motionWindows: [{ start: index + 1, end: index + 7, motion: [22, 2, 40, 3, 80, 5][index] }],
+  }));
+  const plan = reel.planStockIntervals(shots, 40, 'cinematic', undefined, 'adaptive-v2', { bpm: 90 });
+  const before = JSON.stringify(plan), order = [0, 4, 1, 5, 3, 2];
+  const reordered = reel.reorderStockIntervals(plan, order);
+  assert.equal(JSON.stringify(plan), before, 'Saved source cuts are not mutated');
+  reordered.forEach((interval, index) => {
+    const measured = plan[order[index]];
+    for (const field of ['start', 'end', 'frames', 'speed']) assert.equal(interval[field], measured[field], `${field} belongs to the measured source, not its new position`);
+    assert.equal(interval.outputStart, index ? reordered[index - 1].outputEnd : 0);
+    assert.ok(Math.abs(interval.outputEnd - interval.outputStart - interval.frames / reel.STOCK_REEL_FPS) < 1e-7);
+  });
+  assert.equal(reordered.at(-1).outputEnd, plan.at(-1).outputEnd);
+  assert.deepEqual(reel.reorderStockIntervals(plan, plan.map((_interval, index) => index)), plan, 'An unchanged order is an exact no-op');
+});
+
+test('visual ordering refuses duplicate, incomplete and inconsistent measured cuts', () => {
+  const plan = adaptive(Array.from({ length: 5 }, () => automatic(14)));
+  for (const order of [[0, 1, 2], [0, 1, 2, 3, 3], [0, 1, 2, 3, 5], [0, 1, 2, 3, 3.5]]) {
+    assert.throws(() => reel.reorderStockIntervals(plan, order), /complete bounded permutation/);
+  }
+  for (const patch of [{ start: -1 }, { end: NaN }, { frames: 1.5 }, { speed: .8 }, { outputStart: 1 }, { outputEnd: 1 }, { end: plan[1].end + .1 }]) {
+    const invalid = plan.map((interval, index) => index === 1 ? { ...interval, ...patch } : interval);
+    assert.throws(() => reel.reorderStockIntervals(invalid, [0, 1, 2, 3, 4]), /exact, contiguous/);
+  }
+});
+
 test('short real sources reduce the result without padding, while measured low motion uses only a bounded speed-up', () => {
   const short = adaptive([
     automatic(1.5), automatic(3), automatic(3), automatic(3), automatic(3),

@@ -24,6 +24,27 @@ test('measurements reject incomplete or impossible samples rather than inventing
   assert.equal(motion.stockMotionScore('lavfi.signalstats.YAVG=2'), undefined);
   assert.equal(motion.stockMotionScore('lavfi.signalstats.YAVG=999\nlavfi.signalstats.YAVG=3\nlavfi.signalstats.YAVG=6'), undefined);
 });
+
+test('sustained movement outranks a brief exposure/edit spike without changing legacy scores', () => {
+  const report = values => values.map(value => `lavfi.signalstats.YAVG=${value}`).join('\n');
+  const transient = report([1, 1, 180, 190, 1, 1, 1, 1, 1]);
+  const sustained = report([22, 24, 25, 23, 22, 24, 26, 23, 24]);
+  assert.equal(motion.stockSustainedMotionScore(transient), 1);
+  assert.equal(motion.stockSustainedMotionScore(sustained), 24);
+  assert.ok(motion.stockSustainedMotionScore(sustained) > motion.stockSustainedMotionScore(transient));
+  assert.ok(motion.stockMotionScore(transient) > motion.stockMotionScore(sustained), 'Legacy saved recipes retain their original mean scoring');
+  assert.equal(motion.stockSustainedMotionScore(report([12, 14, 16, 18])), 15, 'Even frame counts average only the middle pair');
+  assert.equal(motion.stockSustainedMotionScore(report([100, 110, 120, 115, 118, 119, 122])), 118, 'Sustained high movement is not discarded');
+});
+
+test('robust movement measurements fail unknown with the same bounded evidence requirements', () => {
+  for (const report of ['no decoded frames', 'lavfi.signalstats.YAVG=2',
+    'lavfi.signalstats.YAVG=999\nlavfi.signalstats.YAVG=3\nlavfi.signalstats.YAVG=6',
+    Array.from({ length: 17 }, () => 'lavfi.signalstats.YAVG=3').join('\n')]) {
+    assert.equal(motion.stockSustainedMotionScore(report), undefined);
+  }
+  assert.equal(motion.stockSustainedMotionScore('lavfi.signalstats.YAVG=0\nlavfi.signalstats.YAVG=0\nlavfi.signalstats.YAVG=0'), 0, 'Genuine static footage has a known zero score');
+});
 test('video acceleration and sound tempo agree; no slowdown or extreme speed is accepted', () => {
   assert.deepEqual(motion.stockPlaybackFilters(1), { video: 'setpts=PTS-STARTPTS', audio: '' });
   assert.deepEqual(motion.stockPlaybackFilters(1.25), { video: 'setpts=(PTS-STARTPTS)/1.25', audio: 'atempo=1.25,' });

@@ -15,11 +15,31 @@ export function stockMotionArgs(source: string, window: { start: number; end: nu
     "-threads", "1", "-f", "null", "-"];
 }
 
-export function stockMotionScore(output: string) {
+function stockMotionValues(output: string): number[] | undefined {
   // Three windows of nine small frames at most; never retain source pixels.
   const scores = [...output.slice(-32768).matchAll(/lavfi\.signalstats\.YAVG=(\d+(?:\.\d+)?)/g)].map(match => Number(match[1]));
   if (scores.length < 3 || scores.length > 16 || scores.some(value => !Number.isFinite(value) || value < 0 || value > 255)) return undefined;
+  return scores;
+}
+
+/** Historical saved recipes retain their arithmetic-mean movement score. */
+export function stockMotionScore(output: string) {
+  const scores = stockMotionValues(output);
+  if (!scores) return undefined;
   return Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length * 1000) / 1000;
+}
+
+/**
+ * The median favours sustained sampled pixel movement over one/two exposure or
+ * edit spikes, without more decoded frames. It is not scene/action recognition;
+ * gradual camera movement and animated water can still score as movement.
+ */
+export function stockSustainedMotionScore(output: string) {
+  const scores = stockMotionValues(output);
+  if (!scores) return undefined;
+  const ordered = [...scores].sort((a, b) => a - b), middle = Math.floor(ordered.length / 2);
+  const median = ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+  return Math.round(median * 1000) / 1000;
 }
 
 /** Speed both picture and source sound together; final music is composed later. */

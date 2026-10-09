@@ -38,6 +38,39 @@ export type StockIntervalInput = {
 };
 export type StockInterval = { start: number; end: number; outputStart: number; outputEnd: number; frames: number; speed?: number };
 
+/**
+ * Reorder measured cuts, not their source bounds. Planning again after appearance
+ * sampling would move the boundaries that supplied the visual evidence. Rebasing
+ * only output time also keeps speed and the exact total picture-frame budget.
+ * Beat alignment from the previous order is not a guarantee in the new order.
+ */
+export function reorderStockIntervals(intervals: StockInterval[], order: readonly number[]): StockInterval[] {
+  if (!intervals.length || intervals.length > MAX_STOCK_SHOTS || order.length !== intervals.length
+    || new Set(order).size !== intervals.length || order.some(index => !Number.isSafeInteger(index) || index < 0 || index >= intervals.length)) {
+    throw new Error("Visual shot order must be a complete bounded permutation.");
+  }
+  let originalFrames = 0;
+  for (const interval of intervals) {
+    const speed = interval.speed ?? 1;
+    if (!Number.isFinite(interval.start) || !Number.isFinite(interval.end) || interval.start < 0 || interval.end <= interval.start
+      || !Number.isSafeInteger(interval.frames) || interval.frames < 1 || !Number.isFinite(speed) || speed < 1 || speed > 1.4
+      || !Number.isFinite(interval.outputStart) || !Number.isFinite(interval.outputEnd)
+      || Math.abs(interval.outputStart - originalFrames / STOCK_REEL_FPS) > 1e-6
+      || Math.abs(interval.outputEnd - (originalFrames + interval.frames) / STOCK_REEL_FPS) > 1e-6
+      || Math.abs(interval.end - interval.start - interval.frames / STOCK_REEL_FPS * speed) > 1e-6) {
+      throw new Error("Visual shot ordering requires exact, contiguous measured picture intervals.");
+    }
+    originalFrames += interval.frames;
+  }
+  if (originalFrames > 105 * STOCK_REEL_FPS) throw new Error("The reordered footage exceeds the bounded reel length.");
+  let cursor = 0;
+  return order.map(index => {
+    const interval = intervals[index], outputStart = cursor / STOCK_REEL_FPS;
+    cursor += interval.frames;
+    return { ...interval, outputStart, outputEnd: cursor / STOCK_REEL_FPS };
+  });
+}
+
 /** A modest preview window, not a claim to have detected a source's best action. */
 export function suggestStockTrim(duration: number, singleShot = false) {
   if (!Number.isFinite(duration) || duration <= 0) throw new Error("A selected shot has no readable duration.");

@@ -53,9 +53,9 @@ const naturalTopic = (query: string) => subjectWords(query).length === 0 && /\b(
 const representedMedia = /\b(?:book|books|wallpapers?|screenshots?|illustrations?|paintings?|posters?|logos?|drawings?)\b/i;
 const visiblePeople = /\b(?:people|person|men|man|women|woman|child|children|hikers?|hiking|walking|divers?|scuba|snorkel\w*|surfers?|surfing|paddleboard\w*|kitesurf\w*)\b/i;
 const industrialTransport = /\b(?:ships?|boats?|yachts?|transporters?|freighters?|ports?|harbou?rs?|aircraft|airplanes?|planes?)\b/i;
-const parkingScene = /\b(?:parking\s+(?:lots?|garages?)|car parks?)\b/i;
+const parkingScene = /\b(?:parking|car parks?)\b/i;
 const amusementScene = /\b(?:amusement|theme)\s+parks?\b|\bfairgrounds?\b|\bferris\s+wheels?\b/i;
-const rainBuiltScene = /\b(?:billboards?|buildings?|skyscrapers?|parking\s+(?:lots?|garages?)|car parks?|cars?|vehicles?)\b/i;
+const rainBuiltScene = /\b(?:billboards?|buildings?|skyscrapers?|parking|car parks?|cars?|vehicles?)\b/i;
 const animalFamilies: Array<{ name: string; cue: RegExp }> = [
   { name: "horse", cue: /\b(?:horses?|ponies|foals?|equine|equestrian)\b/i },
   { name: "dog", cue: /\b(?:dogs?|puppies|canine)\b/i },
@@ -79,6 +79,16 @@ const animalFamilies: Array<{ name: string; cue: RegExp }> = [
   { name: "seal", cue: /\b(?:seals?|sea lions?)\b/i },
   { name: "fish", cue: /\b(?:fish|fishes)\b/i },
 ];
+// Keep named subjects/actions from the chosen shot, not merely its background.
+// Generic people/walking are deliberately not a lock: a park reel can still
+// vary its visitors. These are explicit catalogue cues, not visual recognition.
+const outdoorActivities: Array<{ name: string; cue: RegExp }> = [
+  { name: "hiking", cue: /\b(?:hikers?|hiking|trekking)\b/i },
+  { name: "climbing", cue: /\b(?:climbers?|climbing)\b/i },
+  { name: "cycling", cue: /\b(?:cyclists?|cycling|biking|bicycles?)\b/i },
+  { name: "skating", cue: /\b(?:skaters?|skating|skateboards?|skateboarding|rollerblading)\b/i },
+  { name: "skiing", cue: /\b(?:skiers?|skiing|skis)\b/i },
+];
 const contextDetails = [
   { name: "snow", cue: /\b(?:snow\w*|winter|ice|icy|glaciers?)\b/i, search: "snow" },
   { name: "sunrise", cue: /\b(?:sunrise|dawn|daybreak)\b/i, search: "sunrise" },
@@ -93,6 +103,7 @@ const dayPhases: Array<{ name: string; cue: RegExp }> = [
 ];
 const explicitDayPhase = (description: string) => dayPhases.find(phase => phase.cue.test(description))?.name;
 const explicitAnimalFamilies = (description: string) => animalFamilies.filter(family => family.cue.test(description)).map(family => family.name);
+const explicitOutdoorActivities = (description: string) => outdoorActivities.filter(activity => activity.cue.test(description)).map(activity => activity.name);
 function dayPhaseCompatible(anchorPhase: string | undefined, candidatePhase: string | undefined, preferredPhase?: string) {
   if (anchorPhase) {
     // Sunrise, sunset and night clips require matching catalog evidence; daytime
@@ -111,7 +122,10 @@ function contextMatch(anchorDescription: string, description: string) {
   const anchorAmusement = amusementScene.test(anchorDescription), candidateAmusement = amusementScene.test(description);
   if (candidateAmusement !== anchorAmusement) return false;
   const anchorAnimals = explicitAnimalFamilies(anchorDescription), candidateAnimals = explicitAnimalFamilies(description);
-  if (candidateAnimals.some(animal => !anchorAnimals.includes(animal))) return false;
+  if (candidateAnimals.some(animal => !anchorAnimals.includes(animal))
+    || anchorAnimals.some(animal => !candidateAnimals.includes(animal))) return false;
+  const anchorActivities = explicitOutdoorActivities(anchorDescription), candidateActivities = explicitOutdoorActivities(description);
+  if (anchorActivities.some(activity => !candidateActivities.includes(activity))) return false;
   // For a rain-only anchor, a named built scene is a new subject, not a
   // harmless shared-weather match. Retain such footage only when the anchor
   // itself establishes that setting; keep natural rain/water scenes eligible.
@@ -143,10 +157,14 @@ function contextMatch(anchorDescription: string, description: string) {
 export function automaticStockCompanionQuery(anchor: NaturalStock, query: string) {
   const description = catalogDescription(anchor), context = catalogContext(description);
   const wanted = subjectWords(query);
-  if (!context || (!naturalTopic(query) && wanted.length > 1)) return query;
-  const detail = contextDetails.find(item => item.cue.test(description));
-  const core = naturalTopic(query) ? context.search : query.trim();
-  return [...new Set([core, context.search, detail?.search].filter((word): word is string => !!word))].join(" ").slice(0, 100);
+  const enrichSetting = !!context && (naturalTopic(query) || wanted.length <= 1);
+  const detail = enrichSetting ? contextDetails.find(item => item.cue.test(description)) : undefined;
+  const core = naturalTopic(query) && context ? context.search : query.trim();
+  const setting = enrichSetting ? context?.search : undefined;
+  const established = subjectWords([core, setting, detail?.search].filter(Boolean).join(" "));
+  const subjects = [...explicitAnimalFamilies(description), ...explicitOutdoorActivities(description)]
+    .filter(subject => !subjectWords(subject).every(word => established.includes(word)));
+  return [...new Set([core, setting, ...subjects, detail?.search].filter((word): word is string => !!word))].join(" ").slice(0, 100);
 }
 
 function subjectWords(value: string) {
@@ -165,7 +183,10 @@ function subjectWords(value: string) {
 function catalogDescription(video: NaturalStock) {
   let pageWords = "";
   try { pageWords = decodeURIComponent(new URL(video.sourcePage).pathname).replace(/[-_/]/g, " "); } catch { /* Unknown catalog text is not relevance evidence. */ }
-  return `${typeof video.title === "string" ? video.title : ""} ${pageWords}`.slice(0, 480);
+  // A bird's-eye camera view is not evidence of a bird in the scene. Normalize
+  // both the display title and provider slug before subject/context checks.
+  return `${typeof video.title === "string" ? video.title : ""} ${pageWords}`.slice(0, 480)
+    .replace(/\bbirds?(?:['’]s|[\s_-]+s|['’])?[\s_-]*eye[\s_-]+view\b|\bbird(?:['’]s|[\s_-]+s)[\s_-]*eye\b/gi, "aerial view");
 }
 
 function validFilmedSource(video: NaturalStock) {
@@ -183,7 +204,11 @@ function queryMatch(video: NaturalStock, query: string, wanted: string[]) {
   // Inflection normalization must not turn 'parking' into the subject 'park',
   // including starting cards, before an owner can accidentally choose one.
   if (/\bparks?\b/i.test(query) && !parkingScene.test(query) && parkingScene.test(description)) return 0;
-  if (naturalTopic(query)) return catalogContext(description)?.natural && !representedMedia.test(description) ? 1 : 0;
+  if (parkingScene.test(query) && !parkingScene.test(description)) return 0;
+  if (/\bparks?\b/i.test(query) && !amusementScene.test(query) && amusementScene.test(description)) return 0;
+  if (amusementScene.test(query) && !amusementScene.test(description)) return 0;
+  if (naturalTopic(query)) return catalogContext(description)?.natural && !representedMedia.test(description)
+    && !parkingScene.test(description) && !amusementScene.test(description) ? 1 : 0;
   if (!wanted.length) return 0;
   const matches = wanted.filter(word => words.includes(word));
   // Preserve the leading subject/place words in longer requests. A broad shared

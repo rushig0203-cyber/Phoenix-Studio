@@ -1,5 +1,39 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 second footage pass — source checkpoint, verification/activation pending
+
+- Read-only recheck confirms no new owner visual-v1 render has completed; the
+  newest Parks output still predates the prior activation. No saved owner job
+  was retried or rewritten. This follow-up fixes concrete remaining code paths,
+  not a claim that old saved files already changed.
+- Broad Nature companions could lose a named horse/dog into an empty background;
+  named animal families and explicit outdoor activities now remain grounded in
+  both the selected anchor and companion search. Bird's-eye camera metadata no
+  longer invents a bird subject. Actual live Pexels `40115707` (park with parking
+  area) exposed another ordinary-park leak, now covered along with amusement
+  starting cards. Explicit parking/amusement searches still work.
+- Automatic POST no longer searches only a raw first 12-card catalogue response.
+  It tries one portrait metadata lookup and up to three sequential all-orientation
+  discovery pages per Pexels request (three for Pixabay), 24 cards/page, bounded
+  pool of 96, with the existing 16 authoritative resolutions and four-use cap.
+  Only coherent usable counts and sufficient full-frame portrait evidence stop
+  discovery early. No downloaded media/model RAM is needed for catalogue search.
+- Visual ordering previously sampled provisional endpoints and then replanned
+  them after ordering. `reorderStockIntervals` now retains exact source bounds,
+  playback speed/frame budgets and rebases only contiguous output time. Reordered
+  cuts do not claim beat alignment. visual-v1 movement uses median tiny frame
+  differences to reduce isolated flashes/cut spikes; historical mean scoring and
+  saved/manual framing remain untouched. Sampling/cache scope remains bounded.
+- 122 focused local tests plus 44 adjacent render/edit/audio/remux regressions
+  passed serially; changed-interface lint passed. Added a CI-only public licensed
+  Pexels production-queue proof: sequential capped source downloads, actual
+  FFprobe bounds, full decode, appearance-identity/final-cut equality and isolated
+  retry idempotency. No owner media/keys/settings/jobs are sent to that runner.
+  Only edited MP4/contact sheet/provenance retained; downloaded originals and
+  isolated queues removed after proof. That real proof/build/live activation is
+  pending at this source entry. No RAM guard lowered, owner failure retried, paid
+  provider switched or post submitted.
+
 ## October 10: footage-reel quality follow-up — verified installed/live
 
 - Current selected/live bundle is `.next-build-gh-37987565078-1`, BUILD_ID

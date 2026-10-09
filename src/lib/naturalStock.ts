@@ -92,10 +92,10 @@ export async function searchNaturalStock(provider: "pexels" | "pixabay", query: 
 }
 
 /** One explicit metadata page, all filmed orientations; no media download or AI call. */
-export async function searchNaturalStockPage(provider: "pexels" | "pixabay", query: string, page = 1) {
+export async function searchNaturalStockPage(provider: "pexels" | "pixabay", query: string, page = 1, portraitOnly = false) {
   if (!Number.isSafeInteger(page) || page < 1 || page > MAX_STOCK_DISCOVERY_PAGES) throw new Error("This footage page is outside the laptop-safe browsing limit. Refine your topic.");
   if (provider === "pexels") {
-    const result = await searchFootagePage(query, "9:16", true, page, STOCK_DISCOVERY_PAGE_SIZE);
+    const result = await searchFootagePage(query, "9:16", !portraitOnly, page, STOCK_DISCOVERY_PAGE_SIZE);
     return { videos: portraitFirstStock(result.videos.map(file => ({ ...file, provider, title: pexelsTitle(file) })), query), hasMore: result.hasMore };
   }
   const data = await pixabay({ q: query, video_type: "film", per_page: String(STOCK_DISCOVERY_PAGE_SIZE), page: String(page) });
@@ -103,6 +103,29 @@ export async function searchNaturalStockPage(provider: "pexels" | "pixabay", que
   const total = Number(data.totalHits);
   const hasMore = Number.isFinite(total) && total >= 0 ? page * STOCK_DISCOVERY_PAGE_SIZE < total : hits.length >= STOCK_DISCOVERY_PAGE_SIZE;
   return { videos: portraitFirstStock(hits.flatMap((video: PixabayVideo) => { try { return [pixabayChoice(video)]; } catch { return []; } }), query), hasMore };
+}
+
+/** Automatic assembly uses the same bounded catalogue pages as browsing.
+ * The caller checks usable subject/context/reuse evidence, never raw card counts.
+ * Retain successful metadata when a later free-provider page fails; no retry,
+ * media download, credentials in results or unbounded catalogue crawl.
+ */
+export async function searchNaturalStockPool(provider: "pexels" | "pixabay", query: string, enough: (videos: NaturalStock[]) => boolean): Promise<NaturalStock[]> {
+  let pool: NaturalStock[] = [];
+  // Try real portrait companions first. A large unrelated/SD portrait response
+  // cannot suppress the all-orientation fallback: only usable evidence stops it.
+  if (provider === "pexels") {
+    pool = (await searchNaturalStockPage(provider, query, 1, true)).videos;
+    if (enough(pool)) return pool;
+  }
+  for (let page = 1; page <= MAX_STOCK_DISCOVERY_PAGES; page += 1) {
+    let found: Awaited<ReturnType<typeof searchNaturalStockPage>>;
+    try { found = await searchNaturalStockPage(provider, query, page); }
+    catch (error) { if (!pool.length) throw error; break; }
+    pool = portraitFirstStock([...pool, ...found.videos], query).slice(0, (MAX_STOCK_DISCOVERY_PAGES + 1) * STOCK_DISCOVERY_PAGE_SIZE);
+    if (!found.hasMore || enough(pool)) break;
+  }
+  return pool;
 }
 
 export async function resolveNaturalStock(provider: "pexels" | "pixabay", id: number): Promise<NaturalStock> {

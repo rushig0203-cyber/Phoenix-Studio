@@ -1,5 +1,29 @@
 # Phoenix Studio
 
+### October 10 second footage pass — source ready, release checks pending
+
+Automatic assembly now tries real portrait catalogue metadata first, then up to
+three all-orientation pages when the usable coherent pool is sparse. Subject,
+context, native resolution and reuse eligibility—not raw response counts—control
+when search stops. An animal or named outdoor activity in the selected opening
+must remain in companions and in the narrowed search. Ordinary Parks/Nature
+results exclude parking areas and amusement rides; bird's-eye describes a camera,
+not an animal. No new creation controls or paid/model dependency was added.
+
+For visual-v1 recipes, movement ranking now uses sustained median frame differences
+instead of rewarding an isolated flash/cut spike. After light/colour ordering,
+the renderer keeps the exact measured source endpoints, speeds and frame budgets;
+it no longer replans those boundaries. Reordered cuts are not falsely described
+as beat-locked. Legacy recipes keep their existing movement scoring/framing.
+
+Serial local checks: 122 focused selection/catalogue/movement/order tests and
+44 adjacent render/edit/audio/remux tests passed; changed-interface lint passed.
+Release verification now includes an isolated public-Pexels edited-reel proof
+on the existing standard Windows runner, with no owner files or keys uploaded.
+Only the edited proof video, contact sheet and public provenance JSON are kept
+in a temporary unpublished transfer. Production activation and visual inspection
+of that new proof remain pending here; the verified release below is still live.
+
 ### October 10 footage-reel quality follow-up — installed and live
 
 Current selected and served release: `.next-build-gh-37987565078-1`, BUILD_ID
