@@ -1,6 +1,42 @@
 # Quality-first implementation — September 16, 2026
 
-## October 9: adaptive reel cuts and alternative free writing — source tested, activation pending
+## October 9: adaptive reels and compact history — verified installed/live
+
+- Current selected/live bundle is `.next-build-gh-37957816158-1`, BUILD_ID
+  `yc3NWrtz0PMzK06XTnjF6`, from exact source `f609d2411f9b8f5addbc2129e3713880ddba24c4`.
+  Windows run `37957816158` passed 410/410 serial regressions with no skips,
+  scoped lint, compilation, full TypeScript, 32 static pages and tracing.
+- Real FFmpeg validation used only an isolated synthetic fixture: 20.333333
+  seconds / 488 frames, accelerated source audio/video, music-stock subtitle
+  omission, safe scratch cleanup and idempotent reuse. Network/provider calls
+  were forbidden. No owner render, failed-job retry or upload was submitted.
+- Archive SHA256 `167b9acac6befe1131ca11a9960c5890b4d8051fe04364bd7247969076884fe7`,
+  manifest SHA256 `7596c76405e2d2a6e52fa8710a29b7023a566cf2c5e04d8c23d3fa811309f747`.
+  GitHub asset digests, exact source/runtime/lock and all 488 installed file hashes
+  passed. Installation did not compile on the laptop or lower any resource guard.
+- Canonical activation exited successfully after initially reporting a stale
+  manager heartbeat. Later `/api/studio-health` confirms both worker and Lumina
+  healthy, no heavy work active, automatic posting off, and selected/live bundle
+  equality. Both Desktop shortcuts still target the canonical checkout.
+- Live browser verification loaded 20 saved completed jobs. Cards show title,
+  clip count, summed final duration and Completed · 100%; Technical details and
+  Posting tools are collapsed. Active progress/error handling also passed scoped
+  source/bundle review. Screenshot: `storage/work/oct9-compact-jobs.png` (ignored).
+- Authorized temporary-only cleanup processed 17 terminal stock jobs under the
+  heavy-work lease: 163 files / 306,791,120 bytes removed, zero skipped. Finished
+  outputs, downloaded originals, editable masters, original assemblies, music,
+  motion caches and failure history remain. Review/source/AI/edit/draft metadata
+  SHA256 hashes are identical before cleanup and after live activation.
+- Removed only task-created draft release `408100467` after verified installation.
+  Its local archive/manifest, installed bundle and previous recovery builds remain.
+  Source is pushed to `main`; follow-up docs-only commits need no rebuild.
+- Cloudflare is optional and unconfigured; Groq remains selected. No credentials
+  switched, real inference sent, successful copy invalidated or saved HTTP 413
+  job retried. Payload mitigation and adaptive mechanics are tested, not evidence
+  of a new owner video's artistic quality or elimination of all runtime RAM/quota
+  limits. New recipes use adaptive-v2; historical completed recipes stay unchanged.
+
+## October 9: adaptive reel source checkpoint — now installed above
 
 - Reviewed the owner's latest 43.5-second rain output and its real saved source
   recipe. The fixed 40-second floor / 8–10-shot cadence and broad rain title

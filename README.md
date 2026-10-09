@@ -1,6 +1,25 @@
 # Phoenix Studio
 
-### October 9 adaptive reel editing and optional free writer — activation pending
+### October 9 adaptive reel editing and compact history — installed and live
+
+Current selected and served release: `.next-build-gh-37957816158-1`, BUILD_ID
+`yc3NWrtz0PMzK06XTnjF6`, built from source commit `f609d24`. Windows release run
+`37957816158` passed all 410 serial tests, scoped lint, compilation, full
+TypeScript, 32 static pages and tracing. An isolated real-FFmpeg fixture produced
+20.333 seconds / 488 frames and verified tempo, duration, scratch cleanup and
+idempotent reuse without provider calls or owner jobs. The downloaded asset
+digests and all 488 installed file hashes were verified. No laptop production
+compile was needed; RAM/heavy-work guards remain unchanged.
+
+The activation helper briefly reported a stale manager heartbeat; subsequent
+live checks confirmed the new release, healthy worker and Lumina. Browser checks
+loaded all 20 saved jobs and confirmed the compact cards with collapsed details.
+Both Desktop shortcuts still target the canonical project. Review, source-job,
+AI-job, edit-job and draft metadata hashes stayed unchanged. No failed owner job
+was retried, provider changed, video generated or post submitted during activation.
+The temporary unpublished GitHub transfer was removed; the installed bundle,
+local download and previous verified recovery builds remain saved. Later
+documentation-only commits do not change this build's source identity.
 
 New automatic footage recipes choose compact, movement-informed cuts rather than
 filling a fixed 40–45-second template. Up to three 4.5-second windows per source
@@ -37,11 +56,14 @@ files after successful and failed stock attempts. Originals, finals, editable
 masters, original assemblies, music and failure history remain saved. Links and
 unexpected paths are skipped; cleanup never recursively deletes a media folder.
 
-Storage audit: review data occupied about 9.82 GB decimal, including
+Storage audit before cleanup: review data occupied about 9.82 GB decimal, including
 2.20 GB of stock downloads. Existing archive/Library removal is recoverable and
 retains media; there is no automatic age-based purge. Finals, editable masters
-and originals have distinct editing/retry roles. No owner media was deleted by
-this update. Historical sections below describe previous duration policies.
+and originals have distinct editing/retry roles. The authorized one-time cleanup
+removed 163 allowlisted scratch files from 17 terminal stock jobs, freeing
+306,791,120 bytes (about 307 MB decimal); no final, original, editable master or
+history was removed. Retained originals can still grow storage usage.
+Historical sections below describe previous duration policies.
 
 ### Earlier October 9 music, caption and posting-default activation checkpoint
 
