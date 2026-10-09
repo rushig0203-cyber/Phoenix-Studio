@@ -58,6 +58,7 @@ const amusementScene = /\b(?:amusement|theme)\s+parks?\b|\bfairgrounds?\b|\bferr
 const rainBuiltScene = /\b(?:billboards?|buildings?|skyscrapers?|parking|car parks?|cars?|vehicles?)\b/i;
 const builtVegetationSetting = /\b(?:skylines?|skyscrapers?|buildings?|roads?|roadside|streets?|traffic|highways?|motorways?|cars?|vehicles?|parking)\b/i;
 const greenVegetationCue = /\b(?:green|lush|verdant|foliage|flowering|blossoming|blossoms?|flowers?)\b/i;
+const explicitGreenColourCue = /\b(?:green|lush|verdant|foliage)\b/i;
 const naturalHabitatCue = /\b(?:forests?|woodlands?|woods|jungles?|gardens?|flowers?|petals?|blossoms?|tulips?|roses?)\b/i;
 const animalFamilies: Array<{ name: string; cue: RegExp }> = [
   { name: "horse", cue: /\b(?:horses?|ponies|foals?|equine|equestrian)\b/i },
@@ -167,7 +168,7 @@ function contextMatch(anchorDescription: string, description: string) {
 export function automaticStockGreeneryFocus(anchor: NaturalStock): boolean {
   const description = catalogDescription(anchor), context = catalogContext(description);
   return ["park", "forest", "garden", "field"].includes(context?.name || "")
-    && greenVegetationCue.test(description) && !builtVegetationSetting.test(description);
+    && explicitGreenColourCue.test(description) && !builtVegetationSetting.test(description);
 }
 
 /** Reuse the existing bounded searches with a more useful query, not more calls. */
@@ -178,7 +179,7 @@ export function automaticStockCompanionQuery(anchor: NaturalStock, query: string
   const detail = enrichSetting ? contextDetails.find(item => item.cue.test(description)) : undefined;
   const core = naturalTopic(query) && context ? context.search : query.trim();
   const setting = enrichSetting ? context?.search : undefined;
-  const greenery = enrichSetting && ["park", "forest", "garden"].includes(context?.name || "") && greenVegetationCue.test(description) ? "green" : undefined;
+  const greenery = enrichSetting && ["park", "forest", "garden"].includes(context?.name || "") && explicitGreenColourCue.test(description) ? "green" : undefined;
   const established = subjectWords([core, setting, greenery, detail?.search].filter(Boolean).join(" "));
   const subjects = [...explicitAnimalFamilies(description), ...explicitOutdoorActivities(description)]
     .filter(subject => !subjectWords(subject).every(word => established.includes(word)));

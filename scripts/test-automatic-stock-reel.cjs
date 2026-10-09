@@ -305,14 +305,15 @@ test('natural forest and garden anchors reject explicit built settings without g
 });
 
 test('greenery focus uses explicit natural anchor evidence and excludes urban, road and unknown settings', () => {
-  for (const title of ['lush green park with blossoming trees', 'lush green city park', 'lush forest canopy', 'flowering garden', 'green meadow with grass']) {
+  for (const title of ['lush green park with blossoming trees', 'lush green city park', 'lush forest canopy', 'green meadow with grass']) {
     assert.equal(automatic.automaticStockGreeneryFocus(video(1, title)), true, title);
   }
-  for (const title of ['city park and skyscrapers', 'green park beside traffic on road', 'green forest next to buildings', 'park walkway', 'snowy forest', 'green ocean waves']) {
+  for (const title of ['city park and skyscrapers', 'green park beside traffic on road', 'green forest next to buildings', 'park walkway', 'snowy forest', 'green ocean waves', 'flowering garden', 'red flowers in garden', 'blossoming park trees']) {
     assert.equal(automatic.automaticStockGreeneryFocus(video(2, title)), false, title);
   }
   assert.equal(automatic.automaticStockGreeneryFocus(video(3, 'park foliage', { sourcePage: 'https://www.pexels.com/video/lush-green-park-3/' })), true,
     'Provider slug evidence is considered consistently with selection');
+  assert.equal(automatic.automaticStockCompanionQuery(video(4, 'red flowers in garden'), 'Nature'), 'garden', 'Flowers alone do not imply a green palette');
 });
 
 test('authoritative resolution cannot introduce a skyline into a saved natural park selection', async () => {
