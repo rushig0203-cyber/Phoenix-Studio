@@ -1,5 +1,37 @@
 # Quality-first implementation — September 16, 2026
 
+## October 9: off-laptop build installed and verified live
+
+- Owner requested immediate activation, sequential work and no further RAM-closing
+  requests. Added manual `Phoenix Windows update` for standard public-repository
+  Windows runners, exact main SHA and Node 24.19.0/x64. No private environment,
+  runtime videos, models, provider credentials or real jobs entered the runner.
+- Run `37948493953` succeeded from commit `fa85bd5`: 243 serial regressions,
+  scoped lint, compilation, full TypeScript, 32 static pages and tracing. Earlier
+  runner-context and packaging-path errors were corrected without weakening the
+  production RAM floor or accepting private storage in the bundle. Compiled
+  storage-page/API code is explicitly distinguished from runtime data.
+- The fresh temporary draft release contained only a 1,208,656-byte tar.gz and
+  its 102,466-byte manifest. GitHub asset digests, exact commit/runtime/lock,
+  archive hash and all 488 extracted file hashes passed. It was staged into a new
+  canonical directory; no installed build, node_modules or owner file was replaced.
+- Activation used the canonical idle restart without `-Rebuild`, with an explicit
+  previous-marker rollback path. Selected/live release now matches at
+  `.next-build-gh-37948493953-1` (BUILD_ID `HCz4o0ulZ-59CkqPaFy9-`); worker/Lumina
+  are healthy. Both Desktop shortcuts and the junction still target this project.
+- Live browser checks loaded 15 available Library files and confirmed Instagram
+  destination `@__bitet.hemap`, the new English/instrumental preference, sampled-
+  evidence reflective mood, and remembered Switzerland posting choice. Current
+  Meta lookup still denies Pages Search and returns none of the curated matching
+  tracks for this account; those limitations are explicit, not silently bypassed.
+  Final publishing approval stayed off; no upload, Story, render or retry occurred.
+- Review index, source jobs, AI jobs, edits and draft metadata hashes are unchanged
+  before/after activation. The old verified bundle remains available for recovery.
+  Only the task-created temporary unpublished GitHub transfer was removed after
+  verification; its local archive/manifest and installed bundle remain recoverable.
+  This is installation evidence, not a claim of new artistic-quality validation,
+  guaranteed reach, fixed YouTube authorization or removal of runtime RAM pressure.
+
 ## October 9 activation attempt after Git upload
 
 - Owner explicitly requested activation without another approval question.
@@ -16,8 +48,8 @@
 
 ## October 9: English/instrumental fit, stronger first-pass copy and posting defaults
 
-Source follow-up, not yet installed. The currently selected/live bundle is still
-`.next-build-20261009054643268`. Git update was requested for accumulated project
+This follow-up was not installed at the time of the checks below; it is now live
+in `.next-build-gh-37948493953-1` as verified in the entry above. Git update was requested for accumulated project
 changes; private settings, runtime media and builds remain excluded.
 
 - Replaced the new-footage panel's blank trending request with contextual music

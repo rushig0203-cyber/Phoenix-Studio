@@ -1,15 +1,26 @@
 # Phoenix Studio
 
-### October 9 music, caption and posting-default follow-up — source tested
+### October 9 music, caption and posting-default follow-up — installed and live
 
-This follow-up is saved in the canonical project; it is **not installed yet**.
-The live release remains the build listed below until the guarded build and
-restart complete. No video or Story was posted during these checks.
-The 231 focused tests and scoped lint pass. Activation was safely refused at
-749 MiB free RAM; the 1664 MiB admission floor was not lowered.
-The subsequent canonical restart/update attempt also refused at 1296 MiB after
-releasing only Phoenix-owned services, then restored the healthy previous site
-and Lumina. The new implementation is on GitHub at `63afd4e`, not live yet.
+Current installed and served release: `.next-build-gh-37948493953-1`.
+The follow-up was compiled on a standard Windows GitHub runner from `fa85bd5`,
+then installed locally without compiling on the laptop. All 243 serial release
+checks, scoped lint, full TypeScript, 32 static pages and tracing passed.
+The download's commit, Node/Windows architecture, dependency lock, archive digest,
+BUILD_ID and all 488 file hashes were checked before activation. Port 3000 and
+the selected marker match; Lumina and its worker are healthy. Live browser checks
+verified the English/instrumental preference, contextual music rationale and
+account-bound Switzerland posting choice. No video, Story or failed-job retry
+was submitted, and saved review/job metadata hashes stayed unchanged.
+
+Earlier local builds were refused safely for RAM pressure. Manual workflow
+`Phoenix Windows update` now provides an off-laptop build option, one stage at
+a time, restricted to this public repository and the exact requested main commit.
+It uses no larger runners, paid host, build cache or Actions artifact storage;
+temporary unpublished release assets carry only compiled source. Private settings,
+keys, media and models never enter the remote checkout. The original build/RAM
+guards remain intact. This solves this activation's build-memory bottleneck, not
+all local rendering RAM requirements or Meta account/catalogue restrictions.
 
 - Footage music recommendations now use the finished video's saved sampled-frame
   evidence, instead of a blank generic trending request. New caption analysis
@@ -34,10 +45,10 @@ and Lumina. The new implementation is on GitHub at `63afd4e`, not live yet.
   required for automatic name resolution. A known eligible location Page ID can
   be checked directly and remembered if Meta permits it.
 
-### October 9 latest update — installed and live-verified
+### Earlier October 9 update — superseded verified release
 
-The installed website and `storage/active-build.json` both identify
-`.next-build-20261009054643268`. This guarded build passed compilation, full
+The earlier installed website and `storage/active-build.json` both identified
+`.next-build-20261009054643268`, now superseded by the release above. That build passed compilation, full
 TypeScript, prerendering and tracing with the unchanged 1664 MiB admission floor.
 The exact-suggestion, music-selection, brisk-cut and footage-reuse changes passed
 184 isolated checks and scoped lint; the prior tagging/caption follow-up is also
