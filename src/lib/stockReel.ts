@@ -10,6 +10,8 @@ export type StockReelOptions = {
   minDuration?: number;
   /** Persisted only on new automatic recipes; missing retains saved timing. */
   shotCadence?: "brisk-v1" | "adaptive-v2";
+  /** Optional visual boundary matching for new automatic reels. */
+  continuity?: "visual-v1";
   /** Automatic recipe marker; every new stock source-job obeys the same cap. */
   reusePolicy?: "four-in-18-months-v1";
   /** New automatic recipes only. Missing keeps the exact saved legacy music. */
@@ -51,7 +53,7 @@ export function suggestStockTrim(duration: number, singleShot = false) {
  * The separately saved brisk cadence keeps a three-second opening and caps
  * real windows at six seconds. Missing cadence retains every older recipe.
  */
-export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"]): StockInterval[] {
+export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"], rhythm?: { bpm: number }): StockInterval[] {
   if (!shots.length || shots.length > MAX_STOCK_SHOTS || !Number.isFinite(maximum) || maximum <= 0 || maximum > 105) throw new Error("Choose one to twelve shots and a reel length up to 105 seconds.");
   if (pacing !== undefined && pacing !== "cinematic" && pacing !== "selected") throw new Error("Choose cinematic pacing or keep the selected moments.");
   if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2") throw new Error("Choose the supported automatic shot cadence.");
@@ -137,6 +139,31 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
       const order = allocations.map((amount, index) => ({ index, fraction: amount - Math.floor(amount) }))
         .filter(item => budgets[item.index] > 1).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
       for (const { index } of order) if (excess > 0 && budgets[index] > 1) { budgets[index]--; excess--; }
+    }
+    if (rhythm !== undefined) {
+      if (!Number.isFinite(rhythm.bpm) || rhythm.bpm < 40 || rhythm.bpm > 180) throw new Error("Instrumental rhythm must be between 40 and 180 BPM.");
+      const totalFrames = budgets.reduce((sum, frames) => sum + frames, 0);
+      const beatFrames = STOCK_REEL_FPS * 60 / rhythm.bpm;
+      const boundaries: number[] = [];
+      let boundary = 0;
+      for (let index = 0; index < budgets.length - 1; index += 1) {
+        boundary += budgets[index];
+        boundaries.push(boundary);
+      }
+      // Align cumulative edits only when a real instrumental beat is within
+      // four frames. Shot lengths remain individually varied and source-bound.
+      for (let index = 0; index < boundaries.length; index += 1) {
+        const original = budgets.slice(0, index + 1).reduce((sum, frames) => sum + frames, 0);
+        const beat = Math.round(Math.round(original / beatFrames) * beatFrames);
+        if (Math.abs(beat - original) > 4) continue;
+        const candidate = [...boundaries];
+        candidate[index] = beat;
+        const adjusted = candidate.map((point, at) => point - (at ? candidate[at - 1] : 0));
+        adjusted.push(totalFrames - candidate[candidate.length - 1]);
+        if (adjusted.every((frames, at) => frames >= 1 && frames <= capacities[at])) boundaries[index] = beat;
+      }
+      budgets = boundaries.map((point, index) => point - (index ? boundaries[index - 1] : 0));
+      budgets.push(totalFrames - boundaries[boundaries.length - 1]);
     }
     let cursor = 0;
     return windows.map((window, index) => {

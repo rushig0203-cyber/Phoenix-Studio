@@ -27,3 +27,10 @@ export function stockPlaybackFilters(speed = 1) {
   if (!Number.isFinite(speed) || speed < 1 || speed > 1.4) throw new Error("Stock playback may only retain or modestly accelerate footage.");
   return { video: speed === 1 ? "setpts=PTS-STARTPTS" : `setpts=(PTS-STARTPTS)/${speed}`, audio: speed === 1 ? "" : `atempo=${speed},` };
 }
+
+/** The prepared shot's sound is already trimmed/accelerated into output time. */
+export function stockSpeechSampleArgs(shotFile: string, sampleFile: string, duration: number) {
+  if (!Number.isFinite(duration) || duration <= 0 || duration > 105) throw new Error("Invalid prepared-shot speech duration.");
+  return ["-y", "-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", "-t", duration.toFixed(6),
+    "-threads", "1", "-i", shotFile, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", sampleFile];
+}

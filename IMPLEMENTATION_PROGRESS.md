@@ -1,5 +1,32 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10: footage-reel quality follow-up — source checkpoint, activation pending
+
+- Read the latest real completed Parks job `bdeea9d0-7485-409e-b5fe-37c4010cf480`,
+  already using adaptive-v2 (20.291667 seconds). Its saved source list and a small
+  output contact sheet show two parking lots and a nighttime Ferris wheel among
+  daytime park scenes. This is a current selection fault, not only an older recipe.
+  Contact sheet: `storage/work/oct10-quality-audit/parks-before.png` (ignored).
+- Added opt-in visual-v1 appearance sampling: at most two 32×18 single-frame
+  probes/selected shot, one thread, sequential, no model/provider call. Cached
+  light/chroma/contrast statistics guide anchor-first neighbour order. Unknown
+  evidence preserves original order. Local arrays change; saved source provenance
+  does not. Actual source size/mtime/cut bounds identify the measurements.
+- Nearby cumulative cuts optionally align within four picture frames to the
+  existing original instrumental's BPM. Total duration, source capacities and
+  legacy recipe timing remain unchanged. No slowdowns, repetitions or padding.
+- Confirmed and fixed output-time stock speech sampling: using original source
+  at output length dropped the end of 1.25× speech and drifted subtitle cues.
+  Transcription now reads the prepared shot with its actual trim/tempo applied.
+- Added isolated real licensed-footage proof tooling; network forbidden, canonical
+  heavy-work lease held, separate temporary queue, full decode and idempotency
+  checks. It is opt-in and has not been run at this checkpoint. No owner failures
+  retried, jobs modified, credential switches or posts submitted.
+- Local serial checks so far: 15 motion/adaptive/appearance tests and 44 adjacent
+  render/edit/audio/remux regressions passed; scoped lint passed. Further source
+  selection tests, Windows CI, full TypeScript and activation remain pending.
+  All local work remains serial; no RAM guard was lowered or unrelated app closed.
+
 ## October 9: adaptive reels and compact history — verified installed/live
 
 - Current selected/live bundle is `.next-build-gh-37957816158-1`, BUILD_ID

@@ -5,7 +5,7 @@ import { planStockIntervals, stockPortraitScore, type StockReelOptions } from ".
 export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
 export const AUTOMATIC_STOCK_REEL_OPTIONS: StockReelOptions = {
-  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, shotCadence: "adaptive-v2", reusePolicy: "four-in-18-months-v1",
+  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, shotCadence: "adaptive-v2", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
 };
 
 /** Lightweight topic cue, not a claim to have understood the video's emotion. */
@@ -40,6 +40,7 @@ const catalogContexts: CatalogContext[] = [
   { name: "river", cue: /\b(?:rivers?|streams?|creeks?)\b/i, search: "river", natural: true },
   { name: "lake", cue: /\b(?:lakes?|ponds?|lagoons?)\b/i, search: "lake", natural: true },
   { name: "coast", cue: /\b(?:oceans?|seas?|beaches?|coasts?|coastal|seaside|shore\w*|waves?|surf\w*)\b/i, search: "ocean", natural: true },
+  { name: "park", cue: /\bparks?\b/i, search: "park", natural: true },
   { name: "city", cue: /\b(?:cities|city|urban|skylines?|skyscrapers?|streets?|buildings?)\b/i, search: "city" },
   { name: "mountain", cue: /\b(?:mountains?|alpine|alps|peaks?|summits?|hills?|valleys?)\b/i, search: "mountain", natural: true },
   { name: "forest", cue: /\b(?:forests?|woodlands?|woods|jungles?|canop(?:y|ies)|trees?|palms?)\b/i, search: "forest", natural: true },
@@ -52,16 +53,70 @@ const naturalTopic = (query: string) => subjectWords(query).length === 0 && /\b(
 const representedMedia = /\b(?:book|books|wallpapers?|screenshots?|illustrations?|paintings?|posters?|logos?|drawings?)\b/i;
 const visiblePeople = /\b(?:people|person|men|man|women|woman|child|children|hikers?|hiking|walking|divers?|scuba|snorkel\w*|surfers?|surfing|paddleboard\w*|kitesurf\w*)\b/i;
 const industrialTransport = /\b(?:ships?|boats?|yachts?|transporters?|freighters?|ports?|harbou?rs?|aircraft|airplanes?|planes?)\b/i;
+const parkingScene = /\b(?:parking\s+(?:lots?|garages?)|car parks?)\b/i;
+const amusementScene = /\b(?:amusement|theme)\s+parks?\b|\bfairgrounds?\b|\bferris\s+wheels?\b/i;
+const rainBuiltScene = /\b(?:billboards?|buildings?|skyscrapers?|parking\s+(?:lots?|garages?)|car parks?|cars?|vehicles?)\b/i;
+const animalFamilies: Array<{ name: string; cue: RegExp }> = [
+  { name: "horse", cue: /\b(?:horses?|ponies|foals?|equine|equestrian)\b/i },
+  { name: "dog", cue: /\b(?:dogs?|puppies|canine)\b/i },
+  { name: "cat", cue: /\b(?:cats?|kittens?|feline)\b/i },
+  { name: "bird", cue: /\b(?:birds?|eagles?|owls?|parrots?|sparrows?|robins?|kingfishers?|flocks?)\b/i },
+  { name: "deer", cue: /\b(?:deer|elk|moose|reindeer)\b/i },
+  { name: "cattle", cue: /\b(?:cows?|cattle|bulls?|calves?)\b/i },
+  { name: "sheep", cue: /\b(?:sheep|lambs?)\b/i },
+  { name: "goat", cue: /\bgoats?\b/i },
+  { name: "elephant", cue: /\belephants?\b/i },
+  { name: "giraffe", cue: /\bgiraffes?\b/i },
+  { name: "lion", cue: /\blions?\b/i },
+  { name: "tiger", cue: /\btigers?\b/i },
+  { name: "bear", cue: /\bbears?\b/i },
+  { name: "fox", cue: /\bfox(?:es)?\b/i },
+  { name: "rabbit", cue: /\b(?:rabbits?|hares?)\b/i },
+  { name: "squirrel", cue: /\bsquirrels?\b/i },
+  { name: "monkey", cue: /\b(?:monkeys?|apes?|primates?)\b/i },
+  { name: "dolphin", cue: /\bdolphins?\b/i },
+  { name: "whale", cue: /\bwhales?\b/i },
+  { name: "seal", cue: /\b(?:seals?|sea lions?)\b/i },
+  { name: "fish", cue: /\b(?:fish|fishes)\b/i },
+];
 const contextDetails = [
   { name: "snow", cue: /\b(?:snow\w*|winter|ice|icy|glaciers?)\b/i, search: "snow" },
   { name: "sunrise", cue: /\b(?:sunrise|dawn|daybreak)\b/i, search: "sunrise" },
   { name: "sunset", cue: /\b(?:sunset|dusk)\b/i, search: "sunset" },
-  { name: "night", cue: /\b(?:night|nighttime|moonlit|stars?|starry)\b/i, search: "night" },
+  { name: "night", cue: /\b(?:night|nighttime|midnight|moonlit|stars?|starry)\b|\bafter\s+dark\b/i, search: "night" },
 ];
+const dayPhases: Array<{ name: string; cue: RegExp }> = [
+  { name: "dawn", cue: /\b(?:sunrise|dawn|daybreak)\b/i },
+  { name: "day", cue: /\b(?:day|daytime|daylight|noon|midday)\b/i },
+  { name: "dusk", cue: /\b(?:sunset|dusk|twilight|evening)\b/i },
+  { name: "night", cue: /\b(?:night|nighttime|midnight|moonlit|stars?|starry)\b|\bafter\s+dark\b/i },
+];
+const explicitDayPhase = (description: string) => dayPhases.find(phase => phase.cue.test(description))?.name;
+const explicitAnimalFamilies = (description: string) => animalFamilies.filter(family => family.cue.test(description)).map(family => family.name);
+function dayPhaseCompatible(anchorPhase: string | undefined, candidatePhase: string | undefined, preferredPhase?: string) {
+  if (anchorPhase) {
+    // Sunrise, sunset and night clips require matching catalog evidence; daytime
+    // anchors may pair with unlabeled clips because daylight is often omitted.
+    if (["dawn", "dusk", "night"].includes(anchorPhase)) return candidatePhase === anchorPhase;
+    return !candidatePhase || candidatePhase === anchorPhase;
+  }
+  return !candidatePhase || !preferredPhase || candidatePhase === preferredPhase;
+}
 
 function contextMatch(anchorDescription: string, description: string) {
   const context = catalogContext(anchorDescription), candidateContext = catalogContext(description);
   if (context && (!candidateContext || candidateContext.name !== context.name)) return false;
+  const anchorParking = parkingScene.test(anchorDescription), candidateParking = parkingScene.test(description);
+  if (candidateParking !== anchorParking) return false;
+  const anchorAmusement = amusementScene.test(anchorDescription), candidateAmusement = amusementScene.test(description);
+  if (candidateAmusement !== anchorAmusement) return false;
+  const anchorAnimals = explicitAnimalFamilies(anchorDescription), candidateAnimals = explicitAnimalFamilies(description);
+  if (candidateAnimals.some(animal => !anchorAnimals.includes(animal))) return false;
+  // For a rain-only anchor, a named built scene is a new subject, not a
+  // harmless shared-weather match. Retain such footage only when the anchor
+  // itself establishes that setting; keep natural rain/water scenes eligible.
+  if (/\b(?:rain|raindrops?|storm)\b/i.test(anchorDescription)
+    && rainBuiltScene.test(description) && !rainBuiltScene.test(anchorDescription)) return false;
   // Weather alone is not a licence to insert a different main subject. When
   // the chosen rain shot has no plant-detail evidence, skip leaves/plants and
   // garden close-ups rather than filling a fixed duration with them.
@@ -75,12 +130,12 @@ function contextMatch(anchorDescription: string, description: string) {
   for (const cue of [representedMedia, visiblePeople, industrialTransport]) {
     if (cue.test(description) && !cue.test(anchorDescription)) return false;
   }
-  // Explicit snow/day-phase metadata must agree. Unknown titles are not
-  // evidence that another scene has the starting shot's defining conditions.
-  const details = contextDetails.filter(detail => detail.cue.test(anchorDescription));
-  if (details.some(detail => !detail.cue.test(description))) return false;
-  const candidateDetails = contextDetails.filter(detail => detail.cue.test(description));
-  if (candidateDetails.some(detail => details.some(other => other.name !== "snow" && detail.name !== "snow" && other.name !== detail.name))) return false;
+  // Preserve explicit defining dawn/dusk/night context rather than treating
+  // an unlabeled scene as proof of the selected lighting condition.
+  if (contextDetails.slice(1).some(detail => detail.cue.test(anchorDescription) && !detail.cue.test(description))) return false;
+  // Explicit snow context must agree; absent catalog detail remains unknown.
+  const snow = contextDetails[0].cue;
+  if (snow.test(anchorDescription) !== snow.test(description)) return false;
   return true;
 }
 
@@ -125,6 +180,9 @@ function validFilmedSource(video: NaturalStock) {
 function queryMatch(video: NaturalStock, query: string, wanted: string[]) {
   const description = catalogDescription(video), words = subjectWords(description);
   if (!validFilmedSource(video) || footageMetadataMismatch(description, query)) return 0;
+  // Inflection normalization must not turn 'parking' into the subject 'park',
+  // including starting cards, before an owner can accidentally choose one.
+  if (/\bparks?\b/i.test(query) && !parkingScene.test(query) && parkingScene.test(description)) return 0;
   if (naturalTopic(query)) return catalogContext(description)?.natural && !representedMedia.test(description) ? 1 : 0;
   if (!wanted.length) return 0;
   const matches = wanted.filter(word => words.includes(word));
@@ -153,7 +211,7 @@ export function automaticStockCompanions(anchor: NaturalStock, candidates: Natur
   if (!Number.isFinite(anchor.width) || !Number.isFinite(anchor.height) || Math.min(anchor.width, anchor.height) < AUTOMATIC_STOCK_MIN_NATIVE_EDGE) throw new Error("This starting video has no native 720p rendition. Choose another starting video; automatic reels do not upscale low-resolution footage.");
   if (!queryMatch(anchor, query, wanted)) throw new Error("This starting video does not have enough catalog detail for the topic. Choose another starting video or try a broader topic.");
   const seen = new Set([`${anchor.provider}:${anchor.id}`]);
-  return candidates.flatMap((video, index) => {
+  const eligible = candidates.flatMap((video, index) => {
     const identity = `${video.provider}:${video.id}`;
     if (seen.has(identity) || unavailable.has(identity)) return [];
     seen.add(identity);
@@ -161,8 +219,20 @@ export function automaticStockCompanions(anchor: NaturalStock, candidates: Natur
     if (!matches || footageMetadataMismatch(description, anchorDescription) || !contextMatch(anchorDescription, description)) return [];
     const related = subjectWords(description).filter(word => anchorWords.includes(word));
     if (!related.length && !naturalTopic(query)) return [];
-    return [{ video, index, reused: recentlyUsed.has(identity), score: matches * 10 + related.length * 2 + stockPortraitScore(video) }];
-  }).sort((a, b) => Number(a.reused) - Number(b.reused) || b.score - a.score || a.index - b.index).map(result => result.video);
+    const aspect = video.width / video.height, target = 720 / 1280;
+    const retained = Math.min(aspect / target, target / aspect);
+    return [{ video, index, reused: recentlyUsed.has(identity), fullFramePortrait: retained >= .92, phase: explicitDayPhase(description), score: matches * 10 + related.length * 2 + stockPortraitScore(video) }];
+  });
+  // If the owner-selected anchor has no labeled phase, keep explicitly phased
+  // companions consistent with the most common phase in this eligible set.
+  // Unlabeled sources remain unknown rather than being assigned a time of day.
+  const anchorPhase = explicitDayPhase(anchorDescription);
+  const phaseCounts = new Map<string, number>();
+  for (const item of eligible) if (item.phase) phaseCounts.set(item.phase, (phaseCounts.get(item.phase) || 0) + 1);
+  const companionPhase = [...phaseCounts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return eligible.filter(item => dayPhaseCompatible(anchorPhase, item.phase, companionPhase))
+    .sort((a, b) => Number(b.fullFramePortrait) - Number(a.fullFramePortrait)
+      || Number(a.reused) - Number(b.reused) || b.score - a.score || a.index - b.index).map(result => result.video);
 }
 
 type StockReelHistoryEntry = {
@@ -195,12 +265,17 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
   const companionQuery = automaticStockCompanionQuery(anchor, query);
   const searches = await Promise.allSettled([...new Set(providers)].map(provider => catalog.search(provider, companionQuery)));
   const candidates = automaticStockCompanions(anchor, searches.flatMap(result => result.status === "fulfilled" ? result.value : []), query, recentlyUsed, unavailable);
+  const anchorPhase = explicitDayPhase(catalogDescription(anchor));
+  const preferredPhase = anchorPhase || candidates.map(candidate => explicitDayPhase(catalogDescription(candidate))).find(Boolean);
   const sources = [anchor];
   for (const candidate of candidates.slice(0, MAX_COMPANION_RESOLUTIONS)) {
     if (sources.length >= AUTOMATIC_STOCK_REEL_MAX_SOURCES) break;
     try {
       const authoritative = await catalog.resolve(candidate.provider, candidate.id);
       if (authoritative.provider !== candidate.provider || authoritative.id !== candidate.id) continue;
+      const candidatePhase = explicitDayPhase(catalogDescription(candidate)), resolvedPhase = explicitDayPhase(catalogDescription(authoritative));
+      if (candidatePhase && resolvedPhase && candidatePhase !== resolvedPhase) continue;
+      if (!dayPhaseCompatible(anchorPhase, explicitDayPhase(catalogDescription(authoritative)), preferredPhase)) continue;
       if (!automaticStockCompanions(anchor, [authoritative], query, recentlyUsed, unavailable).length) continue;
       sources.push(authoritative);
       // Gather enough related variety for a compact edit. This is a search

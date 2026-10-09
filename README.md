@@ -1,5 +1,26 @@
 # Phoenix Studio
 
+### October 10 footage-reel quality follow-up — source changes, release verification pending
+
+The latest real “Parks” output exposed a concrete selection mistake: parking lots
+and a nighttime amusement ride entered an ordinary daytime park reel. This
+follow-up tightens catalogue scene/subject checks and prioritizes usable native
+portrait companions. It does not crop unseen subjects or invent filming locations.
+New automatic recipes opt into `continuity: "visual-v1"`: two 32×18 one-frame
+samples per selected shot guide boundary light/colour ordering, retaining the
+chosen opening. Nearby cut boundaries can align within four frames to the actual
+locally composed instrumental's beat clock without changing total picture length
+or exceeding source bounds. Sampling is sequential, cached and model-free;
+unknown samples preserve catalogue order. This is not semantic video understanding.
+
+Stock speech checks now transcribe the already trimmed/accelerated shot audio,
+so output-time subtitles do not miss or drift behind a sped-up source interval.
+No scene approval step or new dashboard controls were added. Existing completed
+videos and saved recipes are not automatically rewritten. A real-footage proof
+script can use retained licensed originals in an isolated queue with network
+access disabled, without retrying owner jobs or posting anything. Live activation
+of these follow-up changes remains pending at this source checkpoint.
+
 ### October 9 adaptive reel editing and compact history — installed and live
 
 Current selected and served release: `.next-build-gh-37957816158-1`, BUILD_ID

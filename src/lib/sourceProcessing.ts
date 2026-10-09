@@ -11,8 +11,9 @@ import { localMusicWav } from "./kidsRenderer";
 import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
-import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
-import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockPlaybackFilters, type StockMotionWindow } from "./stockMotion";
+import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
+import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
+import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
@@ -1479,24 +1480,25 @@ async function processStockReel(
   preflight: SourceProcessingPreflight,
   report: (progress: number, stage: string, change?: Partial<SourceJob>) => Promise<unknown>,
 ) {
-  const stock = job.stockSource!, shots = stock.shots!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
+  const stock = job.stockSource!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
+  let shots = [...stock.shots!]; // Render order must never rewrite saved source provenance.
   const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
   const directory = path.join(workRoot, `source-${job.id}`, `stock-assembly-v${editVersion}`);
   await fs.mkdir(directory, { recursive: true });
-  const infos: MediaInfo[] = [];
+  let infos: MediaInfo[] = [];
   for (let index = 0; index < shots.length; index += 1) {
     await report(6 + index / shots.length * 5, `Checking source shot ${index + 1} of ${shots.length}`);
     const info = await probe(sourcePath(job.id, shots[index].sourceFile));
     if (!info.duration || !info.width || !info.height) throw new Error(`Source shot ${index + 1} has no readable picture.`);
     infos.push(info);
   }
-  const pictureBounds = shots.map((shot, index) => {
+  let pictureBounds = shots.map((shot, index) => {
     // Every explicitly automatic recipe uses the downloaded picture bounds,
     // including older jobs without the newer minimum-length policy. Catalog
     // durations are often rounded up; those are not user-selected trims.
     return stockSourcePictureInterval(shot, infos[index], options.shotCadence === "adaptive-v2" ? 12 : options.minDuration, index + 1);
   });
-  const motionWindows: StockMotionWindow[][] = shots.map(() => []);
+  let motionWindows: StockMotionWindow[][] = shots.map(() => []);
   if (options.shotCadence === "adaptive-v2") {
     for (let index = 0; index < shots.length; index++) {
       await report(7 + index / shots.length * 5, `Sampling movement · shot ${index + 1} of ${shots.length} · no AI model loaded`);
@@ -1521,7 +1523,43 @@ async function processStockReel(
       if (motionWindows[index].length) await fs.writeFile(cacheFile, JSON.stringify({ identity, windows: motionWindows[index] }));
     }
   }
-  const intervals = planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(options.shotCadence === "adaptive-v2" ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence);
+  const rhythm = options.continuity === "visual-v1" && options.audio === "music" && options.musicVersion === 2
+    ? { bpm: stockMusicArrangement(options.mood, job.id).bpm } : undefined;
+  const plan = () => planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(options.shotCadence === "adaptive-v2" ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence, rhythm);
+  let intervals = plan(), continuityCheck: string | undefined;
+  if (options.continuity === "visual-v1" && options.shotCadence === "adaptive-v2") {
+    const appearances: Array<StockAppearancePair | undefined> = [];
+    for (let index = 0; index < shots.length; index++) {
+      await report(12, `Matching shot light and colour · ${index + 1} of ${shots.length} · tiny samples, no model`);
+      const filename = sourcePath(job.id, shots[index].sourceFile), stat = await fs.stat(filename);
+      const interval = intervals[index], cacheFile = path.join(directory, `appearance-${index + 1}.json`);
+      const identity = crypto.createHash("sha256").update(JSON.stringify({ version: 1, filename: shots[index].sourceFile, bytes: stat.size, modified: stat.mtimeMs, start: interval.start, end: interval.end })).digest("hex");
+      let pair: StockAppearancePair | undefined;
+      try {
+        const cached = JSON.parse(await fs.readFile(cacheFile, "utf8"));
+        if (cached.identity === identity && validStockAppearance(cached.pair?.opening) && validStockAppearance(cached.pair?.ending)) pair = cached.pair;
+      } catch { /* A corrupt/missing cache cannot invent visual evidence. */ }
+      if (!pair) {
+        try {
+          const opening = stockAppearance(await run(ffmpegPath, stockAppearanceArgs(filename, interval.start)));
+          const ending = stockAppearance(await run(ffmpegPath, stockAppearanceArgs(filename, Math.max(interval.start, interval.end - .15))));
+          if (opening && ending) {
+            pair = { opening, ending };
+            await fs.writeFile(cacheFile, JSON.stringify({ identity, pair }));
+          }
+        } catch { /* Unknown appearance retains the original catalogue order. */ }
+      }
+      appearances.push(pair);
+    }
+    const order = stockVisualOrder(appearances);
+    const complete = appearances.every(Boolean);
+    shots = order.map(index => shots[index]); infos = order.map(index => infos[index]);
+    pictureBounds = order.map(index => pictureBounds[index]); motionWindows = order.map(index => motionWindows[index]);
+    intervals = plan();
+    continuityCheck = complete
+      ? `Selected opening retained; companions ordered by sampled boundary light/colour similarity (source order ${order.map(index => index + 1).join(", ")}); this does not recognize subjects or verify one location`
+      : "Visual continuity samples incomplete; catalogue order retained without guessing";
+  }
   const duration = intervals[intervals.length - 1].outputEnd;
   const minimumPictureDuration = options.shotCadence === "adaptive-v2" ? duration : options.minDuration;
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
@@ -1579,7 +1617,10 @@ async function processStockReel(
         // Transcribe only the interval actually used, avoiding the old first-N-seconds mismatch.
         const sample = path.join(directory, `speech-${index + 1}.wav`);
         try {
-          await run(ffmpegPath, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(3), "-t", length.toFixed(3), "-threads", "1", "-i", source, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", sample]);
+          // The rendered shot already has the chosen trim and atempo applied.
+          // Sampling original source at output length dropped speech at 1.25×
+          // and drifted cue times. Transcribe the exact output-time sound instead.
+          await run(ffmpegPath, stockSpeechSampleArgs(shotFile, sample, length));
           transcript = await transcribe(sample, `${job.id}-stock-${planIdentity}-shot-${index + 1}`, true, length, (_progress, stage) => report(15 + index / shots.length * 30, `Shot ${index + 1}: ${stage}`), true);
         } catch { analysisError = "Local speech check failed. No guessed subtitles were added; review the source sound."; }
       }
@@ -1621,6 +1662,7 @@ async function processStockReel(
   item.quality.checks = [
     `Real footage reel: ${shots.length} shots in the ${options.shotCadence === "adaptive-v2" ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v2" ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
+    ...(continuityCheck ? [continuityCheck, ...(rhythm ? [`Nearby internal cuts aligned within four picture frames to the actual ${rhythm.bpm} BPM instrumental; total picture duration and source capacities retained`] : [])] : []),
     ...framingChecks, ...credits,
     ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
     `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${options.shotCadence === "adaptive-v2" ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,

@@ -37,6 +37,29 @@ test('ten-source adaptive cadence shrinks to the reel cap using whole frames', (
   assert.equal(plan.reduce((sum, shot) => sum + shot.frames, 0), 18 * reel.STOCK_REEL_FPS);
 });
 
+test('optional instrumental rhythm snaps only nearby cumulative cuts and preserves total duration', () => {
+  const shots = Array.from({ length: 6 }, () => automatic(20));
+  const plain = adaptive(shots), rhythmPlan = reel.planStockIntervals(shots, 40, 'cinematic', undefined, 'adaptive-v2', { bpm: 90 });
+  const baseTotal = plain.reduce((sum, shot) => sum + shot.frames, 0);
+  const snappedTotal = rhythmPlan.reduce((sum, shot) => sum + shot.frames, 0);
+  assert.equal(snappedTotal, baseTotal);
+  assert.equal(rhythmPlan.at(-1).outputEnd, plain.at(-1).outputEnd);
+  let baseBoundary = 0, snappedBoundary = 0, changed = false;
+  for (let index = 0; index < shots.length - 1; index += 1) {
+    baseBoundary += plain[index].frames;
+    snappedBoundary += rhythmPlan[index].frames;
+    const beatFrames = reel.STOCK_REEL_FPS * 60 / 90;
+    const nearestBeat = Math.round(Math.round(baseBoundary / beatFrames) * beatFrames);
+    if (Math.abs(nearestBeat - baseBoundary) <= 4) {
+      assert.equal(snappedBoundary, nearestBeat);
+      changed ||= snappedBoundary !== baseBoundary;
+    } else assert.equal(snappedBoundary, baseBoundary, 'Distant cuts keep their natural timing');
+  }
+  assert.ok(changed);
+  assert.ok(rhythmPlan.every(shot => shot.frames > 0 && shot.end - shot.start <= 3.5));
+  assert.throws(() => reel.planStockIntervals(shots, 40, 'cinematic', undefined, 'adaptive-v2', { bpm: 500 }), /40 and 180 BPM/);
+});
+
 test('short real sources reduce the result without padding, while measured low motion uses only a bounded speed-up', () => {
   const short = adaptive([
     automatic(1.5), automatic(3), automatic(3), automatic(3), automatic(3),

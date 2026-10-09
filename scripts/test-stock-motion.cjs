@@ -29,3 +29,12 @@ test('video acceleration and sound tempo agree; no slowdown or extreme speed is 
   assert.deepEqual(motion.stockPlaybackFilters(1.25), { video: 'setpts=(PTS-STARTPTS)/1.25', audio: 'atempo=1.25,' });
   for (const speed of [0, .75, 1.41, NaN, Infinity]) assert.throws(() => motion.stockPlaybackFilters(speed), /modestly accelerate/);
 });
+
+test('speech reads the prepared output-time shot rather than truncating the original sped source', () => {
+  const args = motion.stockSpeechSampleArgs('prepared-shot-1.mp4', 'speech-1.wav', 2.625);
+  assert.equal(args[args.indexOf('-i') + 1], 'prepared-shot-1.mp4');
+  assert.equal(args[args.indexOf('-t') + 1], '2.625000');
+  assert.ok(!args.includes('-ss') && !args.includes('-af'), 'Trim and tempo were applied to the shot before speech sampling');
+  assert.equal(args[args.indexOf('-ar') + 1], '16000');
+  for (const duration of [0, -1, 106, NaN]) assert.throws(() => motion.stockSpeechSampleArgs('shot', 'sample', duration), /Invalid/);
+});

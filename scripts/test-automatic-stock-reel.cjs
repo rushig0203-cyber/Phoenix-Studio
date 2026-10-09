@@ -46,11 +46,12 @@ test('new automatic soundtrack uses compact adaptive timing without changing man
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_SOURCES, 10);
   for (const [topic, mood] of [['Sunrise over mountains', 'warm'], ['birds in a garden', 'warm'], ['Sun City videos', 'journey'], ['ocean waves', 'journey'], ['misty mountains', 'reflective'], ['moonlit lake', 'reflective']]) {
-    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', reusePolicy: 'four-in-18-months-v1' });
+    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
   }
   const first = automatic.automaticStockReelOptions('sunrise'); first.mood = 'journey';
   assert.equal(automatic.automaticStockReelOptions('sunrise').mood, 'warm', 'A caller cannot mutate later defaults');
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.mood, 'reflective', 'Legacy constant remains unchanged');
+  assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.continuity, 'visual-v1');
   assert.equal(editing.DEFAULT_STOCK_REEL_OPTIONS.audio, 'auto', 'Manual/legacy defaults still preserve source-only sound when usable');
   assert.match(automatic.automaticStockReelMessage(8), /one continuous original instrumental across all shots/);
   assert.match(automatic.automaticStockReelMessage(8, true), /saved timing and sound choices are retained/i);
@@ -181,6 +182,9 @@ test('an ocean sunrise keeps both the coast setting and dawn conditions rather t
     video(4, 'Sunrise skyline with birds'), video(5, 'Serene sunrise over misty lake'),
     video(6, 'Ocean sunset over islands'), video(7, 'Ocean waves in daylight'),
   ], 'sunrise')), ['pexels:2']);
+  assert.deepEqual(identities(automatic.automaticStockCompanions(selected, [
+    video(8, 'Ocean waves under clouds'), video(9, 'Ocean sunrise waves'),
+  ], 'ocean')), ['pexels:9'], 'Explicit dawn anchors require phase evidence; unknown phase is not treated as a match');
   assert.equal(automatic.automaticStockCompanionQuery(selected, 'sunrise'), 'sunrise ocean');
 });
 
@@ -215,9 +219,66 @@ test('rain context rejects leaf and flower insertions while matching raindrop wa
   ], 'rain raindrops Bali');
   assert.deepEqual(identities(choices), ['pexels:4']);
 
-  // The guard reads catalog labels only; it does not establish what any frame depicts.
-  const unknownContext = automatic.automaticStockCompanions(rain, [video(5, 'Rain raindrops Bali billboard')], 'rain raindrops Bali');
-  assert.deepEqual(identities(unknownContext), ['pexels:5']);
+  const incompatibleBuiltScenes = automatic.automaticStockCompanions(rain, [
+    video(5, 'Rain raindrops Bali billboard'), video(6, 'Rain falling on a building in Bali'),
+    video(7, 'Rain raindrops on a car windshield Bali'),
+  ], 'rain raindrops Bali');
+  assert.deepEqual(identities(incompatibleBuiltScenes), []);
+  assert.deepEqual(identities(automatic.automaticStockCompanions(video(8, 'Rain on a city billboard Bali'), [
+    video(9, 'Rain falling on a city billboard Bali'), video(10, 'Rain raindrops water puddle Bali'),
+  ], 'rain Bali')), ['pexels:9'], 'A built scene is allowed when the owner-selected anchor establishes it');
+});
+
+test('Parks anchor keeps park scenes and rejects parking lots and amusement parks', () => {
+  const parkAnchor = video(1, 'people enjoying their day in a park');
+  const sources = [
+    video(2, 'a large parking lot with a large building in the background'),
+    video(3, 'empty parking lot at dusk with trees'),
+    video(4, 'city park and skyscrapers'),
+    video(5, 'man strolling in lush green park with blossoming trees'),
+    video(6, 'empty swing in green park'),
+    video(7, 'aerial view of kids playing in city park'),
+    video(8, 'ferris wheel · amusement park · fun'),
+  ];
+  assert.deepEqual(identities(automatic.automaticStockCompanions(parkAnchor, sources, 'Parks')),
+    ['pexels:4', 'pexels:5', 'pexels:6', 'pexels:7']);
+  assert.deepEqual(identities(automatic.automaticStockChoices([parkAnchor, sources[0], sources[1]], 'Parks')), ['pexels:1']);
+});
+
+test('explicit day phase stays consistent across companions even when the anchor phase is unlabeled', () => {
+  const anchor = video(1, 'city park greenery');
+  const choices = automatic.automaticStockCompanions(anchor, [
+    video(2, 'city park at night'), video(3, 'city park in daylight'), video(4, 'empty swing in city park'),
+  ], 'city park');
+  assert.deepEqual(identities(choices), ['pexels:2', 'pexels:4'], 'The first equally represented explicit phase wins; unlabeled context remains unknown');
+  const dayAnchor = video(5, 'sunlit city park during the day');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(dayAnchor, [
+    video(6, 'city park in daylight'), video(7, 'city park after dark'),
+  ], 'city park')), ['pexels:6']);
+});
+
+test('authoritative resolution cannot change a phase-consistent search result into another explicit phase', async () => {
+  const selected = video(1, 'city park greenery');
+  const sources = await automatic.automaticStockSources(selected, 'city park', ['pexels'], {
+    async search() { return [video(2, 'city park in daylight'), video(3, 'city park daytime trees'), video(4, 'city park daylight path'), video(5, 'city park in daylight') , video(6, 'city park at night')]; },
+    async resolve(provider, id) { return id === 2 ? video(id, 'city park at night') : video(id, 'city park in daylight'); },
+  });
+  assert.deepEqual(identities(sources), ['pexels:1', 'pexels:3', 'pexels:4', 'pexels:5']);
+});
+
+test('a natural field anchor does not admit a different animal subject family', () => {
+  const field = video(1, 'meadow field at sunrise');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(field, [
+    video(2, 'horse grazing in a field at sunrise'), video(3, 'empty field of grass at sunrise'),
+  ], 'nature')), ['pexels:3']);
+});
+
+test('native full-frame portrait companions outrank landscape candidates after relevance filtering', () => {
+  const selected = video(1, 'Sun City skyline');
+  const portrait = video(2, 'Sun City skyline at dusk');
+  const keywordStuffedLandscape = video(3, 'Sun City skyline city buildings streets urban downtown tower skyline', { width: 1920, height: 1080 });
+  assert.deepEqual(identities(automatic.automaticStockCompanions(selected, [keywordStuffedLandscape, portrait], 'Sun City', new Set(['pexels:2']))),
+    ['pexels:2', 'pexels:3']);
 });
 
 test('nature is a broad discovery topic, but the chosen forest locks the reel to forest scenes', () => {
@@ -370,10 +431,11 @@ test('explicit repetition feedback may use twenty recent completed recipes, whil
   for (const limit of [0, 9, 11, 21, Infinity, '20']) assert.throws(() => automatic.recentStockMediaIdentities(jobs, limit), /bounded recent reel history/);
 });
 
-test('unused related companions rank first while anchor, meaning and default ranking remain intact', () => {
+test('native framing wins before freshness, with unused sources preferred within matching framing', () => {
   const usedPortrait = video(2, 'Sun City skyline'), freshWide = video(3, 'Sun City skyline', { width: 1920, height: 1080 });
   assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, freshWide], 'Sun City')), ['pexels:2', 'pexels:3']);
-  assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, video(4, 'Unrelated beach'), freshWide], 'Sun City', new Set(['pexels:1', 'pexels:2']))), ['pexels:3', 'pexels:2']);
+  assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, video(4, 'Unrelated beach'), freshWide], 'Sun City', new Set(['pexels:1', 'pexels:2']))), ['pexels:2', 'pexels:3']);
+  assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, video(5)], 'Sun City', new Set(['pexels:2']))), ['pexels:5', 'pexels:2']);
   assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, freshWide], 'Sun City', new Set(['pixabay:2']))), ['pexels:2', 'pexels:3'], 'Provider IDs are independent');
 });
 
@@ -504,7 +566,7 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
   assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', reusePolicy: 'four-in-18-months-v1' },
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [

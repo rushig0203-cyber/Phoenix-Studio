@@ -75,6 +75,7 @@ jobs:
           scripts/test-automatic-stock-reel.cjs
           scripts/test-stock-reel-adaptive.cjs
           scripts/test-stock-motion.cjs
+          scripts/test-stock-visual-continuity.cjs
           scripts/test-stock-temporary-cleanup.cjs
           scripts/test-job-summary-ui.cjs
           scripts/test-stock-reel-editing.cjs
@@ -89,7 +90,7 @@ jobs:
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
           src/app/api/review-files/[id]/publish/route.ts
-          src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockTemporaryCleanup.ts
+          src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockVisualContinuity.ts src/lib/stockTemporaryCleanup.ts
           src/lib/automaticStockReel.ts src/lib/sourceProcessing.ts
           src/lib/stockProductionGuidance.ts src/components/StockReels.tsx
           src/lib/cloudflareWriter.ts src/lib/writingSettings.ts
