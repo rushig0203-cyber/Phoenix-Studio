@@ -128,6 +128,10 @@ function contextMatch(anchorDescription: string, description: string) {
     && (greenVegetationCue.test(anchorDescription) || naturalHabitatCue.test(anchorDescription))
     && !builtVegetationSetting.test(anchorDescription);
   if (naturalVegetationAnchor && builtVegetationSetting.test(description)) return false;
+  // A generic urban park/plaza title is not evidence of the chosen lush scene.
+  // Explicitly green city parks remain eligible, avoiding a blanket city ban.
+  if (naturalVegetationAnchor && /\b(?:city|cities|urban|cityscape|plazas?|squares?)\b/i.test(description)
+    && !greenVegetationCue.test(description)) return false;
   const anchorParking = parkingScene.test(anchorDescription), candidateParking = parkingScene.test(description);
   if (candidateParking !== anchorParking) return false;
   const anchorAmusement = amusementScene.test(anchorDescription), candidateAmusement = amusementScene.test(description);

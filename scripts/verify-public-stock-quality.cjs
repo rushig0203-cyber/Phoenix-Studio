@@ -95,7 +95,7 @@ async function main() {
   global.fetch = async () => { throw new Error('Further network/provider calls are forbidden in the isolated render.'); };
   const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks').slice(0, 9)];
   assert.ok(selected.length >= 4 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
-  assert.ok(!selected.some(video => [13712406, 36659594].includes(video.id)), 'Skyline and roadside footage must not pass the chosen green-park setting.');
+  assert.ok(!selected.some(video => [13712406, 36659594, 13439228].includes(video.id)), 'Skyline, roadside and ungrounded city-plaza footage must not pass the chosen green-park setting.');
   const options = automatic.automaticStockReelOptions('Parks'); assert.equal(options.continuity, 'visual-v1');
   assert.equal(automatic.automaticStockGreeneryFocus(selected[0]), true); options.sceneFocus = 'greenery'; options.background = 'soft-v1';
   const job = await source.createStockReelJob(selected.map(video => ({ provider: video.provider, mediaId: String(video.id), title: video.title,

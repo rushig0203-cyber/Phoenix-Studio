@@ -278,8 +278,10 @@ test('an explicitly lush green park does not become a skyline, roadside or traff
     video(5, 'man strolling through a green park'),
     video(6, 'empty swing in green park'),
     video(7, 'sunny park walkway among blossoming trees'),
+    video(8, 'park in city in birds eye view'),
+    video(9, 'green city park walkway'),
   ], 'Parks');
-  assert.deepEqual(identities(choices), ['pexels:5', 'pexels:7', 'pexels:6']);
+  assert.deepEqual(identities(choices), ['pexels:5', 'pexels:7', 'pexels:6', 'pexels:9']);
   assert.equal(automatic.automaticStockCompanionQuery(selected, 'Parks'), 'Parks green', 'Inflected Parks and park are not duplicated');
   assert.equal(automatic.automaticStockCompanionQuery(selected, 'Nature'), 'park green');
 });
@@ -415,7 +417,7 @@ test("a bird's-eye camera view is not a bird subject in title or URL evidence", 
   const park = video(1, "Bird's-eye view of green city park");
   assert.deepEqual(identities(automatic.automaticStockCompanions(park, [
     video(2, 'green city park greenery'),
-    video(3, 'city park aerial view', { sourcePage: 'https://www.pexels.com/video/city-park-bird-s-eye-view-3/' }),
+    video(3, 'green city park aerial view', { sourcePage: 'https://www.pexels.com/video/city-park-bird-s-eye-view-3/' }),
     video(4, 'birds flying over a green city park'),
   ], 'park')), ['pexels:2', 'pexels:3']);
   assert.equal(automatic.automaticStockCompanionQuery(park, 'park'), 'park green');
