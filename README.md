@@ -1,8 +1,45 @@
 # Phoenix Studio
 
-### October 9 music, caption and posting-default follow-up — installed and live
+### October 9 adaptive reel editing and optional free writer — activation pending
 
-Current installed and served release: `.next-build-gh-37948493953-1`.
+New automatic footage recipes choose compact, movement-informed cuts rather than
+filling a fixed 40–45-second template. Up to three 4.5-second windows per source
+are sampled sequentially at 96×54 pixels / 2 fps, without a local AI model.
+Cuts stay at native speed or use a bounded 1.25× acceleration when sampled
+movement is low; unknown movement stays native. Actual usable picture determines
+length (typically around 20–30 seconds), with no slow motion, repeats or padding.
+Catalogue-context checks reject plant/leaf inserts in rain reels whose starting
+shot has no such subject evidence. Catalogue text and movement are not semantic
+understanding or a promise of engagement. Existing/manual recipes remain intact.
+
+Settings now offers an optional **Cloudflare Workers AI Free** text writer with
+Llama 3.3 70B. It needs the owner's Cloudflare Account ID, Workers AI token and
+explicit Free-plan confirmation; no credentials/provider have been switched.
+[Cloudflare documents 10,000 free neurons/day](https://developers.cloudflare.com/workers-ai/platform/pricing/),
+not unlimited usage. Quota errors retain queued work; billing errors stop, and
+there is no paid/local/cross-provider fallback. Never upgrade to Workers Paid.
+Groq's saved credentials and existing sampled-frame consent remain separate;
+no images, audio or videos are sent to Cloudflare. JSON mode remains subject to
+Phoenix's existing script/editorial validation.
+
+Job cards now keep completed history compact: title, clip count, final duration
+and Completed · 100%. Active progress/ETA and errors remain visible; technical
+and posting details stay available in collapsed disclosures.
+
+The owner approved automatic cleanup of exact per-shot/speech render scratch
+files after successful and failed stock attempts. Originals, finals, editable
+masters, original assemblies, music and failure history remain saved. Links and
+unexpected paths are skipped; cleanup never recursively deletes a media folder.
+
+Storage audit: review data occupied about 9.82 GB decimal, including
+2.20 GB of stock downloads. Existing archive/Library removal is recoverable and
+retains media; there is no automatic age-based purge. Finals, editable masters
+and originals have distinct editing/retry roles. No owner media was deleted by
+this update. Historical sections below describe previous duration policies.
+
+### Earlier October 9 music, caption and posting-default activation checkpoint
+
+Installed and served release at that checkpoint: `.next-build-gh-37948493953-1`.
 The follow-up was compiled on a standard Windows GitHub runner from `fa85bd5`,
 then installed locally without compiling on the laptop. All 243 serial release
 checks, scoped lint, full TypeScript, 32 static pages and tracing passed.

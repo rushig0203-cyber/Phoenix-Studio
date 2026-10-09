@@ -186,6 +186,7 @@ export async function kidsRendererAvailable(requireModel = true) {
     if (!requireModel) return true;
     const writer = readWritingSettings();
     if (writer.provider === "groq") return !!writer.apiKey && writer.freePlanConfirmed;
+    if (writer.provider === "cloudflare") return !!writer.apiKey && !!writer.accountId && writer.freePlanConfirmed;
     const response = await fetch("http://127.0.0.1:11434/api/tags", {
       signal: AbortSignal.timeout(4000),
     });

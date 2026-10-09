@@ -1,12 +1,11 @@
 import type { NaturalStock } from "./naturalStock";
 import { footageMetadataMismatch } from "./footageSemantics";
-import { briskStockShotTarget, planStockIntervals, stockPortraitScore, type StockReelOptions } from "./stockReel";
+import { planStockIntervals, stockPortraitScore, type StockReelOptions } from "./stockReel";
 
-export const AUTOMATIC_STOCK_REEL_MIN_DURATION = 40;
-export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 45;
+export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
 export const AUTOMATIC_STOCK_REEL_OPTIONS: StockReelOptions = {
-  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", minDuration: AUTOMATIC_STOCK_REEL_MIN_DURATION, musicVersion: 2, shotCadence: "brisk-v1", reusePolicy: "four-in-18-months-v1",
+  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, shotCadence: "adaptive-v2", reusePolicy: "four-in-18-months-v1",
 };
 
 /** Lightweight topic cue, not a claim to have understood the video's emotion. */
@@ -17,7 +16,7 @@ export function automaticStockReelOptions(topic: string): StockReelOptions {
       : "reflective";
   return { ...AUTOMATIC_STOCK_REEL_OPTIONS, mood };
 }
-export const AUTOMATIC_STOCK_REEL_MIN_SOURCES = 8;
+export const AUTOMATIC_STOCK_REEL_MIN_SOURCES = 4;
 export const AUTOMATIC_STOCK_REEL_MAX_SOURCES = 10;
 const MAX_COMPANION_RESOLUTIONS = 16;
 
@@ -63,6 +62,13 @@ const contextDetails = [
 function contextMatch(anchorDescription: string, description: string) {
   const context = catalogContext(anchorDescription), candidateContext = catalogContext(description);
   if (context && (!candidateContext || candidateContext.name !== context.name)) return false;
+  // Weather alone is not a licence to insert a different main subject. When
+  // the chosen rain shot has no plant-detail evidence, skip leaves/plants and
+  // garden close-ups rather than filling a fixed duration with them.
+  const plantDetail = /\b(?:leaves|leaf|plants?|flowers?|petals?|blossoms?)\b/i;
+  if (plantDetail.test(description) && !plantDetail.test(anchorDescription) && /\b(?:rain|raindrops?|storm|snow)\b/i.test(anchorDescription)) return false;
+  const closeDetail = /\b(?:macro|close[\s_-]*up|closeup|detail)\b/i;
+  if (closeDetail.test(description) && !closeDetail.test(anchorDescription) && !subjectWords(description).some(word => subjectWords(anchorDescription).includes(word) && !["rain", "water", "forest", "tree"].includes(word))) return false;
   // A title such as "cover of the book The City of the Night" is not a city
   // scene. Likewise, do not turn a peaceful landscape into a human/sport or
   // industrial montage simply because its catalog title shares the location.
@@ -197,16 +203,22 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
       if (authoritative.provider !== candidate.provider || authoritative.id !== candidate.id) continue;
       if (!automaticStockCompanions(anchor, [authoritative], query, recentlyUsed, unavailable).length) continue;
       sources.push(authoritative);
-      // Prefer additional related cuts over lengthening a small set of shots.
-      const naturalDuration = sources.reduce((total, video, index) => total + Math.min(video.duration, briskStockShotTarget(index, sources.length)), 0);
-      if (sources.length >= AUTOMATIC_STOCK_REEL_MIN_SOURCES && naturalDuration >= AUTOMATIC_STOCK_REEL_MIN_DURATION) break;
+      // Gather enough related variety for a compact edit. This is a search
+      // stopping preference, not a render target: real motion and picture
+      // bounds determine the final duration after download.
+      if (sources.length >= 8) {
+        try {
+          const preview = planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, "adaptive-v2");
+          if (preview.at(-1)!.outputEnd >= 20) break;
+        } catch { /* Resolve more related sources when the real windows are short. */ }
+      }
     } catch { /* Skip missing, animated or changed catalog entries; never add unrelated filler. */ }
   }
-  if (sources.length < AUTOMATIC_STOCK_REEL_MIN_SOURCES) throw new Error("Not enough related footage at native 720p was found in the starting video's context for a 40-second reel. Clips at their four-use/18-month limit are excluded. Try a broader topic or choose another starting video; Phoenix will not add unrelated filler, upscale, slow or repeat footage.");
-  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", AUTOMATIC_STOCK_REEL_MIN_DURATION, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+  if (sources.length < AUTOMATIC_STOCK_REEL_MIN_SOURCES) throw new Error("Not enough related footage at native 720p was found in the starting video's context for a coherent reel. Clips at their four-use/18-month limit are excluded. Try another starting video; Phoenix will not add unrelated filler, upscale, slow or repeat footage.");
+  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
   return sources;
 }
 
 export function automaticStockReelMessage(clipCount: number, existing = false) {
-  return `${existing ? "Your existing reel uses" : "Reel queued with"} ${clipCount} related videos. The edit uses varied cuts at original playback speed and ${existing ? "its saved sound choices" : "one continuous original instrumental across all shots"}.`;
+  return `${existing ? "Your existing reel uses" : "Reel queued with"} ${clipCount} related videos. ${existing ? "Its saved timing and sound choices are retained." : "Phoenix chooses compact cuts, length and modest speed-ups from sampled movement, with one continuous original instrumental across all shots."}`;
 }

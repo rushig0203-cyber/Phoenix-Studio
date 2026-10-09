@@ -9,7 +9,7 @@ export type StockReelOptions = {
   /** New automatic recipes only. Missing on older/manual jobs: no minimum. */
   minDuration?: number;
   /** Persisted only on new automatic recipes; missing retains saved timing. */
-  shotCadence?: "brisk-v1";
+  shotCadence?: "brisk-v1" | "adaptive-v2";
   /** Automatic recipe marker; every new stock source-job obeys the same cap. */
   reusePolicy?: "four-in-18-months-v1";
   /** New automatic recipes only. Missing keeps the exact saved legacy music. */
@@ -29,8 +29,12 @@ export function briskStockShotTarget(index: number, count: number) {
   return index === 0 ? 3 : index === count - 1 ? 4.5 : [4.5, 4, 5, 4.25, 4.75][(index - 1) % 5];
 }
 
-export type StockIntervalInput = { duration: number; start?: number; end?: number; trimMode?: "manual" | "auto" };
-export type StockInterval = { start: number; end: number; outputStart: number; outputEnd: number; frames: number };
+export type StockIntervalInput = {
+  duration: number; start?: number; end?: number; trimMode?: "manual" | "auto";
+  /** Bounded low-resolution frame-delta measurements. Windows use source seconds. */
+  motionWindows?: Array<{ start: number; end: number; motion: number }>;
+};
+export type StockInterval = { start: number; end: number; outputStart: number; outputEnd: number; frames: number; speed?: number };
 
 /** A modest preview window, not a claim to have detected a source's best action. */
 export function suggestStockTrim(duration: number, singleShot = false) {
@@ -50,7 +54,7 @@ export function suggestStockTrim(duration: number, singleShot = false) {
 export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"]): StockInterval[] {
   if (!shots.length || shots.length > MAX_STOCK_SHOTS || !Number.isFinite(maximum) || maximum <= 0 || maximum > 105) throw new Error("Choose one to twelve shots and a reel length up to 105 seconds.");
   if (pacing !== undefined && pacing !== "cinematic" && pacing !== "selected") throw new Error("Choose cinematic pacing or keep the selected moments.");
-  if (shotCadence !== undefined && shotCadence !== "brisk-v1") throw new Error("Choose the supported automatic shot cadence.");
+  if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2") throw new Error("Choose the supported automatic shot cadence.");
   const selected = shots.map(shot => {
     if (!Number.isFinite(shot.duration) || shot.duration <= 0) throw new Error("A selected shot has no readable duration.");
     const start = shot.start ?? 0, end = shot.end ?? shot.duration;
@@ -58,7 +62,92 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     if (shot.trimMode !== undefined && shot.trimMode !== "manual" && shot.trimMode !== "auto") throw new Error("A shot has an invalid trim mode.");
     return { start, end: Math.min(end, shot.duration), automatic: shot.trimMode === "auto" };
   });
-  if (shotCadence && (pacing !== "cinematic" || minDuration !== 40 || maximum < 40 || maximum > 45 || shots.length < 8 || shots.length > 10 || selected.some(shot => !shot.automatic))) throw new Error("Brisk cadence requires eight to ten automatic shots and a 40-second minimum within a 40–45-second cap.");
+  if (shotCadence === "adaptive-v2") {
+    if (pacing !== "cinematic" || minDuration !== undefined || maximum < 18 || maximum > 40 || shots.length < 4 || shots.length > 10 || selected.some(shot => !shot.automatic)) {
+      throw new Error("Adaptive cadence requires four to ten automatic cinematic shots, no minimum, and an 18–40-second cap.");
+    }
+    const windows = selected.map((shot, index) => {
+      const measured = shots[index].motionWindows;
+      if (measured !== undefined && !Array.isArray(measured)) throw new Error("A shot has invalid motion windows.");
+      for (const window of measured ?? []) {
+        if (!Number.isFinite(window.start) || !Number.isFinite(window.end) || window.start < 0 || window.end <= window.start || window.end > shots[index].duration + 1e-7 || !Number.isFinite(window.motion) || window.motion < 0 || window.motion > 255) {
+          throw new Error("A motion window lies outside its source or has an invalid motion score.");
+        }
+      }
+      const candidates = (measured ?? []).map(window => ({
+        start: Math.max(shot.start, window.start), end: Math.min(shot.end, window.end), motion: window.motion,
+      })).filter(window => window.end > window.start);
+      // Frame delta is only a movement cue. A high score selects its measured
+      // window; absent measurements fall back to the centre of the trim.
+      const best = candidates.reduce<typeof candidates[number] | undefined>((winner, window) => !winner || window.motion > winner.motion ? window : winner, undefined);
+      return best ?? { start: shot.start, end: shot.end, motion: undefined };
+    });
+    let speeds = windows.map(window => window.motion !== undefined && window.motion < 4 ? 1.25 : 1);
+    const ceilings = selected.map((_shot, index) => Math.floor((index === 0 ? 2.25 : 3.5) * STOCK_REEL_FPS + 1e-7));
+    const capacitiesAtSpeed = () => windows.map((window, index) => Math.min(ceilings[index], Math.floor(((window.end - window.start) / speeds[index]) * STOCK_REEL_FPS + 1e-7)));
+    let capacities = capacitiesAtSpeed();
+    if (capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS && speeds.some(speed => speed > 1)) {
+      // Preserve the twelve-second minimum at native speed when the selected
+      // low-motion windows cannot support the modest fast-forward pass.
+      speeds = speeds.map(() => 1);
+      capacities = capacitiesAtSpeed();
+    }
+    if (capacities.some(frames => frames < 1) || capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS) {
+      throw new Error("Not enough meaningful source footage for an adaptive reel; add more related videos or use wider source windows.");
+    }
+    const cap = Math.floor(Math.min(maximum, 32) * STOCK_REEL_FPS + 1e-7);
+    const naturalSeconds = windows.map((window, index) => {
+      if (index === 0) return 2;
+      if (window.motion === undefined) return [2.6, 3.1, 2.9, 3.3, 2.7][(index - 1) % 5];
+      if (window.motion < 4) return 2.7 + window.motion / 4 * .7;
+      if (window.motion < 20) return 2.7 - (window.motion - 4) / 16 * .3;
+      return 2.7 - Math.min(1, (window.motion - 20) / 235) * .7;
+    });
+    let budgets = capacities.map((capacity, index) => Math.min(capacity, Math.floor(naturalSeconds[index] * STOCK_REEL_FPS + 1e-7)));
+    const addFrames = (target: number) => {
+      let remaining = target - budgets.reduce((sum, frames) => sum + frames, 0);
+      while (remaining > 0) {
+        const room = capacities.map((capacity, index) => capacity - budgets[index]);
+        const totalRoom = room.reduce((sum, frames) => sum + frames, 0);
+        if (!totalRoom) break;
+        const allocations = room.map(frames => remaining * frames / totalRoom);
+        const additions = allocations.map((amount, index) => Math.min(room[index], Math.floor(amount)));
+        budgets = budgets.map((frames, index) => frames + additions[index]);
+        remaining -= additions.reduce((sum, frames) => sum + frames, 0);
+        if (remaining > 0) {
+          const order = allocations.map((amount, index) => ({ index, fraction: amount - Math.floor(amount) }))
+            .filter(item => budgets[item.index] < capacities[item.index])
+            .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+          if (!order.length) break;
+          for (const { index } of order) if (remaining > 0 && budgets[index] < capacities[index]) { budgets[index]++; remaining--; }
+        }
+      }
+    };
+    // The minimum is a meaningful-footage floor, not a target to fill every reel.
+    if (budgets.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS) addFrames(12 * STOCK_REEL_FPS);
+    if (budgets.reduce((sum, frames) => sum + frames, 0) > cap) {
+      const excessBefore = budgets.reduce((sum, frames) => sum + frames, 0) - cap;
+      let excess = excessBefore;
+      const reducible = budgets.map(frames => Math.max(0, frames - 1));
+      const totalReducible = reducible.reduce((sum, frames) => sum + frames, 0);
+      const allocations = reducible.map(frames => excessBefore * frames / totalReducible);
+      const reductions = allocations.map(Math.floor);
+      budgets = budgets.map((frames, index) => frames - reductions[index]);
+      excess -= reductions.reduce((sum, frames) => sum + frames, 0);
+      const order = allocations.map((amount, index) => ({ index, fraction: amount - Math.floor(amount) }))
+        .filter(item => budgets[item.index] > 1).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+      for (const { index } of order) if (excess > 0 && budgets[index] > 1) { budgets[index]--; excess--; }
+    }
+    let cursor = 0;
+    return windows.map((window, index) => {
+      const frames = budgets[index], speed = speeds[index], length = frames / STOCK_REEL_FPS * speed;
+      const start = window.start + (window.end - window.start - length) / 2;
+      const outputStart = cursor / STOCK_REEL_FPS;
+      cursor += frames;
+      return { start, end: start + length, outputStart, outputEnd: cursor / STOCK_REEL_FPS, frames, speed };
+    });
+  }
+  if (shotCadence === "brisk-v1" && (pacing !== "cinematic" || minDuration !== 40 || maximum < 40 || maximum > 45 || shots.length < 8 || shots.length > 10 || selected.some(shot => !shot.automatic))) throw new Error("Brisk cadence requires eight to ten automatic shots and a 40-second minimum within a 40–45-second cap.");
   if (minDuration !== undefined) {
     if (!Number.isFinite(minDuration) || minDuration <= 0 || minDuration > maximum || pacing !== "cinematic" || selected.some(shot => !shot.automatic)) throw new Error("A minimum reel length requires automatic cinematic intervals within the length cap.");
     // Whole source frames only: audio packet padding and fractional catalog

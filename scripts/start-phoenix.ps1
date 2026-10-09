@@ -217,7 +217,7 @@ try {
         $phoenixWarnings | Write-Warning
         if ($phoenixWarnings.Count) { exit 1 }
         if ($phoenixNeedsOllama) { Write-Output 'Ollama and MoneyPrinterTurbo are ready.' }
-        else { Write-Output 'MoneyPrinterTurbo is ready. Groq writing is selected; verify its setup in Studio health. Ollama is not required.' }
+        else { Write-Output "MoneyPrinterTurbo is ready. $($phoenixConfig.writerProvider) writing is selected; verify its setup in Studio health. Ollama is not required." }
         exit 0
     }
 
@@ -283,7 +283,7 @@ try {
     Write-PhoenixOwnedServices $phoenixOwnershipFile $script:phoenixOwnedServices
     if ($phoenixWarnings.Count) { Write-Output 'Phoenix website is open, but one or more production services need attention.' }
     elseif ($phoenixNeedsOllama) { Write-Output 'Phoenix Studio, Lumina manager, Ollama and MoneyPrinterTurbo are ready. Existing services were reused.' }
-    else { Write-Output 'Phoenix Studio, Lumina manager and MoneyPrinterTurbo are ready. Groq writing is selected; verify its setup in Studio health. Existing services were reused.' }
+    else { Write-Output "Phoenix Studio, Lumina manager and MoneyPrinterTurbo are ready. $($phoenixConfig.writerProvider) writing is selected; verify its setup in Studio health. Existing services were reused." }
 
     if (-not $NoBrowser -and $phoenixReuseBrowser) {
         Start-PhoenixDesktopGuardian $phoenixRoot $phoenixReuseBrowser | Out-Null

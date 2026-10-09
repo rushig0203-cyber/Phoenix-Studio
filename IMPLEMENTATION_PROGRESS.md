@@ -1,5 +1,42 @@
 # Quality-first implementation — September 16, 2026
 
+## October 9: adaptive reel cuts and alternative free writing — source tested, activation pending
+
+- Reviewed the owner's latest 43.5-second rain output and its real saved source
+  recipe. The fixed 40-second floor / 8–10-shot cadence and broad rain title
+  matching explained long holds and vegetation-detail changes. New recipes use
+  adaptive-v2; old/manual/brisk recipes are unchanged.
+- Added bounded, sequential FFmpeg movement samples: at most three 4.5-second
+  windows/source, 96×54 / 2 fps. Strongest sampled movement window supplies each
+  compact cut; low motion may use 1.25× playback with corresponding audio tempo.
+  Unknown movement stays native. Final duration follows actual usable picture;
+  no duration padding, slowdown or visual-model load. Successful measurements are
+  cached by source/bounds identity for idempotent interrupted renders.
+- New context filters prevent weather-only titles from admitting leaf/plant
+  detail absent from the chosen anchor. This remains catalogue evidence, not a
+  frame-level semantic continuity guarantee. Four-use/18-month ledger unchanged.
+- Added optional Cloudflare Workers AI Free text writing (fixed documented JSON
+  mode Llama 3.3 70B): explicit owner token/Account ID/Free confirmation and exact
+  read-only model probe. Keys are provider-scoped; billing/quotas fail closed,
+  no fallback or local-model load. Groq-only video consent/credentials retained
+  independently. No real Cloudflare call, account creation or provider switch.
+- Local serial suites passed 136 writer/provider/startup/stock/API/UI/vision tests
+  and the adaptive/legacy rendering helpers. Release CI also covers real FFmpeg
+  frame/tempo/idempotency mechanics in an isolated synthetic fixture, not owner
+  jobs. Production compile and live activation remain pending at this entry.
+- Owner approved temporary-only cleanup after successful and failed stock attempts.
+  Terminal state is persisted before deleting exact allowlisted shot/speech scratch
+  files under the worker/heavy-work lease. Originals, both finals, editable masters,
+  original assemblies, music, motion caches and history are retained. Linked files,
+  junctions and non-allowlisted paths are skipped. No blanket age/source purge.
+- Job history now summarizes name, clip count, final duration and Completed · 100%;
+  active progress/ETA and errors remain visible. Technical/posting details collapse.
+- Read-only disk audit: review tree 9.818 GB decimal; sources 5.465 GB, outputs
+  1.241 GB, work 2.654 GB. Stock originals 2.204 GB plus work 1.293 GB and final
+  target copies 0.855 GB. No automatic age purge exists; trash/archive retains
+  media. No owner files were deleted at this source-checkpoint; final/editor/original
+  retention must not be silently removed.
+
 ## October 9: off-laptop build installed and verified live
 
 - Owner requested immediate activation, sequential work and no further RAM-closing

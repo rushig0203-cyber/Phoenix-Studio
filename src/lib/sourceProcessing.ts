@@ -12,6 +12,8 @@ import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
 import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
+import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockPlaybackFilters, type StockMotionWindow } from "./stockMotion";
+import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
   FFMPEG_FILTER_RESOURCE_ARGS,
@@ -1488,26 +1490,55 @@ async function processStockReel(
     if (!info.duration || !info.width || !info.height) throw new Error(`Source shot ${index + 1} has no readable picture.`);
     infos.push(info);
   }
-  const intervals = planStockIntervals(shots.map((shot, index) => {
+  const pictureBounds = shots.map((shot, index) => {
     // Every explicitly automatic recipe uses the downloaded picture bounds,
     // including older jobs without the newer minimum-length policy. Catalog
     // durations are often rounded up; those are not user-selected trims.
-    return stockSourcePictureInterval(shot, infos[index], options.minDuration, index + 1);
-  }), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence);
+    return stockSourcePictureInterval(shot, infos[index], options.shotCadence === "adaptive-v2" ? 12 : options.minDuration, index + 1);
+  });
+  const motionWindows: StockMotionWindow[][] = shots.map(() => []);
+  if (options.shotCadence === "adaptive-v2") {
+    for (let index = 0; index < shots.length; index++) {
+      await report(7 + index / shots.length * 5, `Sampling movement · shot ${index + 1} of ${shots.length} · no AI model loaded`);
+      const filename = sourcePath(job.id, shots[index].sourceFile), stat = await fs.stat(filename);
+      const cacheFile = path.join(directory, `motion-${index + 1}.json`);
+      const identity = crypto.createHash("sha256").update(JSON.stringify({ version: 2, filename: shots[index].sourceFile, bytes: stat.size, modified: stat.mtimeMs, bounds: pictureBounds[index] })).digest("hex");
+      try {
+        const cached = JSON.parse(await fs.readFile(cacheFile, "utf8"));
+        if (cached.identity === identity && Array.isArray(cached.windows) && cached.windows.length <= 3 && cached.windows.every((window: StockMotionWindow) => Number.isFinite(window.start) && Number.isFinite(window.end) && window.start >= pictureBounds[index].start && window.end <= pictureBounds[index].end && window.end > window.start && Number.isFinite(window.motion) && window.motion >= 0 && window.motion <= 255)) {
+          motionWindows[index] = cached.windows;
+          continue;
+        }
+      } catch { /* An incomplete cache never blocks a fresh bounded sample. */ }
+      for (const window of stockMotionSamples(pictureBounds[index].start, pictureBounds[index].end)) {
+        try {
+          const score = stockMotionScore(await run(ffmpegPath, stockMotionArgs(filename, window)));
+          if (score !== undefined) motionWindows[index].push({ ...window, motion: score });
+        } catch { /* Keep unknown movement at native speed; never invent analysis. */ }
+      }
+      // Empty sampling is deliberately not cached: a retry may repair a tool
+      // failure. Successful measurements are stable across interrupted renders.
+      if (motionWindows[index].length) await fs.writeFile(cacheFile, JSON.stringify({ identity, windows: motionWindows[index] }));
+    }
+  }
+  const intervals = planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(options.shotCadence === "adaptive-v2" ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence);
   const duration = intervals[intervals.length - 1].outputEnd;
+  const minimumPictureDuration = options.shotCadence === "adaptive-v2" ? duration : options.minDuration;
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
   const completed = (await readReviewFiles()).find(file => file.processing?.jobId === job.id && file.status === "READY" && file.processing.status === "COMPLETED" && file.quality.checks.includes(`Stock plan identity ${planIdentity}`));
   if (completed) {
     const instagram = outputPath(completed.id, "instagram"), youtube = outputPath(completed.id, "youtube");
-    let first = await validOutput(instagram, duration, options.minDuration), second = await validOutput(youtube, duration, options.minDuration);
-    if (first && !second) { await copyFileAtomically(instagram, youtube); second = await validOutput(youtube, duration, options.minDuration); }
-    if (second && !first) { await copyFileAtomically(youtube, instagram); first = await validOutput(instagram, duration, options.minDuration); }
+    let first = await validOutput(instagram, duration, minimumPictureDuration), second = await validOutput(youtube, duration, minimumPictureDuration);
+    if (first && !second) { await copyFileAtomically(instagram, youtube); second = await validOutput(youtube, duration, minimumPictureDuration); }
+    if (second && !first) { await copyFileAtomically(youtube, instagram); first = await validOutput(instagram, duration, minimumPictureDuration); }
     if (first && second) {
       if (!completed.quality.postingTextOrigin && !completed.quality.postingAnalysis && stock.caption.trim()) {
         completed.quality.postingTextOrigin = "owner";
         await saveReviewFile(completed);
       }
-      return updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
+      const finished = await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
+      await cleanupStockTemporaries(job.id);
+      return finished;
     }
   }
   await report(12, `${shots.length} related shots in the chosen order · ${duration.toFixed(1)} seconds · no repeated filler`, { duration, width: 720, height: 1280, totalClips: 1 });
@@ -1515,26 +1546,28 @@ async function processStockReel(
   const preserveOriginal = options.audio !== "music";
   for (let index = 0; index < shots.length; index += 1) {
     const interval = intervals[index], source = sourcePath(job.id, shots[index].sourceFile), info = infos[index], length = interval.outputEnd - interval.outputStart;
-    await report(14 + index / shots.length * 30, `Preparing shot ${index + 1} of ${shots.length} · selected ${interval.start.toFixed(1)}s–${interval.end.toFixed(1)}s`);
+    const speed = interval.speed ?? 1, playback = stockPlaybackFilters(speed);
+    await report(14 + index / shots.length * 30, `Preparing shot ${index + 1} of ${shots.length} · ${length.toFixed(1)}s cut${speed > 1 ? ` · ${speed}× speed` : ""}`);
     const measured = await audioState(source, info.hasAudio, interval.start, interval.end);
     measured.usable = stockAudioUsable(info.hasAudio, measured.mean, measured.max);
     states.push(measured);
     const frame = stockFraming(info, options.framing), fades = stockShotFades(length, index, shots.length, options.transition);
-    framingChecks.push(`Shot ${index + 1}: ${frame.description}; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s from ${shots[index].sourcePage}`);
+    framingChecks.push(`Shot ${index + 1}: ${frame.description}; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s${interval.speed !== undefined ? `; ${speed}× playback; ${motionWindows[index].length ? "sampled frame-delta movement" : "movement unknown, native speed retained"}` : ""} from ${shots[index].sourcePage}`);
     const shotFile = path.join(directory, `shot-${index + 1}.mp4`);
     const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(6)];
     // fps needs the next genuine source frame to decide the final 24 fps frame.
     // An input -t cuts that lookahead off at fractional EOF (29.97 fps sources
     // lost one frame). New minimum-length windows reserve real source context;
     // output -t below still bounds the selected native-speed picture and sound.
-    if (options.minDuration === undefined) args.push("-t", length.toFixed(6));
+    if (options.minDuration === undefined && options.shotCadence !== "adaptive-v2") args.push("-t", length.toFixed(6));
     args.push("-threads", "1", "-i", source);
     if (!measured.usable) args.push("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo");
     // The frame-quantized -t plus fps filter bounds the picture. A second
     // -frames:v ceiling can terminate FFmpeg before it finishes the sound.
-    args.push("-vf", `${frame.filter},fps=${STOCK_REEL_FPS},setpts=PTS-STARTPTS${fades.video}`, "-map", "0:v:0", "-map", measured.usable ? "0:a:0" : "1:a:0", "-af", `aresample=48000,apad,atrim=duration=${length.toFixed(6)},asetpts=PTS-STARTPTS${fades.audio}`, "-t", length.toFixed(6), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", ...FFMPEG_ENCODER_RESOURCE_ARGS, "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-video_track_timescale", "24000", shotFile);
+    const pictureFilter = options.shotCadence === "adaptive-v2" ? `${playback.video},fps=${STOCK_REEL_FPS}` : `fps=${STOCK_REEL_FPS},setpts=PTS-STARTPTS`;
+    args.push("-vf", `${frame.filter},${pictureFilter}${fades.video}`, "-map", "0:v:0", "-map", measured.usable ? "0:a:0" : "1:a:0", "-af", `${playback.audio}aresample=48000,apad,atrim=duration=${length.toFixed(6)},asetpts=PTS-STARTPTS${fades.audio}`, "-t", length.toFixed(6), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", ...FFMPEG_ENCODER_RESOURCE_ARGS, "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-video_track_timescale", "24000", shotFile);
     await run(ffmpegPath, args);
-    if (options.minDuration !== undefined) {
+    if (options.minDuration !== undefined || options.shotCadence === "adaptive-v2") {
       const picture = (await probe(shotFile)).videoDuration;
       if (!picture || picture + 1e-6 < length) throw new Error(`Source shot ${index + 1} did not provide all ${interval.frames} planned picture frames. The reel was stopped without padding or slowing footage; choose a different starting video or a broader topic.`);
     }
@@ -1586,11 +1619,11 @@ async function processStockReel(
   item.title = job.title;
   item.quality.audio = anyOriginal ? "natural-audio-preserved" : useMusic ? "local-music-replaced" : "no-audio";
   item.quality.checks = [
-    `Real footage reel: ${shots.length} shots in the owner-selected order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; original playback speed, no slowdown, frozen endings or duration looping`,
-    "Coherence is based on the selected theme and owner-chosen shots; semantic continuity has not been automatically verified",
+    `Real footage reel: ${shots.length} shots in the ${options.shotCadence === "adaptive-v2" ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v2" ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
+    "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
     ...framingChecks, ...credits,
     ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
-    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts preserve native-speed movement"}; ${options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
+    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${options.shotCadence === "adaptive-v2" ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
     useMusic ? `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
     ...(useMusic && options.musicVersion === 2 ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
     subtitleDecision.reason,
@@ -1602,27 +1635,27 @@ async function processStockReel(
   if (retainedPosting?.hashtags) item.quality.hashtags = retainedPosting.hashtags;
   else item.quality.hashtags = [...new Set(words(shots.map(shot => shot.title).join(" ")).slice(0, 6).map(word => `#${word[0].toUpperCase()}${word.slice(1)}`))];
   item.quality.warning = options.audio === "music" && states.some(state => state.usable) ? "This export uses a continuous instrumental soundtrack. Original audio is retained with each downloaded source." : subtitleDecisions.some(item => item.decision === "uncertain") ? "Some source sound could not be checked for speech. Review it before posting." : undefined;
-  item.processing!.reason = "Real footage, owner-selected intervals and order. Composition, continuity, sound and posting relevance require final viewing.";
+  item.processing!.reason = options.shotCadence === "adaptive-v2" ? "Real footage with compact movement-informed cuts, bounded acceleration and automatic duration. Composition, continuity, sound and posting relevance still require final viewing." : "Real footage, owner-selected intervals and order. Composition, continuity, sound and posting relevance require final viewing.";
   item.monetizationReview!.rightsBasis = `All source pages retained: ${shots.map(shot => shot.sourcePage).join(" · ")}. A provider licence does not establish originality or monetization eligibility.`;
   const instagram = outputPath(item.id, "instagram"), youtube = outputPath(item.id, "youtube");
-  let instagramInfo = reuse ? await validOutput(instagram, duration, options.minDuration) : null, youtubeInfo = reuse ? await validOutput(youtube, duration, options.minDuration) : null;
-  if (instagramInfo && !youtubeInfo) { await copyFileAtomically(instagram, youtube); youtubeInfo = await validOutput(youtube, duration, options.minDuration); }
-  if (youtubeInfo && !instagramInfo) { await copyFileAtomically(youtube, instagram); instagramInfo = await validOutput(instagram, duration, options.minDuration); }
+  let instagramInfo = reuse ? await validOutput(instagram, duration, minimumPictureDuration) : null, youtubeInfo = reuse ? await validOutput(youtube, duration, minimumPictureDuration) : null;
+  if (instagramInfo && !youtubeInfo) { await copyFileAtomically(instagram, youtube); youtubeInfo = await validOutput(youtube, duration, minimumPictureDuration); }
+  if (youtubeInfo && !instagramInfo) { await copyFileAtomically(youtube, instagram); instagramInfo = await validOutput(instagram, duration, minimumPictureDuration); }
   if (!instagramInfo || !youtubeInfo) {
     await saveReviewFile(item);
-    const masterInfo = cues.length ? null : await validOutput(master, duration, options.minDuration);
+    const masterInfo = cues.length ? null : await validOutput(master, duration, minimumPictureDuration);
     if (masterInfo && canRemuxStockAssembly(job, cues, masterInfo, duration)) {
       await report(55, "Saving the verified real footage assembly without re-encoding its picture");
       const temporary = `${instagram}.partial-${crypto.randomUUID()}.mp4`;
       try {
         await run(ffmpegPath, stockAssemblyRemuxArgs(master, temporary));
-        const remuxed = await validOutput(temporary, duration, options.minDuration);
+        const remuxed = await validOutput(temporary, duration, minimumPictureDuration);
         if (!remuxed || !canRemuxStockAssembly(job, cues, remuxed, duration)) throw new Error("The stock assembly copy failed duration, picture or audio verification.");
         await replaceFile(temporary, instagram);
       } finally { await fs.rm(temporary, { force: true }).catch(() => undefined); }
       await copyFileAtomically(instagram, youtube);
-      instagramInfo = await validOutput(instagram, duration, options.minDuration);
-      youtubeInfo = await validOutput(youtube, duration, options.minDuration);
+      instagramInfo = await validOutput(instagram, duration, minimumPictureDuration);
+      youtubeInfo = await validOutput(youtube, duration, minimumPictureDuration);
       if (!instagramInfo || !youtubeInfo) throw new Error("The saved stock assembly failed final output verification.");
       item.quality.checks.push("Caption-free verified H.264/AAC stock master saved without a second picture encode");
     } else {
@@ -1630,13 +1663,15 @@ async function processStockReel(
       instagramInfo = rendered.instagramInfo; youtubeInfo = rendered.youtubeInfo;
     }
   }
-  assertStockReelMinimum(instagramInfo.videoDuration, options.minDuration);
-  assertStockReelMinimum(youtubeInfo.videoDuration, options.minDuration);
+  assertStockReelMinimum(instagramInfo.videoDuration, minimumPictureDuration);
+  assertStockReelMinimum(youtubeInfo.videoDuration, minimumPictureDuration);
   item.artifacts = { version: 1, renderRevision: `stock-assembly-v${editVersion}`, finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();
   await saveReviewFile(item);
-  return updateJob(job.id, { status: "COMPLETED", progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
+  const finished = await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
+  await cleanupStockTemporaries(job.id);
+  return finished;
 }
 
 async function processClaimedSourceJob(job: SourceJob) {
@@ -1784,12 +1819,14 @@ async function processClaimedSourceJob(job: SourceJob) {
       reviewIds: job.mode === "highlights" ? [...reviewIds].reverse() : reviewIds,
     });
   } catch (error) {
-    return updateJob(job.id, {
+    const failed = await updateJob(job.id, {
       status: "FAILED",
       stage: "Processing stopped safely · retry will reuse every validated clip",
       error: error instanceof Error ? error.message : "Unknown processing error",
       finishedAt: new Date().toISOString(),
     });
+    if (job.stockSource?.shots?.length) await cleanupStockTemporaries(job.id);
+    return failed;
   }
 }
 

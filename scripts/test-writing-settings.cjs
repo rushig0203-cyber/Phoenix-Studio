@@ -23,6 +23,23 @@ test('saved key is never returned; blank retains it and local switch is explicit
   await settings.saveWritingSettings({provider:'ollama'});assert.equal(settings.readWritingSettings().provider,'ollama');
   assert.equal(settings.publicWritingSettings().apiKey,undefined);
 });
+test('Cloudflare credentials are provider-scoped and never replace Groq vision credentials or frame consent',async()=>{
+  const groq='gsk_preserved_groq_key_for_test_123456789',cloudflare='cf_token_for_isolated_mock_test_123456789';
+  await settings.saveWritingSettings({provider:'groq',apiKey:groq,freePlanConfirmed:true,allowVideoFrames:true});
+  const accountId='0123456789abcdef0123456789abcdef';
+  const saved=await settings.saveWritingSettings({provider:'cloudflare',apiKey:cloudflare,accountId,freePlanConfirmed:true});
+  assert.equal(saved.provider,'cloudflare');assert.equal(saved.hasKey,true);assert.equal(saved.hasGroqVisionKey,true);
+  assert.equal(JSON.stringify(saved).includes(groq),false);assert.equal(JSON.stringify(saved).includes(cloudflare),false);
+  const writing=settings.readWritingSettings();assert.equal(writing.apiKey,cloudflare);assert.equal(writing.accountId,accountId);
+  const vision=settings.readVideoAnalysisSettings();assert.equal(vision.provider,'groq');assert.equal(vision.apiKey,groq);assert.equal(vision.freePlanConfirmed,true);assert.equal(vision.allowVideoFrames,true);
+  await settings.saveWritingSettings({provider:'cloudflare',freePlanConfirmed:true,allowVideoFrames:false});
+  assert.equal(settings.readWritingSettings().apiKey,cloudflare);assert.equal(settings.readVideoAnalysisSettings().apiKey,groq);assert.equal(settings.readVideoAnalysisSettings().allowVideoFrames,false);
+});
+test('Cloudflare is not selected without separate credentials and free confirmation',async()=>{
+  await assert.rejects(settings.saveWritingSettings({provider:'cloudflare',apiKey:'cf_token_for_isolated_mock_test_123456789',accountId:'0123456789abcdef0123456789abcdef'}),/Confirm/);
+  await assert.rejects(settings.saveWritingSettings({provider:'cloudflare',freePlanConfirmed:true}),/token and Account ID/);
+  assert.equal(settings.readWritingSettings().provider,'ollama');
+});
 test('corrupt settings fail closed without exposing file content or switching local',()=>{
   fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,`{"apiKey":"${key}`);
   assert.throws(settings.readWritingSettings,error=>error.code==='PHOENIX_WRITING_SETTINGS'&&!error.message.includes(key));
@@ -40,6 +57,13 @@ test('saving tests key and model first, rejection leaves provider unchanged',asy
   let calls=0;global.fetch=async url=>{calls++;assert.equal(String(url),'https://api.groq.com/openai/v1/models');return Response.json({data:[{id:settings.WRITING_GROQ_MODEL}]});};
   assert.equal((await route.POST(request({action:'save',provider:'groq',apiKey:key,freePlanConfirmed:true}))).status,200);assert.equal(calls,1);
   const get=await route.GET(new Request('http://localhost:3000/api/writing-provider'));assert.equal((await get.text()).includes(key),false);
+});
+test('Cloudflare selection runs only an exact-model read-only probe before saving scoped credentials',async()=>{
+  const token='cf_token_for_isolated_mock_test_123456789',accountId='0123456789abcdef0123456789abcdef';let calls=0;
+  global.fetch=async(url,init)=>{calls++;assert.equal(String(url),`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?search=${encodeURIComponent(settings.WRITING_CLOUDFLARE_MODEL)}`);assert.equal(init.method,undefined);return Response.json({success:true,result:[{name:settings.WRITING_CLOUDFLARE_MODEL}]});};
+  const response=await route.POST(request({action:'save',provider:'cloudflare',apiKey:token,accountId,freePlanConfirmed:true}));
+  assert.equal(response.status,200);assert.equal(calls,1);const publicValue=await response.json();assert.equal(publicValue.provider,'cloudflare');assert.equal(publicValue.configured,true);assert.equal(JSON.stringify(publicValue).includes(token),false);
+  assert.equal(settings.readWritingSettings().apiKey,token);assert.equal(settings.readWritingSettings().model,settings.WRITING_CLOUDFLARE_MODEL);
 });
 test('Groq dashboard health does not call Ollama or external providers',async()=>{
   await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true});

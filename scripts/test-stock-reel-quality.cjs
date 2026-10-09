@@ -246,7 +246,7 @@ test('new automatic reel replaces mixed source sound with one full-length instru
   const priority = mock.method(resources, 'lowerChildProcessPriority', () => undefined);
   t.after(() => { spawn.mock.restore(); slot.mock.restore(); priority.mock.restore(); });
   const open = async () => ({ stream: Readable.toWeb(Readable.from(Buffer.alloc(2048))), expectedBytes: 2048 });
-  const input = { ...reelInput(), maxDuration: 45, options: automatic.automaticStockReelOptions('forest') };
+  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), minDuration: 40, shotCadence: 'brisk-v1' } };
   const makeDownloads = () => Array.from({ length: 8 }, (_, index) => ({ ...download(index + 1, open), end: 8, trimMode: 'auto' }));
   const job = await source.createStockReelJob(makeDownloads(), input);
   assert.equal(job.stockSource.options.shotCadence, 'brisk-v1', 'The new cadence is saved before rendering');
@@ -287,7 +287,7 @@ test('new cadence validation runs before opening streams for incomplete or manua
   let opened = 0;
   const open = async () => { opened++; return { stream: Readable.toWeb(Readable.from(Buffer.alloc(2048))), expectedBytes: 2048 }; };
   const downloads = Array.from({ length: 8 }, (_, index) => ({ ...download(index + 1, open), end: 8, trimMode: 'auto' }));
-  const input = { ...reelInput(), maxDuration: 45, options: automatic.automaticStockReelOptions('forest') };
+  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), minDuration: 40, shotCadence: 'brisk-v1' } };
   await assert.rejects(source.createStockReelJob(downloads.slice(1), input), /Brisk cadence/);
   await assert.rejects(source.createStockReelJob(downloads, { ...input, options: { ...input.options, minDuration: undefined } }), /Brisk cadence/);
   await assert.rejects(source.createStockReelJob(downloads.map((shot, index) => index ? shot : { ...shot, trimMode: 'manual' }), input), /Brisk cadence/);

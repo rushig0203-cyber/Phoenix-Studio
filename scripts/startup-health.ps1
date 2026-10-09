@@ -1,4 +1,4 @@
-function Test-PhoenixNeedsOllama([ValidateSet('ollama', 'groq')][string]$WriterProvider = 'ollama') {
+function Test-PhoenixNeedsOllama([ValidateSet('ollama', 'groq', 'cloudflare')][string]$WriterProvider = 'ollama') {
     return $WriterProvider -eq 'ollama'
 }
 

@@ -108,7 +108,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
     if (!mounted.current || creationBusy.current || submitted.current || searchRequest.current || currentResults.current !== listed || latestQuery.current !== listed.query
       || !listed.videos.some(candidate => identity(candidate) === identity(video))) return;
     creationBusy.current = true; setCreating(identity(video)); setError(""); setFailedSelection(null);
-    setNotice("Finding enough related shots for a 40–45 second reel, downloading them one at a time, then queuing your reel…");
+    setNotice("Finding related shots, downloading them one at a time, then choosing the reel’s length and pacing…");
     const key = `${listed.query}:${identity(video)}`;
     let requestId = requestIds.current.get(key);
     if (!requestId) { requestId = crypto.randomUUID(); requestIds.current.set(key, requestId); }
@@ -134,7 +134,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
 
   return <section id="stock-reels" className="mt-5 rounded-2xl border border-[#bfcaa6] bg-white p-5">
     <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Make a reel from real footage</h2><Button type="button" variant="outline" disabled={!!creating} onClick={close}>Close footage</Button></div>
-    <p className="mt-2 text-sm text-[#657153]">Tell Phoenix the topic, then choose a starting video. It builds a 40–45 second reel from related clips and handles the edit, sound, framing and video-specific posting copy. Final review stays yours.</p>
+    <p className="mt-2 text-sm text-[#657153]">Choose a topic and a starting video. Phoenix chooses related clips, tighter cuts and a natural length—without stretching footage to fill time. It handles sound, framing and video-specific posting copy. Final review stays yours.</p>
     <form className="mt-4" onSubmit={event => { event.preventDefault(); void findVideos(); }}>
       <label className="block text-sm font-medium">Your reel topic<input value={query} disabled={!!creating} onChange={event => changeTopic(event.target.value)} minLength={2} maxLength={100} className="mt-2 block w-full rounded-xl border p-3" placeholder="Sun City videos, misty mountains, coastal roads…" aria-describedby="footage-topic-help" /></label>
       <p id="footage-topic-help" className="mt-2 text-xs text-[#657153]">Video suggestions appear automatically after you stop typing. No trimming, library selection or extra Create button.</p>
@@ -160,7 +160,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       {visibleOffset > 0 ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={() => setVisibleOffset(previousOffsets.current.pop() ?? 0)}>Previous videos</Button> : null}
       {moreAvailable ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={moreVideos}>{searching ? "Finding more videos…" : "More videos"}</Button> : !searching ? <p className="text-xs text-[#657153]">{results.limited ? "This topic reached the laptop-safe browsing limit. Refine your topic for different shots." : "All matching pages are checked. Try a different place, subject or action for more choices."}</p> : null}
     </div> : null}
-    <p className="mt-4 text-xs text-[#657153]">Phoenix adds related licensed footage at its original speed, not slow motion or repeated filler. If there isn&apos;t enough matching footage for 40 seconds it asks for a broader topic instead of exporting a short reel. Only speech needs subtitles; posting captions and hashtags remain separate. Thumbnails only—no preview videos load here.</p>
+    <p className="mt-4 text-xs text-[#657153]">Length follows the usable footage, not a fixed timer. Movement is sampled locally; unknown movement stays at native speed. No slow motion, repeated filler or guessed subtitles. Posting captions and hashtags remain separate. Thumbnails only—no preview videos load here.</p>
     <p className="mt-2 text-xs text-[#657153]">Footage libraries: <a className="underline" href="https://www.pexels.com/" target="_blank" rel="noreferrer">Pexels</a> and <a className="underline" href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a>.</p>
   </section>;
 }

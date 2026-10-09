@@ -8,7 +8,7 @@ function readWriterProvider(file = path.join(project, 'storage', 'private', 'wri
     // Return only the selected provider, never the private key or full settings.
     if (fs.statSync(file).size > 32768) throw new Error('invalid writer settings');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!saved || typeof saved !== 'object' || Array.isArray(saved) || !['ollama', 'groq'].includes(saved.provider)) throw new Error('invalid writer settings');
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved) || !['ollama', 'groq', 'cloudflare'].includes(saved.provider)) throw new Error('invalid writer settings');
     return saved.provider;
   } catch (error) {
     if (error.code === 'ENOENT') return 'ollama';
@@ -16,7 +16,7 @@ function readWriterProvider(file = path.join(project, 'storage', 'private', 'wri
   }
 }
 function settings(env, writerProvider = 'ollama') {
-  if (!['ollama', 'groq'].includes(writerProvider)) throw new Error('Phoenix writer provider is invalid.');
+  if (!['ollama', 'groq', 'cloudflare'].includes(writerProvider)) throw new Error('Phoenix writer provider is invalid.');
   const url = new URL(env.MPT_BASE_URL || 'http://127.0.0.1:8080');
   if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
     throw new Error('MoneyPrinterTurbo must use a plain loopback HTTP base URL. No remote or paid service was started.');

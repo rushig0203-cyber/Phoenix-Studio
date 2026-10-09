@@ -9,7 +9,7 @@ require('tsconfig-paths').register({baseUrl:project,paths:{'@/*':['src/*']}});
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-video-copy-'));
 process.chdir(temp);
 const settings=require('../src/lib/writingSettings');
-const originalRead=settings.readWritingSettings, originalFetch=global.fetch;
+const originalRead=settings.readVideoAnalysisSettings, originalFetch=global.fetch;
 const selected={provider:'groq',model:settings.WRITING_GROQ_MODEL,apiKey:'gsk_test_not_real_12345678901234',freePlanConfirmed:true,allowVideoFrames:true};
 const analysis=require('../src/lib/videoPostingAnalysis');
 const source=require('../src/lib/sourceProcessing');
@@ -17,8 +17,8 @@ const {WritingWaitError}=require('../src/lib/groqWriter');
 const jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
 const result={observations:[{frame:1,visible:'Water falling over rocks.'}],caption:'Water cascades over a rocky ledge.',hashtags:['#Waterfall','#Nature'],confidence:'clear'};
 let calls=[];
-beforeEach(()=>{fs.rmSync(path.join(temp,'storage'),{recursive:true,force:true});calls=[];settings.readWritingSettings=()=>({...selected});global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});};});
-after(()=>{settings.readWritingSettings=originalRead;global.fetch=originalFetch;process.chdir(project);fs.rmSync(temp,{recursive:true,force:true});});
+beforeEach(()=>{fs.rmSync(path.join(temp,'storage'),{recursive:true,force:true});calls=[];settings.readVideoAnalysisSettings=()=>({...selected});global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});};});
+after(()=>{settings.readVideoAnalysisSettings=originalRead;global.fetch=originalFetch;process.chdir(project);fs.rmSync(temp,{recursive:true,force:true});});
 test('vision sends only three bounded JPEGs to the explicitly allowed provider',async()=>{
   const value=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'Actual transcript',{sourceCount:4});assert.equal(value.caption,result.caption);
   const request=JSON.parse(calls[0].init.body);assert.equal(request.model,analysis.VISION_MODEL);assert.equal(request.reasoning_effort,'none');
@@ -104,8 +104,8 @@ test('visual response accepts a twenty-tag bank and legacy short lists, rejectin
   assert.throws(()=>analysis.parseVisualPosting({...result,hashtags:[...tags,'#TwentyOne']}));
 });
 test('absent consent/free confirmation and oversized inputs never transmit',async()=>{
-  for(const override of [{allowVideoFrames:false},{freePlanConfirmed:false},{provider:'ollama'}]){settings.readWritingSettings=()=>({...selected,...override});await assert.rejects(analysis.requestVisualPosting([jpeg,jpeg,jpeg],''));}
-  settings.readWritingSettings=()=>selected;await assert.rejects(analysis.requestVisualPosting([Buffer.alloc(250001),jpeg,jpeg],''));assert.equal(calls.length,0);
+  for(const override of [{allowVideoFrames:false},{freePlanConfirmed:false},{provider:'ollama'},{provider:'cloudflare'}]){settings.readVideoAnalysisSettings=()=>({...selected,...override});await assert.rejects(analysis.requestVisualPosting([jpeg,jpeg,jpeg],''));}
+  settings.readVideoAnalysisSettings=()=>selected;await assert.rejects(analysis.requestVisualPosting([Buffer.alloc(250001),jpeg,jpeg],''));assert.equal(calls.length,0);
 });
 test('429 preserves a durable wait and does not repeatedly hit the provider',async()=>{
   global.fetch=async()=>{calls.push(1);return new Response('',{status:429,headers:{'retry-after':'120'}});};

@@ -16,7 +16,7 @@ after(() => fs.rmSync(temp, { recursive: true, force: true }));
 test('explicit product policies exist without invented ratings or saved-feedback claims', async () => {
   const value = await guidance.getStockProductionGuidance(path.join(temp, 'not-created.json'));
   assert.equal(value.feedbackCount, 0); assert.equal(value.historyLimit, 10); assert.equal(value.shorterPostingCaption, false);
-  assert.match(value.rules.join(' '), /40 seconds.*original playback speed/);
+  assert.match(value.rules.join(' '), /natural duration.*movement samples.*modest acceleration/);
   assert.match(value.rules.join(' '), /subject and catalog-described scene context/);
   assert.match(value.rules.join(' '), /varied instrument blend, melody and rhythm/);
   assert.match(value.revision, /^stock-v1-[a-f0-9]{12}$/);

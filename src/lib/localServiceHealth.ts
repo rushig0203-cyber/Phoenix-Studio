@@ -2,13 +2,13 @@ import { readWritingSettings } from "./writingSettings";
 import { supportsNativeStockPlayback } from "./stockPlayback";
 
 export type LocalServiceState = { state: "ready" | "offline" | "blocked" | "configured"; detail: string };
-export type LocalServices = { checkedAt: string; writerProvider: "ollama" | "groq"; writer: LocalServiceState; ollama: LocalServiceState; renderer: LocalServiceState };
+export type LocalServices = { checkedAt: string; writerProvider: "ollama" | "groq" | "cloudflare"; writer: LocalServiceState; ollama: LocalServiceState; renderer: LocalServiceState };
 
 export async function probeLocalServices(): Promise<LocalServices> {
   const settings = readWritingSettings();
   const [ollama, renderer] = await Promise.all([
     (async (): Promise<LocalServiceState> => {
-      if (settings.provider === "groq") return { state: "configured", detail: "Ollama is not required while Groq writing is selected; existing Ollama processes are left alone." };
+      if (settings.provider !== "ollama") return { state: "configured", detail: `Ollama is not required while ${settings.provider === "groq" ? "Groq" : "Cloudflare Workers AI"} writing is selected; existing Ollama processes are left alone.` };
       try {
         const response = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(3000), redirect: "error", cache: "no-store" });
         if (!response.ok) throw new Error();
@@ -39,9 +39,9 @@ export async function probeLocalServices(): Promise<LocalServices> {
   // Dashboard polling never calls Groq or spends generation quota. Connection
   // checks are explicit; configuration alone must not claim a ready service.
   const writer: LocalServiceState = settings.provider === "ollama" ? ollama
-    : !settings.apiKey ? { state: "blocked", detail: "Add your Groq API key in Studio health writing settings. No fallback writer is used." }
-    : !settings.freePlanConfirmed ? { state: "blocked", detail: "Confirm that your Groq organization uses the Free plan before writing. Phoenix cannot verify the account's billing tier." }
-    : { state: "configured", detail: "Groq writing is configured with your Free-plan confirmation. Use Check connection to verify key and model access; billing tier cannot be verified by Phoenix." };
+    : !settings.apiKey || (settings.provider === "cloudflare" && !settings.accountId) ? { state: "blocked", detail: `Add your ${settings.provider === "groq" ? "Groq API key" : "Cloudflare API token and Account ID"} in Studio health writing settings. No fallback writer is used.` }
+    : !settings.freePlanConfirmed ? { state: "blocked", detail: `Confirm that your ${settings.provider === "groq" ? "Groq" : "Cloudflare Workers AI"} account uses the Free plan before writing. Phoenix cannot verify billing tier.` }
+    : { state: "configured", detail: `${settings.provider === "groq" ? "Groq" : "Cloudflare Workers AI"} writing is configured with your Free-plan confirmation. Use Check connection to verify key/model access; billing tier and remaining quota cannot be verified by Phoenix.` };
   return { checkedAt: new Date().toISOString(), writerProvider: settings.provider, writer, ollama, renderer };
 }
 let cached: LocalServices | undefined;
@@ -51,7 +51,7 @@ let runningSelection = "";
 export function localServiceHealth(): Promise<LocalServices> {
   const settings = readWritingSettings();
   // Do not retain the API key in the cache identity or expose it in health JSON.
-  const selection = JSON.stringify([settings.provider, settings.model, !!settings.apiKey, settings.freePlanConfirmed]);
+  const selection = JSON.stringify([settings.provider, settings.model, !!settings.apiKey, !!settings.accountId, settings.freePlanConfirmed]);
   if (cached && cachedSelection === selection && Date.now() - Date.parse(cached.checkedAt) < 15000) return Promise.resolve(cached);
   if (!running || runningSelection !== selection) {
     runningSelection = selection;

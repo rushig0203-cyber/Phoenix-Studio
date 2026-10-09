@@ -5,9 +5,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { settings } = require('./launch-config.cjs');
 const project = path.resolve(__dirname, '..');
-test('launcher loads only allowed settings, with no secret leakage or hosted provider', () => {
+test('launcher loads only allowed settings without secret leakage or inference calls', () => {
   assert.deepEqual(settings({ PHOENIX_MPT_DIR: 'C:/local/renderer', MPT_API_TOKEN: 'private', MOONSHOT_API_KEY: 'private' }), { backendDirectory: 'C:/local/renderer', backendUrl: 'http://127.0.0.1:8080', backendPort: 8080, writerProvider: 'ollama' });
   for (const url of ['https://host.example', 'http://user:secret@localhost:8080', 'http://127.0.0.1:8080/other', 'http://localhost:8080/?secret=private']) assert.throws(() => settings({ MPT_BASE_URL: url }), /plain loopback/);
+  assert.equal(settings({}, 'cloudflare').writerProvider, 'cloudflare');
 });
 test('Windows startup scripts parse and service checks require identity and readiness', { skip: process.platform !== 'win32' }, () => {
   const code = `
@@ -18,6 +19,8 @@ test('Windows startup scripts parse and service checks require identity and read
       if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
     }
     . ./scripts/startup-health.ps1
+    if (Test-PhoenixNeedsOllama 'cloudflare') { throw 'Cloudflare incorrectly requested local Ollama' }
+    if (-not (Test-PhoenixNeedsOllama 'ollama')) { throw 'Local writer no longer requests Ollama' }
     function Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing, $TimeoutSec) return [pscustomobject]@{StatusCode=200; Content=$script:fakeContent} }
     $script:fakeContent = '{}'
     if (Test-PhoenixServiceHttp 'http://localhost' 'renderer') { throw 'Unrelated HTTP service accepted' }

@@ -87,6 +87,7 @@ export async function POST(request: Request) {
     if (needsWriter) {
       const writer = readWritingSettings();
       if (writer.provider === "groq" && (!writer.apiKey || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Groq Free-plan key in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });
+      if (writer.provider === "cloudflare" && (!writer.apiKey || !writer.accountId || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Cloudflare Workers AI token, Account ID and Free-plan confirmation in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });
     }
     if (!children && data.script?.trim()) {
       const error = stockNarrationError(data.script, data.duration);

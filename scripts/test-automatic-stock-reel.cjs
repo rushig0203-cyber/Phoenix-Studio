@@ -41,16 +41,19 @@ const automaticPayload = { automatic: true, provider: 'pexels', id: 1, query: 'S
 const request = payload => new Request('http://localhost/api/stock-reels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 const baselineGuidance = { revision: 'stock-v1-123456abcdef', feedbackCount: 0, rules: ['Fixed automatic stock policy.'], historyLimit: 10 };
 
-test('new automatic soundtrack replaces every source with one continuous local instrumental without changing duration or manual/legacy defaults', () => {
+test('new automatic soundtrack uses compact adaptive timing without changing manual/legacy defaults', () => {
+  assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_DURATION, 40);
+  assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);
+  assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_SOURCES, 10);
   for (const [topic, mood] of [['Sunrise over mountains', 'warm'], ['birds in a garden', 'warm'], ['Sun City videos', 'journey'], ['ocean waves', 'journey'], ['misty mountains', 'reflective'], ['moonlit lake', 'reflective']]) {
-    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', minDuration: 40, musicVersion: 2, shotCadence: 'brisk-v1', reusePolicy: 'four-in-18-months-v1' });
+    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', reusePolicy: 'four-in-18-months-v1' });
   }
   const first = automatic.automaticStockReelOptions('sunrise'); first.mood = 'journey';
   assert.equal(automatic.automaticStockReelOptions('sunrise').mood, 'warm', 'A caller cannot mutate later defaults');
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.mood, 'reflective', 'Legacy constant remains unchanged');
   assert.equal(editing.DEFAULT_STOCK_REEL_OPTIONS.audio, 'auto', 'Manual/legacy defaults still preserve source-only sound when usable');
   assert.match(automatic.automaticStockReelMessage(8), /one continuous original instrumental across all shots/);
-  assert.match(automatic.automaticStockReelMessage(8, true), /its saved sound choices/);
+  assert.match(automatic.automaticStockReelMessage(8, true), /saved timing and sound choices are retained/i);
   assert.doesNotMatch(automatic.automaticStockReelMessage(8, true), /continuous original instrumental/, 'Saved recipes can retain their previous soundtrack policy');
 });
 function deferred() {
@@ -93,16 +96,16 @@ test('new automatic cards and companions reject explicit slow-motion labels but 
   }
 });
 
-test('authoritative slow-motion changes are skipped and selection prefers ten brisk cuts over five long holds', async () => {
+test('authoritative slow-motion changes are skipped and selection gathers enough sources for adaptive cuts', async () => {
   const calls = [], sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search() { return Array.from({ length: 20 }, (_, at) => video(at + 2)); },
     async resolve(provider, id) { calls.push(id); return video(id, id === 2 ? 'Sun City slow-motion skyline' : 'Sun City skyline'); },
   });
-  assert.equal(sources.length, 10); assert.equal(sources[0].id, anchor.id);
-  assert.deepEqual(calls, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]); assert.equal(sources.some(item => item.id === 2), false);
-  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 45, 'cinematic', 40, 'brisk-v1');
-  assert.equal(plan.at(-1).outputEnd, 43.5); assert.equal(plan[0].frames, 72);
-  assert.ok(plan.every(item => item.frames <= 144));
+  assert.equal(sources.length, 8); assert.equal(sources[0].id, anchor.id);
+  assert.deepEqual(calls, [2, 3, 4, 5, 6, 7, 8, 9]); assert.equal(sources.some(item => item.id === 2), false);
+  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
+  assert.ok(plan.every(item => item.speed === 1), 'Unanalysed windows remain at native playback speed');
 });
 
 test('reuse-exhausted clips never appear as automatic anchors or companions even when recently-used fallback is needed', async () => {
@@ -113,7 +116,7 @@ test('reuse-exhausted clips never appear as automatic anchors or companions even
   assert.equal(calls,0);
   const eligible=video(20);const resolved=[];
   const result=await automatic.automaticStockSources(eligible,'Sun City',['pexels'],{async search(){return Array.from({length:18},(_,i)=>video(i+1));},async resolve(provider,id){resolved.push(id);return video(id);}},new Set(Array.from({length:20},(_,i)=>`pexels:${i+1}`)),unavailable);
-  assert.equal(result.some(v=>unavailable.has(`${v.provider}:${v.id}`)),false);assert.ok(!resolved.includes(1)&&!resolved.includes(2));assert.equal(result.length,10);
+  assert.equal(result.some(v=>unavailable.has(`${v.provider}:${v.id}`)),false);assert.ok(!resolved.includes(1)&&!resolved.includes(2));assert.equal(result.length,8);
 });
 
 test('catalog matching preserves the complete two-word topic, distinct sources and a shared anchor subject', () => {
@@ -203,6 +206,20 @@ test('bird nests stay nests while city footage cannot be a book cover or transpo
   ], 'city')), ['pexels:2']);
 });
 
+test('rain context rejects leaf and flower insertions while matching raindrop water footage', () => {
+  const rain = video(1, 'Rain raindrops Bali');
+  const choices = automatic.automaticStockCompanions(rain, [
+    video(2, 'Rain raindrops on green leaves Bali'),
+    video(3, 'Rain raindrops on flowering plants Bali'),
+    video(4, 'Rain raindrops water puddle Bali'),
+  ], 'rain raindrops Bali');
+  assert.deepEqual(identities(choices), ['pexels:4']);
+
+  // The guard reads catalog labels only; it does not establish what any frame depicts.
+  const unknownContext = automatic.automaticStockCompanions(rain, [video(5, 'Rain raindrops Bali billboard')], 'rain raindrops Bali');
+  assert.deepEqual(identities(unknownContext), ['pexels:5']);
+});
+
 test('nature is a broad discovery topic, but the chosen forest locks the reel to forest scenes', () => {
   const forest = video(1, 'Forest canopy of tall trees');
   const fixtures = [forest, video(2, 'Aerial forest woodland'), video(3, 'Ocean waves'),
@@ -229,10 +246,11 @@ test('narrow companion queries replace existing searches without extra calls or 
   });
   assert.deepEqual(calls, [['pexels', 'ocean underwater'], ['pixabay', 'ocean underwater']]);
   assert.equal(sources[0].id, selected.id); assert.ok(resolutions.length <= 16); assert.ok(sources.length <= 10);
-  assert.ok(editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 45, 'cinematic', 40).at(-1).outputEnd >= 40);
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
-test('changed authoritative context and sparse coherent footage fail rather than add unrelated filler to reach forty seconds', async () => {
+test('changed authoritative context and sparse coherent footage fail rather than add unrelated filler', async () => {
   const selected = video(1, 'Clouds and sun in sky'); let resolutions = 0;
   await assert.rejects(automatic.automaticStockSources(selected, 'sun', ['pexels'], {
     async search() { return Array.from({ length: 24 }, (_, at) => video(at + 2, 'Clouds and sun in sky')); },
@@ -247,7 +265,7 @@ test('changed authoritative context and sparse coherent footage fail rather than
   assert.equal(resolutions, 1, 'Known incoherent candidates never get authoritative resolution or download work');
 });
 
-test('automatic composition resolves enough authoritative companions, skipping changed IDs/animation before native-speed planning', async () => {
+test('automatic composition resolves authoritative companions until its adaptive duration is sufficient', async () => {
   const calls = [], searched = [];
   const sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels', 'pixabay', 'pexels'], {
     async search(provider, query) {
@@ -263,12 +281,13 @@ test('automatic composition resolves enough authoritative companions, skipping c
     },
   });
   assert.deepEqual(searched, [['pexels', 'Sun City'], ['pixabay', 'Sun City']]);
-  assert.deepEqual(calls, Array.from({ length: 12 }, (_, index) => ['pexels', index + 2]));
-  assert.deepEqual(identities(sources), ['pexels:1', ...Array.from({ length: 9 }, (_, at) => `pexels:${at + 5}`)]);
-  assert.equal(editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 45, 'cinematic', 40, 'brisk-v1').at(-1).outputEnd, 43.5);
+  assert.deepEqual(calls, Array.from({ length: 10 }, (_, index) => ['pexels', index + 2]));
+  assert.deepEqual(identities(sources), ['pexels:1', ...Array.from({ length: 7 }, (_, at) => `pexels:${at + 5}`)]);
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
 });
 
-test('one available catalog can provide a full40s reel, while too few related shots never produce a short fallback', async () => {
+test('one catalog can provide a compact reel while too few related shots remain an error', async () => {
   const sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels', 'pixabay'], {
     async search(provider) { if (provider === 'pixabay') throw new Error('Fixture unavailable'); return Array.from({ length: 8 }, (_, index) => video(index + 1)); },
     async resolve(provider, id) { return video(id, 'Sun City streets', { provider }); },
@@ -276,7 +295,30 @@ test('one available catalog can provide a full40s reel, while too few related sh
   assert.deepEqual(identities(sources), Array.from({ length: 8 }, (_, at) => `pexels:${at + 1}`));
   await assert.rejects(automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search() { return [anchor, video(2, 'Other city')]; }, async resolve() { throw new Error('No candidates should resolve'); },
-  }), /Not enough related footage.*broader topic/);
+  }), /Not enough related footage.*another starting video/);
+});
+
+test('five related sources are enough when the catalog is sparse and the adaptive plan reaches twelve seconds', async () => {
+  const sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
+    async search() { return Array.from({ length: 4 }, (_, index) => video(index + 2)); },
+    async resolve(provider, id) { return video(id, 'Sun City skyline', { provider }); },
+  });
+  assert.equal(sources.length, 5, 'A sparse but viable catalog does not force eight source clips');
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
+});
+
+test('adaptive source windows use native actual duration or only a modest measured speed-up', () => {
+  const plan = editing.planStockIntervals([
+    { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 1 }] },
+    { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 40 }] },
+    { duration: 8, trimMode: 'auto' },
+    { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 0 }] },
+    { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 50 }] },
+  ], 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
+  assert.deepEqual(plan.map(interval => interval.speed), [1.25, 1, 1, 1.25, 1]);
+  assert.ok(plan.every(interval => interval.end - interval.start <= interval.frames / 24 * 1.25 + 1e-7));
 });
 
 test('catalog resolution work remains bounded when search IDs are all stale', async () => {
@@ -335,7 +377,7 @@ test('unused related companions rank first while anchor, meaning and default ran
   assert.deepEqual(identities(automatic.automaticStockCompanions(anchor, [usedPortrait, freshWide], 'Sun City', new Set(['pixabay:2']))), ['pexels:2', 'pexels:3'], 'Provider IDs are independent');
 });
 
-test('diverse composition keeps the selected anchor and falls back to relevant reused shots to reach40s without extra searches', async () => {
+test('diverse composition keeps the selected anchor and permits relevant reused shots without extra searches', async () => {
   const calls = [], searched = [], used = new Set(['pexels:1', 'pexels:2', 'pexels:3', 'pexels:4']);
   const sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search(provider, query) { searched.push([provider, query]); return Array.from({ length: 8 }, (_, at) => video(at + 2)); },
@@ -345,7 +387,8 @@ test('diverse composition keeps the selected anchor and falls back to relevant r
   assert.deepEqual(calls.slice(0, 5), [5, 6, 7, 8, 9].map(id => ['pexels', id]));
   assert.ok(sources.some(item => used.has(item.provider + ':' + item.id) && item.id !== anchor.id), 'Sparse unused choices still allow matching reused footage');
   assert.equal(new Set(identities(sources)).size, sources.length);
-  assert.ok(editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 45, 'cinematic', 40).at(-1).outputEnd >= 40);
+  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
 test('all relevant footage being used recently never hard-blocks a valid native-speed reel', async () => {
@@ -356,14 +399,15 @@ test('all relevant footage being used recently never hard-blocks a valid native-
   assert.equal(sources[0].id, anchor.id); assert.equal(sources.length, 8);
 });
 
-test('authoritative low-resolution companion changes are skipped without abandoning topic, native speed or40s minimum', async () => {
+test('authoritative low-resolution companion changes are skipped without abandoning topic or adaptive planning', async () => {
   const calls = [], sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search() { return Array.from({ length: 9 }, (_, at) => video(at + 2)); },
     async resolve(provider, id) { calls.push(id); return video(id, 'Sun City skyline', id === 2 ? { width: 540, height: 960 } : {}); },
   });
   assert.equal(sources[0].id, anchor.id); assert.ok(sources.every(item => Math.min(item.width, item.height) >= 720));
   assert.equal(sources.some(item => item.id === 2), false); assert.equal(new Set(identities(sources)).size, sources.length);
-  assert.ok(calls.length <= 16); assert.ok(editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 45, 'cinematic', 40).at(-1).outputEnd >= 40);
+  assert.ok(calls.length <= 16); const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
 test('low-resolution anchors and insufficient native companions fail clearly before any media factory is possible', async () => {
@@ -374,7 +418,7 @@ test('low-resolution anchors and insufficient native companions fail clearly bef
   assert.equal(searched, 0); assert.equal(resolved, 0);
   await assert.rejects(automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search() { return [video(2), video(3), video(4, 'Sun City skyline', { width: 540, height: 960 })]; },
-    async resolve(provider, id) { return video(id); },
+    async resolve(provider, id) { return video(id, 'Sun City skyline', { provider, width: 540, height: 960 }); },
   }), /Not enough related footage at native 720p/);
 });
 
@@ -454,21 +498,21 @@ test('manual sequences and single-source requests cannot bypass the four-use lim
   ]){const h=harness({blocked:['pexels:1']});const result=await h.api.POST(request(payload));assert.equal(result.status,400);assert.equal(h.queued.length,0);assert.equal(h.single.length,0);assert.equal(h.fetches.length,0);assert.equal(h.calls.some(c=>['resolve','search'].includes(c[0])),false);}
 });
 
-test('minimal automatic POST persists40s minimum with eight authoritative native-speed sources and full automatic windows', async () => {
+test('minimal automatic POST persists adaptive options with eight authoritative sources and no fixed duration minimum', async () => {
   const h = harness(), result = await h.api.POST(request(automaticPayload)), data = await result.json();
-  assert.equal(result.status, 201); assert.equal(data.clipCount, 8); assert.match(data.message, /8 related videos.*original playback speed/);
+  assert.equal(result.status, 201); assert.equal(data.clipCount, 8); assert.match(data.message, /8 related videos.*compact cuts.*modest speed-ups/);
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
-  assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 45,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', minDuration: 40, musicVersion: 2, shotCadence: 'brisk-v1', reusePolicy: 'four-in-18-months-v1' },
+  assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', reusePolicy: 'four-in-18-months-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [
     ...[1, 2, 3, 4].map(id => ['pexels', String(id), 0, 40, 'auto']), ...[5, 6, 7, 8].map(id => ['pixabay', String(id), 0, 40, 'auto']),
   ]);
-  const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 45, 'cinematic', 40, h.queued[0].input.options.shotCadence);
-  assert.equal(plan[0].frames, 72); assert.ok(plan.every(interval => interval.frames <= 144));
-  assert.equal(plan.at(-1).outputEnd, 40);
+  const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 40, 'cinematic', undefined, h.queued[0].input.options.shotCadence);
+  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
+  assert.ok(plan.every(interval => interval.speed === 1), 'Unmeasured catalog previews do not authorize speed changes');
 });
 
 test('automatic companion media stays lazy and uses bounded sequential stream factories in the existing reel queue', async () => {
@@ -540,16 +584,16 @@ test('successful single-flight work clears so later retries use saved-job lookup
   assert.equal(h.queued.length, 1); assert.equal(h.fetches.length, 8);
 });
 
-test('unrelated or insufficient source sets fail before any stream opens or job is queued', async () => {
+test('unrelated or too-short source sets fail before any stream opens or job is queued', async () => {
   for (const options of [
     { search: async () => [anchor, video(2, 'Other city')] },
     { resolve: async (provider, id) => video(id, 'Other city', { provider }) },
     { search: async () => [anchor, video(2), video(3)] },
-    { search: async () => Array.from({ length: 12 }, (_, index) => video(index + 2, 'Sun City skyline', { duration: 3.99 })),
-      resolve: async (provider, id) => video(id, 'Sun City skyline', { provider, duration: 3.99 }) },
+    { openDownloads: true, search: async () => [video(2), video(3), video(4)],
+      resolve: async (provider, id) => video(id, 'Sun City skyline', { provider, duration: 1.5 }) },
   ]) {
     const h = harness(options), result = await h.api.POST(request(automaticPayload)), data = await result.json();
-    assert.equal(result.status, 400); assert.match(data.error, /broader topic/);
+    assert.equal(result.status, 400); assert.match(data.error, /Not enough related footage|meaningful source footage|starting video/);
     assert.equal(h.queued.length, 0); assert.equal(h.fetches.length, 0); assert.equal(h.single.length, 0);
   }
 });

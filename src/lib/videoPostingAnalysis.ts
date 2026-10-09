@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { readWritingSettings } from "./writingSettings";
+import { readVideoAnalysisSettings as readWritingSettings } from "./writingSettings";
 import { boundedJson, groqHttpError, groqPacingDelay, groqRateWindow, groqRetryDelay, WritingWaitError } from "./groqWriter";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";

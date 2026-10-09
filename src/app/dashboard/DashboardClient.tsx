@@ -61,6 +61,8 @@ type DisplayJob = {
   status: string;
   progress: number;
   detail: string;
+  completedClips?: number;
+  totalClips?: number;
   error?: string;
   createdAt: string;
   elapsedSeconds?: number;
@@ -248,6 +250,8 @@ export default function DashboardClient() {
       title: job.title,
       status: job.status,
       progress: job.progress,
+      completedClips: job.completedClips,
+      totalClips: job.totalClips,
       detail: `Source video · ${job.stage}${job.totalClips ? ` · ${job.completedClips || 0}/${job.totalClips} clips` : ""}${job.attempts ? ` · attempt ${job.attempts}` : ""}`,
       error: job.error,
       createdAt: job.createdAt,
@@ -379,21 +383,33 @@ export default function DashboardClient() {
             <div className="mt-5 space-y-3">
               {displayedJobs.map((job) => {
                 const failed = job.status === "FAILED" || job.status === "BLOCKED";
+                const completed = job.status === "COMPLETED";
                 const retryKey = `${job.kind}-${job.id}`;
-                const outputFiles = job.status === "COMPLETED" ? files.filter(file => job.kind === "edit" ? file.id === job.outputId : file.id === job.id || file.processing?.jobId === job.id) : [];
+                const outputFiles = completed ? files.filter(file => job.kind === "edit" ? file.id === job.outputId : file.id === job.id || file.processing?.jobId === job.id) : [];
+                const durationSeconds = outputFiles.reduce((total, file) => {
+                  const durations = Object.values(file.outputs).map(output => output?.duration).filter((duration): duration is number => typeof duration === "number" && Number.isFinite(duration) && duration > 0);
+                  return total + (durations.length ? Math.max(...durations) : 0);
+                }, 0);
+                const clipCount = job.kind === "source" ? job.completedClips ?? job.totalClips ?? outputFiles.length : outputFiles.length || 1;
                 return (
                   <article key={retryKey} className="rounded-xl border border-[#d5ddb8] bg-[#f7f9ef] p-4 [content-visibility:auto]">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="font-semibold">{job.title}</h3>
-                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${failed ? "bg-[#ffe1d3] text-[#914527]" : "bg-[#e5ebcf] text-[#4f5c31]"}`}>{job.status} · {job.progress}%</span>
+                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${failed ? "bg-[#ffe1d3] text-[#914527]" : "bg-[#e5ebcf] text-[#4f5c31]"}`}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</span>
                     </div>
-                    <p className="mt-1 text-xs text-[#687657]">{job.detail}</p>
-                    {timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
-                    <div className="mt-3 h-2 overflow-hidden rounded bg-[#d5ddb8]">
+                    {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
+                    {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
+                    {!completed ? <div className="mt-3 h-2 overflow-hidden rounded bg-[#d5ddb8]">
                       <div className={`h-full transition-[width] duration-500 ${failed ? "bg-[#b55d3d]" : "bg-[#667b42]"}`} style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
-                    </div>
+                    </div> : null}
                     {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
-                    {job.status === "COMPLETED" ? <div className="mt-3 space-y-3">{outputFiles.slice(0, 3).map((file, index) => <div key={file.id}><Button type="button" variant="outline" size="sm" onClick={() => setPreview(file)}>Watch video{job.kind === "source" ? ` ${index + 1}` : ""}</Button><PostingActions file={file} /></div>)}{outputFiles.length > 3 ? <a href="#library" className="inline-block text-xs font-semibold underline">All {outputFiles.length} clips are in Library</a> : !outputFiles.length ? <p className="text-xs text-[#687657]">The finished file is not in this Library snapshot. It may be in Trash; history remains saved.</p> : null}</div> : null}
+                    <details className="mt-2 text-xs text-[#687657]">
+                      <summary className="w-fit cursor-pointer select-none">Technical details</summary>
+                      <p className="mt-1">{job.detail}</p>
+                      {completed && timing(job) ? <p className="mt-1">{timing(job)}</p> : null}
+                      {completed && !outputFiles.length ? <p className="mt-1">The finished file is not in this Library snapshot. It may be in Trash; history remains saved.</p> : null}
+                    </details>
+                    {completed ? <div className="mt-2 flex flex-wrap items-start gap-2">{outputFiles.slice(0, 3).map((file, index) => <div key={file.id} className="flex flex-wrap items-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setPreview(file)}>Watch video{job.kind === "source" ? ` ${index + 1}` : ""}</Button><details className="text-xs"><summary className="cursor-pointer rounded-lg border border-[#bdc7a5] px-3 py-2 font-semibold">Posting tools{outputFiles.length > 1 ? ` ${index + 1}` : ""}</summary><PostingActions file={file} /></details></div>)}{outputFiles.length > 3 ? <a href="#library" className="text-xs font-semibold underline">All {outputFiles.length} clips are in Library</a> : null}</div> : null}
                     {failed && job.kind !== "edit" ? (
                       <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null} onClick={() => void retry(job)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Retry"}

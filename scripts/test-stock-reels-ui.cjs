@@ -168,16 +168,17 @@ test('opening is idle; typing waits 600ms and only a meaningful topic starts one
   assert.equal(h.posts.length, 0); assert.equal(h.started.length, 0);
 });
 
-test('automatic footage explains the 40-second minimum without new controls or padded playback', async () => {
+test('automatic footage explains adaptive timing without new controls or padded playback', async () => {
   const gate = deferred(), h = harness({ post: () => gate.promise });
-  assert.match(text(h.tree), /40–45 second reel/);
-  assert.match(text(h.tree), /isn't enough matching footage for 40 seconds/);
+  assert.match(text(h.tree), /tighter cuts and a natural length/);
+  assert.match(text(h.tree), /not a fixed timer/);
+  assert.doesNotMatch(text(h.tree), /40–45|for 40 seconds/);
   assert.doesNotMatch(text(h.tree), /two or three related clips/);
   await results(h); h.choose(1); await h.flush();
-  assert.match(text(h.tree), /Finding enough related shots for a 40–45 second reel/);
+  assert.match(text(h.tree), /choosing the reel’s length and pacing/);
   assert.deepEqual(Object.keys(h.payload).sort(), ['automatic', 'id', 'provider', 'query', 'requestId']);
-  gate.resolve(response({ error: 'Not enough related footage for a 40-second reel. Try a broader topic.' }, 400)); await h.flush();
-  assert.match(text(h.tree), /Not enough related footage for a 40-second reel/);
+  gate.resolve(response({ error: 'Not enough related footage for a coherent reel. Try another starting video.' }, 400)); await h.flush();
+  assert.match(text(h.tree), /Not enough related footage for a coherent reel/);
   assert.equal(h.started.length, 0);
   assert.equal(nodes(h.tree).filter(node => node.type === 'select').length, 0);
 });

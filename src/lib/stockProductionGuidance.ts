@@ -37,7 +37,7 @@ export function stockProductionGuidanceFromFeedback(records: readonly CreativeFe
   const freshness = weak("visuals") || weak("story") || requested("less-repetition");
   const shorterPostingCaption = weak("captions");
   const rules = [
-    "New automatic reels use at least 40 seconds of real picture at original playback speed; do not slow, loop, freeze or add unrelated filler to meet duration.",
+    "New automatic reels choose compact, varied cuts and natural duration from bounded movement samples; use native speed or modest acceleration, never slow, loop, freeze or add unrelated filler to meet duration.",
     "Keep the starting video's subject and catalog-described scene context throughout the reel; stock metadata does not verify the same real location or continuous event.",
     "Use a reproducible per-reel original music arrangement with varied instrument blend, melody and rhythm; retain usable original ambience without copying commercial songs.",
     ...(freshness ? ["Prefer suitable footage absent from the last 20 completed reels; keep the chosen starting video and allow related reuse only when suitable fresh alternatives are unavailable."] : []),
@@ -45,7 +45,7 @@ export function stockProductionGuidanceFromFeedback(records: readonly CreativeFe
     ...(weak("audio") ? ["Keep a continuous restrained original music bed beneath usable ambience; the saved varied arrangement is a listening-review draft, not a professional-song guarantee."] : []),
     ...(shorterPostingCaption ? [STOCK_CAPTION_FEEDBACK_RULE] : []),
   ];
-  const revision = `stock-v1-${crypto.createHash("sha256").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
+  const revision = `stock-v1-${crypto.createHash("sha256").update("adaptive-v2:").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
   return { revision, feedbackCount: relevant.length, policyVersion: 1, rules, historyLimit: freshness ? 20 : 10, shorterPostingCaption,
     priorities: (["story", "visuals", "audio", "captions"] as FeedbackDimension[]).filter(weak), requests: FEEDBACK_REQUESTS.filter(requested) };
 }

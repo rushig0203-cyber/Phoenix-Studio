@@ -68,6 +68,19 @@ jobs:
           scripts/test-stock-production-guidance.cjs
           scripts/test-release-refresh.cjs
           scripts/test-launch-release-consistency.cjs
+          scripts/test-cloudflare-writer.cjs
+          scripts/test-writing-settings.cjs
+          scripts/test-groq-writer.cjs
+          scripts/test-startup.cjs
+          scripts/test-automatic-stock-reel.cjs
+          scripts/test-stock-reel-adaptive.cjs
+          scripts/test-stock-motion.cjs
+          scripts/test-stock-temporary-cleanup.cjs
+          scripts/test-job-summary-ui.cjs
+          scripts/test-stock-reel-editing.cjs
+          scripts/test-stock-reel-quality.cjs
+          scripts/test-stock-reel-audio.cjs
+          scripts/test-stock-reel-remux.cjs
       - name: Lint changed production interfaces
         run: >-
           npx --no-install eslint
@@ -76,6 +89,16 @@ jobs:
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
           src/app/api/review-files/[id]/publish/route.ts
+          src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockTemporaryCleanup.ts
+          src/lib/automaticStockReel.ts src/lib/sourceProcessing.ts
+          src/lib/stockProductionGuidance.ts src/components/StockReels.tsx
+          src/lib/cloudflareWriter.ts src/lib/writingSettings.ts
+          src/lib/writingModel.ts src/lib/localServiceHealth.ts
+          src/components/WritingProviderSettings.tsx src/components/StudioHealth.tsx
+          src/app/api/writing-provider/route.ts
+          src/app/dashboard/DashboardClient.tsx
+      - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
+        run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
       - name: Package only the verified production bundle

@@ -1,6 +1,7 @@
 import { assertLocalRequest } from "@/lib/localRequest";
-import { publicWritingSettings, readWritingSettings, saveWritingSettings, WritingSettingsError, WRITING_GROQ_MODEL } from "@/lib/writingSettings";
+import { publicWritingSettings, readWritingSettings, readVideoAnalysisSettings, readCloudflareWriterSettings, saveWritingSettings, WritingSettingsError, WRITING_GROQ_MODEL, WRITING_CLOUDFLARE_MODEL } from "@/lib/writingSettings";
 import { probeGroqWriter } from "@/lib/groqWriter";
+import { probeCloudflareWriter } from "@/lib/cloudflareWriter";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
@@ -31,16 +32,25 @@ export async function POST(request: Request) {
   try {
     if (input.action === "test") {
       const settings = readWritingSettings();
-      if (settings.provider !== "groq") return json({ error: "Save Groq settings before testing the connection." }, 400);
-      return json(await probeGroqWriter(settings));
+      if (settings.provider === "groq") return json(await probeGroqWriter(settings));
+      if (settings.provider === "cloudflare") return json(await probeCloudflareWriter(settings));
+      return json({ error: "Save Groq or Cloudflare settings before testing the connection." }, 400);
     }
-    if (input.action !== "save" || !["groq", "ollama"].includes(String(input.provider)) || (input.apiKey !== undefined && typeof input.apiKey !== "string")) return json({ error: "Choose a valid writing provider." }, 400);
+    if (input.action !== "save" || !["groq", "ollama", "cloudflare"].includes(String(input.provider)) || (input.apiKey !== undefined && typeof input.apiKey !== "string") || (input.accountId !== undefined && typeof input.accountId !== "string")) return json({ error: "Choose a valid writing provider." }, 400);
     if (input.provider === "groq") {
-      const previous = readWritingSettings();
+      const previous = readVideoAnalysisSettings();
       const check = await probeGroqWriter({ provider: "groq", model: WRITING_GROQ_MODEL, apiKey: (input.apiKey as string | undefined)?.trim() || previous.apiKey, freePlanConfirmed: input.freePlanConfirmed === true });
       if (check.state !== "ready") return json({ error: check.detail }, 400);
     }
+    if (input.provider === "cloudflare") {
+      const previous = readCloudflareWriterSettings();
+      const check = await probeCloudflareWriter({ provider: "cloudflare", model: WRITING_CLOUDFLARE_MODEL,
+        apiKey: (input.apiKey as string | undefined)?.trim() || previous.apiKey,
+        accountId: (input.accountId as string | undefined)?.trim() || previous.accountId,
+        freePlanConfirmed: input.freePlanConfirmed === true });
+      if (check.state !== "ready") return json({ error: check.detail }, 400);
+    }
     if (input.allowVideoFrames !== undefined && typeof input.allowVideoFrames !== "boolean") return json({ error: "Choose whether sampled video frames may be sent." }, 400);
-    return json(await saveWritingSettings({ provider: input.provider as "groq" | "ollama", apiKey: input.apiKey as string | undefined, freePlanConfirmed: input.freePlanConfirmed === true, allowVideoFrames: input.allowVideoFrames as boolean | undefined }));
+    return json(await saveWritingSettings({ provider: input.provider as "groq" | "ollama" | "cloudflare", apiKey: input.apiKey as string | undefined, accountId: input.accountId as string | undefined, freePlanConfirmed: input.freePlanConfirmed === true, allowVideoFrames: input.allowVideoFrames as boolean | undefined }));
   } catch (error) { return json({ error: error instanceof WritingSettingsError ? error.message : "Writing settings could not be updated. No secret was logged; retry the action." }, 400); }
 }
