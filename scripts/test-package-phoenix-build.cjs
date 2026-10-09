@@ -30,7 +30,7 @@ test('only a unique current GitHub Actions Windows x64 build may be exported',()
 });
 test('sensitive paths, traversal, dependencies, models and runtime media are forbidden',()=>{
   for(const name of ['../outside','server/.env.local','server/private/key.json','storage/index.json','node_modules/next/index.js','models/model.gguf','static/video.mp4','server/credentials.json','server/token.key','server\\private.txt']) assert.equal(packaging.allowedBuildPath(name),false,name);
-  for(const name of ['server/app/api/settings/route.js','static/chunks/main.js','static/media/font.woff2','required-server-files.json']) assert.equal(packaging.allowedBuildPath(name),true,name);
+  for(const name of ['server/app/api/settings/route.js','server/app/api/storage','server/app/api/storage/usage/route.js','server/app/admin/storage/page.js','server/app/admin/storage.segments/admin/storage/__PAGE__.segment.rsc','static/chunks/app/admin/storage/page.js','types/app/api/admin/storage/route.ts','static/chunks/main.js','static/media/font.woff2','required-server-files.json']) assert.equal(packaging.allowedBuildPath(name),true,name);
 });
 test('complete bundle inventory hashes files sequentially and excludes the entire build cache',async()=>isolated(async({root,build})=>{
   await fs.mkdir(path.join(build,'cache'),{recursive:true});await fs.writeFile(path.join(build,'cache','.env'),'excluded fixture');

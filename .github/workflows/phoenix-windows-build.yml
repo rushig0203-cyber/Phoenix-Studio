@@ -53,6 +53,7 @@ jobs:
         run: >-
           node --max-old-space-size=192 --test --test-concurrency=1
           scripts/test-package-phoenix-build.cjs
+          scripts/test-install-phoenix-build.cjs
           scripts/test-review-publishing.cjs
           scripts/test-review-publish-ui.cjs
           scripts/test-video-posting-analysis.cjs

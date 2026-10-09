@@ -25,7 +25,11 @@ function assertPlatform(platform,arch) {
 function allowedBuildPath(relative) {
   const parts=relative.split('/');
   if(!relative||relative.length>1024||/[\u0000-\u001f\u007f\\:]/.test(relative)||parts.some(part=>!part||part==='.'||part==='..')) return false;
-  if(parts.some(part=>/^(?:\.env.*|\.git|node_modules|storage|private|models?|credentials?|secrets?)$/i.test(part))) return false;
+  // This is compiled route code, not the owner's storage directory. Keep the
+  // exact application API subtree while rejecting storage anywhere else.
+  const compiledStorage=/^(?:(?:server|types)\/app|static\/chunks\/app)\/(?:api\/(?:admin\/)?storage|admin\/storage)(?:[./]|$)/.test(relative);
+  if(parts.some((part,index)=>/^(?:\.env.*|\.git|node_modules|storage|private|models?|credentials?|secrets?)$/i.test(part)
+    &&!(part==='storage'&&index>=3&&compiledStorage))) return false;
   if(/^(?:credentials?|secrets?|tokens?|private-settings)(?:[._-].*)?$/i.test(parts.at(-1))) return false;
   return !/\.(?:pem|key|pfx|p12|db|sqlite|sqlite3|mp4|mov|mkv|webm|avi|mp3|wav|flac|ogg|m4a|safetensors|gguf|onnx|pt|pth)$/i.test(relative);
 }
@@ -52,7 +56,7 @@ async function inventoryBuild(root,directory,limits={}) {
     for(const entry of await fs.readdir(folder,{withFileTypes:true})) {
       const name=relative?`${relative}/${entry.name}`:entry.name;
       if(name==='cache') continue;
-      if(!allowedBuildPath(name)) throw new Error('Build contains a forbidden sensitive or runtime-media path.');
+      if(!allowedBuildPath(name)) throw new Error(`Build contains a forbidden sensitive or runtime-media path: ${name}`);
       const filename=path.join(folder,entry.name),stat=await fs.lstat(filename);
       if(stat.isSymbolicLink()) throw new Error('Build links cannot be included in an artifact.');
       if(stat.isDirectory()) {await walk(filename,name,depth+1);continue;}
