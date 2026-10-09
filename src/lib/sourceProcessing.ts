@@ -38,7 +38,7 @@ export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
 export type StockReelShot = { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual" };
 export type SourceJob = {
-  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"] };
+  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: "pexels" | "pixabay"; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"] };
   id: string;
   title: string;
   sourceFile: string;
@@ -1596,6 +1596,7 @@ async function processStockReel(
       : "Visual continuity samples incomplete; catalogue order retained without guessing";
   }
   const duration = intervals[intervals.length - 1].outputEnd;
+  const renderedStock = { ...stock, renderedShots: shots.map(shot => ({ provider: shot.provider, mediaId: shot.mediaId })) };
   const minimumPictureDuration = options.shotCadence === "adaptive-v2" ? duration : options.minDuration;
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
   const completed = (await readReviewFiles()).find(file => file.processing?.jobId === job.id && file.status === "READY" && file.processing.status === "COMPLETED" && file.quality.checks.includes(`Stock plan identity ${planIdentity}`));
@@ -1609,7 +1610,7 @@ async function processStockReel(
         completed.quality.postingTextOrigin = "owner";
         await saveReviewFile(completed);
       }
-      const finished = await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
+      const finished = await updateJob(job.id, { status: "COMPLETED", stockSource: renderedStock, progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
       await cleanupStockTemporaries(job.id);
       return finished;
     }
@@ -1750,7 +1751,7 @@ async function processStockReel(
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();
   await saveReviewFile(item);
-  const finished = await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
+  const finished = await updateJob(job.id, { status: "COMPLETED", stockSource: renderedStock, progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
   await cleanupStockTemporaries(job.id);
   return finished;
 }

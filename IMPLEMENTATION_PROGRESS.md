@@ -2,6 +2,14 @@
 
 ## October 10 visual-review follow-up — source ready, not yet live
 
+- Final follow-up also records the verified rendered sources separately from the
+  original downloaded recipe. Completed-use/diversity counters omit discarded
+  shots; active jobs still reserve all originals, older completions retain their
+  conservative history, and malformed/substituted rendered lists fail closed.
+  Both fresh completion and idempotent reuse retain this accounting. Source
+  provenance is never rewritten. The release suite now includes stock-reuse
+  regressions and the public proof verifies this against actual final credits.
+
 - Public proof 37991500112 passed 463 regressions/build and decoded 8 sources /
   20.041667s, but direct inspection showed sky-heavy skyline, roadside and grey
   bare-tree shots plus dark-bar changes. That candidate was NOT activated.

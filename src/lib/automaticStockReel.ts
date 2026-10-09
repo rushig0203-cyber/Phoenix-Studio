@@ -291,7 +291,7 @@ export function automaticStockCompanions(anchor: NaturalStock, candidates: Natur
 
 type StockReelHistoryEntry = {
   status: string; archivedAt?: string; finishedAt?: string; updatedAt?: string; createdAt?: string;
-  stockSource?: { shots?: Array<{ provider: string; mediaId: string }> };
+  stockSource?: { shots?: Array<{ provider: string; mediaId: string }>; renderedShots?: Array<{ provider: string; mediaId: string }> };
 };
 /** Small local diversity preference, not a promise of unseen scenes or new stock. */
 export function recentStockMediaIdentities(jobs: readonly StockReelHistoryEntry[], historyLimit: 10 | 20 = 10) {
@@ -300,7 +300,7 @@ export function recentStockMediaIdentities(jobs: readonly StockReelHistoryEntry[
     .map((job, index) => ({ job, index, completed: [job.finishedAt, job.updatedAt, job.createdAt].map(value => Date.parse(value || "")).find(Number.isFinite) || 0 }))
     .sort((a, b) => b.completed - a.completed || b.index - a.index).slice(0, historyLimit);
   const identities = new Set<string>();
-  for (const { job } of recent) for (const shot of job.stockSource!.shots!) {
+  for (const { job } of recent) for (const shot of job.stockSource!.renderedShots ?? job.stockSource!.shots!) {
     const id = Number(shot.mediaId);
     if ((shot.provider === "pexels" || shot.provider === "pixabay") && /^\d+$/.test(shot.mediaId) && Number.isSafeInteger(id) && id > 0) identities.add(`${shot.provider}:${id}`);
   }

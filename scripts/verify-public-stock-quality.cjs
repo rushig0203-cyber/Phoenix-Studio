@@ -135,6 +135,8 @@ async function main() {
   });
   const order = visual.stockVisualOrder(appearance), intervals = planning.reorderStockIntervals(provisional, order);
   assert.deepEqual(file.quality.visualSources.map(credit => credit.providerMediaId), order.map(index => shots[index].mediaId));
+  assert.deepEqual(done.stockSource.renderedShots, order.map(index => ({ provider: shots[index].provider, mediaId: shots[index].mediaId })));
+  assert.deepEqual(done.stockSource.shots, job.stockSource.shots, 'Downloaded source provenance must remain intact when sources are excluded.');
   intervals.forEach((interval, index) => {
     const check = file.quality.checks.find(text => text.startsWith(`Shot ${index + 1}:`) && text.includes('playback;'));
     assert.ok(check?.includes(`; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s;`), 'Finished cuts must preserve the measured appearance endpoints.');
@@ -143,6 +145,7 @@ async function main() {
   await source.updateJob(job.id, { status: 'FAILED', error: 'Isolated public proof interrupted-finalization fixture' });
   await source.retrySourceJob(job.id); await source.processNextSourceJob();
   const retried = await source.getSourceJob(job.id); assert.equal(retried.status, 'COMPLETED'); assert.deepEqual(retried.reviewIds, done.reviewIds);
+  assert.deepEqual(retried.stockSource.renderedShots, done.stockSource.renderedShots, 'Retry must retain exact completed usage accounting.');
   assert.equal(hash(output), before, 'Fixture retry must retain the verified output exactly.');
   const edited = path.join(destination, 'coherent-reel.mp4'), contact = path.join(destination, 'after.jpg');
   fs.copyFileSync(output, edited);

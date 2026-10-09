@@ -574,6 +574,12 @@ test('local diversity handles old completion timestamps and malformed media iden
   assert.doesNotMatch(automatic.automaticStockReelMessage(8), /fresh|unseen|never.used|new footage/i);
 });
 
+test('recent diversity remembers rendered sources, not companions rejected during the edit', () => {
+  const stockSource = { shots: [{ provider: 'pexels', mediaId: '1' }, { provider: 'pexels', mediaId: '2' }], renderedShots: [{ provider: 'pexels', mediaId: '2' }] };
+  assert.deepEqual([...automatic.recentStockMediaIdentities([{ status: 'COMPLETED', finishedAt: '2026-10-09T00:00:00Z', stockSource }])], ['pexels:2']);
+  assert.equal(stockSource.shots.length, 2, 'Original download provenance remains unchanged');
+});
+
 test('explicit repetition feedback may use twenty recent completed recipes, while default history remains ten and arbitrary windows fail', () => {
   const jobs = Array.from({ length: 25 }, (_, at) => ({ status: 'COMPLETED', finishedAt: new Date(Date.UTC(2026, 9, 1, 0, at)).toISOString(),
     stockSource: { shots: [{ provider: 'pexels', mediaId: String(at + 1) }, { provider: 'pixabay', mediaId: String(at + 1) }] } }));

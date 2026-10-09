@@ -4,7 +4,7 @@ export const STOCK_REUSE_POLICY = "four-in-18-months-v1";
 export type StockReuseShot = { provider: string; mediaId: string };
 export type StockReuseHistoryJob = {
   id: string; status: string; createdAt?: string; finishedAt?: string; archivedAt?: string;
-  stockSource?: { provider?: string; mediaId?: string; shots?: readonly StockReuseShot[] };
+  stockSource?: { provider?: string; mediaId?: string; shots?: readonly StockReuseShot[]; renderedShots?: readonly StockReuseShot[] };
 };
 
 function historyError(detail: string): never {
@@ -61,7 +61,13 @@ export function stockReuseBlocked(jobs: readonly StockReuseHistoryJob[], now = D
     if (!stock || typeof stock !== "object") historyError("a stock source record is invalid");
     const shots = stock.shots === undefined ? [{ provider: stock.provider!, mediaId: stock.mediaId! }] : stock.shots;
     if (!Array.isArray(shots) || !shots.length) historyError("a stock shot list is invalid or empty");
-    const identities = new Set(Array.from(shots, identity));
+    const reserved = new Set(Array.from(shots, identity));
+    let identities = reserved;
+    if (job.status === "COMPLETED" && stock.renderedShots !== undefined) {
+      if (!Array.isArray(stock.renderedShots) || !stock.renderedShots.length || stock.renderedShots.length > shots.length) historyError("a completed rendered shot list is invalid");
+      identities = new Set(Array.from(stock.renderedShots, identity));
+      if ([...identities].some(source => !reserved.has(source))) historyError("a rendered shot was not in the saved source recipe");
+    }
     const relevantTime = job.status === "COMPLETED" ? timestamp(job.finishedAt === undefined ? job.createdAt : job.finishedAt) : timestamp(job.createdAt);
     if (relevantTime > now) historyError("a relevant source-job timestamp is in the future");
     // At the exact 18-month boundary the previous completion has expired.

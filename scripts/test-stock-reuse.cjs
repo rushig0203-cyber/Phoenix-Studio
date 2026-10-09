@@ -14,6 +14,21 @@ const now = Date.parse('2026-10-09T12:34:56.789Z');
 const shot = (mediaId = '1', provider = 'pexels') => ({ provider, mediaId });
 const history = (id, extra = {}) => ({ id, status: 'COMPLETED', createdAt: '2026-01-01T00:00:00.000Z', finishedAt: '2026-09-01T00:00:00.000Z', stockSource: { shots: [shot()] }, ...extra });
 
+test('completed filtered reels count only genuinely rendered sources while preserving all downloaded provenance', () => {
+  const jobs = Array.from({ length: 4 }, (_, index) => history(`filtered-${index}`, { stockSource: { shots: [shot('1'), shot('2')], renderedShots: [shot('1')] } }));
+  assert.deepEqual([...reuse.stockReuseBlocked(jobs, now)], ['pexels:1']);
+  reuse.assertStockReuseAvailable([shot('2')], jobs, now);
+  assert.equal(jobs[0].stockSource.shots.length, 2);
+  const queued = jobs.map(job => ({ ...job, status: 'QUEUED' }));
+  assert.deepEqual([...reuse.stockReuseBlocked(queued, now)].sort(), ['pexels:1', 'pexels:2'], 'Pending jobs reserve every downloaded source until verification completes');
+});
+
+test('a malformed or forged completed rendered list cannot bypass the rolling reuse cap', () => {
+  for (const renderedShots of [[], {}, [shot('3')], [shot('1'), shot('1'), shot('1')], [shot('https://bad.test')]]) {
+    assert.throws(() => reuse.stockReuseBlocked([history('bad-rendered', { stockSource: { shots: [shot('1'), shot('2')], renderedShots } })], now), /reuse history cannot be verified/);
+  }
+});
+
 test('four uses block provider-scoped canonical identities and each job counts a clip only once', () => {
   const jobs = Array.from({ length: 3 }, (_, at) => history(`job-${at}`, { stockSource: { shots: [shot('001'), shot('1'), shot('0001')] } }));
   assert.deepEqual([...reuse.stockReuseBlocked(jobs, now)], []);
