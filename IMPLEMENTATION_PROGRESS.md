@@ -1,5 +1,19 @@
 # Quality-first implementation — September 16, 2026
 
+## October 9 activation attempt after Git upload
+
+- Owner explicitly requested activation without another approval question.
+  Ran the canonical `restart-phoenix.ps1 -Rebuild -NoPause -NoBrowser` updater.
+- Only identified Phoenix-owned services were released. The guarded build still
+  refused at 1296 MiB free versus the unchanged 1664 MiB floor; no build started.
+  The updater restored the previous verified website and manager automatically.
+- Live `/api/studio-health` matches `storage/active-build.json` at
+  `.next-build-20261009054643268`; worker and Lumina are healthy and no heavy job
+  is active. This is restoration evidence, not activation of the new follow-up.
+- Desktop junction/shortcuts remain canonical; two isolated release-consistency
+  tests pass. The implementation was pushed to GitHub as `63afd4e` on `main`.
+  No unrelated app was stopped, RAM guard lowered, failed job retried or post sent.
+
 ## October 9: English/instrumental fit, stronger first-pass copy and posting defaults
 
 Source follow-up, not yet installed. The currently selected/live bundle is still

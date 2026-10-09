@@ -7,6 +7,9 @@ The live release remains the build listed below until the guarded build and
 restart complete. No video or Story was posted during these checks.
 The 231 focused tests and scoped lint pass. Activation was safely refused at
 749 MiB free RAM; the 1664 MiB admission floor was not lowered.
+The subsequent canonical restart/update attempt also refused at 1296 MiB after
+releasing only Phoenix-owned services, then restored the healthy previous site
+and Lumina. The new implementation is on GitHub at `63afd4e`, not live yet.
 
 - Footage music recommendations now use the finished video's saved sampled-frame
   evidence, instead of a blank generic trending request. New caption analysis
