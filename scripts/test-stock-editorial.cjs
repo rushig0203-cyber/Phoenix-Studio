@@ -253,6 +253,31 @@ test('owner narration never enters automatic rewriting', async () => {
   assert.equal(await createStockScript(input), script);
   assert.equal(input.editorialAttempts, undefined);
 });
+test('automatic dog narration rejects camera inventories and first-person directions, preserving explicit filmmaking',()=>{
+  const topic='A dog exploring the park';
+  for(const line of [
+    'The video opens with a close‑up of the dog’s excited face.',
+    'The camera, mounted on a harness, shifts to a first‑person view.',
+    'The camera tilts to capture the thump of paws against the seat.',
+    'This shows how a GoPro or phone on a harness can turn a walk into an adventure.',
+    'You will learn how to film a dog exploring the park.',
+  ]) assert.match(editor.editorialIssues(line,topic,'general').join(' '),/production instructions/,line);
+  assert.deepEqual(editor.editorialIssues('A curious dog pauses to sniff the leaves before moving on.',topic,'general'),[]);
+  assert.deepEqual(editor.editorialIssues('The camera pans slowly to keep the dog in view.','How to film a dog exploring the park','general'),[]);
+  assert.deepEqual(editor.editorialIssues('The camera pans across two friends.','Two friends share a ball','children-story'),[]);
+});
+test('local camera guard blocks generated narration even when the model review passes',async()=>{
+  const cameraScript=script.replace('Replace a vague task with a small action you can actually finish.','The video opens with a close-up of a dog exploring the park.');
+  const count=responses([verdict(),{script:cameraScript},verdict()]);
+  await assert.rejects(editor.editStockNarration({...brief,topic:'A dog exploring the park',creationType:'general',script:cameraScript}),/production instructions/);
+  assert.equal(count(),3,'One rewrite and re-review, without accepting the repeated camera script');
+});
+test('explicit owner camera narration is retained without automatic editorial requests',async()=>{
+  const ownerScript=script.replace('Replace a vague task with a small action you can actually finish.','The video opens with a close-up of a dog exploring the park.');
+  global.fetch=async()=>assert.fail('Owner text must not be sent to a provider');
+  const input={...brief,topic:'A dog exploring the park',creationType:'general',script:ownerScript,scriptOrigin:'owner'};
+  assert.equal(await createStockScript(input),ownerScript);assert.equal(input.editorialAttempts,undefined);
+});
 
 test('quota waits resume each editorial phase without repeating completed provider work', async () => {
   const writer = require('../src/lib/writingModel.ts'), original = writer.generateWritingModel;

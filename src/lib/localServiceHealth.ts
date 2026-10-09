@@ -1,4 +1,5 @@
 import { readWritingSettings } from "./writingSettings";
+import { supportsNativeStockPlayback } from "./stockPlayback";
 
 export type LocalServiceState = { state: "ready" | "offline" | "blocked" | "configured"; detail: string };
 export type LocalServices = { checkedAt: string; writerProvider: "ollama" | "groq"; writer: LocalServiceState; ollama: LocalServiceState; renderer: LocalServiceState };
@@ -29,7 +30,7 @@ export async function probeLocalServices(): Promise<LocalServices> {
         if (!response.ok) return { state: "blocked", detail: `MoneyPrinterTurbo returned HTTP ${response.status}; check its access settings and logs.` };
         const api = await response.json();
         const properties = api?.components?.schemas?.TaskVideoRequest?.properties;
-        return properties?.phoenix_artifacts_version && properties?.phoenix_storyboard
+        return properties?.phoenix_artifacts_version && properties?.phoenix_storyboard && supportsNativeStockPlayback(properties)
           ? { state: "ready", detail: "Compatible local renderer is responding." }
           : { state: "blocked", detail: "The renderer needs the current Phoenix integration patch and a restart." };
       } catch { return { state: "offline", detail: "MoneyPrinterTurbo is unavailable. Open the Phoenix shortcut to start it; saved jobs are retained." }; }

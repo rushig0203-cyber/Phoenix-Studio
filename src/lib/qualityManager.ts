@@ -7,6 +7,7 @@ import { getReviewFile, readReviewFiles, reviewRoot, type ReviewFile } from "./r
 import type { CreativeFeedback, CreativeGuidance, FeedbackDimension, QualityAssessment, QualityManagerState } from "./managerTypes";
 import { FEEDBACK_REQUESTS, type FeedbackRequest } from "./managerTypes";
 import { publishingProfile, inferPublishingFormat } from "./publishingFormats";
+import { STOCK_FEEDBACK_MAX_BYTES, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
 
 const feedbackPath = () => path.join(reviewRoot(), "manager-feedback.json");
 const rating = z.number().int().min(1).max(5);
@@ -17,7 +18,7 @@ async function readArray<T>(filename: string): Promise<T[]> {
   try { const data = JSON.parse(await fs.readFile(filename, "utf8")); if (!Array.isArray(data)) throw new Error("Invalid local manager data."); return data; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
 }
-export function readCreativeFeedback() { return readArray<CreativeFeedback>(feedbackPath()); }
+export function readCreativeFeedback() { return readBoundedManagerFeedback(feedbackPath()); }
 
 export async function saveCreativeFeedback(value: unknown) {
   const data = schema.parse(value);
@@ -29,10 +30,12 @@ export async function saveCreativeFeedback(value: unknown) {
     const records = await readCreativeFeedback();
     const index = records.findIndex(item => item.reviewId === data.reviewId);
     if (index < 0) records.push(feedback); else records[index] = feedback;
+    const serialized = JSON.stringify(records, null, 2);
+    if (Buffer.byteLength(serialized, "utf8") > STOCK_FEEDBACK_MAX_BYTES) throw new Error("Saved manager feedback has reached the 512 KiB local planning limit. Existing reviews are preserved; reduce notes or archive feedback explicitly before adding more.");
     const temporary = `${feedbackPath()}.${crypto.randomUUID()}.tmp`;
     try {
       const handle=await fs.open(temporary,"wx");
-      try {await handle.writeFile(JSON.stringify(records,null,2),"utf8");await handle.sync();} finally {await handle.close();}
+      try {await handle.writeFile(serialized,"utf8");await handle.sync();} finally {await handle.close();}
       await fs.rename(temporary,feedbackPath());
     }
     finally { await fs.rm(temporary, { force: true }); }
@@ -43,6 +46,12 @@ export async function saveCreativeFeedback(value: unknown) {
 // Feedback is converted to a bounded set of production rules. Notes never
 // become executable instructions, new dependencies, paid calls or auto-posts.
 export function guidanceFromFeedback(records: CreativeFeedback[], creationType?: string): CreativeGuidance {
+  if (creationType === "source") {
+    const stock = stockProductionGuidanceFromFeedback(records);
+    return { feedbackCount: stock.feedbackCount, revision: stock.revision, policyVersion: stock.policyVersion, rules: stock.rules,
+      requests: stock.requests, priorities: stock.priorities,
+      maxCaptionWords: stock.shorterPostingCaption ? 7 : 10, wordsPerSecond: 1.95 };
+  }
   const relevant = records.filter(record => !creationType || record.creationType === creationType);
   const policyVersion = 3;
   const requests = FEEDBACK_REQUESTS.filter(request => relevant.some(record => record.requests?.includes(request)));
@@ -85,7 +94,12 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
   }
   if (file.delivery?.creationType === "children-song" && file.quality.audio !== "supplied-song") blockers.push("This song uses spoken narration, not verified singing. Supply a real song recording before treating it as a song.");
   if (["no-audio", "needs-review"].includes(file.quality.audio)) blockers.push("Audio needs repair or confirmation.");
-  if (!file.quality.captions.some(caption => caption.trim())) blockers.push("No caption text is saved. Add accurate captions in Edit video.");
+  const narrationLed = (file.delivery && ["children-story", "children-song", "business", "general"].includes(file.delivery.creationType))
+    || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio);
+  if (!file.quality.captions.some(caption => caption.trim())) {
+    if (narrationLed || file.quality.subtitles?.decision === "speech") blockers.push("No speech caption text is saved. Add accurate captions in Edit video.");
+    else checks.push(file.quality.subtitles?.decision === "none" ? "Subtitles intentionally omitted: no confidently detected speech requires them. Posting copy is separate." : "No subtitles are saved for this source footage. Check audible speech before posting; do not invent subtitles for music or scenery.");
+  }
   if (file.quality.audio === "local-music-replaced") checks.push("Original audio was replaced. Confirm no important dialogue was lost.");
   if (file.quality.audio === "supplied-song") checks.push("User-supplied audio is present; singing, music quality and lyric synchronization still need a listening review.");
   if (file.delivery?.creationType.startsWith("children")) checks.push("Limited 2D character animation. Anatomy, action matching and lip synchronization need visual review; this is not a professional-animation score.");
@@ -108,7 +122,7 @@ export async function getQualityManagerState(): Promise<QualityManagerState> {
   const map = new Map(feedback.map(item => [item.reviewId,item]));
   const assessments = files.filter(file => file.status === "READY").map(file => assessReview(file,map.get(file.id))).reverse();
   return { mode:"local-feedback", checkedAt:new Date().toISOString(), queued:jobs.filter(job=>job.status==="QUEUED").length, running:jobs.filter(job=>["RUNNING","PROCESSING","PLANNING","APPROVING"].includes(job.status)).length, failed:jobs.filter(job=>["FAILED","BLOCKED"].includes(job.status)).length, reviewReady:assessments.length, guidance:guidanceFromFeedback(feedback), assessments,
-    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Ratings guide matching children's briefs, caption grouping, and business/general narration. Real-footage reels preserve their selected source; source ratings remain review records. No model retraining, self-modifying code, automatic posting or performance prediction.",paidServices:false} };
+    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Lumina uses structured reviews for matching children's briefs and business/general writing, including the configured Groq writer. New automatic stock reels snapshot bounded source-review rules: weak visuals or repeated points prefer a larger recent-footage history, and weak caption ratings request shorter grounded posting copy. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code, automatic posting or performance prediction.",paidServices:false} };
 }
 
 export function assertLocalManagerRequest(request: Request, mutation=false) {

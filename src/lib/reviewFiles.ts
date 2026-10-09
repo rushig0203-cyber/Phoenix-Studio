@@ -12,6 +12,8 @@ export type MonetizationReviewStatus = "NOT_REVIEWED" | "CHECKED" | "NEEDS_CHANG
 
 export type ReviewFile = {
   id: string;
+  /** Read-only API decoration from durable upload records; not saved metadata. */
+  publication?: import("./reviewPublicationSummary").ReviewPublicationSummary;
   trashedAt?: string;
   editedFrom?: string;
   editableMaster?: boolean;
@@ -34,12 +36,18 @@ export type ReviewFile = {
   };
   outputs: Partial<Record<ReviewTarget, { filename: string; duration: number; width: number; height: number }>>;
   quality: {
+    /** Owner-written posting text is not replaced by background frame analysis. */
+    postingTextOrigin?: "automatic" | "owner";
     subtitles?: { decision: "speech" | "none" | "uncertain"; reason: string };
     postingAnalysis?: {
       status: "QUEUED" | "ANALYZING" | "WAITING" | "FAILED" | "COMPLETE";
       fingerprint?: string; updatedAt: string; attempts: number; nextAttemptAt?: string;
       detail: string; model?: string; sampledAt?: number[]; observations?: string[];
       alignment?: "consistent" | "mismatch" | "unknown"; alignmentReason?: string;
+      copyPolicy?: string; variation?: "distinct" | "similar";
+      captionVariants?: string[];
+      musicBrief?: import("./reelMusic").ReelMusicBrief;
+      hashtagActivity?: import("./instagramHashtagActivity").HashtagActivity;
     };
     research?: { source: string; url: string; publishedAt: string; fetchedAt: string; limitation: string };
     editorial?: import("./stockEditorial").EditorialReview;

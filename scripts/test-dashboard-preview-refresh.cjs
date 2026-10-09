@@ -104,6 +104,13 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
   const dashboard = hooks(Dashboard), player = hooks(ReviewPlayer, { dialog, video }), posting = hooks(PostingActions);
   t.after(() => { dashboard.unmount(); player.unmount(); posting.unmount(); Object.assign(global, previous); current = undefined; });
   await dashboard.flush();
+  const statusFilter = () => nodes(dashboard.tree, node => node.type === "select" && node.props?.["aria-label"] === "Job status filter")[0];
+  assert.equal(statusFilter().props.value, "completed", "Idle queues still select completed history by default");
+  assert.deepEqual(nodes(statusFilter(), node => node.type === "option").map(text), ["Active · 0", "Needs attention · 0", "Completed · 1", "All jobs · 1"]);
+  statusFilter().props.onChange({ target: { value: "active" } }); await dashboard.flush();
+  assert.match(dashboard.text, /Nothing is processing or waiting/);
+  assert.equal(nodes(dashboard.tree, node => typeof node.props?.onClick === "function" && text(node) === "Watch video").length, 0);
+  statusFilter().props.onChange({ target: { value: "completed" } }); await dashboard.flush();
   const watch = nodes(dashboard.tree, node => typeof node.props?.onClick === "function" && text(node) === "Watch video")[0];
   assert.ok(watch, "Completed Jobs output must expose Watch video"); watch.props.onClick(); await dashboard.flush();
   const preview = () => nodes(dashboard.tree, node => node.type === ReviewPlayer)[0];
@@ -121,7 +128,8 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
   const source = nodes(player.tree, node => node.type === "video")[0].props.src;
   nodes(player.tree, node => node.type === "video")[0].props.onPlaying(); await player.flush();
   assert.match(posting.text, /Generic travel draft/); assert.match(posting.text, /not yet verified/);
-  assert.equal(intervals.size, 0);
+  assert.equal(intervals.size, 1, 'Missing automatic posting analysis polls saved status without reanalysis requests');
+  assert.equal([...intervals.values()][0].delay, 15_000);
 
   latest = { ...original, quality: { ...original.quality, postingAnalysis: {
     status: "QUEUED", updatedAt: "2026-10-02T01:01:00Z", detail: "Waiting to sample this video." } } };

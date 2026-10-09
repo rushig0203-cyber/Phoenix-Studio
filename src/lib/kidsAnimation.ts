@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import sharp from "sharp";
 import { kidsCharacterSvg, kidsRigMotion, type KidsRigPose } from "./kidsCharacterRig";
 import { kidsNarratedActions, reportsKiteFlight, reportsKiteResolution } from "./kidsObjectEvents";
 import { kidsMouthState, kidsPoseBudgets, kidsShotFor, kidsStoryBeat, mix, ramp, quantizeKidsProgress, unit, KIDS_MAX_UNIQUE_FRAMES, type KidsAnimationPerformanceFrame, type KidsExpression, type KidsShot, type KidsStoryIntent } from "./kidsAnimationTimeline";
@@ -361,6 +360,8 @@ export type PrepareKidsAnimationOptions = {
 export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions) {
   if (!Number.isFinite(options.duration) || options.duration <= 0 || options.duration > 210) throw new Error("Animation duration must be positive and at most 210 seconds.");
   if (!options.cues.length || options.cues.some(cue => !Number.isFinite(cue.start) || !Number.isFinite(cue.end) || cue.end <= cue.start)) throw new Error("Animation needs valid timed narration scenes.");
+  // Stock/source jobs and pure scene planning do not need the native rasterizer.
+  const { default: sharp } = await import("sharp");
   sharp.concurrency(1);
   sharp.cache({ memory: 24, files: 0, items: 32 });
   try {

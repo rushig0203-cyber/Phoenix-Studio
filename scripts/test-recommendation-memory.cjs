@@ -118,3 +118,47 @@ test('choosing a mixed idea changes its supported type, not song source, owner w
   const child = recommendationPool().find(item => item.kind === "Children's short story");
   assert.equal(applyRecommendationToForm({ ...current, narration: '' }, child).batchCount, 10);
 });
+
+test('every displayed card inserts its exact title throughout repeated recommendation rotations', () => {
+  const current = { kind: 'General video', topic: 'Earlier idea', autoIdea: true, publishingFormat: 'instagram-reel', duration: 90, batchCount: 1, narration: '' };
+  let memory = emptyRecommendationMemory();
+  const selectedIds = new Set();
+  for (let rotation = 0; rotation < 80; rotation++) {
+    const batch = creationRecommendations(memory);
+    for (const displayed of batch.ideas) {
+      const next = applyRecommendationToForm(current, displayed);
+      assert.equal(next.topic, displayed.title, `wrong sentence for ${displayed.id} at rotation ${rotation}`);
+      assert.equal(next.kind, displayed.kind);
+      selectedIds.add(displayed.id);
+    }
+    memory = parseRecommendationMemory(JSON.stringify(batch.memory));
+  }
+  assert.equal(selectedIds.size, recommendationPool().length, 'all catalogue cards were selected');
+});
+
+test('a displayed sentence overrides the registry title while the known ID controls its workflow', () => {
+  const current = { kind: 'General video', topic: 'Earlier idea', autoIdea: true, publishingFormat: 'instagram-reel', duration: 90, batchCount: 1, narration: '' };
+  for (const canonical of recommendationPool()) {
+    const displayed = { ...canonical, title: `  The exact visible sentence for ${canonical.id}.  `, kind: canonical.kind === 'General video' ? "Children's song" : 'General video' };
+    const next = applyRecommendationToForm(current, displayed);
+    const expectedWorkflow = applyRecommendationToForm(current, canonical);
+    assert.notEqual(displayed.title, canonical.title);
+    assert.equal(next.topic, displayed.title, 'preserve the visible sentence including its surrounding spaces');
+    for (const field of ['kind', 'publishingFormat', 'duration', 'batchCount']) {
+      assert.equal(next[field], expectedWorkflow[field], `spoofed kind changed ${field} for ${canonical.id}`);
+    }
+  }
+  const displayed = { ...recommendationPool()[0], title: 'x'.repeat(400) };
+  assert.equal(applyRecommendationToForm(current, displayed).topic, displayed.title, '400 characters is valid');
+});
+
+test('invalid displayed titles leave the form unchanged even for a known recommendation ID', () => {
+  const current = { kind: 'General video', topic: 'Earlier idea', autoIdea: true, publishingFormat: 'instagram-reel', duration: 90, batchCount: 1, narration: '' };
+  const known = recommendationPool().find(idea => idea.kind === "Children's song");
+  const invalidTitles = [undefined, null, false, 42, {}, [], '', '   ', '\u00a0', 'x'.repeat(401),
+    ...Array.from({ length: 32 }, (_, code) => `Visible${String.fromCharCode(code)}sentence`),
+    `Visible${String.fromCharCode(127)}sentence`];
+  for (const title of invalidTitles) {
+    assert.equal(applyRecommendationToForm(current, { ...known, title }), current, `accepted invalid title ${JSON.stringify(title)}`);
+  }
+});

@@ -44,7 +44,7 @@ test('saving tests key and model first, rejection leaves provider unchanged',asy
 test('Groq dashboard health does not call Ollama or external providers',async()=>{
   await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true});
   const previous=process.env.MPT_BASE_URL;process.env.MPT_BASE_URL='http://localhost:8080';
-  global.fetch=async url=>{assert.equal(new URL(url).port,'8080');return Response.json({components:{schemas:{TaskVideoRequest:{properties:{phoenix_artifacts_version:{},phoenix_storyboard:{}}}}}});};
+  global.fetch=async url=>{assert.equal(new URL(url).port,'8080');return Response.json({components:{schemas:{TaskVideoRequest:{properties:{phoenix_artifacts_version:{},phoenix_storyboard:{},phoenix_playback_policy:{const:'native-speed-v1'}}}}}});};
   try{const state=await require('../src/lib/localServiceHealth.ts').probeLocalServices();assert.equal(state.writerProvider,'groq');assert.equal(state.writer.state,'configured');assert.equal(state.renderer.state,'ready');assert.equal(JSON.stringify(state).includes(key),false);}
   finally{if(previous===undefined)delete process.env.MPT_BASE_URL;else process.env.MPT_BASE_URL=previous;}
 });

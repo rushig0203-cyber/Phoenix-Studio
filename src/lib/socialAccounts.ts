@@ -1,5 +1,5 @@
 export const SOCIAL_ACCOUNTS = {
-  instagram: "__bite.hemap",
+  instagram: "__bitet.hemap",
 } as const;
 
 export function socialHandle(platform: keyof typeof SOCIAL_ACCOUNTS) {

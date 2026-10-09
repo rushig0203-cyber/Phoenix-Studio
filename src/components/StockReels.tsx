@@ -2,104 +2,165 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { NaturalStock } from "@/lib/naturalStock";
-import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_SHOTS, planStockIntervals, type StockReelOptions } from "@/lib/stockReel";
+import type { ContentIdea } from "@/lib/contentIdeas";
+import { nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/stockFootageSuggestions";
+import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
 
-type SelectedShot = { video: NaturalStock; start: number; end: number };
+type Results = { query: string; version: number; videos: NaturalStock[]; cursor: string | null; limited: boolean };
+type Selection = { video: NaturalStock; results: Results };
+const emptyResults = (): Results => ({ query: "", version: 0, videos: [], cursor: null, limited: false });
 const identity = (video: NaturalStock) => `${video.provider}:${video.id}`;
 
-export default function StockReels({ initialQuery = "forest waterfall", onClose, onStarted }: { initialQuery?: string; onClose: () => void; onStarted: (message: string) => void }) {
-  const [query, setQuery] = useState(initialQuery), [provider, setProvider] = useState("all"), [videos, setVideos] = useState<NaturalStock[]>([]);
-  const [configured, setConfigured] = useState<{ pexels: boolean; pixabay: boolean } | null>(null);
-  const [selected, setSelected] = useState<NaturalStock | null>(null), [caption, setCaption] = useState(""), [duration, setDuration] = useState(60);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const [shots, setShots] = useState<SelectedShot[]>([]), [trimStart, setTrimStart] = useState(0), [trimEnd, setTrimEnd] = useState(0);
-  const [theme, setTheme] = useState(initialQuery), [options, setOptions] = useState<StockReelOptions>(DEFAULT_STOCK_REEL_OPTIONS);
-  const inFlight = useRef(false), requestId = useRef(crypto.randomUUID()), preview = useRef<HTMLVideoElement>(null);
-  useEffect(() => { setQuery(initialQuery); setTheme(initialQuery); setVideos([]); setSelected(null); setShots([]); requestId.current = crypto.randomUUID(); }, [initialQuery]);
-  const changed = () => { requestId.current = crypto.randomUUID(); };
-  const activeShots = shots.length ? shots : selected ? [{ video: selected, start: trimStart, end: trimEnd || selected.duration }] : [];
-  let plan: ReturnType<typeof planStockIntervals> = [], planError = "";
-  if (activeShots.length) {
-    try { plan = planStockIntervals(activeShots.map(shot => ({ duration: shot.video.duration, start: shot.start, end: shot.end })), duration); }
-    catch (error) { planError = error instanceof Error ? error.message : "Choose a readable footage interval."; }
+export default function StockReels({ initialQuery = "", onClose, onStarted }: { initialQuery?: string; onClose: () => void; onStarted: (message: string) => void }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [results, setResults] = useState<Results>(emptyResults);
+  const [visibleOffset, setVisibleOffset] = useState(0);
+  const previousOffsets = useRef<number[]>([]);
+  const [searching, setSearching] = useState(false), [creating, setCreating] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [libraryWarning, setLibraryWarning] = useState(""), [searchFailed, setSearchFailed] = useState(false);
+  const [failedSelection, setFailedSelection] = useState<Selection | null>(null);
+  const mounted = useRef(true), latestQuery = useRef(initialQuery.trim()), currentResults = useRef<Results | null>(null);
+  const sequence = useRef(0), creationBusy = useRef(false), submitted = useRef(false);
+  const requestIds = useRef(new Map<string, string>());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequest = useRef<{ query: string; controller: AbortController; version: number } | null>(null);
+  const [suggestions, setSuggestions] = useState(() => stockFootageSuggestions());
+  const [suggestionsRemembered, setSuggestionsRemembered] = useState(true);
+  const suggestionCursor = useRef(0), suggestionsInitialized = useRef(false), suggestionStorageWorking = useRef(true);
+
+  function moreSuggestions() {
+    if (creationBusy.current) return;
+    const next = nextStoredFootageSuggestions({ getItem: key => suggestionStorageWorking.current ? localStorage.getItem(key) : null, setItem: (key, value) => localStorage.setItem(key, value) }, suggestionCursor.current);
+    suggestionStorageWorking.current = next.remembered; suggestionCursor.current = next.nextCursor;
+    setSuggestions(next.ideas); setSuggestionsRemembered(next.remembered);
   }
-  const actualDuration = plan.length ? plan[plan.length - 1].outputEnd : 0;
-  function choose(video: NaturalStock) { const prior = shots.find(shot => identity(shot.video) === identity(video)); setSelected(video); setTrimStart(prior?.start ?? 0); setTrimEnd(prior?.end ?? video.duration); changed(); }
-  function option<Key extends keyof StockReelOptions>(key: Key, value: StockReelOptions[Key]) { setOptions(previous => ({ ...previous, [key]: value })); changed(); }
-  function addShot() {
-    if (!selected || (shots.length >= MAX_STOCK_SHOTS && !shots.some(shot => identity(shot.video) === identity(selected)))) return;
+  function cancelSearch() {
+    if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; }
+    sequence.current++; searchRequest.current?.controller.abort(); searchRequest.current = null;
+  }
+  function changeTopic(value: string) {
+    if (creationBusy.current || !mounted.current) return;
+    const bounded = value.slice(0, 100);
+    // Selecting the same topic twice must not cancel its pending lookup, hide
+    // an existing retry, or discard an idempotent submitted request.
+    if (bounded.trim() === latestQuery.current) { setQuery(bounded); return; }
+    cancelSearch(); latestQuery.current = bounded.trim(); currentResults.current = null;
+    submitted.current = false; requestIds.current.clear(); setQueued(false);
+    previousOffsets.current = [];
+    setQuery(bounded); setResults(emptyResults()); setVisibleOffset(0); setSearching(false); setError(""); setNotice("");
+    setLibraryWarning(""); setSearchFailed(false); setFailedSelection(null);
+  }
+  async function findVideos(wanted = latestQuery.current, append = false) {
+    if (!mounted.current || creationBusy.current || submitted.current || wanted !== latestQuery.current) return;
+    if (wanted.length < 2) return;
+    if (searchRequest.current?.query === wanted) return;
+    const previous = append ? currentResults.current : null;
+    if (append && (!previous?.cursor || previous.query !== wanted || previous.videos.length >= MAX_FOOTAGE_CANDIDATES)) return;
+    cancelSearch(); const controller = new AbortController(), version = sequence.current;
+    searchRequest.current = { query: wanted, controller, version };
+    if (!append) { currentResults.current = null; previousOffsets.current = []; setResults(emptyResults()); setVisibleOffset(0); }
+    setSearching(true); setError(""); setSearchFailed(false); setLibraryWarning(""); setFailedSelection(null);
+    setNotice(append ? "Finding more related starting videos…" : "Finding starting videos in your free stock libraries…");
+    const current = () => mounted.current && !controller.signal.aborted && searchRequest.current?.version === version && latestQuery.current === wanted;
     try {
-      planStockIntervals([{ duration: selected.duration, start: trimStart, end: trimEnd || selected.duration }], 105);
-      setShots(previous => previous.some(shot => identity(shot.video) === identity(selected)) ? previous.map(shot => identity(shot.video) === identity(selected) ? { video: selected, start: trimStart, end: trimEnd || selected.duration } : shot) : [...previous, { video: selected, start: trimStart, end: trimEnd || selected.duration }]); changed();
-    } catch (error) { setError(error instanceof Error ? error.message : "Choose an interval first."); }
+      const response = await fetch(`/api/stock-reels?q=${encodeURIComponent(wanted)}&provider=all&automatic=true&browse=true${previous?.cursor ? `&cursor=${encodeURIComponent(previous.cursor)}` : ""}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(40_000)]) });
+      const data = await response.json();
+      if (!current()) return;
+      if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Could not find footage. Try again.");
+      if (data?.configured?.pexels === false && data?.configured?.pixabay === false) throw new Error("Add a free Pexels or Pixabay key in Settings before finding footage.");
+      const videos = previous ? mergeStockFootageCandidates(previous.videos, data?.videos) : stockFootageCandidates(data?.videos);
+      const cursor = typeof data?.pagination?.cursor === "string" && data.pagination.cursor.length <= 160 ? data.pagination.cursor : null;
+      const next = { query: wanted, version, videos, cursor: videos.length >= MAX_FOOTAGE_CANDIDATES ? null : cursor, limited: data?.pagination?.limited === true || videos.length >= MAX_FOOTAGE_CANDIDATES };
+      currentResults.current = next; setResults(next);
+      if (previous && next.videos.length > previous.videos.length) { previousOffsets.current.push(visibleOffset); setVisibleOffset(previous.videos.length); }
+      const warnings = Array.isArray(data?.errors) ? data.errors.filter((value: unknown) => typeof value === "string").join(" ").slice(0, 600) : "";
+      setLibraryWarning(warnings);
+      const added = next.videos.length - (previous?.videos.length || 0);
+      setNotice(next.videos.length ? previous && !added ? "No new matching videos on this page. Your existing choices are kept; use More videos if another page is available."
+        : `${next.videos.length} distinct starting videos found. Choose one; Phoenix assembles the related shots.` : "No suitable starting videos found on this page. Try More videos or a broader topic; no unrelated footage was added.");
+    } catch (failure) {
+      if (current()) { setSearchFailed(true); setError(failure instanceof Error ? failure.message : "Could not reach the stock libraries."); setNotice(""); }
+    } finally {
+      if (current()) { searchRequest.current = null; setSearching(false); }
+    }
   }
-  function moveShot(index: number, direction: -1 | 1) {
-    setShots(previous => { const next = [...previous], other = index + direction; [next[index], next[other]] = [next[other], next[index]]; return next; }); changed();
+  function moreVideos() {
+    if (creationBusy.current || submitted.current || searching) return;
+    if (visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE < results.videos.length) { previousOffsets.current.push(visibleOffset); setVisibleOffset(visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE); }
+    else void findVideos(latestQuery.current, true);
   }
-  async function search(event: React.FormEvent) {
-    event.preventDefault(); if (inFlight.current) return;
-    inFlight.current = true; setBusy(true); setError(""); setNotice("Searching the configured free stock libraries…"); setSelected(null);
-    if (!shots.length) setTheme(query);
+  useEffect(() => {
+    mounted.current = true;
+    if (!suggestionsInitialized.current) { suggestionsInitialized.current = true; moreSuggestions(); }
+    return () => { mounted.current = false; cancelSearch(); currentResults.current = null; };
+  }, []);
+  useEffect(() => {
+    const wanted = query.trim(); latestQuery.current = wanted;
+    if (wanted.length < 2 || submitted.current || creationBusy.current) return;
+    timer.current = setTimeout(() => { timer.current = null; void findVideos(wanted); }, FOOTAGE_SEARCH_DELAY_MS);
+    return () => { if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; } };
+  }, [query]);
+
+  async function createReel(video: NaturalStock, listed: Results) {
+    // A retained handler from an earlier topic must never dispatch an old card.
+    if (!mounted.current || creationBusy.current || submitted.current || searchRequest.current || currentResults.current !== listed || latestQuery.current !== listed.query
+      || !listed.videos.some(candidate => identity(candidate) === identity(video))) return;
+    creationBusy.current = true; setCreating(identity(video)); setError(""); setFailedSelection(null);
+    setNotice("Finding enough related shots for a 40–45 second reel, downloading them one at a time, then queuing your reel…");
+    const key = `${listed.query}:${identity(video)}`;
+    let requestId = requestIds.current.get(key);
+    if (!requestId) { requestId = crypto.randomUUID(); requestIds.current.set(key, requestId); }
     try {
-      const response = await fetch(`/api/stock-reels?q=${encodeURIComponent(query)}&provider=${provider}`, { signal: AbortSignal.timeout(25_000) }), data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setVideos(data.videos); setConfigured(data.configured); setError(data.errors.join(" "));
-      setNotice(`${data.videos.length} real videos found, with portrait footage first. Preview the subject and sound before choosing.`);
-    } catch (error) { setError(error instanceof Error ? error.message : "Search failed."); setNotice(""); }
-    finally { inFlight.current = false; setBusy(false); }
+      const response = await fetch("/api/stock-reels", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ automatic: true, provider: video.provider, id: video.id, query: listed.query, requestId }), signal: AbortSignal.timeout(780_000) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Could not confirm the reel request. Retry checks the same saved request.");
+      if (!data?.job?.id) throw new Error("Could not confirm the queued job. Retry checks the same saved request without duplicating it.");
+      submitted.current = true;
+      if (mounted.current) {
+        setQueued(true); const message = typeof data.message === "string" ? data.message : "Automatic footage reel queued. Review the finished video in Jobs before posting.";
+        setNotice(message); onStarted(message);
+      }
+    } catch (failure) {
+      if (mounted.current) { setError(failure instanceof Error ? failure.message : "Could not confirm the reel request. Retry checks the same saved request."); setNotice(""); setFailedSelection({ video, results: listed }); }
+    } finally { creationBusy.current = false; if (mounted.current) setCreating(null); }
   }
-  async function create() {
-    if (!activeShots.length || planError || inFlight.current) return;
-    inFlight.current = true; setBusy(true); setError(""); setNotice(`Downloading ${activeShots.length} selected source${activeShots.length === 1 ? "" : "s"} one at a time, then queuing one reel…`);
-    try {
-      const response = await fetch("/api/stock-reels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: requestId.current, caption, duration, theme, options, shots: activeShots.map(shot => ({ provider: shot.video.provider, id: shot.video.id, start: shot.start, end: shot.end })) }), signal: AbortSignal.timeout(780_000) }), data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setNotice("Real footage reel queued. Follow Live jobs; the finished video will appear in Review Files.");
-      onStarted("Real footage queued with the selected moments, order and sound. No generated voice or AI video.");
-    } catch (error) { setError(error instanceof Error ? error.message : "Could not queue reel."); setNotice(""); }
-    finally { inFlight.current = false; setBusy(false); }
-  }
-  const duplicate = selected && shots.some(shot => identity(shot.video) === identity(selected));
+  function chooseIdea(idea: ContentIdea) { changeTopic(idea.query); }
+  function close() { if (creationBusy.current) return; cancelSearch(); currentResults.current = null; onClose(); }
+  const visibleVideos = results.videos.slice(visibleOffset, visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE);
+  const moreAvailable = visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE < results.videos.length || !!results.cursor;
+
   return <section id="stock-reels" className="mt-5 rounded-2xl border border-[#bfcaa6] bg-white p-5">
-    <div className="flex justify-between gap-3"><h2 className="text-xl font-semibold">Real footage → local reel → final review</h2><Button variant="outline" disabled={busy} onClick={onClose}>Close stock search</Button></div>
-    <p className="mt-2 text-sm text-[#657153]">Use one strong moment or build a sequence of up to six related shots. Portrait footage is preferred; other frames keep their full picture. Quiet natural sound is valuable. Choose the subject, useful interval and flow by watching the previews.</p>
-    <form onSubmit={event => void search(event)} className="mt-4 flex flex-wrap gap-3">
-      <label className="grow text-sm">Search footage<input value={query} onChange={event => setQuery(event.target.value)} minLength={2} maxLength={100} required className="mt-1 block w-full rounded-lg border p-2" placeholder="A forest stream, coastal walk, mountain mist…" /></label>
-      <label className="text-sm">Library<select value={provider} onChange={event => setProvider(event.target.value)} className="mt-1 block rounded-lg border p-2"><option value="all">Both free libraries</option><option value="pexels">Pexels</option><option value="pixabay">Pixabay</option></select></label>
-      <Button type="submit" disabled={busy} className="self-end">Search real videos</Button>
+    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Make a reel from real footage</h2><Button type="button" variant="outline" disabled={!!creating} onClick={close}>Close footage</Button></div>
+    <p className="mt-2 text-sm text-[#657153]">Tell Phoenix the topic, then choose a starting video. It builds a 40–45 second reel from related clips and handles the edit, sound, framing and video-specific posting copy. Final review stays yours.</p>
+    <form className="mt-4" onSubmit={event => { event.preventDefault(); void findVideos(); }}>
+      <label className="block text-sm font-medium">Your reel topic<input value={query} disabled={!!creating} onChange={event => changeTopic(event.target.value)} minLength={2} maxLength={100} className="mt-2 block w-full rounded-xl border p-3" placeholder="Sun City videos, misty mountains, coastal roads…" aria-describedby="footage-topic-help" /></label>
+      <p id="footage-topic-help" className="mt-2 text-xs text-[#657153]">Video suggestions appear automatically after you stop typing. No trimming, library selection or extra Create button.</p>
     </form>
-    {configured ? <p className="mt-2 text-xs">Pexels: {configured.pexels ? "configured" : "free key missing"} · Pixabay: {configured.pixabay ? "configured" : "free key missing"}. Free quotas still apply.</p> : null}
-    {notice ? <p role="status" className="mt-3 text-sm">{notice}</p> : null}{error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}</p> : null}
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{videos.map(video => <button key={identity(video)} type="button" disabled={busy} onClick={() => choose(video)} aria-pressed={selected ? identity(selected) === identity(video) : false} className={`rounded-xl border p-3 text-left ${selected && identity(selected) === identity(video) ? "border-[#58733c] bg-[#f7faef]" : ""}`}>
-      {video.image ? <Image unoptimized src={video.image} alt={video.title} width={240} height={140} className="h-32 w-full rounded-lg object-cover" /> : <span className="block h-20 bg-[#f1f5e8] p-4">Video preview available</span>}
-      <span className="mt-2 block text-sm font-semibold">{video.title}</span><span className="block text-xs">{video.provider} · {video.duration}s · {video.height > video.width ? "Portrait" : "Full frame retained"} · {video.width}×{video.height}</span>
-    </button>)}</div>
-    {selected ? <div className="mt-5 rounded-xl border bg-[#f7faef] p-4">
-      <h3 className="font-semibold">Choose the useful moment: {selected.title}</h3>
-      <video ref={preview} key={identity(selected)} controls playsInline preload="metadata" src={selected.previewUrl} className="mt-3 max-h-72 w-full" />
-      <a href={selected.sourcePage} target="_blank" rel="noreferrer" className="mt-2 block text-xs underline">{selected.creator} · original {selected.provider} source</a>
-      <div className="mt-3 flex flex-wrap items-end gap-3"><label className="text-sm">Start (seconds)<input type="number" min={0} max={selected.duration} step={.1} value={trimStart} disabled={busy} onChange={event => { setTrimStart(Number(event.target.value)); changed(); }} className="mt-1 block w-28 rounded-lg border p-2" /></label><label className="text-sm">End (seconds)<input type="number" min={.1} max={selected.duration} step={.1} value={trimEnd || selected.duration} disabled={busy} onChange={event => { setTrimEnd(Number(event.target.value)); changed(); }} className="mt-1 block w-28 rounded-lg border p-2" /></label>
-        <Button variant="outline" disabled={busy} onClick={() => { setTrimStart(Math.round((preview.current?.currentTime || 0) * 10) / 10); changed(); }}>Use current frame as start</Button>
-        <Button variant="outline" disabled={busy} onClick={() => { setTrimEnd(Math.round((preview.current?.currentTime || selected.duration) * 10) / 10); changed(); }}>Use current frame as end</Button>
-        <Button variant="outline" disabled={busy || (!duplicate && shots.length >= MAX_STOCK_SHOTS)} onClick={addShot}>{duplicate ? "Update this moment in sequence" : "Add this moment to sequence"}</Button>
-      </div>
-      <p className="mt-2 text-xs">Keep the setup and a satisfying ending. One well chosen continuous shot can work better than several unrelated clips.</p>
+    <details className="mt-3 rounded-xl bg-[#f1f5e8] p-3"><summary className="cursor-pointer text-sm font-medium">Topic suggestions</summary>
+      <div className="mt-3 flex justify-between gap-3"><span className="text-xs text-[#657153]">Starting points, not live trends.</span><Button type="button" variant="outline" disabled={!!creating} onClick={moreSuggestions}>More ideas</Button></div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{suggestions.map(idea => <button key={idea.id} type="button" disabled={!!creating} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-lg border bg-white p-3 text-left text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span className="block text-xs text-[#657153]">{idea.category}</span><span className="mt-1 block font-medium">{idea.title}</span></button>)}</div>
+      {!suggestionsRemembered ? <p className="mt-2 text-xs text-[#657153]">Browser storage is unavailable; ideas still rotate here but may repeat next visit.</p> : null}
+    </details>
+    {notice ? <p role="status" aria-live="polite" className="mt-4 text-sm">{notice}</p> : null}
+    {error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}</p> : null}
+    {libraryWarning ? <p className="mt-3 text-xs text-amber-900">Some stock results are unavailable: {libraryWarning} Available choices below still work.</p> : null}
+    {searchFailed && !results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued || searching} onClick={() => void findVideos()}>Retry suggestions</Button> : null}
+    {searchFailed && results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued || searching} onClick={() => void findVideos(latestQuery.current, true)}>Retry more videos</Button> : null}
+    {failedSelection ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued} onClick={() => void createReel(failedSelection.video, failedSelection.results)}>Retry reel</Button> : null}
+    {results.videos.length ? <div className="mt-5"><h3 className="text-sm font-semibold">Choose the starting video · {visibleOffset + 1}–{Math.min(visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE, results.videos.length)} of {results.videos.length} loaded</h3>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{visibleVideos.map(video => <button key={identity(video)} type="button" disabled={!!creating || queued || searching} onClick={() => void createReel(video, results)} aria-label={`Make reel starting with: ${video.title}`} className="overflow-hidden rounded-xl border bg-[#fafbf6] text-left hover:border-[#58733c] disabled:opacity-50">
+        {video.image ? <Image unoptimized loading="lazy" src={video.image} alt={video.title} width={240} height={320} className="h-40 w-full object-cover" /> : <span className="flex h-40 items-center justify-center bg-[#eef3df] p-3 text-sm">Real stock video</span>}
+        <span className="block p-3"><span className="block text-sm font-medium">{video.title}</span><span className="mt-1 block text-xs text-[#657153]">{video.provider} · source {Math.round(video.duration)}s</span><span className="mt-2 block text-xs font-semibold">{creating === identity(video) ? "Preparing your reel…" : queued ? "Reel queued" : "Use this as the starting shot"}</span></span>
+      </button>)}</div>
     </div> : null}
-    {shots.length ? <div className="mt-4 rounded-xl border p-4"><h3 className="font-semibold">Your sequence · {shots.length} of {MAX_STOCK_SHOTS} shots</h3><p className="mt-1 text-xs">Keep one subject, place or intentional journey. Search results do not prove that different clips show the same location.</p><ol className="mt-3 space-y-2">{shots.map((shot, index) => <li key={identity(shot.video)} className="flex flex-wrap items-center gap-2 rounded-lg bg-[#f7faef] p-2"><span className="grow text-sm">{index + 1}. {shot.video.title} · {plan[index] ? `${plan[index].start.toFixed(1)}–${plan[index].end.toFixed(1)}s` : `${shot.start}–${shot.end}s`}</span><Button variant="outline" disabled={busy || index === 0} onClick={() => moveShot(index, -1)} aria-label={`Move shot ${index + 1} earlier`}>↑</Button><Button variant="outline" disabled={busy || index === shots.length - 1} onClick={() => moveShot(index, 1)} aria-label={`Move shot ${index + 1} later`}>↓</Button><Button variant="outline" disabled={busy} onClick={() => { setShots(previous => previous.filter((_item, at) => at !== index)); changed(); }}>Remove</Button></li>)}</ol></div> : null}
-    {activeShots.length ? <div className="mt-4 rounded-xl border bg-[#f7faef] p-4">
-      <label className="block text-sm">Shared subject or place<input value={theme} disabled={busy} minLength={2} maxLength={100} onChange={event => { setTheme(event.target.value); changed(); }} className="mt-1 block w-full rounded-lg border p-2" /></label>
-      <label className="mt-3 block text-sm">Optional posting description (not subtitles)<textarea value={caption} disabled={busy} onChange={event => { setCaption(event.target.value); changed(); }} maxLength={150} className="mt-1 block w-full rounded-lg border p-2" /></label>
-      <p className="mt-1 text-xs">This is draft posting text only, never an on-screen title. Only confident speech from the used footage receives subtitles. Enabled sampled-frame analysis writes video-specific posting copy after rendering.</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-sm">Maximum length<select value={duration} disabled={busy} onChange={event => { setDuration(Number(event.target.value)); changed(); }} className="mt-1 block w-full rounded-lg border p-2">{[45, 60, 75, 90, 105].map(seconds => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
-        <label className="text-sm">Sound<select value={options.audio} disabled={busy} onChange={event => option("audio", event.target.value as StockReelOptions["audio"])} className="mt-1 block w-full rounded-lg border p-2"><option value="auto">Original sound; music if all shots are silent</option><option value="original">Original sound only</option><option value="ambience-music">Original sound + quiet instrumental</option><option value="music">Instrumental only (replace original sound)</option></select></label>
-        <label className="text-sm">Instrumental mood<select value={options.mood} disabled={busy || options.audio === "original"} onChange={event => option("mood", event.target.value as StockReelOptions["mood"])} className="mt-1 block w-full rounded-lg border p-2"><option value="reflective">Reflective · slow minor chords</option><option value="warm">Warm · gentle major chords</option><option value="journey">Journey · brighter movement</option></select></label>
-        <label className="text-sm">Between shots<select value={options.transition} disabled={busy} onChange={event => option("transition", event.target.value as StockReelOptions["transition"])} className="mt-1 block w-full rounded-lg border p-2"><option value="cut">Direct cuts</option><option value="soft">Brief soft fades through dark</option></select></label>
-        <label className="text-sm">Framing<select value={options.framing} disabled={busy} onChange={event => option("framing", event.target.value as StockReelOptions["framing"])} className="mt-1 block w-full rounded-lg border p-2"><option value="auto">Fill near-native portrait; retain other full frames</option><option value="fit">Keep every full frame</option></select></label>
-      </div>
-      <p className="mt-3 text-xs">Output: about {actualDuration.toFixed(1)} seconds. Short footage stays short; no loops or filler. If your intervals exceed the cap, Phoenix shortens them proportionally while keeping their selected endings; the sequence above shows the actual intervals. All source credits are retained. Music is composed locally for this reel, with no copied trending track.</p>
-      {planError ? <p role="alert" className="mt-2 text-sm text-red-800">{planError}</p> : null}
-      <Button disabled={busy || !!planError || (activeShots.length > 1 && theme.trim().length < 2)} onClick={() => void create()} className="mt-3">{busy ? "Working…" : shots.length > 1 ? "Create reel from this sequence" : "Create reel from this footage"}</Button>
+    {results.query ? <div className="mt-4 flex flex-wrap items-center gap-3">
+      {visibleOffset > 0 ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={() => setVisibleOffset(previousOffsets.current.pop() ?? 0)}>Previous videos</Button> : null}
+      {moreAvailable ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={moreVideos}>{searching ? "Finding more videos…" : "More videos"}</Button> : !searching ? <p className="text-xs text-[#657153]">{results.limited ? "This topic reached the laptop-safe browsing limit. Refine your topic for different shots." : "All matching pages are checked. Try a different place, subject or action for more choices."}</p> : null}
     </div> : null}
+    <p className="mt-4 text-xs text-[#657153]">Phoenix adds related licensed footage at its original speed, not slow motion or repeated filler. If there isn&apos;t enough matching footage for 40 seconds it asks for a broader topic instead of exporting a short reel. Only speech needs subtitles; posting captions and hashtags remain separate. Thumbnails only—no preview videos load here.</p>
+    <p className="mt-2 text-xs text-[#657153]">Footage libraries: <a className="underline" href="https://www.pexels.com/" target="_blank" rel="noreferrer">Pexels</a> and <a className="underline" href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a>.</p>
   </section>;
 }

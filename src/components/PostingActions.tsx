@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { ReviewFile } from "@/lib/reviewFiles";
-import { postingDownload, postingText } from "@/lib/posting";
+import { postingCaption, postingDownload, postingHashtags, postingText } from "@/lib/posting";
+import { INSTAGRAM_HASHTAG_LIMIT } from "@/lib/postingCopyPolicy";
+import ReviewPublishActions from "./ReviewPublishActions";
 
 function snapshotTime(value?: string) {
   const time = Date.parse(value || "");
@@ -39,16 +41,18 @@ export function FinishedPostingActions({ id }: { id: string }) {
   return file ? <PostingActions file={file} /> : <p className="mt-2 text-xs">{error || "Loading finished output and posting details…"}</p>;
 }
 
-/** Manual handoff: never claims an external upload or publication succeeded. */
+/** Keep offline handoff alongside explicitly confirmed connected uploads. */
 export default function PostingActions({ file: supplied }: { file: ReviewFile }) {
   const [notice, setNotice] = useState("");
   const [file, setFile] = useState(supplied);
   const [busy, setBusy] = useState(false);
   const requesting = useRef(false);
+  const copyDetails = useRef<HTMLDetailsElement>(null);
   useEffect(() => { setFile(current => current.id === supplied.id ? mergePostingSnapshot(current, supplied) : supplied); }, [supplied]);
   const analysis = file.quality.postingAnalysis;
+  const automaticCopy = file.quality.postingTextOrigin !== "owner" && (!file.editedFrom || file.quality.postingTextOrigin === "automatic" || !!analysis);
   useEffect(() => {
-    if (!postingDownload(file) || !["QUEUED", "ANALYZING", "WAITING"].includes(analysis?.status || "")) return;
+    if (!postingDownload(file) || !automaticCopy || (analysis && !["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status))) return;
     const controller = new AbortController(); let pending = false;
     const interval = setInterval(() => {
       if (pending || document.hidden) return; pending = true;
@@ -60,7 +64,7 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
       }).catch(() => undefined).finally(() => { pending = false; });
     }, 15000);
     return () => { clearInterval(interval); controller.abort(); };
-  }, [file.id, file.status, analysis?.status]);
+  }, [file.id, file.status, analysis?.status, automaticCopy]);
   if (!postingDownload(file)) return null;
   async function analyze() {
     if (requesting.current) return;
@@ -73,29 +77,36 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
     finally { requesting.current = false; setBusy(false); }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(postingText(file)); setNotice("Caption and hashtags copied. Paste them into your platform's upload form."); }
-    catch { setNotice("Clipboard unavailable. Select and copy the caption and hashtags displayed here."); }
+    try { await navigator.clipboard.writeText(postingText(file)); setNotice("Caption and hashtag bank copied. Choose a platform in Post / export for its posting text."); }
+    catch { if (copyDetails.current) copyDetails.current.open = true; setNotice("Clipboard unavailable. Select and copy the caption and hashtags displayed here."); }
   }
   const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold";
+  const hashtags = postingHashtags(file.quality.hashtags);
   return <section aria-label={`Posting tools for ${file.title}`} className="mt-3 space-y-3 rounded-xl border border-[#d5ddbe] bg-[#f7faef] p-3 text-sm">
-    <h4 className="font-semibold">Caption & hashtags</h4>
-    <p className="text-xs text-[#657153]">{analysis ? `${analysis.status === "COMPLETE" ? "Video-specific copy" : analysis.status}: ${analysis.detail}` : "Draft posting text—not yet verified against this video's frames."}{analysis?.nextAttemptAt ? ` Next check: ${new Date(analysis.nextAttemptAt).toLocaleString()}.` : ""}</p>
-    <p className="whitespace-pre-wrap break-words select-text">{file.quality.postCopy?.trim() || file.title}</p>
-    <p className="break-words text-[#526044] select-text">{file.quality.hashtags.join(" ") || "No hashtags saved for this video."}</p>
-    <button type="button" onClick={() => void copy()} className={button}>Copy caption + hashtags</button>
-    <button type="button" onClick={() => void analyze()} disabled={busy || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis?.status || "")} className={`${button} ml-2 disabled:opacity-50`}>{busy ? "Queuing…" : analysis?.status === "COMPLETE" ? "Re-analyze this video" : "Analyze video for posting copy"}</button>
-    <div className="flex flex-wrap gap-2">{(["instagram", "youtube"] as const).map(platform => {
-      const download = postingDownload(file, platform)!;
-      const label = platform === "instagram" ? "Instagram" : "YouTube";
-      return <div key={platform} className="flex flex-wrap gap-2 rounded-lg border border-[#d5ddbe] p-2">
-        <a href={download.url} download={`${file.title}-${download.target}.mp4`} className={button}>Download for {label}</a>
-        <a href={platform === "youtube" ? "https://www.youtube.com/upload" : "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer" className={button}>{platform === "youtube" ? "Open YouTube upload ↗" : "Open Instagram Create ↗"}</a>
-      </div>;
-    })}</div>
-    <p className="text-xs text-[#657153]">Manual upload: download the MP4, copy the text, then open the platform and select the file. These buttons do not upload or publish automatically. If only one render exists, both downloads use that same video; check framing before posting.</p>
-    {file.audience.startsWith("kids") ? <p className="text-xs text-[#657153]">Children’s content: set the appropriate made-for-kids audience on YouTube.</p> : null}
+    {automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status)) ? <p role="status" className="text-xs text-[#657153]">{analysis?.status === "WAITING" ? analysis.detail : analysis?.status === "ANALYZING" ? "Checking this video’s frames for its own posting caption…" : "Video-specific posting copy is prepared automatically. No re-analysis click is needed."}</p> : null}
+    {analysis?.status === "FAILED" ? <p role="status" className="text-xs text-red-700">{analysis.detail}</p> : null}
+    <details ref={copyDetails} className="space-y-3">
+      <summary className="cursor-pointer font-semibold">Caption & hashtags</summary>
+      <div className="space-y-3 pt-2">
+        <p className="whitespace-pre-wrap break-words select-text">{postingCaption(file)}</p>
+        <p className="text-xs text-[#657153]">Hashtag candidate bank · {hashtags.length} saved. New analysis aims for 15–20 relevant choices; it does not add unrelated filler to meet a count.</p>
+        <p className="break-words text-[#526044] select-text">{hashtags.join(" ") || "No hashtags saved for this video."}</p>
+        <p className="text-xs text-[#657153]">Instagram allows up to {INSTAGRAM_HASHTAG_LIMIT} hashtags per Reel; its copy and posting form use the strongest saved choices. YouTube can use the larger bank. More hashtags do not guarantee more views.</p>
+        {file.audience.startsWith("kids") ? <p className="text-xs text-[#657153]">Children’s content: set the appropriate made-for-kids audience on YouTube.</p> : null}
+        <details className="space-y-2 text-xs">
+          <summary className="cursor-pointer">More options</summary>
+          <p className="text-[#657153]">{!automaticCopy ? "Owner-edited posting text is retained. Analysis runs only if you request it." : analysis ? `${analysis.status === "COMPLETE" ? "Video-specific copy" : analysis.status}: ${analysis.detail}` : "Draft posting text—not yet verified against this video's frames."}{analysis?.nextAttemptAt ? ` Next check: ${new Date(analysis.nextAttemptAt).toLocaleString()}.` : ""}</p>
+          <button type="button" onClick={() => void analyze()} disabled={busy || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis?.status || "")} className={`${button} disabled:opacity-50`}>{busy ? "Queuing…" : analysis?.status === "COMPLETE" ? "Re-analyze this video" : "Analyze video for posting copy"}</button>
+          {analysis?.hashtagActivity ? <details className="text-[#657153]"><summary className="cursor-pointer">Hashtag activity · {analysis.hashtagActivity.status === "CHECKED" ? "limited recent sample" : "not fully verified"}</summary><p className="mt-2">{analysis.hashtagActivity.detail} Checked: {new Date(analysis.hashtagActivity.checkedAt).toLocaleString()}.</p>{analysis.hashtagActivity.samples.map(sample => <p key={sample.tag}>{sample.tag}: {sample.recentSample} recent sampled posts, {sample.videos} video posts.</p>)}</details> : <p className="text-[#657153]">Hashtags are topic suggestions, not verified current trends. Video-specific copy is checked automatically when frame analysis is enabled.</p>}
+          {file.quality.subtitles ? <p>Subtitles: {file.quality.subtitles.reason}</p> : null}
+          <details><summary className="cursor-pointer">On-screen subtitles (separate from posting copy)</summary><p className="mt-2 whitespace-pre-wrap select-text">{file.quality.captions.join("\n") || "No on-screen subtitles."}</p></details>
+        </details>
+      </div>
+    </details>
+    <div className="flex flex-wrap items-start gap-2">
+      <button type="button" onClick={() => void copy()} className={button}>Copy caption + hashtags</button>
+      <ReviewPublishActions key={file.id} file={file}/>
+    </div>
     {notice ? <p role="status" className="text-xs">{notice}</p> : null}
-    {file.quality.subtitles ? <p className="text-xs">Subtitles: {file.quality.subtitles.reason}</p> : null}
-    <details className="text-xs"><summary className="cursor-pointer">On-screen subtitles (separate from posting copy)</summary><p className="mt-2 whitespace-pre-wrap select-text">{file.quality.captions.join("\n") || "No on-screen subtitles."}</p></details>
   </section>;
 }

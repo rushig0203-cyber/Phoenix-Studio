@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { CreationDraft } from "@/lib/creationDraftTypes";
 import { Button } from "./ui/button";
 
-export default function CreationDrafts({ drafts, onRefresh }: { drafts: CreationDraft[]; onRefresh: () => Promise<void> }) {
+export default function CreationDrafts({ drafts, onRefresh, onRequeued, failedOnly = false }: { drafts: CreationDraft[]; onRefresh: () => Promise<void>; onRequeued?: (draft: CreationDraft) => void; failedOnly?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
@@ -14,6 +14,7 @@ export default function CreationDrafts({ drafts, onRefresh }: { drafts: Creation
       const response = await fetch("/api/creation-drafts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draft.id, version: draft.version, action }), signal: AbortSignal.timeout(30_000) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not update job.");
+      if (action === "retry") onRequeued?.(draft);
       await onRefresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Job update failed."); }
     finally { inFlight.current = false; setBusy(null); }
@@ -21,8 +22,8 @@ export default function CreationDrafts({ drafts, onRefresh }: { drafts: Creation
   const pending = drafts.filter(draft => !["APPROVED", "ARCHIVED"].includes(draft.status));
   if (!pending.length) return null;
   return <section aria-label="Preparing videos" className="mt-5 rounded-2xl border border-[#d6dccb] bg-white p-5">
-    <h2 className="text-lg font-semibold">Preparing videos <span className="text-sm font-normal text-[#657153]">· {pending.length}</span></h2>
-    <p className="mt-1 text-sm text-[#657153]">Phoenix prepares the story and footage, then renders automatically. No plan approval needed.</p>
+    <h2 className="text-lg font-semibold">{failedOnly ? "Preparation needs attention" : "Preparing videos"} <span className="text-sm font-normal text-[#657153]">· {pending.length}</span></h2>
+    <p className="mt-1 text-sm text-[#657153]">{failedOnly ? "These saved jobs are stopped, not processing. Retry only when you want Phoenix to attempt them again." : "Phoenix prepares the story and footage, then renders automatically. No plan approval needed."}</p>
     {error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}</p> : null}
     <div className="mt-4 space-y-3">{pending.map(draft => {
       const failed = draft.status === "FAILED";

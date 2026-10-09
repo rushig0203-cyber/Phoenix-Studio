@@ -92,15 +92,31 @@ test('delayed GET cannot downgrade a newer queued snapshot with the same file ti
 test('completed copy and hashtags survive older dashboard data and are copied together', async t => {
   const h = harness(t, fixture(0, 'ANALYZING', 1)); await h.flush();
   const completed = fixture(3, 'COMPLETE', 3, 'Water flows between moss-covered stones.', ['#ForestStream', '#Moss']);
+  completed.quality.postingAnalysis.hashtagActivity={status:'LIMITED',checkedAt:stamp(3),detail:'No verified global trends.',samples:[]};
   await h.supply(completed); await h.supply(fixture(0, 'WAITING', 2));
   assert.match(h.text, /Video-specific copy: COMPLETE evidence/);
   assert.match(h.text, /Water flows between moss-covered stones\./); assert.match(h.text, /#ForestStream #Moss/);
+  assert.match(h.text, /No verified global trends/);
   assert.equal(h.button('Re-analyze this video').props.disabled, false);
   const navigatorDescriptor = Object.getOwnPropertyDescriptor(global, 'navigator'); let copied;
   Object.defineProperty(global, 'navigator', { configurable: true, value: { clipboard: { writeText: async value => { copied = value; } } } });
   t.after(() => { if (navigatorDescriptor) Object.defineProperty(global, 'navigator', navigatorDescriptor); else delete global.navigator; });
   await h.click('Copy caption + hashtags');
   assert.equal(copied, 'Water flows between moss-covered stones.\n\n#ForestStream #Moss');
+});
+
+test('the main copy action keeps the complete bank while platform-specific controls move to the publisher',async t=>{
+  const tags=Array.from({length:20},(_,index)=>`#Stream${index}`);
+  const h=harness(t,fixture(0,'COMPLETE',0,'A stream flows over rocks.',tags));await h.flush();
+  const navigatorDescriptor=Object.getOwnPropertyDescriptor(global,'navigator'),copies=[];
+  Object.defineProperty(global,'navigator',{configurable:true,value:{clipboard:{writeText:async value=>copies.push(value)}}});
+  t.after(()=>{if(navigatorDescriptor)Object.defineProperty(global,'navigator',navigatorDescriptor);else delete global.navigator;});
+  assert.equal(nodes(h.tree,node=>node.type==='button'&&/Copy (Instagram|YouTube) text/.test(text(node))).length,0);
+  await h.click('Copy caption + hashtags');assert.equal((copies[0].match(/#Stream\d+/g)||[]).length,20);
+  await h.supply(fixture(5,undefined,5,'Owner caption #one #two #three #four #five ＃six',tags));
+  await h.click('Copy caption + hashtags');assert.equal(copies.length,2);
+  assert.match(copies[1],/Owner caption #one #two #three #four #five ＃six/);
+  assert.match(h.text,/Owner caption #one #two #three #four #five ＃six/);
 });
 
 test('newer owner copy/reset overrides old analysis and cannot be undone by a delayed snapshot', async t => {
@@ -135,4 +151,19 @@ test('switching output IDs accepts the new file and ignores the old pending poll
   await h.supply(replacement); response.resolve(Response.json(fixture(5, 'COMPLETE', 5, 'Wrong old output', ['#Wrong']))); await h.flush();
   assert.match(h.tree.props['aria-label'], /Another output/); assert.match(h.text, /Caption for another output/);
   assert.doesNotMatch(h.text, /Wrong old output/);
+});
+
+test('missing automatic analysis polls saved results without submitting a reanalysis request', async t => {
+  const completed = fixture(3, 'COMPLETE', 3, 'Light catches the moss beside this stream.', ['#MossyStream']);
+  const h = harness(t, fixture(), async (_url, init) => { assert.equal(init.method, undefined); return Response.json(completed); });
+  await h.flush(); assert.match(h.text, /prepared automatically/); assert.equal(h.requests.length, 0);
+  await h.tick(); assert.equal(h.requests.length, 1); assert.match(h.text, /Light catches the moss/);
+  await h.tick(); assert.equal(h.requests.length, 1, 'Completed evidence stops polling');
+});
+
+test('owner text and conservatively retained legacy edits do not poll or requeue automatically', async t => {
+  const owner = fixture(); owner.quality.postingTextOrigin = 'owner';
+  const h = harness(t, owner); await h.flush(); await h.tick(); assert.equal(h.requests.length, 0);
+  assert.match(h.text, /Owner-edited posting text is retained/);
+  const legacy = fixture(); legacy.editedFrom = 'legacy-parent'; await h.supply(legacy); await h.tick(); assert.equal(h.requests.length, 0);
 });

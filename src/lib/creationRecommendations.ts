@@ -153,13 +153,16 @@ export function nextStoredRecommendations(storage: RecommendationStorage, fallba
 type RecommendationForm = { kind: CreationKind; topic: string; autoIdea: boolean; publishingFormat: PublishingFormat; duration: number; batchCount: 1 | 10; narration: string };
 export function applyRecommendationToForm<T extends RecommendationForm>(current: T, recommendation: CreationRecommendation) {
   const idea = recommendationById.get(recommendation.id);
-  if (!idea) return current;
+  if (!idea || typeof recommendation.title !== "string" || !recommendation.title.trim() || recommendation.title.length > 400
+      || /[\u0000-\u001f\u007f]/.test(recommendation.title)) return current;
   const changedType = current.kind !== idea.kind;
   const format = changedType ? idea.kind === "Children's song" ? "youtube-full" : "youtube-short" : current.publishingFormat;
   return {
     ...current,
     kind: idea.kind,
-    topic: idea.title,
+    // Keep the visible card's exact sentence. The registered ID controls the
+    // supported workflow, but never substitutes a different catalogue title.
+    topic: recommendation.title,
     autoIdea: false,
     publishingFormat: format,
     duration: changedType ? publishingProfile(format).defaultDuration : current.duration,

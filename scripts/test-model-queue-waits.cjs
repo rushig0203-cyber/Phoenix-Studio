@@ -62,7 +62,7 @@ test('generation memory wait does not consume retries or attempt history',async(
       assert.ok(!init.method || init.method==='GET');
       if(new URL(url).pathname==='/api/v1/tasks')return Response.json({data:{tasks:[]}});
       assert.equal(new URL(url).pathname,'/openapi.json');
-      return Response.json({components:{schemas:{TaskVideoRequest:{properties:{phoenix_artifacts_version:{},phoenix_storyboard:{}}}}}});
+      return Response.json({components:{schemas:{TaskVideoRequest:{properties:{phoenix_artifacts_version:{},phoenix_storyboard:{},phoenix_playback_policy:{const:'native-speed-v1'}}}}}});
     }
     return memoryFetch(url,init);
   };

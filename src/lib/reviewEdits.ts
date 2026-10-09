@@ -26,6 +26,11 @@ const draftPath = (id: string) => path.join(reviewRoot(), "work", `edit-draft-${
 const ffmpeg = process.env.PHOENIX_FFMPEG_PATH?.trim() || path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
 const ffprobe = process.env.PHOENIX_FFPROBE_PATH?.trim() || path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ffprobe.exe" : "ffprobe");
 const cueSchema = z.object({ start: z.number().finite().min(0), end: z.number().finite().positive(), text: z.string().max(300) });
+export function editedPostingTextOrigin(original: ReviewFile, draft: Pick<ReviewEditDraft, "postCopy" | "hashtags">): "owner" | "automatic" {
+  return original.quality.postingTextOrigin === "owner" || (original.editedFrom && original.quality.postingTextOrigin !== "automatic")
+    || draft.postCopy !== (original.quality.postCopy || "") || JSON.stringify(draft.hashtags) !== JSON.stringify(original.quality.hashtags)
+    ? "owner" : "automatic";
+}
 const draftSchema = z.object({
   title: z.string().trim().min(1).max(180), postCopy: z.string().max(5000),
   hashtags: z.array(z.string().regex(/^#[\p{L}\p{N}_]+$/u)).max(30),
@@ -257,7 +262,7 @@ export function processNextReviewEdit(): Promise<void> {
         editedFrom:original.id,editableMaster:source.clean,captionCues:source.clean?trimmedCues(draft):[],
         captionEditing: source.clean ? { enabled: draft.captionsEnabled, position: draft.captionPosition, size: draft.captionSize, color: draft.captionColor } : undefined,
         artifacts: { version: 1, renderRevision: "editor-artifacts-v1", finalVideo: artifactReference(destination), editing: { video: artifactReference(path.join(directory, "clean.mp4")), offsetSeconds: 0, captionsBaked: !source.clean }, captions: source.clean ? artifactReference(path.join(directory, "captions.srt")) : undefined },
-        quality:{...original.quality,postingAnalysis:undefined,subtitles:undefined,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags,checks:[...original.quality.checks,"Manually edited copy: trim, framing, audio and caption settings applied"]},
+        quality:{...original.quality,postingTextOrigin:editedPostingTextOrigin(original,draft),postingAnalysis:undefined,subtitles:undefined,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags,checks:[...original.quality.checks,"Manually edited copy: trim, framing, audio and caption settings applied"]},
         delivery:original.delivery?{...original.delivery,aspect:draft.format === "original" ? (width === height ? "1:1" : Math.abs(width/height-9/16)<.02 ? "9:16" : Math.abs(width/height-16/9)<.02 ? "16:9" : "original") : draft.format,actualDuration:duration,requestedDuration:duration}:undefined,
         processing:undefined,monetizationReview:original.monetizationReview?{...original.monetizationReview,status:"NOT_REVIEWED"}:undefined };
       await saveReviewFile(file);

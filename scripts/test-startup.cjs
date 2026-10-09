@@ -72,5 +72,7 @@ test('cold worker startup waits for a matching ready heartbeat, with bounded tim
   const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', code], { cwd: project, windowsHide: true, encoding: 'utf8', timeout: 15000 });
   assert.equal(result.status, 0, result.stderr); assert.match(result.stdout, /cold startup checks passed/);
   const launcher = fs.readFileSync(path.join(project, 'scripts/start-phoenix.ps1'), 'utf8');
-  assert.match(launcher, /Wait-PhoenixWorker[^\n]+45/);
+  const startupHealth = fs.readFileSync(path.join(project, 'scripts/startup-health.ps1'), 'utf8');
+  assert.match(startupHealth, /function Wait-PhoenixWorker\([^\n]+\[int\]\$Seconds = 90\)/);
+  assert.match(launcher, /Wait-PhoenixWorker[^\n]+90/);
 });

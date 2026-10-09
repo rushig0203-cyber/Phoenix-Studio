@@ -27,7 +27,7 @@ index 8c90c58..a3df813 100644
  
      raise HttpException(
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..2d44dc1 100644
+index c4d12e1..ef6374c 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -58,16 +58,17 @@ index c4d12e1..2d44dc1 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +101,8 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,9 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
 +    phoenix_storyboard: Optional[List[PhoenixStoryBeat]] = Field(default=None, min_length=1, max_length=18)
++    phoenix_playback_policy: Literal["native-speed-v1"] = "native-speed-v1"
 +    phoenix_artifacts_version: Optional[Literal[1]] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +139,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +140,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -412,10 +413,10 @@ index 2176fa1..c6c0773 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..6e74292
+index 0000000..17eff29
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,413 @@
+@@ -0,0 +1,495 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
 +import hashlib
@@ -429,12 +430,14 @@ index 0000000..6e74292
 +import time
 +import uuid
 +from pathlib import Path
++from urllib.parse import unquote, urlparse
 +
 +
 +_SHOT_CACHE_BYTES = 256 * 1024 * 1024
 +_SHOT_CACHE_FILES = 512
 +_SHOT_CACHE_AGE = 7 * 24 * 60 * 60
 +_SHOT_CACHE_NAME = re.compile(r"(?:shot-[0-9a-f]{64}\.(?:mp4|json)|\.tmp-shot-[0-9a-f]{32})\Z")
++_OUTPUT_FPS = 30
 +
 +
 +def _shot_cache_directory():
@@ -512,9 +515,9 @@ index 0000000..6e74292
 +                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
 +                    return None
 +                self.source_digests[stamp] = digest
-+            recipe = {"version": 2, "source": digest, "source_start": shot["sourceStart"], "stretch": shot.get("visualStretch", 1.0),
-+                      "frames": frames, "resolution": list(resolution), "fps": 30,
-+                      "filter": "reset-pts,scale-increase,crop,setsar,bounded-slowdown-eof", "codec": "libx264",
++            recipe = {"version": 3, "source": digest, "source_start": shot["sourceStart"], "playback_rate": 1,
++                      "frames": frames, "resolution": list(resolution), "fps": _OUTPUT_FPS,
++                      "filter": "native-pts,scale-increase,crop,setsar,no-eof-padding", "codec": "libx264",
 +                      "preset": "veryfast", "crf": 20, "pixel_format": "yuv420p",
 +                      "encoder": self.encoder}
 +            return hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()
@@ -706,6 +709,66 @@ index 0000000..6e74292
 +    return item
 +
 +
++def _supplement_metadata_matches(candidate, query):
++    """Conservative catalog checks, not a claim that video frames were inspected."""
++    info = candidate.source_info if isinstance(candidate.source_info, dict) else {}
++    page = info.get("source_page")
++    if not isinstance(page, str):
++        return False
++    try:
++        description = unquote(urlparse(page).path).casefold()
++    except ValueError:
++        return False
++    description = re.sub(r"[-_/\d]+", " ", description)
++    generic = {"person", "people", "woman", "women", "man", "men", "video", "videos", "young", "adult", "close", "shot"}
++
++    def tokens(text):
++        return [re.sub(r"(?:ing|es|s)$", "", word) for word in words(text) if word not in generic]
++
++    wanted, found = tokens(query), tokens(description)
++    if not wanted or not found or not any(
++            other == word or (len(word) > 3 and other.startswith(word))
++            for word in wanted for other in found):
++        return False
++    query = query.casefold()
++    documentation = re.search(r"\b(?:logs?|logging|record\w*|document\w*|notes?|noting)\b.*\b(?:repair|steps?|details?|progress|work|service|information)\b|\b(?:repair|service|work)\b.*\b(?:log|record|documentation|notes?)\b", query)
++    timber = re.search(r"\b(?:chainsaws?|sawmills?|lumberjacks?|timber|firewood)\b|\b(?:cut\w*|chop\w*|saw\w*)\b.*\b(?:wood|logs?|trees?|lumber)\b", description)
++    if documentation and timber:
++        return False
++    repair = re.search(r"\b(?:repair\w*|fix\w*|diagnos\w*|troubleshoot\w*)\b", query)
++    trade = re.search(r"\b(?:haircuts?|hairdress\w*|barbers?|manicures?|pedicures?|baking|kneading|chef|cooking)\b", description)
++    repair_evidence = re.search(r"\b(?:repair\w*|fix\w*|mechanics?|technicians?|maintenance|service|diagnos\w*|troubleshoot\w*)\b", description)
++    if repair and trade and not repair_evidence:
++        return False
++    if (re.search(r"\bmissing\b.*\b(?:parts?|components?)\b", query)
++            and re.search(r"\b(?:shipping|mailing|postage)\s+labels?\b", description)
++            and not re.search(r"\b(?:missing|spare|replacement)\b.*\b(?:parts?|components?)\b", description)):
++        return False
++    actions = (
++        (r"writ|taking notes", r"writ|not(?:e|ing)|jot|pen|paper|record|checklist"),
++        (r"put\w*.*back|return\w*.*(?:container|shelf|place)", r"put\w*.*back|replac|return|plac\w*.*(?:shelf|container)|stor(?:e|ing)"),
++        (r"measur\w*.*(?:ingredient|flour|sugar|water)", r"measur|weigh|scale|measuring cup"),
++        (r"\b(?:mix|mixing|stir|stirring|whisk\w*)\b", r"mix|stir|whisk|beat.*(?:bowl|ingredient)"),
++        (r"knead", r"knead"),
++        (r"(?:dough|bread).*ris(?:e|ing)|proofing", r"ris(?:e|ing)|proof|ferment"),
++        (r"preheat|oven.*heat", r"preheat|heat.*oven|oven.*heat|temperature"),
++        (r"oven|\bbaking\b(?!\s+(?:ingredient|sheet|flour|bowl))", r"oven|bak(?:e|ed|ing)|heat|temperature"),
++        (r"freshly baked|holding.*(?:bread|loaf)|(?:bread|loaf).*in.*hand", r"fresh|baked|holding|hold.*(?:bread|loaf)|cool|finished|done"),
++        (r"read\w*.*recipe|recipe.*(?:book|screen)", r"recipe|cookbook|read"),
++    )
++    if any(re.search(action, query) and not re.search(evidence, description) for action, evidence in actions):
++        return False
++    if re.search(r"\bsalt\b", query):
++        if not re.search(r"\bsalt\b", description):
++            return False
++        if not re.search(r"bath|spa|scrub|soap", query) and re.search(r"bath|spa|scrub|soap", description):
++            return False
++    for subject, other in ((r"\b(?:woman|women)\b", r"\b(?:man|men)\b"), (r"\b(?:man|men)\b", r"\b(?:woman|women)\b")):
++        if re.search(subject, query) and re.search(other, description) and not re.search(subject, description):
++            return False
++    return True
++
++
 +def prepare_timeline(task_id, params, subtitle_path, audio_duration, progress):
 +    from app.config import config
 +    from app.services import material, task_artifacts
@@ -721,55 +784,78 @@ index 0000000..6e74292
 +    elif directory and not os.path.isdir(directory):
 +        directory = ""
 +    timeline, sources, used = [], [], set()
++    reserved = {str(beat["assetId"]) for beat in beats if beat.get("assetId")}
 +    for index, beat in enumerate(beats):
 +        progress(40 + 10 * index / len(beats), f"Finding footage for narration section {index + 1}/{len(beats)}")
 +        approved_id = beat.get("assetId")
 +        if approved_id:
 +            if params.video_source != "pexels":
 +                raise ValueError("Approved footage IDs require the Pexels source.")
-+            candidates = [approved_pexels_asset(approved_id, beat["query"])]
-+        else:
-+            candidates = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
++        def candidates():
++            if approved_id:
++                yield approved_pexels_asset(approved_id, beat["query"]), True
++            # The generator reaches search only if the chosen native-speed
++            # footage did not cover this section. Never broaden its query.
++            extra = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
++            for candidate in extra[:20]:
++                yield candidate, False
++
 +        cursor = beat["start"]
-+        for candidate in candidates[:20]:
-+            info = candidate.source_info or {}
++        end_frame = round(beat["end"] * _OUTPUT_FPS)
++        section_frames = end_frame - round(beat["start"] * _OUTPUT_FPS)
++        minimum_shot_frames = min(2 * _OUTPUT_FPS, max(1, section_frames // 2))
++        for candidate, approved in candidates():
++            info = candidate.source_info if isinstance(candidate.source_info, dict) else {}
 +            identity = str(info.get("asset_id") or candidate.url)
-+            if identity in used:
++            if approved and identity in used:
++                raise ValueError(f"Approved footage for section {index + 1} is already used. It was not replaced.")
++            if identity in used or (not approved and identity in reserved):
++                continue
++            if not approved and not _supplement_metadata_matches(candidate, beat["query"]):
 +                continue
 +            try:
 +                filename, available = download_stock_video(candidate, directory)
 +            except Exception as error:
-+                if approved_id:
++                if approved:
 +                    raise ValueError(f"Approved footage for section {index + 1} could not be downloaded. It was not replaced.") from error
 +                # Skip an unusable candidate, not the narration section itself.
 +                continue
 +            if not math.isfinite(available) or available < 0.3:
++                if approved:
++                    raise ValueError(f"Approved footage for section {index + 1} has no usable duration. It was not replaced.")
++                continue
++            start_frame = round(cursor * _OUTPUT_FPS)
++            # Leave one real source frame at EOF for conservative frame-rate
++            # resampling. This truncates footage; it never retimes or holds it.
++            available_frames = max(0, math.floor(available * _OUTPUT_FPS + 1e-6) - 1)
++            remaining_frames = end_frame - start_frame
++            frames = min(available_frames, remaining_frames)
++            # A brief source deficit must not become a flash of another clip.
++            # Reserve up to two seconds for the final shot, or half of a
++            # shorter section, so both clips remain readable at native speed.
++            if 0 < remaining_frames - frames < minimum_shot_frames:
++                frames = min(frames, remaining_frames - minimum_shot_frames)
++                if frames < minimum_shot_frames:
++                    if approved:
++                        raise ValueError(f"Approved footage for section {index + 1} cannot leave a readable native-speed additional shot. It was not replaced.")
++                    continue
++            if frames < 1:
 +                continue
 +            used.add(identity)
 +            source = material._material_source_record(candidate, filename)
 +            sources.append(source)
-+            # A tiny measured duration mismatch can use the same entire visual
-+            # a little slower. Narration/audio timing remains unchanged. Large
-+            # deficits still fail rather than repeating or borrowing footage.
-+            remaining = beat["end"] - cursor
-+            stretch = remaining / available
-+            if approved_id and 1.0 < stretch <= 1.025:
-+                timeline.append({**beat, "start": cursor, "end": beat["end"], "path": filename,
-+                                 "sourceStart": 0.0, "sourcePage": source.get("source_page"),
-+                                 "visualStretch": stretch, "timingAdjustment": "visual slowdown up to 2.5%; at most three end frames held for frame-rate rounding"})
-+                cursor = beat["end"]
-+                break
-+            # Advance within this same source, never restart footage to pad a section.
-+            source_start = 0.0
-+            while source_start < available - 0.05 and cursor < beat["end"] - 0.001:
-+                length = min(available - source_start, beat["end"] - cursor)
-+                timeline.append({**beat, "start": cursor, "end": cursor + length, "path": filename, "sourceStart": source_start, "sourcePage": source.get("source_page")})
-+                cursor += length
-+                source_start += length
-+            if cursor >= beat["end"] - 0.001:
++            stop = beat["end"] if start_frame + frames == end_frame else (start_frame + frames) / _OUTPUT_FPS
++            shot = {**beat, "start": cursor, "end": stop, "path": filename,
++                    "sourceStart": 0.0, "sourcePage": source.get("source_page"), "playbackRate": 1,
++                    "assetId": int(identity) if identity.isdigit() else None}
++            if not approved:
++                shot["supplementalReason"] = "Distinct footage from the same query; catalog subject/action metadata checked, video frames not inspected."
++            timeline.append(shot)
++            cursor = stop
++            if start_frame + frames >= end_frame:
 +                break
 +        if cursor < beat["end"] - 0.001:
-+            raise ValueError(f"Section {index + 1} ({beat['query']}) has only {cursor - beat['start']:.1f}s of usable stock for {beat['end'] - beat['start']:.1f}s of narration. Change its visual search terms; unrelated or looped footage was not substituted.")
++            raise ValueError(f"Section {index + 1} ({beat['query']}) has only {cursor - beat['start']:.2f}s of usable native-speed stock for {beat['end'] - beat['start']:.2f}s of narration. No relevant additional footage was found; unrelated, slowed, repeated or frozen footage was not substituted.")
 +    public = [{key: value for key, value in shot.items() if key not in ("path", "sourceStart")} for shot in timeline]
 +    if not task_artifacts.patch_script_data(task_id, phoenix_storyboard=public, material_sources=sources):
 +        raise ValueError("Could not save the storyboard and footage source records. Check available disk space and retry.")
@@ -783,9 +869,10 @@ index 0000000..6e74292
 +    for index, shot in enumerate(timeline):
 +        if not all(math.isfinite(shot[key]) for key in ("start", "end", "sourceStart")) or shot["sourceStart"] < 0 or shot["end"] <= shot["start"]:
 +            raise ValueError("Invalid storyboard shot timing.")
-+        stretch = shot.get("visualStretch", 1.0)
-+        if not isinstance(stretch, (float, int)) or not math.isfinite(stretch) or not 1.0 <= stretch <= 1.025:
-+            raise ValueError("Storyboard visual slowdown exceeds the small timing-correction limit.")
++        rate, stretch = shot.get("playbackRate", 1), shot.get("visualStretch", 1)
++        if (isinstance(rate, bool) or not isinstance(rate, (float, int)) or rate != 1
++                or isinstance(stretch, bool) or not isinstance(stretch, (float, int)) or stretch != 1):
++            raise ValueError("Storyboard requires original footage speed. Rebuild the footage plan to remove timing adjustments.")
 +        if index and abs(shot["start"] - timeline[index - 1]["end"]) > 0.001:
 +            raise ValueError("Storyboard contains a timing gap or overlap.")
 +    width, height = resolution
@@ -804,18 +891,14 @@ index 0000000..6e74292
 +        parts = []
 +        for index, shot in enumerate(timeline):
 +            # Cumulative frame boundaries avoid per-shot rounding drift.
-+            frames = round(shot["end"] * 30) - round(shot["start"] * 30)
++            frames = round(shot["end"] * _OUTPUT_FPS) - round(shot["start"] * _OUTPUT_FPS)
 +            if frames < 1:
 +                raise ValueError(f"Storyboard shot {index + 1} has no output frames.")
 +            part = Path(temporary) / f"shot-{index:03}.mp4"
 +            cache_key = cache.key(shot, frames, resolution)
 +            reused = cache.restore(cache_key, part)
 +            if not reused:
-+                # Older FFmpeg builds can drop the final one or two frames at
-+                # resampling EOF. Bound correction to three frames, then verify
-+                # the requested frame count. Never loop the source.
-+                eof = ",tpad=stop_mode=clone:stop_duration=0.1" if shot.get("visualStretch", 1.0) > 1 else ""
-+                encoded = run(["-threads", "1", "-ss", str(shot["sourceStart"]), "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"setpts=(PTS-STARTPTS)*{shot.get('visualStretch', 1.0)},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30{eof}", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
++                encoded = run(["-threads", "1", "-ss", str(shot["sourceStart"]), "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"setpts=PTS-STARTPTS,scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps={_OUTPUT_FPS}", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
 +                counts = re.findall(r"^frame=(\d+)", encoded.stdout.decode(errors="replace"), re.M)
 +                if not counts or int(counts[-1]) != frames:
 +                    raise ValueError(f"Storyboard shot {index + 1} ended before its narration section. Choose longer footage and retry.")
@@ -886,10 +969,10 @@ index 0000000..37cf817
 +    return result
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
-index 0000000..d532242
+index 0000000..adab7c1
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,404 @@
 +import json
 +import os
 +import shutil
@@ -903,44 +986,95 @@ index 0000000..d532242
 +
 +
 +class TestPhoenixStoryboard(unittest.TestCase):
-+    def test_small_measured_shortfall_uses_same_approved_visual_slightly_slower(self):
++    def test_small_measured_shortfall_adds_distinct_same_query_footage_at_native_speed(self):
 +        from app.models.schema import VideoParams, MaterialInfo
 +        params = VideoParams(video_subject="Repair", video_script="The replacement part is delayed.", phoenix_storyboard=[{"narration": "The replacement part is delayed.", "query": "repair part", "assetId": 123}])
 +        candidate = MaterialInfo(url="approved", duration=10, source_info={"asset_id": "123"})
-+        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 10.2, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 10)), patch("app.services.task_artifacts.patch_script_data", return_value=True):
++        extra = MaterialInfo(url="extra", duration=4, source_info={"asset_id": "456", "source_page": "https://www.pexels.com/video/technician-repair-part-456/"})
++        duplicate = MaterialInfo(url="another-rendition", duration=10, source_info={"asset_id": "123", "source_page": "https://www.pexels.com/video/repair-part-123/"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 10.2, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch.object(storyboard, "download_stock_video", side_effect=[("approved.mp4", 10), ("extra.mp4", 4)]) as download, patch("app.services.material._search_videos_with_cache", return_value=[duplicate, extra]) as search, patch("app.services.task_artifacts.patch_script_data", return_value=True) as persist:
 +            timeline, public = storyboard.prepare_timeline("unused-test", params, "unused.srt", 10.2, lambda *_: None)
-+            self.assertEqual(len(timeline), 1)
-+            self.assertAlmostEqual(timeline[0]["visualStretch"], 1.02)
++            self.assertEqual([shot["path"] for shot in timeline], ["approved.mp4", "extra.mp4"])
++            self.assertEqual([shot["assetId"] for shot in public], [123, 456])
++            self.assertEqual([shot["playbackRate"] for shot in public], [1, 1])
++            self.assertTrue(all("visualStretch" not in shot and "timingAdjustment" not in shot for shot in public))
 +            self.assertEqual(timeline[0]["sourceStart"], 0)
-+            self.assertEqual(public[0]["end"], 10.2)
-+            self.assertIn("timingAdjustment", public[0])
-+        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 11, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 10)):
-+            with self.assertRaisesRegex(ValueError, "only 10.0s"):
-+                storyboard.prepare_timeline("unused-test", params, "unused.srt", 11, lambda *_: None)
++            self.assertAlmostEqual(timeline[0]["end"], 8.2)
++            self.assertEqual(public[-1]["end"], 10.2)
++            self.assertAlmostEqual(timeline[1]["end"] - timeline[1]["start"], 2)
++            self.assertIn("supplementalReason", public[1])
++            self.assertEqual(sum(round(shot["end"] * 30) - round(shot["start"] * 30) for shot in timeline), 306)
++            search.assert_called_once()
++            self.assertEqual(search.call_args.kwargs["search_term"], "repair part")
++            self.assertEqual(download.call_count, 2)
++            self.assertEqual(len(persist.call_args.kwargs["material_sources"]), 2)
 +
-+    def test_slight_slowdown_renders_exact_frame_count(self):
-+        from app.utils import utils
-+        ffmpeg = utils.get_ffmpeg_binary()
-+        flags = subprocess.CREATE_NO_WINDOW if storyboard.os.name == "nt" else 0
-+        with tempfile.TemporaryDirectory(prefix="phoenix-small-timing-test-") as temporary:
-+            root = Path(temporary)
-+            source = root / "source.mp4"
-+            subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=10", "-an", "-c:v", "libx264", "-threads", "1", str(source)], check=True, capture_output=True, creationflags=flags)
-+            timeline = [{"start": 0, "end": 10.2, "sourceStart": 0, "path": str(source), "visualStretch": 1.02}]
-+            with patch.object(storyboard, "_shot_cache_directory", return_value=root / "cache"):
-+                output = root / "output.mp4"
-+                storyboard.render_timeline(timeline, output, (160, 90), ffmpeg)
-+                decoded = subprocess.run([ffmpeg, "-v", "error", "-threads", "1", "-i", str(output), "-vf", "scale=1:1", "-filter_threads", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"], capture_output=True, check=True, creationflags=flags).stdout
-+                self.assertEqual(len(decoded), 306 * 3)
-+                timeline[0]["visualStretch"] = 1.1
-+                with self.assertRaisesRegex(ValueError, "slowdown"):
-+                    storyboard.render_timeline(timeline, root / "invalid.mp4", (160, 90), ffmpeg)
++    def test_shortfall_rejects_unknown_unrelated_and_reserved_footage(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        params = VideoParams(video_subject="Repair", video_script="Log repair steps. Check repair parts.", phoenix_storyboard=[{"narration": "Log repair steps.", "query": "log repair steps", "assetId": 123}, {"narration": "Check repair parts.", "query": "repair parts", "assetId": 456}])
++        approved = MaterialInfo(url="approved", duration=2, source_info={"asset_id": "123"})
++        candidates = [
++            MaterialInfo(url="unknown", duration=9, source_info={"asset_id": "111", "source_page": "https://www.pexels.com/video/111/"}),
++            MaterialInfo(url="unrelated", duration=9, source_info={"asset_id": "222", "source_page": "https://www.pexels.com/video/cutting-wood-logs-with-chainsaw-222/"}),
++            MaterialInfo(url="reserved", duration=9, source_info={"asset_id": "456", "source_page": "https://www.pexels.com/video/log-repair-steps-456/"}),
++        ]
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 3, "Log repair steps."), (3, 5, "Check repair parts.")]), patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 2)) as download, patch("app.services.material._search_videos_with_cache", return_value=candidates) as search, patch("app.services.task_artifacts.patch_script_data") as persist:
++            with self.assertRaisesRegex(ValueError, "Section 1.*No relevant additional footage"):
++                storyboard.prepare_timeline("unused-test", params, "unused.srt", 5, lambda *_: None)
++            self.assertEqual(download.call_count, 1)
++            self.assertEqual(search.call_args.kwargs["search_term"], "log repair steps")
++            persist.assert_not_called()
++
++    def test_short_section_shortfall_reserves_half_for_native_speed_addition(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        params = VideoParams(video_subject="Repair", video_script="Check repair parts.", phoenix_storyboard=[{"narration": "Check repair parts.", "query": "repair parts", "assetId": 123}])
++        approved = MaterialInfo(url="approved", duration=2, source_info={"asset_id": "123"})
++        extra = MaterialInfo(url="extra", duration=3, source_info={"asset_id": "456", "source_page": "https://www.pexels.com/video/technician-repair-parts-456/"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 2, params.video_script)]), patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", side_effect=[("approved.mp4", 1.98), ("extra.mp4", 3)]), patch("app.services.material._search_videos_with_cache", return_value=[extra]) as search, patch("app.services.task_artifacts.patch_script_data", return_value=True):
++            timeline, public = storyboard.prepare_timeline("unused-test", params, "unused.srt", 2, lambda *_: None)
++        self.assertEqual([shot["path"] for shot in timeline], ["approved.mp4", "extra.mp4"])
++        self.assertEqual([(shot["start"], shot["end"]) for shot in timeline], [(0, 1), (1, 2)])
++        self.assertEqual([shot["playbackRate"] for shot in public], [1, 1])
++        self.assertEqual([shot["assetId"] for shot in public], [123, 456])
++        search.assert_called_once()
++        self.assertEqual(search.call_args.kwargs["search_term"], "repair parts")
++
++    def test_catalog_checks_reject_contradictory_subjects_and_actions(self):
++        from app.models.schema import MaterialInfo
++        for query, slug, matches in (
++            ("dough rising bowl", "finished-bread-in-bowl", False),
++            ("log repair steps", "cutting-wood-logs-chainsaw", False),
++            ("repair equipment", "chef-cooking-equipment", False),
++            ("missing repair parts", "repair-shipping-labels", False),
++            ("woman mixing dough", "man-mixing-dough", False),
++            ("cooking salt", "bath-salt", False),
++            ("repair equipment", "technician-repair-equipment", True),
++            ("dough rising bowl", "dough-rising-in-bowl", True),
++        ):
++            with self.subTest(query=query, slug=slug):
++                candidate = MaterialInfo(source_info={"source_page": f"https://www.pexels.com/video/{slug}-123/"})
++                self.assertEqual(storyboard._supplement_metadata_matches(candidate, query), matches)
++
++    def test_old_slowdown_or_changed_playback_rate_is_rejected_before_render(self):
++        for adjustment in ({"visualStretch": 1.02}, {"visualStretch": 1.1}, {"playbackRate": .5}, {"playbackRate": True}):
++            with self.subTest(adjustment=adjustment), patch.object(storyboard.subprocess, "run") as run:
++                with self.assertRaisesRegex(ValueError, "original footage speed"):
++                    storyboard.render_timeline([{"start": 0, "end": 1, "sourceStart": 0, **adjustment}], "unused.mp4", (160, 90), "ffmpeg")
++                run.assert_not_called()
++
++    def test_playback_policy_is_exposed_and_only_accepts_native_speed(self):
++        from app.models.schema import TaskVideoRequest
++        schema = TaskVideoRequest.model_json_schema()
++        self.assertEqual(schema["properties"]["phoenix_playback_policy"]["const"], "native-speed-v1")
++        self.assertEqual(TaskVideoRequest(video_subject="Native").phoenix_playback_policy, "native-speed-v1")
++        with self.assertRaises(ValueError):
++            TaskVideoRequest(video_subject="Native", phoenix_playback_policy="stretch")
 +
 +    def test_approved_footage_never_triggers_a_new_search_or_silent_replacement(self):
 +        from app.models.schema import VideoParams, MaterialInfo
 +        params = VideoParams(video_subject="Morning", video_script="Open curtains.", phoenix_storyboard=[{"narration": "Open curtains.", "query": "opening curtains", "assetId": 123}])
-+        candidate = MaterialInfo(url="approved", duration=4, source_info={"asset_id": "123"})
-+        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 3.9, "Open curtains.")]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate) as selected, patch("app.services.material._search_videos_with_cache") as search, patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 4)), patch("app.services.task_artifacts.patch_script_data", return_value=True):
++        candidate = MaterialInfo(url="approved", duration=5, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 3.9, "Open curtains.")]), patch.object(storyboard, "approved_pexels_asset", return_value=candidate) as selected, patch("app.services.material._search_videos_with_cache") as search, patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 5)), patch("app.services.task_artifacts.patch_script_data", return_value=True):
 +            timeline, _ = storyboard.prepare_timeline("unused-test", params, "unused.srt", 4, lambda *_: None)
 +            selected.assert_called_once_with(123, "opening curtains")
 +            search.assert_not_called()
@@ -1042,8 +1176,8 @@ index 0000000..d532242
 +    def test_material_preparation_preserves_section_order_and_source_records(self):
 +        from app.models.schema import VideoParams,MaterialInfo
 +        params=VideoParams(video_subject="Morning",video_script="Open curtains. Pour water.",phoenix_storyboard=[{"narration":"Open curtains.","query":"opening curtains"},{"narration":"Pour water.","query":"pouring water"}])
-+        candidates=[[MaterialInfo(url="one",duration=2,source_info={"asset_id":"1","source_page":"https://www.pexels.com/video/1/"})],[MaterialInfo(url="two",duration=3,source_info={"asset_id":"2","source_page":"https://www.pexels.com/video/2/"})]]
-+        with patch.object(storyboard,"subtitle_cues",return_value=[(0,1.8,"Open curtains."),(2,4.8,"Pour water.")]), patch("app.services.material._search_videos_with_cache",side_effect=candidates) as search, patch.object(storyboard,"download_stock_video",side_effect=[("one.mp4",2),("two.mp4",3)]), patch("app.services.task_artifacts.patch_script_data",return_value=True) as persist:
++        candidates=[[MaterialInfo(url="one",duration=3,source_info={"asset_id":"1","source_page":"https://www.pexels.com/video/opening-curtains-1/"})],[MaterialInfo(url="two",duration=4,source_info={"asset_id":"2","source_page":"https://www.pexels.com/video/pouring-water-2/"})]]
++        with patch.object(storyboard,"subtitle_cues",return_value=[(0,1.8,"Open curtains."),(2,4.8,"Pour water.")]), patch("app.services.material._search_videos_with_cache",side_effect=candidates) as search, patch.object(storyboard,"download_stock_video",side_effect=[("one.mp4",2.2),("two.mp4",3.2)]), patch("app.services.task_artifacts.patch_script_data",return_value=True) as persist:
 +            timeline,public=storyboard.prepare_timeline("unused-test",params,"unused.srt",5,lambda *_:None)
 +            self.assertEqual([shot["path"] for shot in timeline],["one.mp4","two.mp4"])
 +            self.assertEqual([(shot["start"],shot["end"]) for shot in timeline],[(0,2),(2,5)])
@@ -1127,6 +1261,31 @@ index 0000000..d532242
 +        self.ffmpeg.write_bytes(b"changed encoder")
 +        original = cache.key(self.shot, 30, (160, 90))
 +        self.assertNotEqual(original, storyboard._ShotCache(str(self.ffmpeg)).key(self.shot, 30, (160, 90)))
++
++    def test_cache_recipe_invalidates_old_timing_adjustments(self):
++        cache = storyboard._ShotCache(str(self.ffmpeg))
++        real_dumps = json.dumps
++        recipes = []
++        def inspect_recipe(value, **kwargs):
++            recipes.append(value)
++            return real_dumps(value, **kwargs)
++        with patch.object(storyboard.json, "dumps", side_effect=inspect_recipe):
++            cache.key(self.shot, 30, (160, 90))
++        self.assertEqual(recipes[0]["version"], 3)
++        self.assertEqual(recipes[0]["playback_rate"], 1)
++        self.assertNotIn("stretch", recipes[0])
++        self.assertEqual(recipes[0]["filter"], "native-pts,scale-increase,crop,setsar,no-eof-padding")
++
++    def test_native_speed_ffmpeg_command_has_no_padding_or_loop(self):
++        with patch.object(storyboard.subprocess, "run", side_effect=self.fake_render):
++            self.render()
++        arguments = self.encoded_calls[0]
++        picture = arguments[arguments.index("-vf") + 1]
++        self.assertTrue(picture.startswith("setpts=PTS-STARTPTS,"))
++        self.assertNotIn("tpad", picture)
++        self.assertNotIn("*", picture)
++        self.assertNotIn("-stream_loop", arguments)
++        self.assertEqual(arguments[arguments.index("-frames:v") + 1], "30")
 +
 +    def test_shifted_timeline_uses_frame_count_not_absolute_start(self):
 +        cache = storyboard._ShotCache(str(self.ffmpeg))

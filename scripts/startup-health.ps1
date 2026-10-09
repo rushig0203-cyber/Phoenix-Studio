@@ -32,8 +32,8 @@ function Test-PhoenixWorkerHeartbeat([string]$Path, [int]$WorkerId) {
     } catch { return $false }
 }
 
-function Wait-PhoenixWorker([string]$Path, [int]$WorkerId, $Process = $null, [int]$Seconds = 45) {
-    # Cold TypeScript imports can take longer than the former 15-second check on
+function Wait-PhoenixWorker([string]$Path, [int]$WorkerId, $Process = $null, [int]$Seconds = 90) {
+    # Cold TypeScript imports can take longer than the former 45-second check on
     # a busy laptop. Wait for real readiness, never create a second worker.
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while ($timer.Elapsed.TotalSeconds -lt $Seconds) {

@@ -15,6 +15,7 @@ import { inferPublishingFormat, publishingProfile, type PublishingFormat } from 
 import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, checkStockScript } from "./stockBrief";
 import { createStockStoryboard, readStockShots, type StockBeat } from "./stockStoryboard";
+import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { getCreativeGuidance } from "./qualityManager";
 import type { CreativeGuidance } from "./managerTypes";
 import { generateWritingModel, withWritingSession, isWritingWaitError } from "./writingModel";
@@ -378,6 +379,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false) {
   }
   if (approvedFootage && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.assetId) throw new Error("Restart the local renderer with the approved-footage update before rendering. Phoenix will not ignore your selected clips.");
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
+  if (!supportsNativeStockPlayback(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for original-speed footage. Phoenix will not slow down or freeze clips to fill narration; existing exports are retained.");
 }
 
 export async function generatorReachable() {
@@ -678,7 +680,7 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   const targetWords = Math.max(125, Math.min(600, Math.round(input.duration * 2.78)));
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
+  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
     if (!rawScript) {
@@ -856,7 +858,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       managerGuidance: input.managerGuidance,
       checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
-      storyboard: input.storyboard?.length ? readStockShots(shots, media.duration) : undefined,
+      storyboard: input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined,
       warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
     },
     processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration).score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration).reason, status: "COMPLETED" },
@@ -1041,6 +1043,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       video_terms: stockSearchTerms(prepared),
       phoenix_storyboard: storyboard,
       phoenix_artifacts_version: 1,
+      phoenix_playback_policy: STOCK_PLAYBACK_POLICY,
       video_language: prepared.language,
       video_aspect: prepared.aspect,
       voice_name: prepared.voice === "local-windows-voice" ? "en-US-JennyNeural-Female" : prepared.voice,

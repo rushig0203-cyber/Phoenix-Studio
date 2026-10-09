@@ -1,5 +1,450 @@
 # Phoenix Studio
 
+### October 9 music, caption and posting-default follow-up — source tested
+
+This follow-up is saved in the canonical project; it is **not installed yet**.
+The live release remains the build listed below until the guarded build and
+restart complete. No video or Story was posted during these checks.
+The 231 focused tests and scoped lint pass. Activation was safely refused at
+749 MiB free RAM; the 1664 MiB admission floor was not lowered.
+
+- Footage music recommendations now use the finished video's saved sampled-frame
+  evidence, instead of a blank generic trending request. New caption analysis
+  produces its visual mood in the same three-frame request; no second model or
+  local music model is loaded. Eleven artist-verified English-vocal/instrumental
+  originals supply at most three bounded Meta searches. Recommendations explain
+  their editorial fit; account availability, final selection and posting rights
+  are still checked. This is not listening, beat matching or a full-video review.
+  Explicit track/artist search remains an override. No songs are downloaded.
+- Caption generation prioritises a supported subject/action plus one distinctive
+  detail. Selection retains the strongest supplied caption unless it nearly
+  duplicates another recent video; the current video's caption is excluded from
+  that comparison. Old completed copy and owner edits are not automatically reset.
+- New Instagram posting reviews visibly summarise location and Reel tags. An
+  account-bound protected preferences file can remember selected public usernames
+  and an eligible Meta location once, then autofill future posting reviews.
+  Changes never rewrite an existing upload's approved metadata. Nothing posts
+  without final approval; random accounts are not tagged for promised reach.
+- This owner's Switzerland **posting choice** is saved locally, not treated as
+  filming evidence. The live read-only lookup currently receives Meta's Pages
+  Search denial; no location ID was invented. A unique exact eligible result is
+  required for automatic name resolution. A known eligible location Page ID can
+  be checked directly and remembered if Meta permits it.
+
+### October 9 latest update — installed and live-verified
+
+The installed website and `storage/active-build.json` both identify
+`.next-build-20261009054643268`. This guarded build passed compilation, full
+TypeScript, prerendering and tracing with the unchanged 1664 MiB admission floor.
+The exact-suggestion, music-selection, brisk-cut and footage-reuse changes passed
+184 isolated checks and scoped lint; the prior tagging/caption follow-up is also
+included. Live browser checks verified exact idea insertion and eligible Instagram
+music/volume controls without creating a job or posting. Both Desktop shortcuts
+and the Desktop junction point to this canonical project and installed selection.
+Earlier memory-blocked activation attempts are recorded in the progress log.
+Low runtime memory still safely defers heavy processing instead of bypassing the
+guard or closing other apps. No saved job was retried or owner video changed.
+
+- Footage reuse protection: Find Footage and the stock source-processing
+  queue allow each provider clip in at most four completed or active recipes in a
+  rolling 18-calendar-month window. Archived completions count; retries do not
+  double-count; concurrent requests share the remaining allowance atomically.
+  Exhausted clips are excluded from automatic discovery and selection, and
+  manual/single-source admission cannot bypass the cap. Generated recipes count
+  even before posting. Different provider IDs are not visual-duplicate detection;
+  the separate narrated MoneyPrinterTurbo workflow is not covered by this ledger.
+- Faster-feeling edits: new automatic recipes prefer eight to ten
+  related sources, with a three-second opening and no hold beyond six seconds,
+  supplying 40–45 seconds of real picture at native speed. Insufficient footage
+  fails clearly; nothing is slowed, repeated, frozen or padded. Old/manual
+  cadence and finished videos remain unchanged. These are tested planning rules,
+  not a newly rendered artistic-quality proof.
+- Posting review: footage Reels visibly offer Instagram music or saved
+  video audio. One bounded eligible-catalog lookup never selects or posts a track;
+  explicit choice and fresh final approval are required. An unavailable catalogue
+  cannot silently fall back to saved audio. Instagram music is applied at posting,
+  not embedded in local previews/downloads or companion Stories.
+- Suggestion fix: clicking a recommendation inserts its exact displayed
+  text; a known recommendation ID still controls the supported creation workflow.
+
+- New footage reels use one continuous original instrumental, not changing
+  source/music treatment between shots. Old/manual recipes stay unchanged.
+- New footage captions are one short video-specific sentence. Automatic narration
+  must discuss the requested subject, not camera angles or how to film it.
+  Owner-written scripts and children's stories keep their existing policies.
+- Captions/hashtags, Library instructions and Jobs help are collapsed; one job
+  filter selector replaces the filter-button row. Essential actions/errors remain.
+- Instagram final review can explicitly search Meta's eligible music catalogue,
+  choose a track and set audio/video levels. No automatic selection, downloads,
+  paid music service or posting without fresh final approval. This API does not
+  expose the complete in-app music library or a composite preview. Companion
+  Stories keep the saved video's audio, not the Reel's newly selected music.
+- Meta app credentials are available on localhost for location name search.
+  Initial setup preserves the current Facebook token but resets old approvals;
+  the owner-approved secret is now saved in protected credentials. Live music
+  search returned eligible tracks, but live location name search was denied by
+  Meta's Pages Search/App Review access. No location was invented or post sent.
+- Optional people/brand-profile tags in final Instagram review,
+  using public Instagram usernames, not Facebook Page IDs. Tags are explicitly
+  approved and immutable during retries; matching Stories and YouTube omit them.
+  New footage captions reject counted scene inventories, not real subject counts.
+- The owner's old YouTube videos remain visible on @user-jj2eb7ok2j. This local
+  installation has no saved YouTube upload authorization; reconnecting requires
+  its Web OAuth app credentials and channel-owner consent, not a channel URL.
+
+See `IMPLEMENTATION_PROGRESS.md` for verification and remaining setup details.
+
+### Earlier October 8 follow-up (superseded by the installed update above)
+
+This earlier guarded production build, full TypeScript and scoped lint passed.
+The former installed selection was `.next-build-20261008180850567`;
+the app shortcut, Apply Update shortcut and localhost use the same canonical
+project and installed selection. No RAM guard was lowered.
+
+- Jobs/progress below Create; accepted requests stay there. Generated and Posted
+  Library views are separate, based on confirmed uploads of the current MP4.
+  Outside/manual posts aren't automatically tracked.
+- Short rotating footage topics, tighter same-context companions, original
+  speed and the existing real-picture 40-second minimum. Catalog metadata is
+  not frame-level scene understanding or verified filming-location evidence.
+- More varied original music arrangements for new automatic recipes; old/manual
+  recipes stay unchanged. No paid music service, new model or copied song.
+- Bounded structured feedback now affects new automatic stock recipes as well
+  as matching Groq-written work. Repetition feedback widens freshness preference;
+  weak posting-caption ratings request shorter grounded copy. Notes remain
+  records, not executable instructions; old exports aren't rewritten.
+- Speech-free footage no longer fails quality review merely for not having
+  subtitles. Actual narration/speech still needs accurate caption text.
+- Optional Instagram location suggestions and eligible Meta Page-ID checks.
+  Chosen posting locations are not claimed as verified filming locations or
+  guaranteed foreign reach. Name search needs a configured Meta App Secret and
+  Pages Search access; that release preceded the protected secret setup. Manual Instagram
+  location tagging remains the fallback. Final posting approval is still needed.
+- Any posting-choice edit now clears previous final approval. Following bots
+  and the manual profile-list alternative were left out at the owner's request.
+
+250 focused regression checks passed in the root rerun, plus the music and
+channel suites. Browser checks verified the new views and rotating topics. An
+isolated, network-disabled render of five saved waterfall sources produced 40
+seconds / 960 frames with music v2, full audio/video decoding and no slowdown
+or padding in 37 seconds; minimum observed free RAM was 1350 MiB. It is technical
+evidence, not an artistic-quality or engagement guarantee. No old failed job was
+retried, owner media removed or video posted. See `IMPLEMENTATION_PROGRESS.md`
+for activation, UI and media evidence.
+
+### Earlier October 8 release (superseded by the follow-up above)
+
+The earlier verified build was `.next-build-20261008124930556`; it is no longer
+selected. Its underlying fixes below remain part of the latest installed version.
+No RAM guard was lowered, old failed job retried, owner media deleted or video
+published during that release verification.
+
+- **More useful footage choices:** up to 20 thumbnail cards per page and 120
+  distinct loaded candidates, with More/Previous navigation and at most three
+  bounded pages per provider. Sparse subjects can return fewer matches; Phoenix
+  does not invent or pad choices. Topic ideas rotate locally, not as live trends.
+- **Keep picture quality:** new automatic recipes select the smallest native
+  720p-or-better rendition instead of upscaling a readily available 540p version.
+  They favor related companions not used in the last ten completed reels when
+  suitable alternatives exist. Catalog matching is not frame-level proof of a
+  shared location or visual continuity. Rendering remains 720x1280 and sequential.
+- **Real 40–45-second reels:** fractional-rate source ends retain enough decoder
+  context for complete 24 fps output. A separate, network-disabled proof reused
+  seven downloaded sources and produced 40 seconds of picture / 960 frames with
+  complete A/V decoding in 29 seconds. No slowdown, freeze, loop or audio padding.
+- **Posting copy:** bounded automatic recovery handles transient frame-analysis
+  failures; quota waits retain work and consume no failure attempt. Owner-written
+  copy and unchanged completed analyses are protected. Legacy terminal failures
+  still require explicit retry. New copy avoids repetitive shot-inventory wording;
+  old MP4s and saved captions are not silently rewritten.
+- **Cleaner, lighter Library and Jobs:** combined job counts/filters, eight jobs
+  per page, six Library cards and one selected video player. Collapsed local
+  storage details measure disk usage on demand without decoding videos. Trash
+  hides files for recovery; it does not reclaim disk space automatically.
+- **Sound:** new automatic stock recipes use a continuous quiet original local
+  instrumental beneath usable ambience. Old/manual sound choices stay unchanged.
+  This is not a copied commercial track, professional singing or a growth claim.
+- **One matching Story:** for a confirmed Facebook-linked Business connection
+  and an eligible portrait 3–60-second / <=100 MB MP4, final Reel + Story approval
+  sends the same finished file as one Story only after its Reel succeeds. Story
+  status/continuation is separate, so a failed Story cannot repost its Reel.
+  Existing posts never receive retroactive Stories. Optional daily Story prompts
+  are local ideas to add manually, not scheduled publication or follower bots.
+
+The owner's approved Creator-to-Business switch was visibly verified. Phoenix
+records Business confirmation privately, bound to the account and connection
+revision; it does not infer type from a Page link or call an undocumented
+Facebook `account_type` field. Meta makes the final eligibility check. The live
+posting panel shows matching Story selected and final approval unchecked.
+Instagram reports verified upload permission; YouTube is currently disconnected.
+No real Story upload was attempted. See Meta's
+[resumable upload guide](https://developers.facebook.com/documentation/instagram-platform/content-publishing/resumable-uploads)
+for the local-file route. Business accounts can have narrower music choices.
+
+The final targeted suites passed 106 checks (21 footage UI, 23 posting UI,
+34 publishing backend, four local Story-idea checks and 24 queue/monitor/storage
+checks), in addition to earlier quality and caption regressions. Scoped ESLint
+and whitespace checks passed. A live, browse-only `forest waterfall` check loaded
+21 distinct matches across two provider pages; Previous showed 20 cards, with
+no preview video players or new creation job.
+
+### October 5 installed release (historical; superseded above)
+
+The selected build and live website both identify
+`.next-build-20261005081809680`. The guarded production build, full TypeScript
+check and 166 focused regression checks passed. Lumina and its worker are healthy;
+automatic posting remains disabled. Desktop shortcuts, Apply Phoenix Update and
+`localhost:3000` use the same verified build selection.
+
+New automatic Find Footage reels require **at least 40 seconds**, targeting
+40–45 seconds using distinct, related footage at its original speed. A real,
+network-disabled proof using five already-downloaded licensed sources produced a
+40.021-second MP4 with 960 video frames, stereo AAC and complete video/audio
+decoding. Each source contributed eight genuine seconds: no slowdown, looping or
+audio-only padding. Insufficient suitable footage fails clearly instead of
+silently exporting another short reel. Old 17-second outputs stay unchanged.
+
+Each review card now has two main posting actions: **Copy caption + hashtags**
+and **Post / export**. Choose Instagram or YouTube inside the latter; downloads
+and manual platform links are under its collapsed export options. Reanalysis and
+diagnostics stay in More options. The live browser verified copying and Instagram
+account readiness without publishing anything.
+
+New stock captions no longer append footage credits or provider hashtags. Exact
+recognized legacy stock-credit footers are also excluded from displayed/copied
+posting text and newly confirmed upload captions; owner-written text, research
+citations and already accepted upload records are preserved. Creator, licence and
+source URLs remain in local review metadata and quality notes.
+
+Automatic sound still preserves usable source audio. Silent nature footage uses
+an original local instrumental; its melody, accompaniment, phrasing and ending
+have been improved, with topic-sensitive mood selection. This is a lightweight
+local score, not commercial recorded music or a guarantee of musical quality or
+views. No paid service or new local model was added. Existing RAM guards and
+sequential rendering remain unchanged. The launcher now allows up to 90 seconds
+for a verified worker's first ready heartbeat rather than incorrectly reporting
+failure after 45 seconds.
+
+### Rounded stock-duration fix (October 5 — installed)
+
+The failed `misty mountains` recipe used a Pixabay catalog length of 38 seconds;
+the downloaded picture was 37.578 seconds. Automatic trims now clamp to the
+actual picture duration for older recipes too, rather than asking the owner to
+repair an automatically selected interval. Manual/unmarked trims remain strict,
+saved source metadata and UUID recipes are retained, and invalid starts still fail.
+All 24 focused quality/editing checks and scoped lint passed. This source fix is
+included in the installed release above. The original failed job was not retried
+or changed, and nothing was posted.
+
+### Automatic reel length and hashtag update (October 5 — installed)
+
+New automatic Find Footage reels require **at least 40 seconds**, targeting
+40–45 seconds using more distinct, related sources at their original playback
+speed. The previous three-shot recipe was only about 17 seconds: its 45-second
+value was a cap, not a target. The new minimum is saved with the job so retries
+and actual-file probes enforce the same recipe. Insufficient related footage
+must fail clearly, not produce a shorter finished reel, slow motion or repeats.
+Old completed outputs and UUID-owned recipes are not automatically rewritten.
+Streaming remains sequential with the existing shared 500 MB/RAM guards.
+
+Footage review no longer shows manager score/recommendation controls. Source
+episode ranking stays available. New posting analyses request 15–20 specific
+hashtag candidates, retaining fewer if the video cannot support that many;
+irrelevant fillers are never added. Instagram's posting form uses up to five
+and YouTube can use the larger bank. This follows Instagram's
+[announced five-tag limit](https://www.threads.com/@creators/post/DSalXGPCWM4);
+Meta's API documentation and account rollout can differ, so Phoenix uses the
+conservative limit. An edited Instagram caption with more than five tags is
+rejected before upload. Nothing posts automatically and existing completed
+caption analyses are not re-run merely to enlarge the tag list.
+
+This policy is included in the installed October 5 release above. The dated
+October 4 verification below records the previous short-reel behavior, not the
+current minimum-length policy.
+
+### Automatic Find Footage reels (October 4 — historical release)
+
+Type a topic in **Find footage**. After a short pause, Phoenix searches the
+configured free Pexels/Pixabay libraries and shows up to **10 real starting-video
+thumbnails**. Select one to start: Phoenix keeps that source first, finds one or
+two related sources, downloads them sequentially within the shared 500 MB limit,
+and queues a **two- or three-source reel**. There is no library picker, trimming
+panel or second Create action in this workflow. Final review before posting stays
+yours. Legacy manual API requests and saved edit recipes remain supported.
+
+Relatedness uses conservative catalog metadata, not a claim of frame-level
+understanding or a verified shared location. Sparse results are not padded;
+without a second suitable source, Phoenix asks for a broader topic or another
+starting video instead of making a single-source reel or unrelated montage.
+Native-speed cinematic windows keep the reel short rather than stretching it
+to a fixed duration. Automatic sound preserves usable original audio; video-specific
+posting copy is separate from speech-only subtitles. No new model, paid service,
+copied reference footage/music or automatic publication is added.
+
+Optional **Topic suggestions** stays collapsed until opened. **More ideas**
+rotates through 22 stock-footage starting points locally, remembering the next
+batch where browser storage is available. Ideas are editorial starting points,
+not live trends or guaranteed stock results. The picker loads thumbnails only,
+not ten video players or full files. Retries retain their request ID.
+
+Historical October 4 release check: the selected and running website both identified
+`.next-build-20261004162446227`. The guarded production build and full TypeScript
+check passed, alongside 67 focused mocked/pure checks and scoped lint. Live browser
+verification found six genuine matches for `forest waterfall`, then a single
+starting-shot click produced a three-source, 17.521-second 720×1280 MP4. Both video
+and audio decoded completely; browser playback and the Jobs redirect worked.
+Three sampled frames produced video-specific posting copy and hashtags. The silent
+sources received original local music, not generated narration or unnecessary
+subtitles. One new test reel remains available for review; no old job was retried
+and nothing was posted. Low-memory guards remain unchanged. Dated notes below
+record their original verification state and are superseded by this status.
+
+### One installed release for every launch path (October 4)
+
+The Desktop **Phoenix Studio** and **Apply Phoenix Update** shortcuts and the
+Desktop project junction all point to the canonical working project documented
+in `AGENTS.md`. Production launch—including plain `next start`—requires the
+verified `storage/active-build.json` selection and its nonempty `BUILD_ID`; it
+never defaults to an older `.next-lumina` folder. Normal opening does not build.
+When a verified installed release differs from the running one, the launcher
+activates it only after checking canonical process identities and idle job,
+analysis, upload and heavy-work state. Foreign or active work is left untouched.
+Future installed dashboards reuse the existing health poll to refresh a stale
+release once when no creation editor, settings/library editor or preview is open.
+Missing/disabled session storage cannot trigger a reload loop.
+
+Earlier installation attempts refused below the unchanged 1664 MiB floor and
+preserved the prior release. After the owner freed memory, the automatic-workflow
+build passed and selected `.next-build-20261004162446227`. The active marker and
+live health agree on that release; the browser shows the automatic UI. Saved
+media remain intact, and opening normally still does not build.
+
+### Video-specific posting copy (October 4 — historical)
+
+Posting analysis uses the three small sampled frames you allowed and available
+speech, not one reusable caption template. One Groq request returns grounded
+caption alternatives; Phoenix compares recent wording locally and prefers a
+different supported caption. Caption history is not sent to Groq. Similar
+subjects may legitimately keep the same relevant hashtags. Tags are deduplicated
+without regard to case and generic engagement-bait tags removed. The current
+candidate bank aims for 15–20 grounded tags, with at most five used for Instagram.
+Provider credits stay in saved metadata, not posting text; report citations remain
+attached, while speech subtitles
+remain separate. A late analysis cannot undo manual edits or replacement media.
+Unchanged completed analyses stay cached; explicit **Re-analyze this video**
+refreshes copy without re-rendering the MP4 or retrying a failed creation job.
+
+Where Meta permits it, Phoenix checks at most two relevant hashtags using bounded
+recent-public-post samples and a six-hour cache. The posting panel shows the
+actual checked-at time and limits. This is not a global trend ranking, a Reel
+count, or a views forecast. A connected uploader does not automatically have
+Meta's separate App Review approval for **Instagram Public Content Access**.
+If access or quota is unavailable, grounded copy remains usable with an explicit
+unverified-activity notice. No new permissions, paid service, copied music,
+automatic publication or local model is added.
+
+### Real-footage reel editing (October 4 — historical)
+
+The underlying stock-reel renderer supports up to **12 distinct, ordered shots** under the
+existing 105-second duration cap and shared 500 MB streaming limit. New cinematic
+pacing uses automatic windows of roughly 4–7 seconds for a sequence, or up to
+12 seconds for one continuous shot. Short sources stay short. Legacy manual API
+requests preserve their trims/order and selected-interval pacing. The simplified
+October 4 Find Footage interface selected two or three sources instead of
+exposing these manual settings. A cap that cannot contain manual trims/readable automatic windows asks
+for a larger cap or fewer shots rather than silently rushing or cutting them.
+Saved jobs without the new pacing option keep their older timing recipe. New
+automatic 40–45-second recipes use enough distinct sources to meet their minimum,
+normally five to ten; they do not keep the old three-shot limit.
+
+Search ranks descriptive subject relevance before portrait fit. The real-footage
+filter excludes catalog entries explicitly labelled as animation, cartoons or
+CGI; unknown/mislabelled catalog content is not visually certified. Native portrait
+footage can fill the frame conservatively; other pictures remain complete on a
+dark-neutral matte. Automatic windows are pacing heuristics, **not** a semantic
+best-moment detector or proof of a shared location/action between sources.
+
+Auto sound preserves usable original audio and adds music only in silent
+intervals. The ambience-plus-music choice uses a quiet per-shot bed rather than
+letting one quiet shot determine the whole sequence's balance. Original locally
+composed music now uses 24 kHz stereo harmony, melody, gentle rhythm and spatial
+detail; a 105-second PCM buffer is about 10.1 MB. No paid provider, copied trending
+track or beat-synchronization claim is added. Confident source speech alone
+receives subtitles; posting copy and hashtags remain separate from the picture.
+Caption-free exports can remux a verified assembly without encoding its picture
+again. Sources, clean editable media and provider credits remain saved.
+An isolated real-footage proof produced a 22-second vertical waterfall reel in
+21 seconds: all 528 frames and audio decoded, and the compressed picture hash
+matched its editable master. A separate audio proof checks preservation of
+original sound, music in silent sections, actual caption burn-in on the fallback
+path and a non-blank ending. Explicit concat
+durations and reset timestamps prevent packet padding from changing cadence;
+per-shot frame ceilings no longer truncate the soundtrack prematurely.
+
+These renderer changes are included in the installed release above. Existing MP4s
+are not overwritten; technical checks do not establish artistic quality, views or income.
+See `IMPLEMENTATION_PROGRESS.md` for the current release state.
+
+### Business-managed Instagram Page connection (October 4 — activated and verified)
+
+If Meta returns an empty automatic Page list, the private Instagram connection
+form accepts an optional **Facebook Page ID**. Find the actual ID in **Meta
+Business Suite → Settings → Business assets → your Page → Summary**; a Facebook
+`profile.php?id=...` URL can use a different identifier. Phoenix must fetch that
+exact Page and verify its linked Instagram professional account before saving.
+Later connection checks reuse the verified Page ID and cannot silently switch
+to another Instagram account. A denied or unlinked Page is never saved as
+connected, and the real publishing-grant checks still apply.
+
+Meta conditionally requires `ads_read` for Page roles granted through Business
+Manager. It allows advertising reports and server-side web-event submission;
+Phoenix does neither. A pasted token is not extended by connecting, so a
+short-lived Explorer token still needs renewal after its provider expiry.
+The connection-specific guarded build and full TypeScript check passed using
+`.next-build-20261004045128507`, since superseded by the current release above. The owner's
+Page-linked Instagram connection passed a fresh-token import and a second
+saved-connection check; Phoenix reports ready for confirmed uploads. This is
+permission verification, not a successful real-world publication test. YouTube
+remains disconnected until its OAuth app credentials and consent are supplied.
+The owner completed Meta password reauthentication. A separate long-lived
+token was privately saved and verified; Meta reports expiry on December 2,
+2026. Tokens can still be revoked before their stated expiry, so use Check
+connection before posting. Replacing a local credential is not revocation of
+an older Meta token. Check
+`IMPLEMENTATION_PROGRESS.md` for the exact current state and limitations.
+
+### Connected uploads (October 3 local update — activated)
+
+Finished outputs retain their download, caption/hashtag copy and manual platform
+links. They also offer **Upload to YouTube** and **Post to Instagram**, with a
+final review of the actual account, rendered file, posting text and audience.
+Opening the panel or checking status never submits an upload. No video is
+re-rendered for posting; the existing MP4 is streamed with bounded memory.
+
+In **Settings → Your channels**, account identity and upload permission are
+shown separately. YouTube requires your OAuth app setup and an explicit
+**Enable YouTube uploads** consent; an older read-only connection cannot upload.
+Uploads default to private. [Google notes that unverified API projects can be
+restricted to private uploads](https://developers.google.com/youtube/v3/docs/videos/insert).
+Instagram local-file publishing currently supports a Facebook Login token for
+the Page-linked professional account with `instagram_basic`,
+`instagram_content_publish` and `pages_read_engagement`. A direct Instagram
+Login token can verify identity but does not enable this uploader. The verified
+transport follows [Meta's official resumable local-file example](https://github.com/fbsamples/reels_publishing_apis/tree/main/insta_reels_publishing_api_sample);
+no public video host or paid publishing plugin was added.
+
+Upload requests retain sanitized status separately from video metadata; tokens
+and resumable session URLs remain encrypted. A saved request prevents duplicate
+submissions. Interrupted uploads require an explicit safe continuation; an
+ambiguous remote result must be checked rather than blindly posted again.
+Connecting an account, reopening Phoenix or polling a job never publishes it.
+The guarded production build passed compilation and full TypeScript checking.
+The October 3 release originally used `.next-build-20261003091300114` with both
+accounts disconnected. It is superseded by the October 4 release described
+above. The manager is healthy and renderer ready; automatic posting remains
+disabled. No real-account upload has been performed. See
+`IMPLEMENTATION_PROGRESS.md` for the exact checks and remaining limitations.
+
 ### Connection and writing reliability (October 2 source follow-up)
 
 Instagram's private token form accepts a raw token, matching outer quotes or an
@@ -27,19 +472,20 @@ JSON gets at most one correction. Provider error text is not retained or exposed
 only recognized error codes receive a safe structured-output diagnosis. The
 cause of the earlier generic HTTP 400 is not established retroactively.
 
-This follow-up is tested source, not yet the running production bundle. Check
-`IMPLEMENTATION_PROGRESS.md` before assuming it is active. A guarded build and
-idle activation are still required; old failed jobs are not retried automatically.
+This follow-up is included in the October 3 active production bundle. Check
+`IMPLEMENTATION_PROGRESS.md` for verification and limitations; old failed jobs
+are not retried automatically.
 
 ### Original reels and expressive stories (October 2 local update)
 
-Stock search now supports one useful moment or up to six ordered, related shots,
+The October 2 release introduced one useful moment or up to six ordered, related shots,
 with interval controls, portrait-first results, full-picture framing for unsafe
 crops, original ambience and optional quiet locally composed music. Sources are
 streamed to disk sequentially with a shared 500 MB limit. Selected endings survive
 proportional shortening at the chosen cap. No loops, generated voice or automatic
 publication are added. Shot/theme selection is manual; Phoenix does not claim to
 identify the best moment or prove that different footage depicts the same place.
+The newer 12-shot source update is described above and still needs activation.
 
 Original vector character rigs have complete limbs, directional expressions,
 finite action/reaction sequences, camera compositions and persistent prop states.
@@ -184,7 +630,7 @@ Keep the Groq account on Free, with no billing/paid upgrade. Phoenix **cannot ve
 
 The key is stored in `storage/private/writer-settings.json`, excluded from Git and API responses. It is not encrypted by Phoenix; protect your Windows account and backups. Do not put keys in chat or commit them. Connection tests read model access only and do not generate content. Existing queued work reads the saved provider automatically after the updated worker is running.
 
-A single-owner, Windows-first local video workspace. Process uploaded episodes, plan original children's stories or stock-footage videos, approve the content, and export MP4s for manual posting. The active Phoenix workflows do not call paid AI-video providers or publish automatically.
+A single-owner, Windows-first local video workspace. Process uploaded episodes, plan original children's stories or stock-footage videos, approve the content, and export MP4s for manual or explicitly confirmed connected posting. Phoenix does not call paid AI-video providers or publish without final approval.
 
 **Status: usable local workflows, with limitations—not a completed automatic song/animation studio.** The September 13 update makes final-video review the default: creation plans and renders without scene-by-scene approval. It adds metadata-based stock selection and more contextual 2D acting. Automatic singing remains unavailable on the current 8 GB laptop.
 
@@ -261,7 +707,7 @@ videos are retained and are not retroactively given nonexistent clean masters.
 - **Source video:** streamed large uploads; coverage/highlights selection; speech and silence analysis; natural clip boundaries; FFmpeg exports, captions, posting copy and review recommendations.
 - **App-style workspace:** Create, Jobs, Library and Settings are separate screens with persistent navigation. Forms retain their state when switching screens. Six recommendations appear inside the creation form for the selected type, with More ideas and a saved rotation between visits. These come from 152 local editorial starting points, not live trends or unlimited AI inventions.
 - **Final review only:** creation persists its plan, selects footage, then queues rendering automatically. Older waiting plans resume when the worker starts. No plan editor or manual finish button is shown; even older `planOnly: true` API submissions now proceed automatically. Failed jobs retain their cause and a retry action instead of looping indefinitely. Duplicate submissions and interrupted dispatch reuse the same job identity.
-- **Real stock reels:** **Find real footage** searches both configured Pexels/Pixabay libraries, favoring native portrait results. Select one to six shots, order them and set useful trims; sources stream to disk under one shared byte limit and enter the real source-processing queue, with no generated replacement visuals or narration. Preserve source sound, select a quiet local instrumental, or combine usable ambience with music. Automatic music replacement applies when all selected sound is absent/effectively silent, not merely quiet. Conservative framing keeps the full picture when a crop would discard too much. Posting copy, hashtags and every provider credit remain separate from on-screen subtitles; silent footage has no posting-title overlay. Short footage is not looped to fake duration.
+- **Real stock reels:** the installed topic-only Find Footage workflow described above selects enough related shots for 40–45 seconds at native speed. The underlying manual API/editing renderer supports up to 12 distinct shots and preserves explicit trims. Sources stream sequentially under the shared 500 MB limit; no generated visuals, copied music, slowdown, loops or frozen padding. New automatic recipes use quiet original music beneath usable ambience; manual/old recipes retain their chosen audio policy. Unsafe-to-crop pictures stay complete on a dark-neutral matte. Caption-free verified assemblies can remux their compressed picture. Posting copy and tags stay separate from speech subtitles; creator/licence credits remain in metadata. These heuristics do not certify semantic continuity or identify the best action.
 - **Broader ideas:** 42 original starting points across 10 categories, including nature, places, food, crafts, business, practical skills, learning, hobbies and children’s stories. Initial suggestions mix categories, and exact previously used titles are demoted using local review history. Any search/topic is allowed; these are not live trend predictions.
 - **Children's stories:** local narration and original 2D animation for ages 3–6, with one standalone story or a ten-part series. Version 4 adds fuller characters, expressive eyes, detailed paws/wings, stitched clothing, eight-petal flowers, and layered scenery. It is limited 12 fps illustration, **not** anime or professional 3D animation. New renders use the updated artwork; existing exports are not overwritten.
 - **Children's songs:** import a recording that already contains singing/music and matching lyrics. A local-only ACE-Step adapter is included, but its engine/models are **not installed or bundled**. Phoenix disables this automatic mode below 12 GB usable RAM or 4 GB free RAM; these are conservative Phoenix guards. The current laptop cannot enable it. There is no paid fallback, and speech is not a substitute for singing.
@@ -270,7 +716,7 @@ videos are retained and are not retroactively given nonexistent clean masters.
 - **Trash:** one confirmation when moving a video to Trash; rapid repeated clicks are ignored while saving. Undo and Restore do not ask another deletion confirmation. Media remains on disk and continues to occupy space. Older versions permanently deleted files; this change cannot restore those earlier deletions.
 - **Live jobs:** queued/running/completed/failed history, progress, elapsed time and available ETA estimates, plus retry and eligible history-removal controls. Draft planning and finished-video rendering are separate stages.
 - **Quality manager:** owner ratings change bounded future children's-story guidance and matching business/general narration prompts. Stock guidance no longer tells business videos to use animal characters. It does not retrain a model, autonomously rewrite its code, or predict earnings. Text scores do not evaluate visuals or singing.
-- **Channel setup:** can verify configured YouTube/Instagram connections. Account consent is still required. Upload links are manual posting, not an automated publisher.
+- **Channel setup:** separates verified account identity from upload permission. Manual links remain available; connected posting requires configured permissions and per-video final approval. See the source-update/activation note above.
 
 Attention recommendations and text checks do not measure artistic quality or guarantee views, monetization, or income. Automatic singing and consistent editorial-quality output without owner review are not completed acceptance criteria.
 
@@ -278,7 +724,9 @@ Attention recommendations and text checks do not measure artistic quality or gua
 
 For an episode, choose **Choose a video**, upload the source, and select full coverage or best highlights when offered. This source-processing workflow cuts the original footage; it does not request generated replacement visuals.
 
-For a natural/real-footage reel, choose **Find real footage**, enter any concrete search, and select **Search real videos**. Add one to six results, order and trim the shots, choose sound/framing, and create the reel. It uses those real sources up to your chosen duration cap without looping short assets. An optional description seeds draft posting copy; it is not an overlay or a fabricated speech transcript. With sampled-frame permission, later analysis can produce video-specific posting text. Both providers use their own private free keys (`PEXELS_API_KEY`, `PIXABAY_API_KEY`). Partial search failures are shown without hiding successful results from the other provider.
+For a real-footage reel, choose **Find footage**, enter a concrete topic, then choose one of the automatically shown starting videos. Phoenix selects related sources and queues the reel without manual trim/settings steps. The October 5 source update targets 40–45 seconds using additional native-speed shots, each bounded to eight seconds; if suitable footage is insufficient it asks for a broader topic, not slow motion or repeats. Check the release status at the top of this README before assuming an update is installed. Preview actual content and sound: catalog relatedness is not visual understanding. With sampled-frame permission, posting analysis supplies video-specific text and hashtag candidates, separate from speech-only subtitles. Both providers use private free keys (`PEXELS_API_KEY`, `PIXABAY_API_KEY`); partial failures do not hide the other provider's results. Legacy manual API recipes remain supported but are not exposed in this automatic panel.
+
+Footage plays at its original speed: the length setting is a cap, not a reason to slow, freeze or repeat a shot. Add another relevant selected moment for a longer natural reel. Narrated stock creation uses the `native-speed-v1` renderer contract; if an approved source is too short for its actual spoken section, the renderer can append a distinct same-query source whose catalog subject/action metadata passes conservative checks. The chosen asset stays first, unknown/contradictory additions are rejected, and suitable additional footage must be available. Catalog checks are not video-frame understanding. Already-slow-motion source footage remains as supplied; Phoenix does not invent missing normal-speed frames.
 
 For a new creation:
 
@@ -324,6 +772,8 @@ Uploads, MP4s, queue state, captions, and feedback live under `storage/Phoenix S
 - **Video preview fails:** use **Retry preview** or **Download MP4**. Check that Phoenix is still running and the output still exists. The player loads one video at a time and supports byte-range seeking.
 - **Desktop opens an older version:** compare Settings health with `storage/active-build.json`, use the current project (not a backup/ZIP), and activate a verified build while jobs are idle. A Git pull does not rebuild or replace an already running website. See staged builds below.
 - **Low memory or noisy rendering:** avoid simultaneous builds, renders and model downloads. Local FFmpeg thread counts are bounded and animation rasterization uses one worker with a 24 MB image cache, but this is not a guarantee against system-wide memory pressure from other apps.
+- **Thumbnails wait while a render is busy:** cached images stay usable; uncached decoding shares the heavy-work/RAM reservation. The preview button remains available and image retries are bounded. Stock proxy transfers stream with backpressure rather than buffering an entire file, and animation rasterization loads its native engine on demand. These safeguards do not remove a local renderer's physical RAM requirement.
+- **Stock renderer requests an original-speed update:** apply the current integration patch and restart the renderer. Older slowdown-capable renderers cannot satisfy new native-speed jobs. Completed old files remain saved; no failed job is automatically retried by the update.
 - **Automatic song option is unavailable:** this laptop does not meet Phoenix's singing memory guard. Import a sung recording, or use a separately installed local engine on suitable hardware. No paid service is enabled automatically.
 - **Instagram rejects a pasted token:** use the masked field in **Settings → Your channels → Connection setup**. Paste a complete access token, not an app secret, URL, curl command or JSON object. Read the specific verification error. A Facebook Login token needs the appropriate linked Instagram professional account/permissions; a direct Instagram Login token does not need a Facebook Page. Never paste a real token into chat or Git.
 - **YouTube is not connected:** use **Connection setup**, configure your Web application OAuth client privately, add the exact displayed callback URI and complete consent using the account owning the channel. **Check connection** can renew a saved expired connection. Opening an upload page does not connect or publish to that account.

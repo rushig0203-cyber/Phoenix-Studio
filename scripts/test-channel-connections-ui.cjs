@@ -74,6 +74,35 @@ function environment(t, channels, handlePost) {
   return requests;
 }
 
+test("the intended Instagram handle stays separate from verified account identity", async t => {
+  environment(t, [status("youtube"), status("instagram")], async () => assert.fail("No connection request"));
+  const h = hooks(); await h.flush();
+  assert.match(h.text, /Intended account: @__bitet\.hemap/);
+  assert.match(h.text, /Not connected/);
+});
+
+test('localhost Meta app credentials are visible, private and saveable without starting OAuth or replacing the connected token', async t => {
+  const ready = [status('youtube'), status('instagram', { connected: true, state: 'connected', name: '@verified_fixture', loginType: 'facebook', publishReady: true })];
+  const requests = environment(t, ready, async (url, options) => {
+    assert.equal(url, '/api/channels/instagram');
+    assert.deepEqual(JSON.parse(options.body), { action: 'configure', clientId: '1443393741188691', clientSecret: 'fixture-private-app-secret' });
+    return Response.json({ channels: [ready[0], { ...ready[1], configured: true, hasClientSecret: true, clientId: '1443393741188691' }] });
+  });
+  const h = hooks(); await h.flush();
+  nodes(h.tree, node => node.type === 'button' && text(node) === 'Connection setup')[1].props.onClick(); await h.flush();
+  assert.equal(field(h, 'Meta app secret').props.type, 'password'); assert.equal(field(h, 'Meta app secret').props.autoComplete, 'off');
+  assert.match(h.text, /These fields work on localhost/);
+  assert.match(h.text, /same Meta app/);
+  field(h, 'Meta app ID').props.onChange({ target: { value: '1443393741188691' } }); await h.flush();
+  field(h, 'Meta app secret').props.onChange({ target: { value: 'fixture-private-app-secret' } }); await h.flush();
+  const appForm = nodes(h.tree, node => node.type === 'form' && text(node).includes('Meta app ID'))[0];
+  appForm.props.onSubmit({ preventDefault() {} }); appForm.props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.equal(requests.filter(item => item.method === 'POST').length, 1);
+  assert.equal(field(h, 'Meta app secret').props.value, ''); assert.equal(field(h, 'Meta app secret').props.required, false);
+  assert.match(h.text, /token connection is retained/); assert.match(h.text, /@verified_fixture/);
+  assert.equal(button(h, 'Connect Instagram'), undefined, 'localhost must not offer unavailable Instagram OAuth');
+});
+
 test("private Instagram token field submits raw pasted headers with Enter, then clears only after successful verification", async t => {
   const ready = [status("youtube"), status("instagram")];
   const requests = environment(t, ready, async (url, options) => {
@@ -115,6 +144,60 @@ test("failed token verification shows the actionable cause and preserves the own
   assert.equal(button(h, "Verify and connect Instagram").props.disabled, false);
 });
 
+test("an optional actual Page ID is submitted with the private token and its verified value is reusable", async t => {
+  const pageId = "1234567890123";
+  const ready = [status("youtube"), status("instagram")];
+  const requests = environment(t, ready, async (url, options) => {
+    assert.equal(url, "/api/channels/instagram");
+    assert.deepEqual(JSON.parse(options.body), {
+      action: "instagram-token", accessToken: "fixture_user_token_not_real", pageId,
+    });
+    return Response.json({ channels: [ready[0], status("instagram", {
+      connected: true, state: "connected", name: "@verified_fixture", pageId,
+    })] });
+  });
+  const h = hooks(); await h.flush(); button(h, "Connect Instagram").props.onClick(); await h.flush();
+  const pageInput = field(h, "Facebook Page ID (optional)");
+  assert.equal(pageInput.props.inputMode, "numeric");
+  assert.match(h.text, /Meta Business Suite/);
+  assert.match(h.text, /profile URL may be different/);
+  field(h, "Instagram access token").props.onChange({ target: { value: "fixture_user_token_not_real" } }); await h.flush();
+  field(h, "Facebook Page ID (optional)").props.onChange({ target: { value: ` ${pageId} ` } }); await h.flush();
+  nodes(h.tree, node => node.type === "form")[0].props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.equal(requests.filter(request => request.method === "POST").length, 1);
+  assert.match(h.text, /Connection verified successfully/);
+  const instagramSetup = nodes(h.tree, node => node.type === "div" && text(node).includes("@verified_fixture") &&
+    nodes(node, child => child.type === "button" && text(child) === "Connection setup").length === 1).pop();
+  nodes(instagramSetup, node => node.type === "button" && text(node) === "Connection setup")[0].props.onClick(); await h.flush();
+  assert.equal(field(h, "Instagram access token").props.value, "");
+  assert.equal(field(h, "Facebook Page ID (optional)").props.value, pageId);
+});
+
+test("a profile URL is rejected as a Page ID before sending credentials", async t => {
+  const requests = environment(t, [status("youtube"), status("instagram")], async () => assert.fail("Invalid Page IDs must not be posted"));
+  const h = hooks(); await h.flush(); button(h, "Connect Instagram").props.onClick(); await h.flush();
+  field(h, "Instagram access token").props.onChange({ target: { value: "fixture_user_token_not_real" } }); await h.flush();
+  field(h, "Facebook Page ID (optional)").props.onChange({ target: { value: "https://www.facebook.com/profile.php?id=1234567890123" } }); await h.flush();
+  nodes(h.tree, node => node.type === "form")[0].props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.match(h.text, /numeric Page ID/);
+  assert.equal(requests.filter(request => request.method === "POST").length, 0);
+  assert.equal(field(h, "Instagram access token").props.value, "fixture_user_token_not_real");
+});
+
+test("a denied Page hint preserves both inputs and does not claim success", async t => {
+  const requests = environment(t, [status("youtube"), status("instagram")], async () =>
+    Response.json({ error: "The specified Page could not be verified." }, { status: 400 }));
+  const h = hooks(); await h.flush(); button(h, "Connect Instagram").props.onClick(); await h.flush();
+  field(h, "Instagram access token").props.onChange({ target: { value: "fixture_user_token_not_real" } }); await h.flush();
+  field(h, "Facebook Page ID (optional)").props.onChange({ target: { value: "1234567890123" } }); await h.flush();
+  nodes(h.tree, node => node.type === "form")[0].props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.match(h.text, /specified Page could not be verified/);
+  assert.doesNotMatch(h.text, /Connection verified successfully/);
+  assert.equal(field(h, "Instagram access token").props.value, "fixture_user_token_not_real");
+  assert.equal(field(h, "Facebook Page ID (optional)").props.value, "1234567890123");
+  assert.equal(requests.filter(request => request.method === "POST").length, 1);
+});
+
 test("an expired YouTube connection exposes explicit Check connection without forcing a new login", async t => {
   const channels = [status("youtube", { configured: true, state: "needs_attention", name: "Owned channel", error: "Connection expired." }), status("instagram")];
   const requests = environment(t, channels, async (url, options) => {
@@ -127,5 +210,5 @@ test("an expired YouTube connection exposes explicit Check connection without fo
   assert.equal(requests.filter(request => request.method).length, 1);
   assert.equal(button(h, "Connect YouTube"), undefined);
   assert.match(h.text, /Connection verified successfully/);
-  assert.match(h.text, /Upload reviewed videos on the platform/);
+  assert.match(h.text, /Upload reviewed videos from their posting tools/);
 });

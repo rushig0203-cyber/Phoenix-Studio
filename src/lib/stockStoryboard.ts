@@ -2,7 +2,7 @@ import { actionMismatch } from "./footageSemantics";
 import type { CreativeBrief } from "./creativeBrief";
 import { generateWritingModel, withWritingSession } from "./writingModel";
 export type StockBeat = { narration: string; query: string; assetId?: number };
-export type StockShot = StockBeat & { start: number; end: number; sourcePage?: string; timing: "subtitle-boundary" | "within-caption-estimate" };
+export type StockShot = StockBeat & { start: number; end: number; sourcePage?: string; timing: "subtitle-boundary" | "within-caption-estimate"; playbackRate?: 1; supplementalReason?: string };
 
 /** Catch explicit subject/action swaps; this is not a semantic vision score. */
 export function stockQueryMismatch(narration: string, query: string) {
@@ -19,18 +19,19 @@ export function stockQueryMismatch(narration: string, query: string) {
   return concepts.find(([visual, spoken]) => visual.test(query) && !spoken.test(narration))?.[2] || actionMismatch(narration, query);
 }
 
-export function readStockShots(value: unknown, duration: number): StockShot[] {
+export function readStockShots(value: unknown, duration: number, requireNativeSpeed = false): StockShot[] {
   if (!Array.isArray(value) || !value.length || value.length > 100) throw new Error("The renderer did not return a usable timed footage plan.");
   let end = 0;
   const shots = value.map((item): StockShot => {
     if (!item || typeof item.narration !== "string" || typeof item.query !== "string" || !Number.isFinite(item.start) || !Number.isFinite(item.end) || Math.abs(item.start - end) > 0.02 || item.end <= item.start || !["subtitle-boundary", "within-caption-estimate"].includes(item.timing)) throw new Error("The rendered footage plan has invalid or missing section timings.");
+    if ((item.visualStretch !== undefined && item.visualStretch !== 1) || (item.playbackRate !== undefined && item.playbackRate !== 1) || (requireNativeSpeed && item.playbackRate !== 1)) throw new Error("The renderer did not confirm original-speed footage. Slowed or stretched clips cannot be accepted as a new completed video.");
     end = item.end;
     let sourcePage: string | undefined;
     if (typeof item.sourcePage === "string") {
       const url = new URL(item.sourcePage);
       if (url.protocol === "https:" && /^(www\.)?(pexels\.com|pixabay\.com)$/.test(url.hostname) && !url.username && !url.password) sourcePage = `${url.origin}${url.pathname}`;
     }
-    return { narration: item.narration.slice(0, 4000), query: item.query.slice(0, 80), start: item.start, end: item.end, timing: item.timing, sourcePage };
+    return { narration: item.narration.slice(0, 4000), query: item.query.slice(0, 80), start: item.start, end: item.end, timing: item.timing, sourcePage, ...(item.playbackRate === 1 ? { playbackRate: 1 as const } : {}), ...(typeof item.supplementalReason === "string" ? { supplementalReason: item.supplementalReason.slice(0, 600) } : {}) };
   });
   if (Math.abs(end - duration) > 0.15) throw new Error("The footage plan does not cover the finished video's duration.");
   return shots;

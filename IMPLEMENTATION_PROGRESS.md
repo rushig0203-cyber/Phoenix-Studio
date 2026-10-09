@@ -1,5 +1,1328 @@
 # Quality-first implementation — September 16, 2026
 
+## October 9: English/instrumental fit, stronger first-pass copy and posting defaults
+
+Source follow-up, not yet installed. The currently selected/live bundle is still
+`.next-build-20261009054643268`. Git update was requested for accumulated project
+changes; private settings, runtime media and builds remain excluded.
+
+- Replaced the new-footage panel's blank trending request with contextual music
+  recommendations from existing completed, fingerprint-bound frame observations.
+  The existing three-frame/900-token caption request also asks for a supported
+  visual mood and coarse saved source-entry cadence. Invalid optional music is
+  discarded without failing good captions; uncertainty never forces a song.
+- Eleven original English-vocal/instrumental seeds were checked against primary
+  artist/composer sources. At most three sequential ten-second Meta metadata
+  searches use exact original title/artist matches. No covers/remixes, inferred
+  language from Latin titles, song downloads, new model, paid fallback or posting.
+  Curated fit is editorial, not audio listening/BPM/full-video understanding.
+- Found and fixed legacy dual-export compatibility: prior analyses preferred
+  YouTube, while posting selects Instagram. Stable completed cache identity is
+  retained; evidence crosses targets only after identical-size/duration and exact
+  bounded-stream byte equality, with output/account/analysis changes checked.
+- Tightened generated stock copy against passive video descriptions and scene
+  inventory. Prefer the best model candidate, swapping only for near-exact
+  repetition against other videos. Current-file copy is excluded; alternatives
+  and mood remain saved behind existing owner-edit and output-change guards.
+- Added protected account-bound posting defaults and an explicit preference-only
+  save action. New reviews load defaults alongside music/Story checks, with visible
+  location/tag summaries and stale-response protections. Existing upload metadata
+  remains immutable; no default creates a job. The owner chose Switzerland as a
+  posting preference. No random reach-chasing tags were configured or invented.
+- Live read-only probes confirm @__bitet.hemap is connected with publishing access;
+  YouTube is not connected. Switzerland name lookup is denied by Meta Pages Search
+  (advanced Page Public Metadata Access/App Review can be required). That external
+  access limitation is not fixed by hiding the button or accepting a country text
+  as a location ID; pending verification is explicit. No real post/Story occurred.
+- Verification so far: 113 caption/music/backend/pure checks, 54 posting UI checks,
+  and 64 adjacent posting/cache/launch/footage checks passed with 192 MiB heaps and
+  serial test-file execution (231 focused checks total); scoped lint passes.
+  The guarded `npm run build` refused at 749 MiB free RAM before changing the
+  selected build or TypeScript config. Production activation and live browser
+  verification of this follow-up remain pending; tests do not prove artistic
+  quality or likely views. The 1664 MiB build floor remains unchanged.
+
+## October 9 latest activation
+
+Current installed/live build: `.next-build-20261009054643268`, superseding the
+earlier October 9 bundle below. After the owner requested installation, about
+1885 MiB free RAM was available. Canonical guarded restart built a separate
+bundle with one worker/896 MiB heap: compilation passed in 72s, full TypeScript
+in 14.1s, followed by 32 static pages and tracing. No RAM guard was lowered.
+The startup script initially reported a missing fresh Lumina heartbeat and
+returned a startup warning; subsequent live checks verify the new selection,
+healthy worker/manager, ready renderer and no active heavy operation. The new
+bundle—not the older bundle—is what port 3000 serves. Runtime free RAM later
+fell to 393–482 MiB, so heavy processing is safely waiting, not falsely running.
+
+Desktop `Phoenix Studio.lnk` runs the canonical hidden start launcher; `Apply
+Phoenix Update.lnk` runs the canonical guarded rebuild/restart. Their working
+directories and Desktop `PhoenixStudio` junction all point to this project.
+Live browser reload verified exact insertion of "Notice patterns in leaves";
+nothing was queued. A generated rain reel's final review displayed six eligible
+Instagram tracks, verified upload destination, explicit music/saved-audio choice,
+and 100/1 track/video levels after a test selection. Final approval stayed off.
+The test choice was cleared via saved-audio mode and the panel was closed; no
+post, Story, retry, owner edit or new render was performed. Evidence is in
+`work/oct9-followup-ui/activated-instagram-music.jpg` and
+`work/oct9-followup-ui/activated-exact-suggestion.jpg` under Review Files.
+New real-render artistic verification is still deferred while memory is low.
+The separately narrated MoneyPrinterTurbo path does not yet share the footage
+source-job reuse cap; see scope details in the follow-up section below.
+
+## October 9: shorter copy, continuous reel sound, compact UI and Instagram music
+
+Earlier installed release, now superseded: `.next-build-20261008192146555`. The guarded build
+passed compilation, full TypeScript, prerendering and tracing; selected/live
+builds match. Root passed 304 checks: 208 caption/planning/audio/navigation/channel
+checks, 86 Instagram audio/location/publication/UI checks and 10 release checks,
+run sequentially with bounded
+heaps. Full TypeScript passed at 640 MiB; an initial 384 MiB check exhausted its
+own heap without changing the live website. Scoped ESLint and whitespace checks
+passed after correcting an unescaped JSX apostrophe. No RAM guard was lowered.
+
+- The saved dog-park creation drifted into a filmmaking lesson: its outline
+  asked how to capture a dog and its narration described camera mounting,
+  first-person viewpoints and shot order. New non-filmmaking plans/narration
+  reject this drift with a bounded repair while preserving explicit filmmaking,
+  children's stories and owner-written scripts. Old completed files stay intact.
+- New footage-only posting copy requests one natural sentence, preferably 8–20
+  words, capped at 24 words/160 characters. Validation selects a valid supplied
+  alternative rather than cutting a sentence or owner text. Posting copy remains
+  separate from subtitles; source audio deliberately removed by music replacement
+  is not transcribed into burned captions. Existing completed analyses stay cached.
+- New automatic stock recipes use one continuous original local instrumental
+  across every shot, replacing mixed source audio. Existing/manual saved audio
+  policies and exports remain unchanged. No commercial song or new local model.
+- Library explanations, captions/hashtags and Jobs help are collapsed. Job filters
+  share one labelled selector. Removed the decorative breadcrumb, sidebar tagline
+  and free-mode box; replaced the reel logo with a simple P mark. Preview, edit,
+  Copy, Post/export, settings, errors and one delete confirmation remain reachable.
+- Optional final-review Instagram audio search uses Meta's documented v22
+  `/ig_audio` endpoint, returns at most six sanitized eligible music tracks and
+  never downloads provider audio or follows pagination. Explicit selection and
+  integer audio/video volumes (1–100) require renewed final approval. The reviewed
+  track is checked before persistence and before container creation; chosen audio
+  is never silently discarded. New music Reels pin v22; existing/no-music jobs and
+  companion Stories retain v21 and their original MP4 audio. No composite-preview,
+  full native music catalogue, ads route or successful-publication claim.
+- Fixed localhost hiding the Meta app credential form. Adding the first app ID
+  and secret retains an existing Facebook Login token but rotates its connection
+  revision; old upload approvals/Business Story confirmation need fresh review.
+  Replacing an already configured app ID still disconnects. Location name lookup
+  needs the same app secret plus actual Meta Pages Search access; suggestions
+  remain unverified and eligible locations are checked, not fabricated.
+- Read-only current/October 1 backup inspection found no saved YouTube OAuth
+  credentials or upload history. The owner's supplied channel was checked in the
+  logged-in browser: Mr. teast / @user-jj2eb7ok2j has five videos, with two visible
+  uploads dated about three months ago. Their continued presence does not grant
+  Phoenix upload access. Updated the obsolete unverified-project private-only
+  warning; actual returned privacy is still checked after any approved upload.
+- Owner approved copying the existing studio finalll App Secret into Phoenix's
+  protected credentials and personally completed Meta's password prompt. It is
+  now saved privately in the encrypted vault, not printed, committed or stored in
+  plaintext. Instagram remains connected and publish-ready. Live explicit audio
+  search returned six tracks; selection and volume controls were verified with
+  final approval unchecked, then cleared. Live Switzerland location search was
+  denied by Meta Pages Search access; advanced Page Public Metadata Access/App
+  Review remains an external setup requirement, not a missing local App Secret.
+  No owner video was rewritten, failed job retried, or post submitted.
+
+### October 9 follow-up: explicit Reel tags and remaining caption loophole
+
+At that checkpoint, source and targeted checks were complete but not live.
+These additions are now included in the latest activation documented above.
+The guarded `npm run build` stopped before creating a bundle: 547 MiB free versus
+1664 MiB required. No guard was lowered, active selection changed or owner job
+retried. Canonical startup restored the installed website; live health matches
+the build above, manager heartbeat is healthy and the queue is clear.
+
+The owner then explicitly requested activation ("live it"). The canonical guarded
+`restart-phoenix.ps1 -Rebuild -NoBrowser -NoPause` attempted activation but build
+admission still failed at 551 MiB free. The launcher restored the installed
+website and manager successfully; selected/live build still match the build
+above and the worker is healthy. No new bundle was created or guard weakened.
+
+- Meta's IG User Media reference (updated September 28, 2026) lists `user_tags`
+  on resumable Reel containers. Optional final review accepts public Instagram
+  usernames for people/brand profiles, not Facebook Page IDs or profile URLs.
+  Local validation enforces ASCII usernames, one optional leading @, case
+  normalization, uniqueness and a 20-entry application cap without truncation.
+  Actual public-account/tagging eligibility is decided by Meta, not guessed.
+- Each confirmed Reel keeps immutable canonical tags, returns independent public
+  copies and sends only username objects as `user_tags`. Existing/continued jobs
+  cannot change tags or create duplicates. Matching Stories and YouTube omit
+  them. Caption @mentions remain separate; no collaborator invitation, account
+  lookup, permission expansion, automatic tag or real post was performed.
+- The owner's completed butterflies footage reel was observed at 42.021 seconds,
+  with continuous replaced music and zero subtitle cues. Its short caption still
+  counted three scenes. New validation/prompt rejects counted scenes/shots/clips,
+  while allowing real subject counts and natural use of the word scene. Supplied
+  valid alternatives are selected without rewriting completed owner text.
+- Root reran 124 isolated checks sequentially with 192 MiB heaps: 61 caption/
+  posting-UI/vision checks, then 63 tagging/audio/publication checks. Scoped ESLint
+  and whitespace checks passed. The new follow-up has not had a full TypeScript
+  production build or live tagging UI verification because build admission failed.
+- A fresh isolated render proof was deferred by its resource guard; no guard was
+  lowered. The owner independently completed the butterflies and horses jobs;
+  root did not generate, retry, cancel, rewrite or post these videos.
+- Cleanup used official uninstallers: Solitaire, Roblox Player and Riot Vanguard
+  are removed; Vanguard registration, service, driver and directory are absent.
+  A Roblox installer stub remains. FIFA/VALORANT payloads were not found. BlueStacks
+  and its data were preserved. File deletion was blocked by tool policy, so game
+  download archives/installers remain. Old Desktop Phoenix backups and 31 old
+  generated bundles were moved into private retired-backup/build folders, not
+  permanently deleted; this preserves unique owner media but does not reclaim
+  disk space. Only the current installed bundle remains in the canonical root.
+
+### October 9 further follow-up: exact suggestions, Reel music, cadence and reuse
+
+This section initially described source-only work while memory was below the
+1664 MiB build guard. The owner then requested installation; the new production
+build, full TypeScript and live UI checks succeeded as documented above. No
+unrelated app was closed and no owner source/output/history/account was mutated
+by QA. Render proof remains deferred while runtime RAM is low. Desktop launch
+and Apply Update both use the same canonical project and selected build, not a
+second product copy.
+
+- Exact suggestions: registered creation IDs choose the workflow, but the exact
+  visible title fills the prompt instead of a hidden registry sentence. Invalid
+  titles are rejected without changing the form. Every short footage topic uses
+  its displayed label as its search text across repeated local rotations. The
+  reported mismatch could not be reproduced from the forgotten example; tests
+  harden this consistency rather than claiming an observed root cause.
+- Five retained Instagram publications were inspected read-only: none had a
+  selected Instagram audio configuration. New connected footage posting review
+  exposes Reel music visibly and performs one bounded eligible/trending lookup
+  with at most six tracks. No auto-selection, download or auto-post. The owner
+  must choose a track or explicitly choose saved-video audio; catalog failure
+  cannot silently change that choice. Track, volume or matching-Story changes
+  reset final approval. A late Story eligibility result also resets approval,
+  preventing a previously approved Reel from silently expanding to Reel+Story.
+  Existing upload continuations keep immutable choices and do not auto-search.
+  Instagram music affects provider publication only, not the local MP4/Story.
+- New automatic recipes persist `brisk-v1`, prefer ten related native sources
+  and accept eight or nine only with sufficient genuine frame capacity. Opening
+  is at most three seconds and other windows at most six; native picture still
+  supplies 40–45 seconds. Explicit catalog slow-motion labels are excluded.
+  No motion analysis, beat-sync claim, retiming, padding, freeze, loop or unrelated
+  filler; unmarked/manual/saved cadence is retained. Existing historical render
+  proof modes explicitly use their older five/seven-source recipes.
+- New `stockReuse.ts` uses retained source-job history, not a short recency list:
+  at most four uses/reservations per canonical Pexels/Pixabay ID within rolling
+  18 UTC calendar months, with month-end clamping. Each job counts an ID once,
+  completed archived jobs remain counted, active jobs reserve slots, failed or
+  cancelled attempts release them, and ordinary idempotent retries consume no
+  extra slot. Exact-boundary completions expire. Automatic discovery excludes
+  exhausted IDs; all new stock source-job/manual/single-source admission and
+  failed retry paths check quota, with a second atomic acceptance check to close
+  concurrent-request races. Corrupt identities/history/retry timestamps fail
+  closed. Legacy archive preserves its original completion fallback timestamp,
+  not the date it is hidden from Jobs.
+- Scope: counts stock source-processing recipes even if not yet posted, not
+  individual platform posts. Separate narrated/general/business MoneyPrinterTurbo
+  creation does not yet share this ledger; dormant legacy DB import/direct review
+  endpoints also do not participate. Matching visually identical footage under
+  different IDs/providers or external/manual uploads is not implemented. No
+  global visual-deduplication or all-workflow-cap claim should be made.
+- Corrected read-only history audit: 31 retained records, 25 completed stock
+  recipes, 117 distinct provider IDs, maximum two uses and zero exhausted IDs.
+  An earlier PowerShell audit accidentally counted null legacy shot entries as
+  one fictitious identity; its four-use claim was corrected to the owner. Actual
+  history was not changed. Pure-helper and corrected independent audit agree.
+- Root passed 184 checks sequentially with 192 MiB heaps: 84 reuse/automatic/
+  quality checks, then 100 posting-UI/recommendation/footage-UI/cadence checks.
+  The first combined run found a legacy test fixture reusing an ID in unrelated
+  tests; independent IDs fixed that fixture without weakening the production cap.
+  Scoped ESLint and whitespace checks passed. The separate previously pending
+  tagging/caption checks remain documented above.
+- All four owner reference Reels were visually checked in the logged-in browser
+  without liking, following, downloading or posting. They use coherent views,
+  restrained text and consistent atmosphere; observed lengths were about
+  20.0, 10.1, 13.3 and 7.3 seconds at player speed 1. Two displayed an AI-content
+  label. Music labels were visible but playback stayed muted, so listening quality
+  was not assessed. These references do not prove faster cuts or a 40-second
+  duration will improve engagement, nor that free stock can replicate AI scenery.
+
+## October 8 follow-up: coherent reels, preferences, inline Jobs and posting views
+
+Earlier installed release, now superseded: `.next-build-20261008180850567`. The guarded build
+passed compilation (28.7s), full TypeScript (14.3s), prerendering and tracing with
+the unchanged 1664 MiB admission floor, one worker and 896 MiB heap. Canonical
+idle restart returned success; `storage/active-build.json` and live health match.
+Lumina/worker are healthy and the local renderer is ready. The initial build
+caught a location-query type-narrowing error without changing the live selection;
+the corrected condition passed all 44 posting tests and standalone TypeScript
+before the successful build. No unrelated app was stopped.
+
+- Create shows the existing paged Jobs/progress section below its workflow
+  controls. Accepted requests close their form and stay on Create; completion
+  exposes Watch inline without interrupting Library or a playing preview.
+  Standalone Jobs navigation remains available, and Library stays separate.
+- Library defaults to Generated, with a separate Posted view. Posted requires
+  an actual completed parent upload and the exact current MP4 fingerprint.
+  Changed outputs remain Generated with an earlier-version posting note.
+  Manual/outside-Phoenix posts are not automatically tracked. Decoration reads
+  two bounded local parent records per UUID sequentially, no tokens/providers.
+- The 22 rotating footage suggestions now use short topics such as Nature,
+  Forest, Mountains and Train. Rich narrated-creation ideas remain unchanged.
+  Broader browsing never promises a fixed number of suitable matches.
+- New automatic selection locks to the anchor's catalog-described context:
+  underwater versus coast, sky versus forest/mountain/city, train, bird nest
+  versus flight, and explicit snow/day-phase cues. Recent-footage diversity
+  cannot admit an unrelated shot. Existing lookup, source and disk caps remain;
+  insufficient matching footage fails clearly instead of adding filler.
+  This is metadata-based matching, not frame-level continuity/location proof.
+- Recent music files had different hashes but shared one arrangement family.
+  New automatic recipes opt into music v2: four instrument blends, four harmonic
+  paths, eight melody families, four rhythms and four accompaniments, seeded by
+  the saved job for reproducible retries. Legacy/manual PCM is unchanged.
+  One bounded stereo PCM buffer remains; no additional model/provider or
+  commercial song. Musical appeal still requires listening review.
+- Lumina/Groq use bounded, structured review preferences, not arbitrary review
+  notes or automatically read chat history. New automatic stock recipes snapshot
+  their applicable revision/rules; source feedback can widen recent-footage
+  preference from ten to twenty completed recipes and request a shorter grounded
+  posting caption. Re-rating is reversible, old jobs aren't replanned. Feedback
+  reads/writes cap at 512 KiB; effective stock guidance uses the latest 200 unique
+  source reviews. No retraining, self-modifying code or automatic posting.
+- Fixed a false quality blocker: intentional no-speech nature footage does not
+  require invented subtitles. Narrated work and detected speech still require
+  accurate speech-caption text. Posting copy is separate from burned subtitles.
+- Optional Instagram location review offers unverified video-description hints
+  and user-chosen country suggestions (Switzerland plus rotating non-India
+  defaults). Suggestions do not prove filming location or guarantee reach.
+  Explicit lookup accepts an eligible Facebook location Page with coordinates;
+  its ID/name is checked before queueing and before creating the Reel, then
+  retained immutably. No tag is copied to Stories or YouTube and no selected tag
+  is silently dropped. Normal posts/status polling add no location requests.
+  Current account lacks an App Secret: name search has a clear setup blocker;
+  known Page-ID checks may work if Meta permits, or add a location manually.
+  No credential, permission or Meta app setting was changed.
+- Final approval now resets on title, posting text, privacy, kids audience,
+  location or matching-Story changes. Following automation was not added; the
+  owner chose to leave the manual profile-list alternative out for now.
+- Root reruns: 250 checks passed across selector/audio/render (70), dashboard/
+  Library/suggestions (45), posting/location UI/backend (77), manager/preference/
+  caption recovery (58). Separate agent music checks (7) and channel checks (42)
+  also passed. No owner video, publication, stored feedback or failed job changed.
+- Post-activation browser checks verified inline Create Jobs, six short topic
+  chips and a fresh More ideas rotation, Generated (5) / Posted (11) views and
+  confirmed Instagram links. Optional location search correctly reports the
+  missing App Secret; no location was fabricated or selected, no post submitted,
+  and final approval stayed unchecked. UI evidence is in
+  `work/oct8-followup-ui/posted-library.jpg` under Review Files.
+- A separate network-disabled `verify-stock-reel-cinematic.cjs --minimum40`
+  proof reused five already downloaded waterfall sources with new automatic
+  music v2 options: 40.021s container / 40s picture, 960 frames, 720x1280 H.264
+  24 fps and stereo 48 kHz AAC. Full A/V decoding and picture remux checks passed
+  in 37s with minimum observed free RAM 1350 MiB. Evidence is in
+  `work/cinematic-stock-proof-fhSJrF/`. This is a technical/native-speed proof,
+  not a fresh catalog-selection, AI-copy, professional-music or growth claim.
+  The canonical owner queue was not used; old failed sun job remains FAILED,
+  attempts 2, updated `2026-10-07T12:15:48.402Z`.
+
+## Earlier October 8 release: footage-quality, caption recovery, queue/library and matching Story
+
+Historical release, superseded by the installed follow-up above. Its underlying
+fixes and prior proof records are retained here; its build is no longer selected.
+
+- Guarded `npm run build` passed with the unchanged 1664 MiB admission floor,
+  one worker and an 896 MiB heap. Compilation (45s), full TypeScript (13.1s),
+  prerendering and tracing passed. Canonical headless launcher returned success;
+  `storage/active-build.json` and live health match
+  `.next-build-20261008124930556`. Lumina/worker/renderer are healthy, heavy-work
+  slot idle, automatic publication disabled. No unrelated app was stopped.
+- Find Footage mounts at most 20 thumbnails per page, retains up to 120 distinct
+  candidates and follows independent bounded cursors for three pages/library.
+  Provider failure retains the failing cursor and usable results. Previous uses
+  actual visited offsets, including sparse pages; local paging adds no provider
+  request. Topic recommendations rotate through 22 local starting points.
+- New automatic recipes choose the smallest native rendition with short edge
+  >=720 rather than choosing available 540p and upscaling. Low-resolution anchors
+  fail before downloading, undersized companions are skipped, no 4K preference
+  or larger model was added. Prefer related companions absent from the last ten
+  completed/nonarchived reels when possible, retaining the selected anchor and
+  allowing reuse only when suitable alternatives are unavailable. Existing UUID
+  recipes and manual workflows stay unchanged.
+- Investigated the owner's failed sun recipe without retrying it: its last
+  29.97 fps source produced one fewer frame because an input duration prevented
+  decoder/fps EOF lookahead. Automatic picture intervals reserve real decoder
+  context except exact 24 fps frame-aligned ends. Minimum-length shot exports
+  omit the premature input `-t`, retain output limits, and check each encoded shot
+  plus the assembled picture. Manual intervals remain strict.
+- Isolated `verify-stock-reel-cinematic.cjs --cadence40` reused the seven saved
+  sources in a separate queue with network disabled: 40.021s container / 40s
+  picture, 960 frames, 720x1280 H.264 24 fps, stereo 48 kHz AAC, full A/V decode
+  and picture remux verification passed in 29s; minimum observed free RAM
+  1656 MiB. This proves duration/decoding, not artistic quality or fresh catalog
+  rendition selection. Evidence: `work/cinematic-stock-proof-8R8Ysk/` under Review
+  Files, including `proof.json`, MP4, stills and original instrumental.
+- New automatic stock audio defaults to a continuous quiet original bed beneath
+  usable source ambience. Old/manual policies stay unchanged. No commercial
+  song, paid music API, heavier model, professional-singing or beat-sync claim.
+- Posting analysis retries transient failures up to three times with 30/60s
+  backoff. Quota waits and the shared vision lock consume no failure attempt;
+  quota admission precedes frame decoding. Existing completed analyses remain
+  cached and old FAILED states require explicit retry. Manual posting text is
+  retained through fresh/reused/legacy source output paths. New prompt avoids
+  repetitive shot inventories, fabricated locations, forced CTAs and filler.
+  The existing consent for at most three sampled frames remains unchanged.
+- Combined preparation/render job filters and counts share an eight-entry page;
+  failed preparation is not Active, completed preparation isn't double-counted.
+  Display remains grouped by phase, newest history first within each group.
+  Library shows six lazy cards and one selected player. Caption search includes
+  saved posting copy. Collapsed storage walks file sizes sequentially, caches
+  for 60s, reads no video contents and exposes measured time/partial errors.
+  Disk isn't RAM; Trash retains files. Nothing was automatically deleted.
+- User approved switching @__bitet.hemap from Creator to Business; refreshed
+  Instagram UI visibly verified Business tools and controls. Phoenix records
+  this explicit fact privately, tied to account/connection revision. No unsupported
+  Facebook `account_type` probe or inference from Page-edge naming is used.
+  Confirm-only endpoint dispatches no job; live verification recorded zero
+  upload jobs before and after. Meta still makes the final eligibility check.
+- Eligible matching Stories reuse the same ready portrait 3–60s / <=100 MB MP4
+  after final approved Reel + Story upload succeeds. Separate durable child ID,
+  container, bounded stream, status and continuation prevent repeating the Reel
+  after Story failure or ambiguous publication. Existing posts aren't backfilled.
+  Story cannot fabricate a Reel permalink. Optional three local daily prompts
+  use saved frame observations/title and India-local day; they are not uploaded,
+  scheduled or claimed to increase reach. Bulk follow automation was not added.
+- Final targeted suites: 106/106 passed (21 footage UI, 23 posting UI, 34 publishing
+  backend, four Story-idea tests, 24 queue/monitor/storage checks), plus earlier
+  quality/selector/caption/library regressions. Scoped ESLint, whitespace and full
+  production TypeScript pass. Live browse-only `forest waterfall` lookup loaded
+  21 distinct matches across two provider pages. Previous showed 20 thumbnail
+  cards, with zero video players and no new creation job. Local storage measured
+  7.84 GB on demand, with originals/work/output separated and no cleanup performed.
+  Live Library confirms six cards; Jobs has zero active/one original failed sun
+  job. Instagram reports verified publishing permission; YouTube is disconnected.
+  Live approval panel has matching Story checked and final approval unchecked,
+  with Confirm Reel + Story disabled. No real upload/post, failed-job retry,
+  credential replacement or media deletion was performed.
+- Browser evidence: `live-reel-story-approval.png` and
+  `instagram-business-verified.png` in the proof directory above. Private settings,
+  tokens, runtime media, models and generated builds remain Git-ignored.
+
+## October 5: full minimum-length/posting release installed and verified
+
+This status supersedes the earlier worker-only activation and blocked-build notes.
+
+- The owner's newest `sunrise` output was 17.5 seconds of picture because the
+  October 4 compiled stock API still submitted a three-shot recipe without the
+  new minimum. Reloading the source-reading worker alone had not installed the
+  API/UI changes. Its three downloaded source videos have no audio streams;
+  the final output did contain stereo audio from the original local synthesis.
+- After verifying idle saved jobs/uploads/analysis and acquiring the lifecycle
+  mutex, closed only Phoenix's verified dedicated desktop app/guardian and
+  descendants. No unrelated browser/apps were stopped. Two guarded builds passed
+  with the existing 1664 MiB admission floor, one worker and an 896 MiB Node heap.
+  The second included the final multi-shot credit-footer correction. Selected
+  and live health agree on `.next-build-20261005081809680`; manager and worker are
+  healthy, the heavy-work slot is idle and automatic posting remains disabled.
+- The first build revealed that a verified worker's initial ready heartbeat
+  could take about 52 seconds, beyond the launcher's 45-second wait. Increased
+  only this bounded wait to 90 seconds, retaining exact process identity,
+  early-exit detection, freshness and duplicate-worker protections. The final
+  guarded restart returned success. No RAM threshold was lowered.
+- PostingActions exposes Copy caption + hashtags and Post / export as its two
+  main actions. The inert chooser loads status only after choosing a platform.
+  Reanalysis/diagnostics and manual downloads/platform links are collapsed;
+  duplicate generic download and raw caption displays were removed. Account
+  check failures cannot unlock stale saved upload permission. Final approval,
+  channel-revision and immutable upload/idempotency protections stay intact.
+- New single-source and multi-shot stock captions omit source-credit footers.
+  Shared posting cleanup removes exact recognized historical footage/source and
+  Shot N creator/provider footers plus provider-brand tags, while preserving
+  owner text, research citations, licence/source metadata and accepted uploads.
+  A real export caught the previously missed Shot N format; it is covered by a
+  provenance regression and a raw generated-copy assertion in the real proof.
+- Improved only the bounded original stock-music synthesis: gentler pads,
+  articulated melodic phrases/arpeggios, accompaniment, attack/release envelopes,
+  a resolving ending and bounded warm/journey/reflective topic cues. Uses the
+  same single 24 kHz stereo PCM buffer, no provider or new model. Source-audio
+  preservation and music-only-on-unusable-audio behavior remain unchanged.
+  Stream/envelope tests confirm rendering, not professional musical quality.
+- 166 focused checks passed with sequential 192 MiB heaps: stock duration/audio
+  52, posting/provenance/analysis/publishing 42, posting UI/snapshot/library 37,
+  stock UI/suggestions/copy policy 31 and startup 4. Relevant suites were rerun
+  after the final footer patch. Scoped ESLint and whitespace checks passed;
+  the final production build also passed its complete TypeScript check.
+- Final real proof: `scripts/verify-stock-reel-cinematic.cjs --minimum40`, isolated
+  queue with network disabled, five existing downloaded licensed sources, shared
+  heavy-work lease and no owner-job mutation. Produced 40.021s container / 40s
+  picture, 960 frames, 720x1280 H.264 at 24 fps and stereo 48 kHz AAC. All five
+  shots contribute 8 seconds at native speed. Full A/V decoding and picture
+  remux verification passed in 33 seconds; minimum observed free RAM was 1142 MiB.
+  Raw caption is video-specific and contains no Shot N/source footer; licence
+  metadata remains saved. Evidence: `storage/Phoenix Studio Review Files/work/
+  cinematic-stock-proof-VrIP2S/` (`waterfall-reel.mp4`, `proof.json`, stills,
+  original instrumental and `library-posting.jpg`). This offline proof does not
+  claim fresh Groq frame analysis or a 15–20 hashtag bank.
+- Live browser checks verified clean historical sunrise posting text, the two
+  main posting buttons, successful copy feedback, inert Post/export chooser and
+  @__bitet.hemap upload readiness with final publish disabled until approved.
+  No account publication was attempted. Old 17-second videos and the failed
+  misty-mountains job remain unchanged; no real failed job was retried. The
+  updated website is left running with a Phoenix Library tab available.
+
+## October 5: rounded automatic source trims fixed; worker reloaded
+
+- Investigated failed `misty mountains` job
+  `0b8bb89a-572b-4a13-a45c-2d41b1e5594e`. Its first Pixabay source (22788) was
+  catalogued at 38s but had only 37.578333s of actual picture (37.588333s container).
+  This older three-shot cinematic recipe lacks `minDuration`; normalization had
+  incorrectly applied only to the newer minimum-length recipes.
+- Every explicitly automatic shot now clamps its catalog end to actual downloaded
+  picture bounds before planning, including old recipes. Manual/unmarked intervals
+  remain strict, starts and saved catalog metadata stay unchanged, and the new
+  40-second policy still requires verifiable picture duration. No global tolerance
+  was relaxed or old UUID given a new minimum length.
+- Quality/editing regression checks passed 24/24 with sequential 192 MiB heaps;
+  scoped ESLint and whitespace checks passed. Added coverage for the exact rounded
+  duration, a longer audio/container tail, strict manual/unmarked trims and an
+  invalid automatic start. Tests use isolated stores and mocked encoders, not the
+  owner's saved failed job. No real render or publishing was attempted.
+- At about 867 MiB free RAM, all work was idle; a full build remains below the
+  unchanged 1664 MiB floor. Canonical guarded restart WITHOUT `-Rebuild` reloaded
+  the source-reading worker (PID 5220, started after the source fix). Live health
+  verifies healthy manager/worker, idle slot and matching selected/running
+  `.next-build-20261004162446227`. This activates only the processing fix: the
+  compiled 40-second/API/UI changes still require a guarded build and activation.
+- The failed source job remains FAILED at attempt 2 with its original
+  `2026-10-05T07:34:44.435Z` update timestamp. No failed job was retried and no
+  unrelated apps or guards were changed. Its historical error will remain visible
+  until the owner explicitly retries or removes it.
+
+## October 5: minimum 40-second reels / posting refinements tested; activation blocked
+
+- Confirmed the short-reel cause: the automatic selector stopped after three
+  sources and cinematic windows used 5 / 5.5 / 7 seconds. The 45-second maximum
+  was not a duration target. New recipes need a persisted 40-second minimum,
+  enough distinct related sources and decoded-output enforcement, not a new
+  label or artificial slow-motion padding. Existing UUID recipes stay unchanged.
+- Find Footage/dashboard text now describes 40–45 second native-speed reels and
+  an actionable insufficient-footage outcome. Stock review no longer exposes
+  manager scoring/recommendation or rating controls; episode ranking is retained.
+- Implemented the opt-in saved `minDuration: 40` recipe. Collects up to ten
+  distinct related sources, with sixteen bounded companion resolutions. Prefers
+  more cuts; sparse sequences may use more genuine source content, capped at eight
+  seconds per shot. Whole-frame capacities reject fractional footage shortfalls.
+  Actual source picture duration clamps automatic windows; manual/legacy timings
+  stay unchanged. Fresh and reused outputs check picture duration, not an
+  audio-padded container. The minimum participates in the saved plan identity.
+- New posting analysis requests 15–20 grounded hashtag candidates, stores up to
+  twenty and retains fewer rather than filler. Instagram copy/prefill selects up
+  to five including embedded caption tags; the backend rejects excess tags before
+  account/provider access. YouTube can use the larger bank. Exact valid source
+  page citations suppress duplicate appended credits, while lookalike/prefix URLs
+  cannot suppress missing attribution. Creator/licence metadata stays saved.
+  Existing completed analyses are not automatically refreshed.
+- Focused checks passed 143/143: UI/suggestions/stock review 29, backend duration
+  44 and posting/schema/publishing 70, run sequentially with 192 MiB heaps.
+  Regression includes a 40.021s container with only 38s picture failing completion,
+  safe retry/reuse and actual-source shortfalls. Scoped lint passed after escaping
+  a JSX apostrophe. These mocks/pure checks did not render an actual new reel.
+- Canonical `npm run build` refused at 1363 MiB free. The guarded updater then
+  stopped only identified idle Phoenix services, but its build also refused at
+  752 MiB; it restored the previous verified website/manager/renderer. Final live
+  health reports that old build, a healthy worker and idle heavy-work slot; about
+  906 MiB free remains. No guard was lowered or unrelated process stopped.
+- The selected/running build remains `.next-build-20261004162446227`; the new source
+  update is NOT installed. Browser verification hit a blocked browser error page;
+  no alternate surface/security workaround was attempted. A guarded production
+  build/full typecheck, activation and actual >=40-second export remain required.
+  No old jobs retried, real new video rendered or account publication attempted.
+- After the owner exited Chrome/WhatsApp, no port-3000 listener remained (the
+  desktop close lifecycle had shut Phoenix down). RAM reached about 1386 MiB,
+  but the guarded build check saw only 1256 MiB and refused without compiling.
+  Canonical headless `npm start` then restored the existing release. Final health
+  verifies matching selected/running `.next-build-20261004162446227`, healthy
+  Lumina/worker, idle slot and 1058 MiB free. Do not report this update as active.
+  The existing Desktop Apply Phoenix Update shortcut can install the saved source
+  once enough RAM is available; closing the chat app may be needed for this one-time
+  compilation. Ordinary Phoenix startup still does not build.
+
+## October 4: automatic footage release installed; real one-click reel verified
+
+- After the owner closed unused apps, 2253 MiB free RAM was available. Canonical
+  `npm run build` passed its unchanged 1664 MiB admission floor and built a new,
+  separate `.next-build-20261004162446227` with one worker and an 896 MiB heap.
+  Compilation (41s), full TypeScript checking (13.8s), prerendering and build traces
+  passed. No RAM guard was lowered, foreign process stopped or old bundle removed.
+- Canonical `npm start` activated the selected release without opening another
+  desktop browser window. Live `/api/studio-health` and `storage/active-build.json`
+  agree on `.next-build-20261004162446227`; Lumina/worker are healthy and the local
+  renderer is ready. Groq writing remains configured, not switched to a local
+  model. Automatic posting stays disabled. Desktop and headless launch paths
+  continue reading this same installed selection.
+- Browser-control verification confirmed the new topic-only Find Footage panel,
+  collapsed ideas and automatic lookup. `forest waterfall` returned six actual
+  matches across the free catalogs; the UI did not fabricate ten results. A
+  single starting-card click queued three authoritative Pexels sources and
+  redirected to Jobs. Chosen media `28798096` remained first, followed by distinct
+  `19181145` and `34257551`. No legacy failed job was retried.
+- New test source job `877c5e38-7db3-4e96-882a-76f1dc26535e` completed at 100%,
+  reporting three shots / 17.5 seconds and about 17s processing elapsed. Review
+  file `b0619f2c-4eea-564b-a0d3-6f6bd0dc60c5` is READY with local Instagram/YouTube
+  MP4s: 17.521s, 720×1280, 24fps, H.264/yuv420p and stereo 48 kHz AAC. Full video
+  and audio decode passed at 1843 MiB free memory. Actual browser playback reached
+  the end with readyState 4 and no video error. No slow-motion or filler recipe.
+- The silent sources used original local instrumental music. Speech decision
+  was NONE, so no title or invented subtitles were burned in. Three allowed
+  sampled frames generated this video's posting copy/hashtags; analysis completed
+  on its first attempt and retained separate frame observations and provider
+  credits. Caption/hashtag copy, preview, edit/download and final upload controls
+  were visible. The optional Meta hashtag activity check returned timestamped
+  limited recent samples this time; it is not a global trend/viral prediction.
+- The 67 focused checks and final scoped lint from the preceding continuation
+  remain passed. Source, verified build and served UI now agree. The new test
+  output is retained for the owner; nothing was published, no paid service/model
+  added and no saved owner video removed. This status supersedes the pending
+  activation entries below; those are preserved as a dated history.
+
+## October 4 continuation: automatic two-/three-source Find Footage workflow
+
+- Rechecked actual public playback from the two owner references: `@edelschein`
+  (`CpdAJs1Mt6a`, forest/valley views) and `@aagnesefontana` (`Dd5ZisVyL9q`,
+  intro/mountain/lake views). Screenshots were observed at different playback
+  times, not downloaded footage. Playback was muted; no claim of inspecting its
+  music. The temporary reference tab was closed and owner tabs left unchanged.
+  Browser-control skill was used for this read-only reference inspection.
+- Replaced the manual Find Footage panel with one topic field, a 600 ms debounced
+  free-catalog lookup and up to ten actual unique thumbnail cards. Enter searches
+  immediately; typing another topic aborts the prior lookup and invalidates old
+  cards, even if the provider ignores abort. Optional topic ideas remain collapsed
+  and rotate locally. No ten-player media preload, library picker, trim controls,
+  edit settings or second Create button in the automatic UI.
+- Selecting a card sends only its provider/ID, topic and stable request UUID.
+  The server resolves the chosen anchor again, conservatively matches catalog
+  subjects, keeps that anchor first and requires two distinct sources, preferring
+  three. Unknown/unrelated/animated/sub-second starting cards are filtered using
+  the same eligibility checks as automatic POST. Companion resolution is bounded;
+  entries that disappear or change identity/subject are skipped. Too few matches
+  fail before streaming/job creation, with an actionable topic/selection message.
+- Uses the existing sequential 500 MB streaming budget, native-speed cinematic
+  interval planner, automatic sound/framing, speech-only subtitles, provenance,
+  video-specific posting-copy analysis and final review. Forty-second fixture
+  sources plan to 5 / 5.5 / 7 second windows, not a padded 45-second output.
+  Subject matching and interval sampling are metadata/pacing heuristics, not
+  verified location, semantic best-moment detection or a prediction of views.
+  No paid provider, new local model or copied reference footage/music is added.
+- Same-request retries check saved work before preflight/provider access. A
+  per-request in-flight promise also shares lookup/preparation/download work
+  between simultaneous requests and clears after success/failure. A UUID owns
+  its first recipe. Retained UI handlers cannot dispatch stale selections,
+  double-clicks or a second candidate after confirmed queuing; retry preserves
+  the UUID. Accepted server work is not cancelled merely because the UI unmounts.
+  Existing ordinary GET, manual POST and saved edit recipes remain compatible.
+- All 23 mocked real-handler UI regressions passed serially with 192 MiB heaps;
+  source-scoped UI ESLint and whitespace checks passed. Includes debounce,
+  provider failures, ten-card deduplication, stale responses, unmounts, rotation,
+  same-topic repeated clicks, malformed success responses and idempotent retry.
+  The expanded 21 mocked backend checks also passed after eligibility and
+  single-flight hardening. Existing editing (10), stock quality/queue (9) and
+  review-library/caption/hashtag (4) checks passed again: 67 tests total. All ran
+  serially with bounded heaps and memory prechecks; encoder/catalog responses
+  were mocked or pure helper fixtures, not new actual videos.
+  Final scoped ESLint passed across all changed UI/backend/helper/test files
+  without errors or warnings.
+  No live provider/job/render, old failed-job retry or account publication was
+  initiated by these mocked tests.
+- A release change outside this continuation was detected read-only: the active
+  marker and live health both identify `.next-build-20261004140622584`, with
+  healthy manager/worker. Its dashboard bundle contains the preceding suggestion
+  box, not the newer automatic UI; automatic source files were edited after its
+  BUILD_ID. At one check only 403 MiB free RAM remained. No new build/restart was
+  dispatched here, and no app was closed or guard lowered. The automatic workflow
+  still requires full production build/type verification and guarded activation.
+  This release observation supersedes older "currently live" statements below;
+  those entries retain the history of their original checks.
+
+## October 4: Find Footage suggestion box added in source
+
+- Added an inline six-card Suggested footage ideas box inside the existing stock
+  search, not a separate ideas dashboard. It uses only the 22 existing stock-reel
+  starting points, with local More ideas rotation and bounded versioned browser
+  cursor storage. Deterministic initial rendering avoids hydration randomness;
+  blocked/corrupt storage falls back to in-session rotation with an honest notice.
+  No generation request, new dependency, model, paid service or live-trend claim.
+- Clicking a card passes its query directly into the existing stock GET search
+  with the currently selected library, avoiding stale state and duplicate
+  requests. Suggested searches preserve single selected footage, ordered shots,
+  manual trims, theme, copy and edit choices. More ideas does not search or queue.
+  Existing manual-search behavior and explicit final Create action stay intact.
+- All twelve existing mocked stock UI tests and seven independent suggestion
+  tests passed (19 total). The new checks exercise real component handlers for
+  local rotation/reopening, malformed/unavailable/read-only storage, exact query
+  and provider, duplicate-click protection, single-preview/manual-edit retention,
+  ordered-sequence payloads and search failure recovery. Caught and fixed a
+  readable-but-write-blocked storage edge so More ideas cannot repeatedly read
+  a stale cursor. Scoped ESLint passed. No old job was retried or real provider
+  request/job/render submitted by the tests.
+- The running website remains `.next-build-20261004045128507`. Initial free
+  memory this turn was 1243 MiB, below the unchanged 1664 MiB build floor; no
+  additional installer or unsafe build was dispatched. The box is not claimed
+  visible on the live site until guarded production build/activation succeeds.
+
+## October 4: launch consistency fixed in source; guarded installation refused
+
+- Both Desktop shortcuts and the Desktop project junction were verified to use
+  the canonical repository; no shortcut or saved media was removed. Replaced
+  the plain-server hardcoded old build default with a phase-aware required
+  installed-build selector. Development uses its own directory and guarded
+  builds must use a fresh separate output. Public health identifies the compiled
+  release rather than relying only on launch environment variables.
+- Normal startup now rejects missing/invalid/incomplete selection instead of
+  choosing an old folder. It safely activates an installed/running mismatch only
+  with exact canonical Node/Next/worker identities, a fresh heartbeat, verified
+  idle health/lease/saved jobs/analysis/uploads, and same-thread mutex-protected
+  restart without rebuild. Foreign/active/unverifiable work and failed recursive
+  activation fail closed. The cached dashboard uses its existing health poll
+  for a once-per-release-pair refresh only outside editors/previews; storage
+  denial does not cause a loop. That UI behavior needs the new bundle installed.
+- Fourteen build-selection/lazy-runtime/client-refresh tests passed; eleven
+  launcher/startup/restart tests passed with isolated mocked lifecycle actions.
+  Scoped ESLint passed. No provider requests, uploads, jobs or models were started
+  by these checks. Nonempty BUILD_ID validation was additionally hardened.
+- Used the existing idle `restart-phoenix.ps1 -Rebuild -NoPause -NoBrowser`
+  installation route after verifying all saved jobs terminal and zero active
+  posting analyses. It stopped only verified Phoenix-owned processes. The
+  unchanged build guard refused BEFORE compilation: 1341 MiB free versus 1664
+  MiB required. The installer restored website/manager/renderer; live health
+  again confirmed `.next-build-20261004045128507`, healthy worker/Lumina and idle
+  heavy-work state. No failed job was retried. No owner app was closed, guard
+  weakened, old file deleted or paid service used. Full production build/type
+  verification and activation of the updated source are still pending.
+
+## October 4 continuation: real-footage proof passed; posting-copy update in source
+
+- Resumed the reference-guided stock update and the owner's additional request
+  for video-specific captions/hashtags. No old creation failure was retried and
+  no real Instagram/YouTube upload was submitted. Source is still newer than
+  the running `.next-build-20261004045128507` until installation below is verified.
+- Actual FFmpeg checks exposed AAC packet-padding cadence drift and premature
+  audio termination. Added explicit frame-budget durations to concat entries,
+  reset per-shot picture timestamps, removed the premature per-shot `-frames:v`
+  ceiling, and used the full music bed as the mixed-audio duration reference.
+  The isolated three-second compatibility proof passed again after these fixes:
+  72 frames, 3.021s, original tone/RMS preserved, music in the silent section,
+  non-blank tail and identical compressed-picture master/export hash.
+- The real licensed four-waterfall proof passed: 22.021s / 528 frames,
+  720x1280 H.264 / stereo AAC, full picture/audio decode, four provider credits,
+  no subtitles for non-speech footage and the same compressed-picture hash.
+  Render time was 21s; lowest sampled free memory was 872MiB. Inspected all four
+  retained scene previews. Proof is isolated from the live queue, network disabled,
+  and retained in ignored `work/cinematic-stock-proof-8CbXEk/waterfall-reel.mp4`.
+  Earlier admission refusal at 1020MiB respected the unchanged 1100MiB floor;
+  later admission had enough headroom. No guard was lowered or app force-closed.
+- One existing bounded Groq visual request now asks for short grounded caption
+  alternatives, with local recent-copy comparison (history stays on the laptop).
+  Case-insensitive relevant tags are capped at five; generic engagement bait is
+  removed. Identical subjects may still legitimately share tags. Keep unchanged
+  output cache identity stable so old completed files are not silently refreshed.
+  Explicit Re-analyze refreshes only posting copy. Late success/failure paths
+  preserve newer owner edits, replacement outputs and analysis resets.
+- Optional Instagram hashtag activity checks at most two relevant names, never
+  video frames or caption history. Uses existing verified Facebook basic access,
+  rechecks connection before each request, bounded fixed-origin header-auth GETs,
+  30-unique rolling-week protection, six-hour sample cache, timestamped evidence,
+  and bounded temporary rate-limit waits. It does not grant permissions, renew
+  credentials, mutate channel readiness, label VIDEO as Reel, invent global
+  trends or rank tags by incomplete counts. Unsupported App Review access leaves
+  video-specific copy available with a clear unverified notice.
+- The captioned/incompatible stock fallback had the same premature picture
+  ceiling. It now uses fixed-rate/reset picture timestamps and an output duration
+  bound, without changing uploaded-episode rendering. Actual synthetic caption
+  burn-in and non-blank AAC ending checks passed in the refreshed three-second
+  proof `work/stock-quality-proof-zxs9AP/proof.json`; clean exports still remux.
+- Final focused verification: 80 stock/copy/UI tests and 52 channel/optional
+  activity tests passed sequentially (132 total). Fifteen affected copy tests
+  passed again after tightening admission/late-result ownership checks. Targeted
+  lint passed and diff checks found no whitespace errors. Tests use isolated
+  fixtures; no owner credentials or provider traffic in the mocked checks.
+- A separate opt-in real Groq vision proof sent exactly three bounded sampled
+  frames from the retained waterfall reel. The provider returned concrete
+  frame observations and four relevant subject tags; no live queue or owner
+  review copy changed. Retained `posting-copy-proof.json` records the actual
+  answer, not a hand-corrected success. Its caption overgeneralized the mixed
+  camera angles and inferred 'jungle', so tightened all-alternative prompt
+  evidence limits for mixed files, angles and unverified habitats. Final posting
+  review remains required; three samples are not full-video semantic validation.
+- The live optional Meta hashtag check returned UNAVAILABLE with no samples.
+  No account permission was added or connection readiness changed. Public
+  activity may require Meta's separately approved Public Content Access feature;
+  do not claim live trends are established for this account.
+- `npm run build` refused safely before starting: 1111MiB free after helper
+  imports versus the unchanged 1664MiB build floor. No bundle/config was replaced,
+  and the live website/worker/Lumina remain on `.next-build-20261004045128507`.
+  Asked owner once for roughly 600–700MiB additional headroom for the one-time
+  install, not normal rendering. Activation and full-project TypeScript/build
+  verification remain pending; do not call the updated source an active release.
+- Later owner's 'check' found 2300MiB initially with Phoenix idle. The guarded
+  build again refused before starting when available RAM dropped to 1628MiB,
+  36MiB below its unchanged floor. A quiet follow-up found 1540MiB; no second
+  unsafe build was dispatched. Website/worker/Lumina remain healthy on the same
+  verified older bundle. No owner app was closed or memory guard weakened.
+
+## October 4: reference-guided real-footage reel update — source ready, activation pending
+
+- Inspected actual public Instagram playback and representative frames from
+  `@edelschein` reels `CpdAJs1Mt6a` (11.68s forest montage) and `C8KZdi6OqTM`
+  (11.06s coastal-road movement), and `@aagnesefontana` reel `Dd5ZisVyL9q`
+  (15.90s mountain/lake footage). The useful direction is strong native portrait
+  footage, a cohesive mood and restrained text, not stretched stock clips or
+  unrelated scene collections. Audio was not heard through the browser tool;
+  no reference media/music was downloaded, copied, liked, posted or messaged.
+- New stock requests explicitly save cinematic pacing and automatic/manual trim
+  ownership. Automatic sequences use varied roughly 4–7s windows; a single
+  continuous moment can remain up to 12s. Manual/unmarked trims do not move,
+  and an impossible cap asks for a larger cap or fewer shots. The sequence limit
+  is 12 distinct shots within the existing 105s/500MB bounds. Missing pacing
+  retains the legacy algorithm. Zero manual end no longer silently means the
+  whole source. Source speed stays native with no filler, looping or frozen end.
+- Catalog relevance now precedes portrait scoring. Pixabay requests `film` and
+  rejects responses explicitly labelled animation, including selected-ID
+  resolution. Other metadata exclusions remain in place. These are catalog
+  heuristics, not frame-level authenticity/action/location verification.
+- Original sound remains intact. Auto adds music only in silent intervals;
+  ambience-plus-music measures a quiet bed per interval rather than muting the
+  entire reel because of one quiet shot. Local original music gains harmony,
+  melody, light rhythm and stereo detail at 24kHz with a bounded 10.1MB maximum
+  PCM buffer. Non-native full-picture framing uses a dark-neutral matte. No paid
+  services, copied trending music, new models/dependencies or beat-sync claim.
+- Verified caption-free H.264/AAC 24fps stock assemblies can remux instead of
+  encoding their picture twice. Captioned/incompatible/uploaded outputs retain
+  the normal path. Versioned assembly directories, recipe identities and
+  transcript cache keys prevent accidental cross-recipe reuse. Posting copy,
+  hashtags and provider credits remain distinct from speech-only subtitles.
+- 54 focused pure/mocked tests passed sequentially at a 192MiB Node heap:
+  editing10, audio5, remux5, catalog relevance13, UI12 and existing quality9.
+  Scoped ESLint and diff checks passed. Read-only peer review confirmed legacy
+  timing compatibility and identified the transcript cache hardening applied
+  above. No provider/model calls or saved-job retries ran in these checks.
+- The updated isolated three-second FFmpeg compatibility proof was refused
+  before rendering: 342MiB free versus its unchanged 900MiB admission floor.
+  Added an opt-in real-footage cinematic proof using the four previously staged
+  licensed waterfall sources, isolated from the live queue with network disabled.
+  It will check 22s/528frames, full video/audio decode, native intervals and an
+  identical compressed-picture hash proving remux. It has not run yet.
+- Live health still matches `.next-build-20261004045128507`: website/worker/
+  Lumina healthy, heavy-work idle, automatic posting false. Source is newer than
+  the running release. No production build/activation or new quality MP4 proof
+  has succeeded for this update yet. Chrome/Edge reopened while free RAM fell
+  below safe render/build headroom; asked owner to exit unused apps once for
+  verification/install. Do not lower guards, kill unrelated apps, claim artistic
+  quality/views/income, retry old failures or report this source as activated.
+
+## October 4: long-lived Instagram token saved and verified
+
+- The owner completed Meta's password reauthentication without agent password
+  access. The browser context accompanying their reply exposed the old short
+  token in Meta's debugger URL. Disclosed that exposure; did not reuse that
+  exposed credential. Its displayed validity remained true and expiry is
+  October 4 at 06:00 UTC / 11:30 AM IST. Replacement is not revocation.
+- Meta displayed a separate newly issued long-lived credential, different from
+  the exposed URL token. Extracted only that new credential privately from the
+  visible result, cleared plaintext fields and navigated to the credential-free
+  debugger URL. No credential was printed, persisted in source or included in
+  screenshots. Exact observed locators and sanitized catches were used.
+- Privately replaced Phoenix's saved credential using its existing verified
+  Page ID. Phoenix reported connection verified / ready for confirmed uploads.
+  Official Meta debugger independently confirmed the new token valid with all
+  five approved grants and expiry December 2, 2026 at 16:09:54 UTC / 21:39:54
+  IST. Immediately cleared the private input and token-bearing address again.
+- A second saved-connection check passed. Public status confirms the intended
+  `@__bitet.hemap`, connected=true, publishReady=true and loginType=facebook.
+  Discarded all newly used in-memory credential bindings after protected import.
+  The live build remains `.next-build-20261004045128507`, worker/manager healthy,
+  automaticPosting=false. YouTube remains disconnected; no upload, post, paid
+  service, ad, event, video rendering or job retry was submitted.
+- The exposed old short credential has not been revoked by the agent. Respect
+  the owner's earlier choice to handle revocation themselves. Immediate app
+  deauthorization would invalidate the new connection too and require another
+  setup; expiry of the old token has not yet been observed. Warn the owner of
+  that remaining security condition rather than claiming replacement revokes
+  prior access. No application code change or new build was needed this turn.
+
+## October 4: Page-ID fix activated; Instagram connection verified
+
+- After the owner fully exited Brave and Chrome, approximately 2488 MiB was
+  free. The existing guarded `npm run build` accepted the build with its
+  unchanged memory/heavy-work checks, one worker and 896 MiB Next heap.
+  Production compilation, full TypeScript checking, page generation and build
+  traces all passed. Selected `.next-build-20261004045128507` atomically.
+- Ran the existing idle-only restart without `-Rebuild`, avoiding a duplicate
+  build. Fresh `/api/studio-health` matches the selected bundle; worker and
+  Lumina report healthy, renderer ready, heavy-work idle, automatic posting
+  false. Refreshed the existing Phoenix browser tab and verified the new
+  optional Page-ID input. No video or failed job was manually retried.
+- Refreshed a User token through the existing `studio finalll` / `Phoenix
+  Instagram Uploads` configuration, retaining exactly the five approved
+  permissions. Meta's official debugger confirmed validity and all actual
+  grants. Exact observed inputs and caught/sanitized automation errors were
+  used; plaintext Meta inputs were cleared and no credential was printed or
+  written to source, logs or screenshots.
+- Privately imported the fresh token with the authoritative Business Suite
+  Page ID. Phoenix's actual Facebook v21 connector resolved `Bitet.themap` and
+  `@__bitet.hemap`, checked publishing grants and saved the credential in its
+  protected storage. The UI reports connection verified / ready for confirmed
+  uploads. A separate Check connection action also passed using the saved Page
+  identity. Public status confirms connected=true, loginType=facebook and
+  publishReady=true. No upload, post, ad or web event was submitted.
+- YouTube remains not connected / not publish-ready: OAuth app credentials and
+  owner consent are still missing. The actual Instagram publishing transport
+  has not been exercised with a real-account upload; connection readiness is
+  not an end-to-end publication claim.
+- The fresh short-lived token expires October 4 at 06:00 UTC / 11:30 AM IST.
+  Tried the already-approved free lifetime extension; Meta requires the owner
+  to re-enter their Facebook password. No password was read or entered and no
+  longer lifetime has been established. Keep the Meta dialog for owner handoff;
+  after owner completion, verify and privately replace Phoenix's short token
+  with the actual extended token. Discarded the in-memory short-token binding
+  after successful protected import.
+- Source verification remains 40 backend + 7 UI tests and targeted lint passed;
+  this build adds successful full-project compilation and TypeScript checking.
+  Other existing local edits were preserved. No Git commit/push in this check.
+
+## October 4: guarded activation deferred, exposed token confirmed unusable
+
+- After the owner reported closing apps, Windows briefly showed approximately
+  1974 MiB free. `npm run build` loaded its preflight dependencies and rejected
+  the build at 1613 MiB, below the unchanged 1664 MiB floor. Next compilation
+  did not start and the active-build marker remained unchanged.
+- The website subsequently stopped responding. Ran the existing guarded
+  `restart-phoenix.ps1 -Rebuild -NoPause -NoBrowser` update/restore workflow.
+  Its build also rejected insufficient memory (615 MiB). It restored the old
+  verified website and manager; `/api/studio-health` confirms the existing
+  `.next-build-20261003091300114`, healthy worker, idle heavy-work slot and
+  ready renderer. No guarded-build requirement was lowered and no job was
+  manually retried. No new production build has been selected.
+- Process working-set evidence after restoration showed Brave around 1781 MiB
+  and Chrome around 735 MiB. Their root processes were launched under Explorer,
+  not Phoenix or Codex. Asked the owner to fully exit those browsers and keep
+  them closed through this one-time build. Subsequent free memory remained
+  around 548 MiB. Static audit found no renderer/model/Prisma preload in the
+  build preflight helpers; browser growth explains the large later RAM drop.
+- Refreshed the authorizing user's Facebook Business integrations for inspection
+  only. `studio finalll` is still in the Active list; no app authorization was
+  removed by the agent, respecting the owner's choice to handle it themselves.
+  Independently checked only the exposed old token's validity in Meta's official
+  debugger using exact observed input selectors and sanitized error handling.
+  Meta returned `Valid: False`, with expiry seven hours earlier. Cleared the
+  input and discarded the quarantined token; it must never be used or saved.
+- The old credential is demonstrably unusable. No replacement token or lifetime
+  extension has been issued during this activation attempt. Both channel
+  connections remain unverified until the source fix is built/activated and a
+  fresh same-permission token is verified privately in Phoenix. Source tests
+  remain 40 backend + 7 UI passed; lint and independent review passed earlier.
+
+## October 4: corrected Page identifier and connector source fix
+
+- The owner saved `ads_read` in `Phoenix Instagram Uploads`. Generated a fresh
+  User token through that exact configuration; debugger verified all five
+  requested grants plus automatic `public_profile`, validity, and the unchanged
+  approximately one-hour expiry. No lifetime extension or upload was applied.
+- The automatic `me/accounts` list remains empty. The earlier direct probe
+  incorrectly used the ID in Facebook's public `profile.php` URL. Meta Business
+  Suite's authoritative Page Summary reports a different actual Page ID; a
+  direct Explorer v26 request with it successfully returned `Bitet.themap` and
+  linked `@__bitet.hemap`. Therefore the old 100/33 probe does not establish
+  denial for the actual Page. Business Suite also confirms Bite Map (You) has
+  full access to this exact Page.
+- Added optional numeric Page ID support to the private Instagram form and
+  token-import API. The resolver fetches only the selected Page on the fixed
+  Facebook host, requires its matching ID and a valid linked Instagram
+  identity, and does not fall back to another account if the hint is denied.
+  Saved connection checks reuse the proven Page and reject account switching.
+  Actual User-token publishing-grant checks, encrypted storage, cancellation
+  and revision checks remain in place. No identity or permission is fabricated.
+- Mocked backend tests pass 40/40, UI tests pass 7/7, targeted ESLint and diff
+  checks pass, and independent source review found no actionable issue.
+  README documents the actual Page-ID source
+  and short-token lifetime. No owner credentials or authenticated calls were
+  used in tests. No real video was uploaded or published.
+- Activation remains pending: approximately 455 MiB was free at the last
+  check, below the unchanged 1664 MiB guarded-build requirement. The existing
+  website/manager were left running and no build or job retry was started.
+  The live bundle is still `.next-build-20261003091300114`; source changes are
+  not evidence of an activated fix. No credential has been imported into
+  Phoenix in this follow-up, and both channels remain disconnected.
+- Asked the owner to exit unused browsers for this one-time build. The owner
+  authorized the free token-extension option with the same five grants. Clicking
+  Meta's extension control opened a Facebook password-reauthentication prompt;
+  no password was read or entered and no extension success was established.
+- A subsequent generic textbox locator failed because the reauthentication
+  dialog added a second input. The automation error included the original
+  credential-bearing input's HTML in its tool response. Disclosed this exposure
+  to the owner, cleared the plaintext input, quarantined the token, and cancelled
+  extending it. Do not use or save this exposed token. No token was written into
+  source, artifacts or Phoenix's credential vault. Future credential-bearing
+  browser actions must use exact observed locators and catch/sanitize errors;
+  never let a raw locator failure dump credential-bearing HTML.
+- Located only `studio finalll` in the authorizing Facebook user's Business
+  integrations. Asked explicit approval to revoke that authorization and issue
+  a fresh same-permission replacement. The owner answered: "No, I'll revoke it
+  myself." Respect that choice; do not remove the integration on their behalf.
+  No authorization, Page, account, video, other integration or activity has been
+  removed by the agent. Await owner-confirmed revocation before fresh-token
+  setup; the guarded activation build also remains pending adequate memory.
+
+## October 4: Page scopes granted, asset selection not visibly omitted
+
+- Rechecked Facebook Page access: Bite Map still has full access to
+  `Bitet.themap`, owned by `RoamBite Co.`. Opened the existing Meta login
+  configuration for inspection and canceled without saving changes.
+- Refreshed only the existing four-permission User token, with unchanged
+  access duration. Meta's debugger confirmed `Valid: True`, all four grants
+  plus automatic `public_profile`, and `All` targets for each granular scope.
+  Thus the debugger does not show a missing Page-selection checkbox.
+- With that same refreshed token, Explorer v26 `me/accounts` still returned
+  exactly an empty `data` array. No identity or credential was imported into
+  Phoenix during this check. Its public status API still reports Instagram
+  and YouTube disconnected/not publish-ready.
+- The conditional Business Manager role requirement remains the next
+  targeted test, not a proven diagnosis. No `ads_read`, `ads_management`,
+  longer token lifetime, advertisements, events or video publishing was
+  applied. The previous expansion confirmation remains unanswered.
+- Cleared plaintext Meta input fields; no secret was printed or saved in
+  artifacts. No source code, build, job retry or Git change was made.
+
+## October 3: refreshed token and confirmed Page linkage
+
+- The owner reported completing the Page link and explicitly requested a token
+  refresh. Generated a User token using `Phoenix Instagram Uploads`; Meta's
+  debugger confirmed validity and all four required grants plus automatic
+  `public_profile`. The issued token expires in about an hour. No credential
+  was printed or written to source, artifacts or progress documentation.
+- Phoenix's private token import still could not resolve an Instagram identity,
+  so no verified connection was saved. Direct Explorer `me/accounts` using
+  the same token returned an empty `data` array. The known Page's direct lookup
+  returned Graph error 100/subcode 33. `/me?fields=id,name` confirmed the token
+  belongs to the intended Facebook user, Bite Map. Cleared the plaintext
+  Explorer credential field after each metadata check.
+- Read the existing Facebook Page's settings, without changing the link,
+  permissions or ownership. `Bitet.themap` is connected to `@__bitet.hemap`;
+  no connection-review prompt appeared. Page access lists ownership by the
+  `RoamBite Co.` business portfolio and Bite Map with full access. Thus the
+  earlier unresolved link is now confirmed in Facebook's own UI; the remaining
+  problem is API Page visibility, not an absent Instagram association.
+- Inspected `studio finalll` Business integrations without saving changes or
+  removing it. All four requested features were enabled; no Page-specific
+  asset picker was exposed. Canceled the dialog unchanged. Switched only to
+  the existing Page profile to inspect its linked accounts and access roles.
+- Meta's published Page reference conditionally requires `ads_read` or
+  `ads_management` when the user's Page role was granted via Business Manager.
+  The observed business-managed access makes `ads_read` a targeted next test,
+  not a guaranteed diagnosis. It also permits server-side web-event submission,
+  so it is not described as strictly read-only. Asked explicit confirmation to
+  add only `ads_read`, regenerate, optionally extend to up to 60 days, and save
+  securely to Phoenix. No additional scope or lifetime extension has been
+  applied yet; no advertisements, events or videos were submitted.
+- Instagram remains disconnected/not publish-ready; YouTube still has no
+  local OAuth client configuration. Live build remains
+  `.next-build-20261003091300114`; no build, renderer, model load, job retry,
+  source-code modification or Git push occurred in this connection check.
+
+## October 3: exposed access revoked and Facebook product setup
+
+- After explicit owner approval, removed only the `studio finalll` Facebook
+  business integration. The optional removal notification was unchecked; no
+  content-deletion option was used. Facebook displayed its removal success,
+  and Meta's token debugger separately confirmed the quarantined token
+  `Valid: False`. Cleared the token variable after verification. No token was
+  saved in Phoenix, no media was deleted and no video was published.
+- Added Facebook Login for Business through the existing app's available
+  product card. This changed app configuration, not an account authorization.
+  Its settings now explicitly warns that Facebook Login for Business requires
+  Advanced Access to `public_profile`. No request for advanced access, app
+  review, verification, new account grant, OAuth security toggle or redirect
+  setting has been submitted. The configuration wizard explicitly confirms
+  Standard Access can request permissions from app-role holders, including
+  this administrator; this does not establish readiness for outside clients.
+- Created `Phoenix Instagram Uploads`: General login variation, User access
+  token, exactly `instagram_basic`, `instagram_content_publish`,
+  `pages_show_list` and `pages_read_engagement`. No system-user token or asset
+  grant was created. Meta displayed its configuration-creation success.
+- Graph API Explorer's visible `Configurations` tab now selects this saved
+  configuration and lists exactly those four scopes. `Generate Access Token`
+  is enabled. The owner then explicitly approved generation and saving only
+  to Phoenix's protected credential storage, without posting. Issued a fresh
+  User token through this selected configuration. Meta's official debugger
+  confirmed `Valid: True` and all four required grants, plus automatic
+  `public_profile`; no extra Instagram engagement grant was present.
+- Entered this replacement only into Phoenix's private password input and
+  submitted `Verify and connect Instagram`. Phoenix accepted the token but
+  found no linked Instagram professional account, so it did not establish
+  a connection or store a verified account credential. A read-only Explorer
+  request for `me/accounts?fields=id,name,instagram_business_account{id,username}`
+  returned one Facebook Page with no `instagram_business_account` field.
+  The remaining blocker is the professional-account/Page linkage, not the
+  corrected token's validity or its four granted permissions. Cleared the
+  plaintext Explorer token field and the private token variable after checking;
+  no credential was printed or added to files. The Phoenix password form is
+  retained for account-link completion; nothing was published.
+- Public Phoenix status still reports Instagram and YouTube disconnected and
+  not publish-ready; YouTube client configuration is absent. The separate
+  Instagram settings tab remains on its loading screen. No new Page, account
+  conversion, Page-to-account association or unapproved authorization was made.
+- These remote configuration steps do not connect Instagram or YouTube to
+  Phoenix. The selected website build is unchanged; the handle/transport
+  diagnostics source follow-up remains unbuilt.
+
+## October 3: approved Meta token request and credential-output incident
+
+- The owner explicitly approved a replacement token request with the four
+  required scopes. Clicked `Generate Access Token` with four options selected.
+  Meta's debugger subsequently confirmed an active User token for the selected
+  app, but its actual grant was only `instagram_basic`,
+  `instagram_content_publish`, `instagram_manage_engagement`, `public_profile`.
+  The two requested Page permissions were not granted. Picker selections are
+  not evidence of actual authorization; Instagram publishing remains unready.
+- A filtered accessibility diagnostic accidentally printed the token because
+  the field's accessible name contained the credential, outside its `Value`
+  attribute. Reported this to the owner immediately. The token was not saved to
+  Phoenix or used to publish; it is quarantined for revocation and replacement.
+  Do not reuse it or copy raw accessibility field descriptions into diagnostics.
+  Future diagnostics must allowlist non-credential controls/labels, not merely
+  strip `Value` fields. No credential is recorded in this progress document.
+- Opened the owner's Facebook app-access settings and followed its visible
+  Business integrations link. Found the exact selected app there. No Remove,
+  Save, permission toggle, content-deletion option or revocation was submitted.
+  Its View and edit dialog confirms only three Instagram business feature
+  grants; the `Remove this app` control is open. Revoking this integration would
+  remove its existing owner-account access, not just alter the pending request,
+  so exact owner confirmation is pending. It is not permission to delete posts.
+- Primary Meta documentation confirms the Facebook route needs a linked Page
+  and Page tasks, and both Page scopes are prerequisites in its publishing
+  permission chain. Login for Business setup/configuration is the first area
+  to inspect because it appeared unconfigured, but the grant mismatch alone
+  does not establish its cause. No app product/configuration was changed.
+
+## October 3: resumed connection check and live token result
+
+- Both anonymous Graph-host probes now returned HTTP 400 promptly, establishing
+  that the earlier transport barrier was no longer present at this check. No
+  credentials were included in these probes.
+- The retained browser dashboard's first verification attempt returned
+  `Failed to fetch`: the local health endpoint was unreachable and neither
+  service port was listening. Restarted the canonical installed application
+  with its existing launcher, without building or changing the selected bundle.
+  Live health then matched `.next-build-20261003091300114`; manager and worker
+  reported healthy. No failed-video retry or publication was submitted.
+- Verified the owner's already-entered private token once the server was back.
+  Phoenix now displayed `The access token is invalid, expired, or revoked`.
+  Instagram remains disconnected. No token was read, copied or printed; no
+  replacement credential, permission grant or account-link confirmation was
+  created. The earlier advice not to replace a token for a transport failure
+  no longer applies to this newly observed credential error.
+- Source audit confirms direct Instagram Login is identity-only in the current
+  uploader. Publishing requires Facebook Login, a resolved Page-linked
+  professional Instagram account, and verified granted publishing permissions.
+  A Facebook `Connect` control alone does not establish Page-link status.
+- Opened the official Graph API Explorer for the owner's selected app. Its
+  pending User Token request originally had seven Instagram scopes but neither
+  required Page scope. Prepared four requested scopes: `instagram_basic`,
+  `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`.
+  Removed five unnecessary comment/message/insight/content-management scope
+  requests; the picker confirms four options selected. This changes the pending
+  request only, not existing grants. `Generate Access Token` was not clicked and
+  no new permission or credential was authorized. Owner confirmation is needed
+  before proceeding with the replacement token's access.
+
+## October 3: Instagram transport diagnosis and corrected destination (source follow-up)
+
+- Owner submitted a token through Phoenix's private form. The visible result
+  was a platform network failure, not a parsed Meta invalid/expired-token
+  response. No token was copied, printed or inspected. Anonymous Node probes
+  to both Graph hosts timed out; Windows DNS queries also timed out, and
+  anonymous HTTPS probes using freshly resolved public addresses were reset
+  before an HTTP response. Certificate validation remained enabled. Google
+  and Microsoft HTTPS probes responded normally. The exact upstream network
+  cause is not established; token validity and publishing permission remain
+  unverified. No owner verification retry or publication was submitted.
+- Corrected the intended Instagram handle to `__bitet.hemap` in the central
+  source constant and made the connection panel consume it. This hint never
+  substitutes for the provider-verified identity or account authorization.
+- Added bounded, fixed and secret-free network diagnostics for DNS, timeout,
+  reset/refused and known certificate failures. Unknown/cyclic exception
+  details remain generic; no TLS, firewall, OS networking or provider fallback
+  was changed. All 34 mocked channel checks, including the three new network
+  regression groups, and four channel UI tests passed. These tests used an
+  isolated fixture vault and did not authorize or contact an owner account.
+  Selected-file ESLint also passed; the follow-up has not had a full build.
+- Read-only browser inspection of the owner's selected Meta app and logged-in
+  Instagram confirmed `__bitet.hemap` has professional/Creator tools. Instagram's
+  Facebook section showed `Connect`, not a verified linked destination. The
+  connection setup then stalled, and Facebook's Pages page timed out. No consent,
+  tester assignment, account-link confirmation, token creation or posting was
+  performed. A Facebook Page link is not established by these observations.
+- These handle/diagnostic follow-ups are source only, not part of the selected
+  `.next-build-20261003091300114`. Free memory was below 800 MiB; no build,
+  activation restart, paid service, owner app closure, old-job retry or Git
+  upload was attempted. A new token is not a remedy for this transport failure;
+  replace it only after Meta reports invalid/expired/revoked credentials or
+  when the owner intentionally changes account permissions.
+
+## October 3: successful activation and browser verification
+
+- A fresh guarded production build, `.next-build-20261003091300114`, passed
+  optimized compilation, full TypeScript checking, all 32 static page builds
+  and final optimization/tracing. It started with 2613 MiB available; the
+  unchanged admission floor, single build worker and 896 MiB heap cap were
+  retained. The earlier failed bundle was never selected.
+- Started the canonical Desktop shortcut without rebuilding. The live health
+  response and `storage/active-build.json` agree on the new directory; website
+  and local backend listen on loopback ports 3000 and 8080. Manager and worker
+  are healthy, renderer ready, heavy-work slot idle, and the managed browser
+  and guardian are alive. Groq is configured, not newly provider-verified.
+- Opened the canonical `/dashboard` in the in-app web browser. Its Settings
+  Local diagnostics visibly confirms the same build and its channels display
+  the new separate upload-permission controls. No old Phoenix web tab was
+  exposed in the accessible browser inventory. Existing Desktop/browser
+  documents are retained by restart scripts rather than automatically reloaded;
+  server build identity alone does not prove those retained documents refreshed.
+  `/dashboard/settings` is a separate legacy settings layout, whereas
+  `/dashboard#settings` belongs to the current app shell.
+- Read-only account status still reports both YouTube and Instagram
+  configured=false, connected=false, publishReady=false. Opened the empty
+  private Instagram token form for the owner; no token was read, submitted,
+  refreshed or printed. No video was published, owner failed job retried, media
+  deleted or Git upload performed. Real-account connection/upload acceptance
+  remains pending. This activation does not establish whole-product artistic
+  quality, genuine singing or engagement outcomes.
+
+## October 3: RAM recheck and first production compilation
+
+- The owner's next RAM recheck showed 2086 MiB available. The guarded build
+  started `.next-build-20261003090426611`, and optimized compilation passed in
+  48 seconds. Full TypeScript then rejected reviewPublishing's madeForKids
+  assignment because a mutable unknown-valued request property lost narrowing
+  inside the asynchronous store callback. Capturing and validating a local
+  boolean before the callback fixed that source error; all 17 upload transport
+  regressions passed again. No type errors were ignored or cast away.
+- The failed build did not replace the selected bundle. A fresh guarded rebuild
+  was refused before compilation at 1252 MiB available versus the unchanged
+  1664 MiB floor. No orphaned Phoenix build/Node worker was found in the process
+  check. Full successful type checking/build and activation remain pending.
+- Read-only follow-up confirms both social channels are unconfigured,
+  disconnected and not publish-ready, with no secrets printed. Ports 3000 and
+  8080 are not listening; selected bundle is still
+  `.next-build-20261002171037488`. Desktop shortcut/junction target the canonical
+  checkout, not an old backup. No automatic video work, publication, retries,
+  service restarts or Git uploads were performed. GitHub building was not
+  authorized by the owner's RAM-check message and was not started.
+
+## October 3: connected upload implementation (source only, not activated)
+
+- Found that the existing output buttons only downloaded/copied/opened platform
+  pages; the legacy publisher and project routes are intentionally disabled.
+  Added a separate review-file publishing API and final posting form on finished
+  outputs. Manual downloads/links and video-specific caption/hashtag analysis are
+  retained. Opening/checking a form, GET polling and startup never post anything.
+- Channel status now distinguishes identity from proven uploading permission.
+  YouTube's explicit Enable uploads requests readonly plus youtube.upload and
+  records actual returned grants. Instagram local-file upload is limited to the
+  verified Facebook Login / linked professional-account path with granted
+  publishing permissions; direct Instagram Login remains identity-only. Tokens,
+  refresh credentials and upload session URLs remain in the encrypted vault.
+- Uploads use canonical saved MP4s, immutable posting/audience/account snapshots,
+  source credits, per-file/platform duplicate protection, durable resumable state
+  and sanitized progress/errors. A single-output fallback is pinned; future
+  renders cannot silently change the confirmed file. YouTube reports actual
+  returned visibility separately from requested visibility. Instagram rechecks
+  the non-trashed, unchanged video before final publish. Unknown creation/final
+  publish outcomes stop for inspection instead of blindly posting twice.
+- One upload runs at a time; additional confirmed requests wait asynchronously.
+  Disk and byte-mode stream watermarks are 64 KiB, not 65,536 buffered objects.
+  Progress writes are throttled/awaited. Disconnect checks use cheap vault-file
+  versions every two seconds; decryption occurs again only after a change.
+  Already transmitted/buffered bytes cannot be recalled. Actual JSON body and
+  provider-response sizes are bounded. No model, paid plugin or new dependency.
+- 77 focused, capped, serial checks passed: 31 channel authorization/vault/body/
+  monitor cases; 17 mocked transport cases; 13 upload-form UI cases; 13 existing
+  channel UI/posting/snapshot cases; three legacy preferences status cases.
+  Provider responses, remote transfers and account grants were mocked. A stale
+  UI privacy assertion was corrected to distinguish requested from confirmed
+  visibility. Selected-file ESLint passed, including the final channel monitor,
+  upload transport/form and routes. This is not a full semantic TypeScript build.
+- Read-only owner status after loading private environment configuration: both
+  channels configured=false, connected=false, publishReady=false. No real token
+  was printed/refreshed and no owner account was authorized or content uploaded.
+  No service was stopped, owner job retried or media removed. Neither port 3000
+  nor 8080 was listening at the final check. Selected bundle remains
+  `.next-build-20261002171037488`.
+- Guarded build again refused before compilation at 519 MiB free versus its
+  unchanged 1664 MiB floor. Full semantic TypeScript/build, activation and real
+  account end-to-end upload are still pending. These source changes are not an
+  active/finished release and have not been pushed to Git. The owner was asked
+  whether to permit a standard public-repository GitHub build to avoid laptop
+  compilation; no remote workflow, source upload or paid runner was started.
+
+## October 3: original-speed footage and RAM follow-up (not activated)
+
+- Removed the narrated-stock backend's bounded visual slowdown and EOF frame
+  holding. New requests require `native-speed-v1`; health/preflight reject an
+  older renderer, and new returned shot records must confirm playbackRate 1.
+  Native timestamp reset/frame-rate conversion is not duration stretching.
+  Version-three cache recipes cannot restore older slowed shot renders.
+- A valid approved source remains first. Measured narration shortages can use
+  distinct additional sources from the same literal query. Unknown/conflicting
+  catalog subjects/actions, duplicate sources and later reserved assets are
+  rejected. Shortfalls reserve readable additional shots (two seconds for longer
+  sections, half a shorter section) rather than flashes of duration filler.
+  Missing appropriate footage fails explicitly; these catalog checks are not
+  semantic video analysis. Natural owner-selected reels already play normally;
+  the UI now distinguishes a duration cap from a target to pad.
+- RAM source follow-up: the stock proxy now streams bounded media with
+  backpressure, validated byte ranges, cancellation and timeout; no whole-file
+  arrayBuffer. Cached thumbnails bypass admission; uncached FFmpeg shares the
+  cross-process heavy-work/RAM slot and bounded retries keep the preview usable.
+  Sharp loads only for actual animation rasterization, retaining concurrency 1
+  and cache cleanup. Next page-entry preloading is disabled. No new dependency,
+  model, Canva renderer, paid service or relaxed memory limit was added. Actual
+  before/after RAM savings and coexistence with other apps are not established.
+- Focused capped serial checks passed: 11 playback/lazy-loading tests, 25 mocked
+  poster/proxy tests, 27 writing/storyboard/health/wait tests and 20 natural-stock/
+  library/reel checks after correcting two stale hardware-dependent test mocks.
+  The natural-stock suite includes two small isolated FFmpeg fixture exports,
+  not new owner jobs or travel-quality acceptance. Backend tests passed 29 mocked
+  cases plus the new short-section case; the actual render test was excluded.
+  Seven isolated thumbnail UI tests also passed, covering preview clicks,
+  bounded retries, visibility changes, unmount cleanup and identity resets.
+  Worker preflight loads all processors without accepting work. The mechanical
+  backend patch snapshot matches reviewed files and reverse-checks successfully.
+- Read-only channel audit: neither platform has a verified saved identity.
+  Instagram/YouTube posting actions remain manual download/copy/platform links;
+  the publisher/endpoints are intentionally disabled. Current consent scopes are
+  read-only/basic identity, not proven upload permission. Neither port 3000 nor
+  8080 was listening. No credentials were printed, refreshed or changed and no
+  content was posted. Private env app configuration/browser login was not audited.
+- Guarded build refused before compilation at 644 MiB free versus its unchanged
+  1664 MiB floor. Selected bundle is still `.next-build-20261002171037488`; website
+  changes are not active. Full semantic TypeScript, build/activation, real native-
+  speed playback and creative-quality review remain pending. No app/service was
+  closed, no saved job retried, no media removed and these changes were not pushed.
+
+## October 2: owner-run connector update is now active
+
+- Following the owner's next screenshot, both the live health response and
+  `storage/active-build.json` report `.next-build-20261002171037488`; its compiled
+  channel module includes the new Facebook token paths. Worker remains healthy.
+  The owner-run install changed only generated Next type includes in tsconfig.
+  No service was restarted by the agent during this follow-up.
+- The owner generated the token in Meta Graph API Explorer. The new visible
+  message indicates an accepted Facebook profile/Page response without a resolved
+  Instagram identity, not the old blanket expiry message. It does NOT establish
+  that no link exists: empty authorized Pages, hidden permission errors, a nested
+  Instagram ID lacking username, or later response pages can reach this branch.
+  Neither channel is currently connected and no failed token was retained.
+- Real account diagnosis requires the owner's Page/link/permission result. Do
+  not claim successful connection, ask for a token in chat, assume expiry, convert
+  the account/create a Page or enable publishing without the owner's direction.
+  Meta's own Postman collection confirms Facebook Login resolves Instagram through
+  `me/accounts` / the linked Page; the full private response is not needed in chat.
+
 ## October 2: channel connections and editorial quota resumption (source follow-up)
 
 - Instagram's backend normalizes raw/quoted/Authorization-Bearer tokens. The

@@ -10,7 +10,8 @@ import { pipeline } from "node:stream/promises";
 import { localMusicWav } from "./kidsRenderer";
 import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
-import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, planStockIntervals, stockAudioUsable, stockFraming, stockMusicMixGain, stockMusicWav, stockShotFades, type StockReelOptions } from "./stockReel";
+import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
+import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
   FFMPEG_FILTER_RESOURCE_ARGS,
@@ -32,9 +33,9 @@ export const MAX_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
 
 export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
-export type StockReelShot = { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number };
+export type StockReelShot = { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual" };
 export type SourceJob = {
-  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; options?: StockReelOptions };
+  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"] };
   id: string;
   title: string;
   sourceFile: string;
@@ -90,7 +91,7 @@ export type SourceProcessingPreflight = {
   firstModelDownloadRequired: boolean;
 };
 
-type MediaInfo = { duration: number; width: number; height: number; hasAudio: boolean };
+type MediaInfo = { duration: number; videoDuration?: number; width: number; height: number; hasAudio: boolean; videoCodec?: string; pixelFormat?: string; frameRate?: number; audioCodec?: string; audioSampleRate?: number; audioChannels?: number };
 export type Silence = { start: number; end: number };
 export type TranscriptSegment = {
   start: number;
@@ -257,6 +258,19 @@ export async function readSourceJobs(): Promise<SourceJob[]> {
   return (await readJobsUnlocked()).filter((job) => !job.archivedAt);
 }
 
+/** The reuse limit includes retained archived completions, unlike job browsing. */
+export async function readStockReuseBlocked() {
+  return stockReuseBlocked(await readJobsUnlocked());
+}
+
+function validateStockReusePolicy(options?: StockReelOptions) {
+  if (options?.reusePolicy !== undefined && options.reusePolicy !== STOCK_REUSE_POLICY) throw new Error("This stock reuse policy is unsupported. Start a new stock footage request.");
+}
+
+function stockReuseShots(stock: NonNullable<SourceJob["stockSource"]>) {
+  return stock.shots === undefined ? [{ provider: stock.provider, mediaId: stock.mediaId }] : stock.shots;
+}
+
 export async function findStockSourceJob(requestId: string) {
   const job = (await readJobsUnlocked()).find(job => job.stockSource?.requestId === requestId);
   if (job?.archivedAt || job?.status === "CANCELLED") throw new JobHistoryConflictError("This request was removed. Start a new stock reel rather than reviving a cancelled job.");
@@ -322,7 +336,7 @@ export async function removeSourceJob(id: string) {
       status: job.status === "QUEUED" ? "CANCELLED" : job.status,
       stage: job.status === "QUEUED" ? "Cancelled before processing" : job.stage,
       archivedAt: now,
-      finishedAt: job.finishedAt || now,
+      finishedAt: job.finishedAt ?? (job.status === "COMPLETED" ? job.createdAt : now),
       updatedAt: now,
     };
     await saveJobsUnlocked(jobs);
@@ -338,6 +352,14 @@ export async function retrySourceJob(id: string) {
     const job = jobs[index];
     if (job.status === "PROCESSING" || job.status === "COMPLETED") return { job, queued: false, changed: false };
     if (job.status === "QUEUED") return { job, queued: true, changed: false };
+    if (job.stockSource !== undefined) {
+      if (!job.stockSource || typeof job.stockSource !== "object" || !["FAILED", "BLOCKED"].includes(job.status)) throw new Error("This stock retry has invalid saved metadata or status. Its history was not changed.");
+      validateStockReusePolicy(job.stockSource.options);
+      // Self-exclusion affects the allowance, not validation of the reservation
+      // we are about to save with this job's original creation timestamp.
+      stockReuseBlocked([{ ...job, status: "QUEUED", finishedAt: undefined }]);
+      assertStockReuseAvailable(stockReuseShots(job.stockSource), jobs, Date.now(), job.id);
+    }
     jobs[index] = {
       ...job,
       status: "QUEUED",
@@ -488,20 +510,31 @@ export async function ffmpegAvailable() {
 async function probe(file: string): Promise<MediaInfo> {
   const raw = await run(ffprobePath, [
     "-v", "error",
-    "-show_entries", "format=duration:stream=codec_type,width,height",
+    "-show_entries", "format=duration:stream=codec_type,codec_name,pix_fmt,avg_frame_rate,width,height,sample_rate,channels,duration,nb_frames",
     "-of", "json",
     file,
   ]);
   const data = JSON.parse(raw) as {
     format?: { duration?: string };
-    streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
+    streams?: Array<{ codec_type?: string; codec_name?: string; pix_fmt?: string; avg_frame_rate?: string; width?: number; height?: number; sample_rate?: string; channels?: number; duration?: string; nb_frames?: string }>;
   };
   const video = data.streams?.find((stream) => stream.codec_type === "video");
+  const audio = data.streams?.find((stream) => stream.codec_type === "audio");
+  const rate = video?.avg_frame_rate?.split("/").map(Number);
+  const frameRate = rate?.length === 2 && rate[1] > 0 ? rate[0] / rate[1] : undefined;
+  const pictureSeconds = Number(video?.duration), frameSeconds = frameRate && Number(video?.nb_frames) / frameRate;
   return {
     duration: Number(data.format?.duration || 0),
+    videoDuration: pictureSeconds > 0 && Number.isFinite(pictureSeconds) ? pictureSeconds : frameSeconds && Number.isFinite(frameSeconds) && frameSeconds > 0 ? frameSeconds : undefined,
     width: Number(video?.width || 0),
     height: Number(video?.height || 0),
-    hasAudio: Boolean(data.streams?.some((stream) => stream.codec_type === "audio")),
+    hasAudio: Boolean(audio),
+    videoCodec: video?.codec_name,
+    pixelFormat: video?.pix_fmt,
+    frameRate,
+    audioCodec: audio?.codec_name,
+    audioSampleRate: audio?.sample_rate ? Number(audio.sample_rate) : undefined,
+    audioChannels: audio?.channels,
   };
 }
 
@@ -909,7 +942,7 @@ function clipSignature(job: SourceJob, part: Cut, format: string, cues: CaptionC
     start: part.start.toFixed(3),
     end: part.end.toFixed(3),
     format,
-    stockPlan: job.stockSource ? { shots: job.stockSource.shots, options: job.stockSource.options } : undefined,
+    stockPlan: job.stockSource ? { shots: job.stockSource.shots, options: job.stockSource.options, editVersion: job.stockSource.editVersion, audioPolicy: job.stockSource.shots?.length ? "section-aware-v1" : undefined } : undefined,
     audio: part.metrics.audio.usable ? "normalized-source" : "local-music",
     captions: cues.map((cue) => [cue.start.toFixed(3), cue.end.toFixed(3), cue.lines]),
   })).digest("hex").slice(0, 20);
@@ -947,12 +980,13 @@ function findMatchingReview(files: ReviewFile[], job: SourceJob, part: BaseCut, 
   })[0];
 }
 
-async function validOutput(file: string, expectedDuration: number) {
+async function validOutput(file: string, expectedDuration: number, minDuration?: number) {
   try {
     const stat = await fs.stat(file);
     if (stat.size < 1024) return null;
     const info = await probe(file);
     if (!info.width || !info.height || !info.hasAudio || Math.abs(info.duration - expectedDuration) > 2) return null;
+    assertStockReelMinimum(info.videoDuration, minDuration);
     return info;
   } catch {
     return null;
@@ -974,7 +1008,7 @@ async function copyFileAtomically(source: string, destination: string) {
   }
 }
 
-async function renderClip(
+export async function renderClip(
   source: string,
   item: ReviewFile,
   part: Cut,
@@ -998,8 +1032,10 @@ async function renderClip(
   const temporary = `${destination}.partial-${crypto.randomUUID()}.mp4`;
   const args = ["-y", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", part.start.toFixed(3), "-t", duration.toFixed(3), "-threads", "1", "-i", source];
   if (!part.metrics.audio.usable) args.push("-i", musicPath);
-  args.push("-vf", `${format.filter}${subtitleFilter}`, "-map", "0:v:0", "-map", part.metrics.audio.usable ? "0:a:0" : "1:a:0");
-  if (stockAudio) args.push("-r", String(STOCK_REEL_FPS), "-frames:v", String(Math.round(duration * STOCK_REEL_FPS)));
+  args.push("-vf", `${format.filter}${stockAudio ? `,fps=${STOCK_REEL_FPS},setpts=PTS-STARTPTS` : ""}${subtitleFilter}`, "-map", "0:v:0", "-map", part.metrics.audio.usable ? "0:a:0" : "1:a:0");
+  // Bound time, not encoded picture count: a frame ceiling can cut off AAC's
+  // final packets on the captioned/incompatible stock re-encode path as well.
+  if (stockAudio) args.push("-r", String(STOCK_REEL_FPS), "-t", duration.toFixed(3));
   if (part.metrics.audio.usable) args.push("-af", stockAudio ? "alimiter=limit=0.97:level=false" : "loudnorm=I=-16:TP=-1.5:LRA=11");
   args.push(
     "-c:v", "libx264",
@@ -1087,8 +1123,9 @@ function buildReviewItem(
       audio: audioDecision,
       captions: readableCaptions,
       subtitles,
+      postingTextOrigin: job.stockSource?.caption.trim() ? "owner" : "automatic",
       hashtags: ["#Shorts", "#PhoenixStudio", ...keywords.map((word) => `#${word[0].toUpperCase()}${word.slice(1)}`)].slice(0, 8),
-      postCopy: job.stockSource ? `${job.stockSource.caption}\nFootage: ${job.stockSource.creator} / ${job.stockSource.provider}.` : `${summary(clipTitle, copyText)} Prepared for ${socialHandle("instagram")} and YouTube Shorts.`,
+      postCopy: job.stockSource ? job.stockSource.caption : `${summary(clipTitle, copyText)} Prepared for ${socialHandle("instagram")} and YouTube Shorts.`,
       checks: [
         `${job.mode === "coverage" ? "Contiguous coverage" : "Highlight candidate"} ${part.start.toFixed(3)}s–${part.end.toFixed(3)}s`,
         `End boundary selected from ${part.boundary === "target" ? "the balanced duration target" : part.boundary}`,
@@ -1130,6 +1167,8 @@ function buildReviewItem(
   if (existing?.artifacts) item.artifacts = existing.artifacts;
   if (existing && reusableReview(existing, signature)) {
     item.quality.postingAnalysis = existing.quality.postingAnalysis;
+    item.quality.postingTextOrigin = existing.quality.postingTextOrigin
+      ?? (existing.quality.postingAnalysis ? "automatic" : item.quality.postingTextOrigin);
     item.quality.postCopy = existing.quality.postCopy;
     item.quality.hashtags = existing.quality.hashtags;
   }
@@ -1146,6 +1185,17 @@ export async function createSourceJob(
   expectedBytes?: number,
   stockSource?: SourceJob["stockSource"],
 ) {
+  if (stockSource) {
+    try {
+      const existing = await findStockSourceJob(stockSource.requestId);
+      if (existing) { await stream.cancel().catch(() => undefined); return existing; }
+      validateStockReusePolicy(stockSource.options);
+      assertStockReuseAvailable(stockReuseShots(stockSource), await readJobsUnlocked());
+    } catch (error) {
+      await stream.cancel().catch(() => undefined);
+      throw error;
+    }
+  }
   await ensure();
   if (expectedBytes && expectedBytes > MAX_SOURCE_BYTES) throw new SourceUploadTooLargeError();
   const id = crypto.randomUUID();
@@ -1181,6 +1231,7 @@ export async function createSourceJob(
         const existing = jobs.find(item => item.stockSource?.requestId === stockSource.requestId);
         if (existing?.archivedAt || existing?.status === "CANCELLED") throw new JobHistoryConflictError("This stock request was cancelled or removed. Start a new request.");
         if (existing) return existing;
+        assertStockReuseAvailable(stockReuseShots(stockSource), jobs);
       }
       jobs.unshift(job);
       await saveJobsUnlocked(jobs);
@@ -1201,11 +1252,17 @@ export type StockReelDownload = Omit<StockReelShot, "sourceFile"> & {
 /** Downloads one source at a time directly to disk, with one aggregate budget and FIFO job. */
 export async function createStockReelJob(
   downloads: StockReelDownload[],
-  input: { requestId: string; caption: string; theme: string; maxDuration: number; options: StockReelOptions },
+  input: { requestId: string; caption: string; theme: string; maxDuration: number; options: StockReelOptions; managerGuidance?: ReviewFile["quality"]["managerGuidance"] },
 ) {
-  if (!downloads.length || downloads.length > MAX_STOCK_SHOTS) throw new Error("Choose one to six related source shots.");
+  if (!downloads.length || downloads.length > MAX_STOCK_SHOTS) throw new Error(`Choose one to ${MAX_STOCK_SHOTS} related source shots.`);
+  if (downloads.some(shot => shot.trimMode !== undefined && shot.trimMode !== "auto" && shot.trimMode !== "manual")) throw new Error("A source shot has an invalid trim mode.");
+  // The API resolves the actual provider duration. Check interval/pacing shape
+  // again here before opening streams; decoded source duration is checked later.
   const previous = await findStockSourceJob(input.requestId);
   if (previous) return previous;
+  validateStockReusePolicy(input.options);
+  assertStockReuseAvailable(downloads, await readJobsUnlocked());
+  planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence);
   await ensure();
   const id = crypto.randomUUID(), staged: string[] = [], shots: StockReelShot[] = [];
   let bytes = 0;
@@ -1220,18 +1277,19 @@ export async function createStockReelJob(
       if (!limiter.bytes) throw new Error("One provider returned an empty video.");
       if (expectedBytes && limiter.bytes !== expectedBytes) throw new SourceUploadInterruptedError(limiter.bytes, expectedBytes);
       bytes += limiter.bytes;
-      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, sourceFile: filename });
+      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, trimMode: shot.trimMode, sourceFile: filename });
     }
     const now = new Date().toISOString(), first = shots[0];
     const job: SourceJob = {
       id, title: input.caption || input.theme || first.title, sourceFile: first.sourceFile,
-      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots },
+      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots, ...(input.options.pacing !== undefined ? { editVersion: STOCK_REEL_EDIT_VERSION } : {}), ...(input.managerGuidance ? { managerGuidance: input.managerGuidance } : {}) },
       mode: "coverage", status: "QUEUED", progress: 1, stage: `${shots.length} source shot${shots.length === 1 ? "" : "s"} verified · waiting in the FIFO queue`, createdAt: now, updatedAt: now, completedClips: 0, totalClips: 1, reviewIds: [], attempts: 0, queuedAt: now,
     };
     const accepted = await withJobMutation(async () => {
       const jobs = await readJobsUnlocked(), duplicate = jobs.find(item => item.stockSource?.requestId === input.requestId);
       if (duplicate?.archivedAt || duplicate?.status === "CANCELLED") throw new JobHistoryConflictError("This stock request was cancelled or removed. Start a new request.");
       if (duplicate) return duplicate;
+      assertStockReuseAvailable(shots, jobs);
       jobs.unshift(job); await saveJobsUnlocked(jobs); return job;
     });
     if (accepted.id !== id) for (const filename of staged) await fs.rm(filename, { force: true });
@@ -1344,13 +1402,84 @@ async function claimOldestQueuedJob() {
   });
 }
 
+export type StockMusicSection = { start: number; end: number; gain: number; original: boolean };
+
+/** Keep each quiet original above its bed without muting unrelated silent shots. */
+export function stockReelMusicSections(intervals: Pick<StockInterval, "outputStart" | "outputEnd">[], states: AudioState[], preserveOriginal: boolean, silentOnly = false): StockMusicSection[] {
+  if (!intervals.length || intervals.length !== states.length) throw new Error("Music mixing needs one measured audio state per selected interval.");
+  let end = 0;
+  return intervals.map((interval, index) => {
+    if (!Number.isFinite(interval.outputStart) || !Number.isFinite(interval.outputEnd) || interval.outputEnd <= interval.outputStart || Math.abs(interval.outputStart - end) > .000001) throw new Error("Music mixing intervals must form one contiguous reel.");
+    end = interval.outputEnd;
+    const state = states[index], original = preserveOriginal && state.usable;
+    if (original && !Number.isFinite(state.mean)) throw new Error("Original ambience needs a finite sound measurement before mixing.");
+    return { start: interval.outputStart, end, gain: original ? silentOnly ? 0 : stockMusicMixGain([state.mean]) : 1, original };
+  });
+}
+
+/** Volume is evaluated per audio frame. Ramps never rise over a quiet source. */
+export function stockReelMusicVolume(sections: StockMusicSection[]) {
+  if (!sections.length) throw new Error("Music volume needs a selected interval.");
+  const fixed = (value: number) => value.toFixed(6);
+  let next = fixed(sections[sections.length - 1].gain);
+  for (let index = sections.length - 1; index >= 0; index -= 1) {
+    const section = sections[index];
+    if (!Number.isFinite(section.gain) || section.gain < 0 || section.gain > 1 || !Number.isFinite(section.start) || !Number.isFinite(section.end) || section.end <= section.start) throw new Error("Music volume has an invalid interval or gain.");
+    const ramp = Math.min(.18, (section.end - section.start) / 4);
+    const before = index ? Math.min(section.gain, sections[index - 1].gain) : section.gain;
+    const after = index + 1 < sections.length ? Math.min(section.gain, sections[index + 1].gain) : section.gain;
+    let level = fixed(section.gain);
+    if (after !== section.gain) level = `if(gt(t,${fixed(section.end - ramp)}),${fixed(section.gain)}+(${fixed(after - section.gain)})*clip((t-${fixed(section.end - ramp)})/${fixed(ramp)},0,1),${level})`;
+    if (before !== section.gain) level = `if(lt(t,${fixed(section.start + ramp)}),${fixed(before)}+(${fixed(section.gain - before)})*clip((t-${fixed(section.start)})/${fixed(ramp)},0,1),${level})`;
+    next = `if(lt(t,${fixed(section.end)}),${level},${next})`;
+  }
+  return `volume='${next}':eval=frame`;
+}
+
+/** Only Phoenix's already encoded stock assembly may bypass a second encode. */
+export function canRemuxStockAssembly(job: Pick<SourceJob, "stockSource">, cues: CaptionCue[], media: MediaInfo, duration: number) {
+  return Boolean(job.stockSource?.shots?.length && !cues.length && Number.isFinite(duration) && duration > 0
+    && Number.isFinite(media.duration) && Math.abs(media.duration - duration) <= Math.max(.1, 2 / STOCK_REEL_FPS)
+    && media.width === 720 && media.height === 1280 && media.hasAudio
+    && media.videoCodec === "h264" && media.pixelFormat === "yuv420p" && media.frameRate === STOCK_REEL_FPS
+    && media.audioCodec === "aac" && media.audioSampleRate === 48000 && media.audioChannels === 2);
+}
+
+export function stockAssemblyRemuxArgs(source: string, destination: string) {
+  return ["-y", "-hide_banner", "-loglevel", "error", "-i", source, "-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart", destination];
+}
+
+/** Automatic minimum-length windows leave genuine decoder context at picture EOF. */
+export function stockSourcePictureInterval(
+  shot: Pick<StockReelShot, "start" | "end" | "trimMode">,
+  info: Pick<MediaInfo, "duration" | "videoDuration" | "frameRate">,
+  minDuration?: number,
+  number = 1,
+) {
+  const actualDuration = minDuration !== undefined ? info.videoDuration
+    : shot.trimMode === "auto" ? info.videoDuration ?? info.duration : info.duration;
+  if (!actualDuration) throw new Error(`Source shot ${number} has no verifiable picture duration. The minimum reel length cannot be guaranteed from an audio-padded container.`);
+  const knownRate = info.frameRate !== undefined && Number.isFinite(info.frameRate) && info.frameRate > 0;
+  const rate = knownRate ? info.frameRate! : STOCK_REEL_FPS;
+  // A whole-frame 24 fps source can supply an exact EOF interval without
+  // losing a frame. Do not reject five genuine 8-second CFR sources. Other
+  // cadence/unknown-rate sources need lookahead before EOF when resampling.
+  const aligned = knownRate && Math.abs(rate - STOCK_REEL_FPS) < 1e-6
+    && Math.abs(actualDuration * STOCK_REEL_FPS - Math.round(actualDuration * STOCK_REEL_FPS)) < 24e-6;
+  const context = minDuration !== undefined && shot.trimMode === "auto" && !aligned ? 2 * Math.max(1 / rate, 1 / STOCK_REEL_FPS) : 0;
+  const end = shot.trimMode === "auto" ? Math.min(shot.end, actualDuration - context) : shot.end;
+  if (context && end <= shot.start) throw new Error(`Source shot ${number} is too short for a complete native-speed interval. Choose more related footage; no ending will be frozen or padded.`);
+  return { duration: actualDuration, start: shot.start, end, trimMode: shot.trimMode };
+}
+
 async function processStockReel(
   job: SourceJob,
   preflight: SourceProcessingPreflight,
   report: (progress: number, stage: string, change?: Partial<SourceJob>) => Promise<unknown>,
 ) {
-  const stock = job.stockSource!, shots = stock.shots!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options };
-  const directory = path.join(workRoot, `source-${job.id}`, "stock-assembly-v1");
+  const stock = job.stockSource!, shots = stock.shots!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
+  const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
+  const directory = path.join(workRoot, `source-${job.id}`, `stock-assembly-v${editVersion}`);
   await fs.mkdir(directory, { recursive: true });
   const infos: MediaInfo[] = [];
   for (let index = 0; index < shots.length; index += 1) {
@@ -1359,16 +1488,27 @@ async function processStockReel(
     if (!info.duration || !info.width || !info.height) throw new Error(`Source shot ${index + 1} has no readable picture.`);
     infos.push(info);
   }
-  const intervals = planStockIntervals(shots.map((shot, index) => ({ duration: infos[index].duration, start: shot.start, end: shot.end })), stock.maxDuration);
+  const intervals = planStockIntervals(shots.map((shot, index) => {
+    // Every explicitly automatic recipe uses the downloaded picture bounds,
+    // including older jobs without the newer minimum-length policy. Catalog
+    // durations are often rounded up; those are not user-selected trims.
+    return stockSourcePictureInterval(shot, infos[index], options.minDuration, index + 1);
+  }), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence);
   const duration = intervals[intervals.length - 1].outputEnd;
-  const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: 1, shots, options, intervals })).digest("hex").slice(0, 24);
+  const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
   const completed = (await readReviewFiles()).find(file => file.processing?.jobId === job.id && file.status === "READY" && file.processing.status === "COMPLETED" && file.quality.checks.includes(`Stock plan identity ${planIdentity}`));
   if (completed) {
     const instagram = outputPath(completed.id, "instagram"), youtube = outputPath(completed.id, "youtube");
-    let first = await validOutput(instagram, duration), second = await validOutput(youtube, duration);
-    if (first && !second) { await copyFileAtomically(instagram, youtube); second = await validOutput(youtube, duration); }
-    if (second && !first) { await copyFileAtomically(youtube, instagram); first = await validOutput(instagram, duration); }
-    if (first && second) return updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
+    let first = await validOutput(instagram, duration, options.minDuration), second = await validOutput(youtube, duration, options.minDuration);
+    if (first && !second) { await copyFileAtomically(instagram, youtube); second = await validOutput(youtube, duration, options.minDuration); }
+    if (second && !first) { await copyFileAtomically(youtube, instagram); first = await validOutput(instagram, duration, options.minDuration); }
+    if (first && second) {
+      if (!completed.quality.postingTextOrigin && !completed.quality.postingAnalysis && stock.caption.trim()) {
+        completed.quality.postingTextOrigin = "owner";
+        await saveReviewFile(completed);
+      }
+      return updateJob(job.id, { status: "COMPLETED", progress: 100, stage: "Verified and reused the completed real footage reel", duration: first.duration, completedClips: 1, totalClips: 1, reviewIds: [completed.id], error: undefined, finishedAt: new Date().toISOString() });
+    }
   }
   await report(12, `${shots.length} related shots in the chosen order · ${duration.toFixed(1)} seconds · no repeated filler`, { duration, width: 720, height: 1280, totalClips: 1 });
   const states: AudioState[] = [], cues: CaptionCue[] = [], subtitleDecisions: Array<ReturnType<typeof automaticSubtitles>> = [], framingChecks: string[] = [];
@@ -1382,10 +1522,22 @@ async function processStockReel(
     const frame = stockFraming(info, options.framing), fades = stockShotFades(length, index, shots.length, options.transition);
     framingChecks.push(`Shot ${index + 1}: ${frame.description}; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s from ${shots[index].sourcePage}`);
     const shotFile = path.join(directory, `shot-${index + 1}.mp4`);
-    const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(6), "-t", length.toFixed(6), "-threads", "1", "-i", source];
+    const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(6)];
+    // fps needs the next genuine source frame to decide the final 24 fps frame.
+    // An input -t cuts that lookahead off at fractional EOF (29.97 fps sources
+    // lost one frame). New minimum-length windows reserve real source context;
+    // output -t below still bounds the selected native-speed picture and sound.
+    if (options.minDuration === undefined) args.push("-t", length.toFixed(6));
+    args.push("-threads", "1", "-i", source);
     if (!measured.usable) args.push("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo");
-    args.push("-vf", `${frame.filter},fps=${STOCK_REEL_FPS}${fades.video}`, "-map", "0:v:0", "-map", measured.usable ? "0:a:0" : "1:a:0", "-af", `aresample=48000,apad,atrim=duration=${length.toFixed(6)},asetpts=PTS-STARTPTS${fades.audio}`, "-frames:v", String(interval.frames), "-t", length.toFixed(6), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", ...FFMPEG_ENCODER_RESOURCE_ARGS, "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-video_track_timescale", "24000", shotFile);
+    // The frame-quantized -t plus fps filter bounds the picture. A second
+    // -frames:v ceiling can terminate FFmpeg before it finishes the sound.
+    args.push("-vf", `${frame.filter},fps=${STOCK_REEL_FPS},setpts=PTS-STARTPTS${fades.video}`, "-map", "0:v:0", "-map", measured.usable ? "0:a:0" : "1:a:0", "-af", `aresample=48000,apad,atrim=duration=${length.toFixed(6)},asetpts=PTS-STARTPTS${fades.audio}`, "-t", length.toFixed(6), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", ...FFMPEG_ENCODER_RESOURCE_ARGS, "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-video_track_timescale", "24000", shotFile);
     await run(ffmpegPath, args);
+    if (options.minDuration !== undefined) {
+      const picture = (await probe(shotFile)).videoDuration;
+      if (!picture || picture + 1e-6 < length) throw new Error(`Source shot ${index + 1} did not provide all ${interval.frames} planned picture frames. The reel was stopped without padding or slowing footage; choose a different starting video or a broader topic.`);
+    }
     let transcript: TranscriptSegment[] = [], analysisError: string | undefined;
     if (preserveOriginal && measured.usable) {
       if (!preflight.dependencies.fasterWhisper || !preflight.whisperModel.cached || os.freemem() < 900 * 1024 * 1024) {
@@ -1395,7 +1547,7 @@ async function processStockReel(
         const sample = path.join(directory, `speech-${index + 1}.wav`);
         try {
           await run(ffmpegPath, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(3), "-t", length.toFixed(3), "-threads", "1", "-i", source, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", sample]);
-          transcript = await transcribe(sample, `${job.id}-stock-shot-${index + 1}`, true, length, (_progress, stage) => report(15 + index / shots.length * 30, `Shot ${index + 1}: ${stage}`), true);
+          transcript = await transcribe(sample, `${job.id}-stock-${planIdentity}-shot-${index + 1}`, true, length, (_progress, stage) => report(15 + index / shots.length * 30, `Shot ${index + 1}: ${stage}`), true);
         } catch { analysisError = "Local speech check failed. No guessed subtitles were added; review the source sound."; }
       }
     }
@@ -1403,19 +1555,21 @@ async function processStockReel(
     subtitleDecisions.push(decision);
     cues.push(...decision.cues.map(cue => ({ ...cue, start: cue.start + interval.outputStart, end: cue.end + interval.outputStart })));
   }
-  await fs.writeFile(path.join(directory, "shots.txt"), shots.map((_shot, index) => `file 'shot-${index + 1}.mp4'`).join("\n") + "\n", "utf8");
+  // AAC packet padding can overstate each container's duration. Use the actual
+  // frame-budget interval so concat does not accumulate gaps or change cadence.
+  await fs.writeFile(path.join(directory, "shots.txt"), shots.map((_shot, index) => `file 'shot-${index + 1}.mp4'\nduration ${(intervals[index].outputEnd - intervals[index].outputStart).toFixed(6)}`).join("\n") + "\n", "utf8");
   const originalAssembly = path.join(directory, "original-assembly.mp4");
   await report(46, "Joining the selected real shots with their original sound");
   await run(ffmpegPath, ["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "1", "-i", "shots.txt", "-c", "copy", "-movflags", "+faststart", "original-assembly.mp4"], { cwd: directory });
   const anyOriginal = preserveOriginal && states.some(state => state.usable);
-  const useMusic = options.audio === "music" || options.audio === "ambience-music" || (options.audio === "auto" && !anyOriginal);
-  const musicGain = anyOriginal ? stockMusicMixGain(states.filter(state => state.usable).map(state => state.mean)) : 1;
+  const useMusic = options.audio === "music" || options.audio === "ambience-music" || (options.audio === "auto" && states.some(state => !state.usable));
+  const musicSections = stockReelMusicSections(intervals, states, preserveOriginal, options.audio === "auto");
   const master = path.join(directory, "editable-master.mp4"), music = path.join(directory, "instrumental.wav");
   if (useMusic) {
-    await report(49, `Composing a ${options.mood} instrumental for this reel${anyOriginal ? " · keeping the original sound above it" : ""}`);
-    await fs.writeFile(music, stockMusicWav(duration, options.mood, job.id));
+    await report(49, `Composing a ${options.mood} instrumental for this reel${anyOriginal ? options.audio === "auto" ? " · only filling silent shot intervals" : " · keeping the original sound above it" : ""}`);
+    await fs.writeFile(music, stockMusicWav(duration, options.mood, job.id, options.musicVersion));
     const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-i", originalAssembly, "-i", music];
-    if (anyOriginal) args.push("-filter_complex", `[1:a]volume=${musicGain.toFixed(6)}[bed];[0:a][bed]amix=inputs=2:duration=first:dropout_transition=0,volume=2,alimiter=limit=0.97:level=false[a]`, "-map", "0:v:0", "-map", "[a]");
+    if (anyOriginal) args.push("-filter_complex", `[1:a]${stockReelMusicVolume(musicSections)}[bed];[0:a][bed]amix=inputs=2:duration=longest:dropout_transition=0,volume=2,alimiter=limit=0.97:level=false[a]`, "-map", "0:v:0", "-map", "[a]");
     else args.push("-map", "0:v:0", "-map", "1:a:0");
     args.push("-t", duration.toFixed(6), "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-movflags", "+faststart", master);
     await run(ffmpegPath, args);
@@ -1425,39 +1579,60 @@ async function processStockReel(
   const subtitleDecision: ReviewFile["quality"]["subtitles"] = { decision: cues.length ? "speech" : subtitleDecisions.some(item => item.decision === "uncertain") ? "uncertain" : "none", reason: `${cues.length ? "Only confident speech from the actual selected intervals is subtitled." : "No confidently recognized speech was added as subtitles."}${subtitleDecisions.some(item => item.decision === "uncertain") ? " Some source sound could not be confidently checked; review it." : ""}` };
   const files = await readReviewFiles(), existing = findMatchingReview(files, job, part, format.name, new Set());
   const item = buildReviewItem(job, part, format, cues, existing, subtitleDecision);
+  if (stock.managerGuidance) item.quality.managerGuidance = stock.managerGuidance;
   const signature = clipSignature(job, part, format.name, cues), reuse = reusableReview(existing, signature);
   const retainedPosting = reuse ? { copy: existing?.quality.postCopy, hashtags: existing?.quality.hashtags } : undefined;
   const credits = shots.map((shot, index) => `Shot ${index + 1}: ${shot.creator} / ${shot.provider} — ${shot.sourcePage}`);
   item.title = job.title;
   item.quality.audio = anyOriginal ? "natural-audio-preserved" : useMusic ? "local-music-replaced" : "no-audio";
   item.quality.checks = [
-    `Real footage reel: ${shots.length} shots in the owner-selected order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; no duration looping`,
+    `Real footage reel: ${shots.length} shots in the owner-selected order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; original playback speed, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected theme and owner-chosen shots; semantic continuity has not been automatically verified",
     ...framingChecks, ...credits,
-    ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "original replaced by explicit music choice" : "absent or effectively silent"}`),
-    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts preserve the selected action"}; original shot endings are retained within the requested duration cap`,
-    useMusic ? `Original locally composed ${options.mood} instrumental${anyOriginal ? ` mixed under original sound at ${(musicGain * 100).toFixed(2)}% bed gain, based on the quietest retained shot` : ""}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
+    ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
+    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts preserve native-speed movement"}; ${options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
+    useMusic ? `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
+    ...(useMusic && options.musicVersion === 2 ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
     subtitleDecision.reason,
     `Stock plan identity ${planIdentity}`,
     `Pipeline signature ${signature}`,
   ];
-  item.quality.postCopy = retainedPosting?.copy ?? [stock.caption, ...credits].filter(Boolean).join("\n");
+  item.quality.postCopy = retainedPosting?.copy ?? stock.caption;
   item.quality.visualSources = shots.map(shot => ({ provider: shot.provider, providerMediaId: shot.mediaId, providerUrl: shot.sourcePage, creator: shot.creator, licence: shot.provider === "pexels" ? "Pexels License" : "Pixabay Content License" }));
   if (retainedPosting?.hashtags) item.quality.hashtags = retainedPosting.hashtags;
   else item.quality.hashtags = [...new Set(words(shots.map(shot => shot.title).join(" ")).slice(0, 6).map(word => `#${word[0].toUpperCase()}${word.slice(1)}`))];
-  item.quality.warning = options.audio === "music" && states.some(state => state.usable) ? "Music was selected explicitly. Original audio is retained with each downloaded source, but it is not audible in this export." : subtitleDecisions.some(item => item.decision === "uncertain") ? "Some source sound could not be checked for speech. Review it before posting." : undefined;
+  item.quality.warning = options.audio === "music" && states.some(state => state.usable) ? "This export uses a continuous instrumental soundtrack. Original audio is retained with each downloaded source." : subtitleDecisions.some(item => item.decision === "uncertain") ? "Some source sound could not be checked for speech. Review it before posting." : undefined;
   item.processing!.reason = "Real footage, owner-selected intervals and order. Composition, continuity, sound and posting relevance require final viewing.";
   item.monetizationReview!.rightsBasis = `All source pages retained: ${shots.map(shot => shot.sourcePage).join(" · ")}. A provider licence does not establish originality or monetization eligibility.`;
   const instagram = outputPath(item.id, "instagram"), youtube = outputPath(item.id, "youtube");
-  let instagramInfo = reuse ? await validOutput(instagram, duration) : null, youtubeInfo = reuse ? await validOutput(youtube, duration) : null;
-  if (instagramInfo && !youtubeInfo) { await copyFileAtomically(instagram, youtube); youtubeInfo = await validOutput(youtube, duration); }
-  if (youtubeInfo && !instagramInfo) { await copyFileAtomically(youtube, instagram); instagramInfo = await validOutput(instagram, duration); }
+  let instagramInfo = reuse ? await validOutput(instagram, duration, options.minDuration) : null, youtubeInfo = reuse ? await validOutput(youtube, duration, options.minDuration) : null;
+  if (instagramInfo && !youtubeInfo) { await copyFileAtomically(instagram, youtube); youtubeInfo = await validOutput(youtube, duration, options.minDuration); }
+  if (youtubeInfo && !instagramInfo) { await copyFileAtomically(youtube, instagram); instagramInfo = await validOutput(instagram, duration, options.minDuration); }
   if (!instagramInfo || !youtubeInfo) {
     await saveReviewFile(item);
-    const rendered = await renderClip(master, item, part, format, cues, directory, fraction => report(52 + fraction * 46, `Rendering the real footage reel · ${Math.round(fraction * 100)}%`), { mood: options.mood, seed: job.id });
-    instagramInfo = rendered.instagramInfo; youtubeInfo = rendered.youtubeInfo;
+    const masterInfo = cues.length ? null : await validOutput(master, duration, options.minDuration);
+    if (masterInfo && canRemuxStockAssembly(job, cues, masterInfo, duration)) {
+      await report(55, "Saving the verified real footage assembly without re-encoding its picture");
+      const temporary = `${instagram}.partial-${crypto.randomUUID()}.mp4`;
+      try {
+        await run(ffmpegPath, stockAssemblyRemuxArgs(master, temporary));
+        const remuxed = await validOutput(temporary, duration, options.minDuration);
+        if (!remuxed || !canRemuxStockAssembly(job, cues, remuxed, duration)) throw new Error("The stock assembly copy failed duration, picture or audio verification.");
+        await replaceFile(temporary, instagram);
+      } finally { await fs.rm(temporary, { force: true }).catch(() => undefined); }
+      await copyFileAtomically(instagram, youtube);
+      instagramInfo = await validOutput(instagram, duration, options.minDuration);
+      youtubeInfo = await validOutput(youtube, duration, options.minDuration);
+      if (!instagramInfo || !youtubeInfo) throw new Error("The saved stock assembly failed final output verification.");
+      item.quality.checks.push("Caption-free verified H.264/AAC stock master saved without a second picture encode");
+    } else {
+      const rendered = await renderClip(master, item, part, format, cues, directory, fraction => report(52 + fraction * 46, `Rendering the real footage reel · ${Math.round(fraction * 100)}%`), { mood: options.mood, seed: job.id });
+      instagramInfo = rendered.instagramInfo; youtubeInfo = rendered.youtubeInfo;
+    }
   }
-  item.artifacts = { version: 1, renderRevision: "stock-assembly-v1", finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
+  assertStockReelMinimum(instagramInfo.videoDuration, options.minDuration);
+  assertStockReelMinimum(youtubeInfo.videoDuration, options.minDuration);
+  item.artifacts = { version: 1, renderRevision: `stock-assembly-v${editVersion}`, finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();
   await saveReviewFile(item);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import { ensureReviewFolders, makeReviewFile, readReviewFiles, safeFilename, sourcePath } from "@/lib/reviewFiles";
+import { withReviewPublicationSummaries } from "@/lib/reviewPublicationSummary";
 
 const providerHosts = {
   pexels: new Set(["videos.pexels.com"]),
@@ -15,7 +16,8 @@ const captionFor = (topic: string, audience: string) => audience === "kids-1-3"
 export async function GET(request: Request) {
   const trash = new URL(request.url).searchParams.get("trash") === "1";
   const files = await readReviewFiles(trash);
-  return NextResponse.json(trash ? files.filter(file => file.trashedAt) : files);
+  const visible = trash ? files.filter(file => file.trashedAt) : files;
+  return NextResponse.json(await withReviewPublicationSummaries(visible), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {

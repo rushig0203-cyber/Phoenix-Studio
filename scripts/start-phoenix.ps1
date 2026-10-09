@@ -21,6 +21,100 @@ function Test-PhoenixPort([int]$Port) {
     return @((Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)).Count -gt 0
 }
 
+function Get-PhoenixSelectedBuild([string]$Root) {
+    $marker = Join-Path $Root 'storage\active-build.json'
+    try { $selected = (Get-Content -LiteralPath $marker -Raw -ErrorAction Stop | ConvertFrom-Json).directory }
+    catch { throw 'No valid installed-build selection exists. Run Apply Phoenix Update successfully before opening Phoenix; no older build was selected automatically.' }
+    if ($selected -isnot [string] -or $selected -notmatch '^\.next-[a-z0-9-]+$' -or -not (Test-Path -LiteralPath (Join-Path $Root "$selected\BUILD_ID") -PathType Leaf)) {
+        throw 'The installed-build selection is invalid or incomplete. Run Apply Phoenix Update successfully; no older build was selected automatically.'
+    }
+    if (-not (Get-Content -LiteralPath (Join-Path $Root "$selected\BUILD_ID") -Raw -ErrorAction Stop).Trim()) {
+        throw 'The installed-build selection is invalid or incomplete. Run Apply Phoenix Update successfully; no older build was selected automatically.'
+    }
+    return $selected
+}
+
+function Read-PhoenixReleaseRecords([string]$Path, [switch]$Single) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    try {
+        if ((Get-Item -LiteralPath $Path -ErrorAction Stop).Length -gt 8388608) { throw 'Oversized state.' }
+        $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        if (-not $Single -and -not $raw.TrimStart().StartsWith('[')) { throw 'Unexpected state.' }
+        return @($raw | ConvertFrom-Json)
+    } catch { throw 'Cannot safely verify saved job state for activation. Check Jobs and local logs; the running website was left alone.' }
+}
+
+function Assert-PhoenixReleaseIdle([string]$Root, $Health) {
+    if ($null -eq $Health.resources -or $Health.resources.busy -ne $false -or (Test-PhoenixRecoveryBusy $Root)) {
+        throw 'Phoenix is processing work, or its idle state cannot be verified. Wait until Jobs are idle, then open Phoenix again to load the installed update. No process was stopped.'
+    }
+    $review = Join-Path $Root 'storage\Phoenix Studio Review Files'
+    foreach ($name in @('source-processing-jobs.json', 'ai-creation-jobs.json', 'review-edit-jobs.json', 'creation-drafts.json')) {
+        $jobs = @(Read-PhoenixReleaseRecords (Join-Path $review $name))
+        if (@($jobs | Where-Object { -not $_.archivedAt -and $_.status -in @('PROCESSING', 'RUNNING', 'PLANNING', 'APPROVING') }).Count) {
+            throw 'A saved video job is active or awaiting safe recovery. Wait for the manager to finish or reconcile it, then open Phoenix again. The installed update is not active yet; no process was stopped.'
+        }
+    }
+    $reviews = @(Read-PhoenixReleaseRecords (Join-Path $review 'index.json'))
+    if (@($reviews | Where-Object { -not $_.trashedAt -and $_.quality.postingAnalysis.status -eq 'ANALYZING' }).Count) {
+        throw 'Posting-copy analysis is active or awaiting safe recovery. Wait for it to finish before activating the installed update; no process was stopped.'
+    }
+    $publications = Join-Path $Root 'storage\private\review-publications'
+    foreach ($file in @(Get-ChildItem -LiteralPath $publications -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        $uploads = @(Read-PhoenixReleaseRecords $file.FullName -Single)
+        if (@($uploads | Where-Object { $_.status -in @('UPLOADING', 'PROCESSING') }).Count) {
+            throw 'An approved channel upload is active or awaiting confirmation. Check its posting status before activating the installed update; no process was stopped.'
+        }
+    }
+}
+
+function Confirm-PhoenixSelectedRelease([string]$Root, [string]$Node, [string]$Selected) {
+    try { $health = Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8 }
+    catch { throw 'The running Phoenix release could not be verified. Check Studio health or local logs; no process was stopped and no older version was opened automatically.' }
+    if ($health.build -eq $Selected) { return }
+    if ($health.build -isnot [string] -or $health.build -notmatch '^\.next-[a-z0-9-]+$') {
+        throw 'The running website did not identify a verified Phoenix build. No process was stopped; check the owner of port 3000.'
+    }
+    if ($env:PHOENIX_BUILD_ACTIVATION) { throw 'The installed release did not become active after restart. Check the latest website/worker logs; saved jobs are retained. No repeated activation was attempted.' }
+    Assert-PhoenixReleaseIdle $Root $health
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+    $websiteIds = @($listeners.OwningProcess | Select-Object -Unique)
+    if ($websiteIds.Count -ne 1) { throw 'Cannot safely identify the running website for activation. No process was stopped.' }
+    $nextFile = Join-Path $Root 'node_modules\next\dist\bin\next'
+    $website = Get-CimInstance Win32_Process -Filter "ProcessId = $($websiteIds[0])" -ErrorAction SilentlyContinue
+    $nextArgument = '(?:^|\s)"?' + [regex]::Escape($nextFile) + '"?(?:\s|$)'
+    if (-not $website -or $website.ExecutablePath -ne $Node -or -not $website.CommandLine -or $website.CommandLine -notmatch $nextArgument -or $website.CommandLine -notmatch '\sstart(?:\s|$)' -or -not (Get-PhoenixProcessIdentity $website 'website')) {
+        throw 'Port 3000 is not a verified website from this Phoenix folder. No foreign process was stopped.'
+    }
+    $heartbeat = Join-Path $Root 'storage\worker-heartbeat.json'
+    try { $workerId = [int](Get-Content -LiteralPath $heartbeat -Raw -ErrorAction Stop | ConvertFrom-Json).pid }
+    catch { throw 'The manager identity is unavailable. Wait for recovery or check the worker log; activation did not stop any process.' }
+    $workerFile = Join-Path $Root 'run-worker.js'
+    $workerArgument = '(?:^|\s)"?' + [regex]::Escape($workerFile) + '"?(?:\s|$)'
+    $worker = Get-CimInstance Win32_Process -Filter "ProcessId = $workerId" -ErrorAction SilentlyContinue
+    if ($workerId -le 0 -or -not $worker -or $worker.ExecutablePath -ne $Node -or -not $worker.CommandLine -or $worker.CommandLine -notmatch $workerArgument -or -not (Test-PhoenixWorkerHeartbeat $heartbeat $workerId) -or -not (Get-PhoenixProcessIdentity $worker 'worker')) {
+        throw 'The manager is stale or belongs to a different Phoenix folder. Wait for safe recovery; activation did not stop any process.'
+    }
+    # Identity checks can take time on Windows. Re-check idle metadata just
+    # before the existing restarter performs its own final heavy-work check.
+    try { $health = Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8 }
+    catch { throw 'Phoenix health changed during activation checks. No process was stopped; try again when Studio health is available.' }
+    Assert-PhoenixReleaseIdle $Root $health
+    Write-Output 'An installed verified release is newer than the running website. Activating it while idle; no build or failed-job retry is requested.'
+    $previousActivation = $env:PHOENIX_BUILD_ACTIVATION
+    try {
+        $env:PHOENIX_BUILD_ACTIVATION = $Selected
+        # Same-thread invocation preserves reentrant lifecycle mutex ownership.
+        # The nested launcher must match the selection; it cannot recurse here.
+        & (Join-Path $Root 'scripts\restart-phoenix.ps1') -NoPause -NoBrowser
+        if ($LASTEXITCODE -ne 0) { throw 'Installed-release activation failed. Check the latest Phoenix logs; saved jobs remain intact.' }
+    } finally { $env:PHOENIX_BUILD_ACTIVATION = $previousActivation }
+    $currentSelection = Get-PhoenixSelectedBuild $Root
+    try { $currentHealth = Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8 }
+    catch { throw 'Restart finished, but the served release could not be verified. Phoenix is not being reported as up to date; check local logs.' }
+    if ($currentSelection -ne $Selected -or $currentHealth.build -ne $currentSelection) { throw 'The installed and running release still differ. Reopen Phoenix after the current update finishes; no older release is being reported as latest.' }
+}
+
 function Start-PhoenixService([string]$Name, [string]$Executable, [string[]]$Arguments, [string]$Directory) {
     if ($DesktopSessionToken -and -not (Test-PhoenixDesktopSessionActive $phoenixRoot $DesktopSessionToken)) { throw 'Desktop recovery cancelled because the app window closed or its session changed.' }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
@@ -42,6 +136,9 @@ try {
     try { $phoenixOwnsMutex = $phoenixMutex.WaitOne(0) }
     catch [Threading.AbandonedMutexException] { $phoenixOwnsMutex = $true }
     if (-not $phoenixOwnsMutex) { exit 0 }
+
+    $phoenixSelectedBuild = $null
+    if (-not $ServicesOnly) { $phoenixSelectedBuild = Get-PhoenixSelectedBuild $phoenixRoot }
 
     New-Item -ItemType Directory -Path $phoenixStorage -Force | Out-Null
     $script:phoenixOwnedServices = @(Read-PhoenixOwnedServices $phoenixOwnershipFile)
@@ -68,9 +165,9 @@ try {
                 if ($phoenixNeedsOllama) { $allReady = $allReady -and (Test-PhoenixServiceHttp 'http://127.0.0.1:11434/api/tags' 'ollama') }
                 $currentBuildMatches = $false
                 try {
-                    $installedBuild = (Get-Content -LiteralPath (Join-Path $phoenixStorage 'active-build.json') -Raw | ConvertFrom-Json).directory
+                    $installedBuild = Get-PhoenixSelectedBuild $phoenixRoot
                     $liveBuild = (Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8).build
-                    $currentBuildMatches = $installedBuild -match '^\.next-[a-z0-9-]+$' -and $installedBuild -eq $liveBuild
+                    $currentBuildMatches = $installedBuild -eq $liveBuild
                 } catch { }
                 if ($allReady -and $currentBuildMatches -and $existingSession.guardianRevision -eq 'desktop-session-v2' -and (Get-PhoenixProcessByIdentity $existingSession.guardian)) {
                     Write-Output 'Phoenix Studio is already open and its website, manager and renderer are ready.'
@@ -125,15 +222,7 @@ try {
     }
 
     if (-not (Test-PhoenixPort 3000)) {
-        $phoenixBuildName = '.next-lumina'
-        $phoenixBuildMarker = Join-Path $phoenixStorage 'active-build.json'
-        if (Test-Path -LiteralPath $phoenixBuildMarker) {
-            $phoenixBuildName = (Get-Content -Raw -LiteralPath $phoenixBuildMarker | ConvertFrom-Json).directory
-            if ($phoenixBuildName -notmatch '^\.next-[a-z0-9-]+$') { throw 'The active-build marker is invalid. Select a verified local build before launching.' }
-        }
-        if (-not (Test-Path -LiteralPath (Join-Path $phoenixRoot "$phoenixBuildName\BUILD_ID"))) {
-            throw 'The website has not been built. Run npm run build once in PhoenixStudio, then open this shortcut again.'
-        }
+        $phoenixBuildName = Get-PhoenixSelectedBuild $phoenixRoot
         $env:PHOENIX_BUILD_DIR = $phoenixBuildName
         $next = Join-Path $phoenixRoot 'node_modules\next\dist\bin\next'
         Start-PhoenixService 'website' $phoenixNode @('--max-old-space-size=512', ('"' + $next + '"'), 'start', '--hostname', '127.0.0.1') $phoenixRoot | Out-Null
@@ -157,14 +246,10 @@ try {
         }
     }
     Write-PhoenixOwnedServices $phoenixOwnershipFile $script:phoenixOwnedServices
-    try {
-        $buildMarker = Join-Path $phoenixStorage 'active-build.json'
-        $expectedBuild = (Get-Content -LiteralPath $buildMarker -Raw | ConvertFrom-Json).directory
-        $runningHealth = Invoke-RestMethod 'http://localhost:3000/api/studio-health' -TimeoutSec 8
-        if ($expectedBuild -match '^\.next-[a-z0-9-]+$' -and $runningHealth.build -and $runningHealth.build -ne $expectedBuild) {
-            $phoenixWarnings += 'A newer verified website build is installed. The running website is an older version; use Apply Phoenix Update to activate the update when no video is processing.'
-        }
-    } catch { $phoenixWarnings += 'The running website build could not be checked. Open Studio health to verify the installed update.' }
+    Confirm-PhoenixSelectedRelease $phoenixRoot $phoenixNode (Get-PhoenixSelectedBuild $phoenixRoot)
+    # An idle replacement starter has its own fresh process ownership records.
+    # Do not overwrite them with this launcher's pre-activation process list.
+    $script:phoenixOwnedServices = @(Read-PhoenixOwnedServices $phoenixOwnershipFile)
 
     $workerFile = Join-Path $phoenixRoot 'run-worker.js'
     $knownWorkerId = 0
@@ -177,7 +262,7 @@ try {
         $workerProcess = $workerStart | Where-Object { $_ -is [Diagnostics.Process] } | Select-Object -Last 1
         if ($workerProcess) {
             Write-Output 'Lumina is loading. Waiting for its ready heartbeat; no duplicate worker will be started.'
-            $workerReady = Wait-PhoenixWorker (Join-Path $phoenixStorage 'worker-heartbeat.json') $workerProcess.Id $workerProcess 45
+            $workerReady = Wait-PhoenixWorker (Join-Path $phoenixStorage 'worker-heartbeat.json') $workerProcess.Id $workerProcess 90
             $workerProcess.Refresh()
         }
         if (-not $workerProcess -or $workerProcess.HasExited) {

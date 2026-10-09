@@ -14,14 +14,29 @@ test('section links restore the right screen and retain old bookmarks', () => {
   assert.equal(studioSection('#writing-settings'), 'settings');
   assert.equal(studioSection('#unknown'), 'create');
 });
-test('home shows creation workflows, not a wall of ideas, job cards or channel settings', () => {
+test('home shows creation workflows followed by inline Jobs, with Library and channel settings kept separate', () => {
   const Dashboard = require('../src/app/dashboard/DashboardClient').default;
   const html = renderToStaticMarkup(React.createElement(Dashboard));
   assert.match(html, /What will you make today/);
   assert.match(html, /aria-label="Studio sections"/);
   assert.match(html, /aria-current="page"/);
   assert.doesNotMatch(html, /href="#ideas"/);
+  assert.match(html, /aria-label="Jobs and progress"/);
+  assert.match(html, /Jobs &amp; progress/);
+  assert.ok(html.indexOf('aria-label="Creation workflows"') < html.indexOf('aria-label="Jobs and progress"'));
+  assert.doesNotMatch(html, /aria-label="Review library"/);
   assert.doesNotMatch(html, /Creation preparation|Edit plan|Finish automatically|Rendering &amp; history|Your channels|Ideas for your next video/);
+  assert.doesNotMatch(html, /Your local creative space|Free local mode|Studio \/|Choose one way to create|Phoenix handles preparation/);
+  assert.match(html, /aria-hidden="true"[^>]*>P<\/span>Phoenix Studio/);
+  assert.match(html, /<select[^>]*aria-label="Job status filter"/);
+  for (const [value, label] of [['active', 'Active'], ['failed', 'Needs attention'], ['completed', 'Completed'], ['all', 'All jobs']]) {
+    assert.match(html, new RegExp(`<option value="${value}"[^>]*>${label} · 0<\\/option>`));
+  }
+  assert.doesNotMatch(html, /<button[^>]*aria-pressed[^>]*>(?:Active|Needs attention|Completed|All jobs) ·/);
+  const info = /<details[^>]*><summary[^>]*aria-label="About job progress and filters"[\s\S]*?<\/details>/.exec(html)?.[0];
+  assert.ok(info, 'Jobs guidance stays accessible in a small info disclosure');
+  assert.doesNotMatch(info, /^<details[^>]*\bopen(?:\s|=|>)/);
+  assert.match(info, /Updates every three seconds[\s\S]*Active includes preparation and rendering/);
 });
 
 test('creation embeds six mixed recommendations with suitability labels and no automatic generation', () => {

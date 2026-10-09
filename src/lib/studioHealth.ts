@@ -18,5 +18,5 @@ export async function studioHealth(includeServices = false) {
   const resources = await heavyWorkStatus();
   return { worker: { state, heartbeatAt: heartbeat?.at }, manager: { name: "Lumina", mode: "local-production", state, automaticPosting: false }, services: includeServices ? await localServiceHealth() : undefined,
     resources: { busy: !!resources.lease, kind: resources.lease?.kind, reason: resources.reason, waitingForMemory: resources.waitingForMemory, freeMiB: Math.floor(resources.freeBytes / 1048576), reserveMiB: Math.floor(resources.reserveBytes / 1048576), externalJobId: resources.lease?.external?.jobId, lastBackendCheck: resources.lease?.external?.checkedAt },
-    build: process.env.PHOENIX_BUILD_DIR || ".next-lumina", resourcePolicy: "shared-heavy-work-v1" };
+    build: process.env.NEXT_PUBLIC_PHOENIX_RELEASE || process.env.PHOENIX_BUILD_DIR || ".next-lumina", resourcePolicy: "shared-heavy-work-v1" };
 }

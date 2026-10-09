@@ -51,6 +51,26 @@ test('repeated alternatives, repeated beats and unsupported structures cannot be
   assert.throws(() => validateCreativeBrief({ ...outline, beats: Array(3).fill(outline.beats[0]) }), /repeats a beat/);
   assert.throws(() => validateCreativeBrief({ ...outline, structure: 'unrelated-montage' }));
 });
+test('a dog exploration topic cannot become a filming lesson, while explicit filmmaking and visual plans remain valid', () => {
+  const filming={...outline,viewerQuestion:'How can I capture a dog exploring a park in a short, engaging video?',payoff:'You will learn how to film a dog adventure from a first-person view.'};
+  assert.throws(()=>validateCreativeBrief(filming,'general','A dog exploring the park'),/lesson about filming/);
+  assert.equal(validateCreativeBrief(filming,'general','How to film a dog exploring a park').viewerQuestion,filming.viewerQuestion);
+  const subject={...outline,viewerQuestion:'What catches a curious dog on a walk?',payoff:'A small pause gives the dog time to investigate a new scent.',beats:outline.beats.map(beat=>({...beat,visual:'The camera pans across a dog exploring a park.'}))};
+  assert.equal(validateCreativeBrief(subject,'general','A dog exploring the park').viewerQuestion,subject.viewerQuestion,'Separate visual instructions can still describe camera work');
+});
+test('one bounded repair restores the supplied dog subject after a filming-question drift',async()=>{
+  const dogInput={...input,topic:'A dog exploring the park'};
+  const drift={...outline,viewerQuestion:'How can I capture a dog exploring a park in a short, engaging video?'};
+  const corrected={...outline,viewerQuestion:'What catches a curious dog on a walk?',payoff:'A pause gives the dog time to investigate a new scent.'};
+  const prompts=[];
+  global.fetch=async(_url,init)=>{prompts.push(JSON.parse(init.body).prompt);return Response.json({response:JSON.stringify(prompts.length===1?drift:corrected)});};
+  const saved=[];
+  const brief=await planCreativeBrief({...dogInput,onAttemptSaved:async value=>saved.push(value)});
+  assert.equal(brief.viewerQuestion,corrected.viewerQuestion);assert.equal(prompts.length,2);
+  assert.match(prompts[0],/not a lesson in filming a dog/);
+  assert.match(prompts[1],/answer the supplied subject, not how to film it/);
+  assert.ok(saved[0].feedback.includes('spoken beats'));assert.equal(saved.at(-1),undefined);
+});
 test('malformed model output fails without substituting a generic business script', async () => {
   let calls = 0;
   global.fetch = async () => { calls++; return Response.json({ response: '{"unfinished":' }); };

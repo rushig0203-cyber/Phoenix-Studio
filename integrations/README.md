@@ -24,7 +24,15 @@ The patch limits API render threads to one, uses 720p output and low-impact inte
 
 It also adds `phoenix_storyboard` to video requests: exact narration coverage, caption-timed sections, section-specific stock searches, bounded streaming downloads, no global footage loop, and one-process FFmpeg timeline assembly. Source pages and section timings are retained in the task/review record. Run `.venv/Scripts/python.exe -m unittest test.services.test_phoenix_storyboard` from the dependency folder to check this path. Restart the backend after applying an update; Phoenix checks the API schema before accepting new storyboard jobs.
 
-The `PhoenixStoryBeat.assetId` field now locks an approved section to one exact Pexels asset. Its metadata is resolved server-side; no arbitrary client media URL is accepted. An approved download failure or insufficient footage stops that section rather than substituting another clip. The draft approval and free singing setup are documented in [FREE-CREATION.md](FREE-CREATION.md).
+The `PhoenixStoryBeat.assetId` field keeps the selected Pexels asset first in its section. Its metadata is resolved server-side; no arbitrary client media URL is accepted. An approved download failure stops the section rather than replacing that asset. When a valid source falls short of the measured narration, distinct supplemental footage can be searched with the same literal query. Unknown catalog descriptions, conflicting subjects/actions, reused assets and assets reserved for later approved sections are rejected. The renderer retains all used source records and never claims these catalog checks are frame analysis. Missing relevant coverage is an explicit failure, not unrelated filler. The draft approval and free singing setup are documented in [FREE-CREATION.md](FREE-CREATION.md).
+
+New stock requests require `phoenix_playback_policy: "native-speed-v1"`, advertised
+by the backend schema and checked before submission. Footage timestamps are reset,
+not stretched: no slowdown, speedup, EOF freeze or source loop fills narration.
+Additional footage uses useful shot lengths rather than a tiny duration-padding
+flash. Cumulative frame boundaries and conservative source-frame headroom bound
+resampling drift without creating frozen endings. Shot cache recipes are versioned
+so old slowed renders are not reused. Public shots confirm `playbackRate: 1`.
 
 New stock creation also requires `phoenix_artifacts_version: 1`. Its completed-task
 response includes `phoenix_artifacts`: clean video, caption file, narration file,

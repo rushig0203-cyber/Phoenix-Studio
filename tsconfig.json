@@ -36,8 +36,8 @@
     "src/**/*.mts",
     "next.config.ts",
     "prisma.config.ts",
-    ".next-build-20261002093727067/types/**/*.ts",
-    ".next-build-20261002093727067/dev/types/**/*.ts"
+    ".next-build-20261009054643268/types/**/*.ts",
+    ".next-build-20261009054643268/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

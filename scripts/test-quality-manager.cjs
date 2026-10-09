@@ -39,6 +39,27 @@ test('speech-only songs and missing captions block approval regardless of rating
   assert.equal(manager.assessReview({...file,quality:{...file.quality,captions:[]}},feedback).decision,'BLOCKED');
   assert.equal(manager.assessReview(file,{...feedback,ratings:{...feedback.ratings,visuals:1}}).decision,'REVISE');
 });
+
+test('source nature reels are not blocked for intentionally omitted speech subtitles; narrated work still needs text',()=>{
+  const stock={...file,delivery:undefined,audience:'general',quality:{...file.quality,audio:'local-music-replaced',captions:[],subtitles:{decision:'none',reason:'No source speech.'}}};
+  const assessed=manager.assessReview(stock);
+  assert.equal(assessed.decision,'AWAITING_REVIEW');
+  assert.match(assessed.checks.join(' '),/Subtitles intentionally omitted/);
+  assert.equal(manager.assessReview({...stock,quality:{...stock.quality,subtitles:{decision:'speech',reason:'Audible speech.'}}}).decision,'BLOCKED');
+  assert.equal(manager.assessReview({...stock,delivery:file.delivery}).decision,'BLOCKED');
+  assert.equal(manager.assessReview({...stock,quality:{...stock.quality,audio:'local-narration'}}).decision,'BLOCKED','Legacy narration without delivery metadata still requires speech captions');
+  assert.equal(manager.assessReview({...stock,quality:{...stock.quality,subtitles:{decision:'uncertain',reason:'Local speech check unavailable.'}}}).decision,'AWAITING_REVIEW');
+});
+
+test('source guidance describes actual footage policies rather than instructions for nonexistent narration',()=>{
+  const source={reviewId:id,creationType:'source',decision:'revise',ratings:{story:4,visuals:1,audio:4,captions:1},note:'Do not forward this private note',requests:[]};
+  const value=manager.guidanceFromFeedback([source],'source');
+  assert.equal(value.feedbackCount,1);assert.match(value.revision,/^stock-v1-/);
+  assert.match(value.rules.join(' '),/last 20 completed reels/);
+  assert.match(value.rules.join(' '),/one short, directly grounded sentence/);
+  assert.doesNotMatch(value.rules.join(' '),/spoken sentences|private note/);
+  assert.equal(manager.guidanceFromFeedback([source],'general').feedbackCount,0);
+});
 test('narration-led duration uses the same publishing range as production, not an exact one-second target',()=>{
   const stock={...file,delivery:{...file.delivery,creationType:'general'},outputs:{youtube:{...file.outputs.youtube,duration:69.07}}};
   assert.equal(manager.assessReview(stock).decision,'AWAITING_REVIEW');
@@ -106,5 +127,15 @@ test('specific choices are persisted, bounded and reversible even without a low 
   const cleared=await manager.getCreativeGuidance('children-story');
   assert.notEqual(cleared.revision,guided.revision);
   assert.deepEqual(cleared.rules,[]);
+});
+
+test('feedback writes honor the local size cap and leave existing records untouched on refusal',async()=>{
+  const filename=path.join(reviews.reviewRoot(),'manager-feedback.json'),before=fs.readFileSync(filename);
+  const large=JSON.stringify([{reviewId:crypto.randomUUID(),creationType:'source',decision:'revise',ratings:{story:4,visuals:4,audio:4,captions:4},requests:[],note:'x'.repeat(512*1024-280),updatedAt:'2026-10-08T10:00:00.000Z'}]);
+  fs.writeFileSync(filename,large);
+  try{
+    await assert.rejects(manager.saveCreativeFeedback({reviewId:id,decision:'keep',ratings:{story:4,visuals:4,audio:4,captions:4},note:'No data loss'}),/512 KiB local planning limit/);
+    assert.equal(fs.readFileSync(filename,'utf8'),large);
+  }finally{fs.writeFileSync(filename,before);}
 });
 after(()=>{process.chdir(project);assert.ok(path.resolve(root).startsWith(path.join(os.tmpdir(),'phoenix-manager-tests-')));fs.rmSync(root,{recursive:true,force:true});});
