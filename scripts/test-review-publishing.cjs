@@ -140,6 +140,38 @@ test("YouTube accepts a reviewed twenty-tag bank without adding footage provenan
   assert.equal(scheduled.length,0);
 });
 
+test('YouTube accepts the full 5000-byte description including multibyte UTF-8 without changing reviewed text', async () => {
+  for (const caption of ['x'.repeat(5000), 'é'.repeat(2500), '🌲'.repeat(1250)]) {
+    assert.equal(Buffer.byteLength(caption, 'utf8'), 5000);
+    const { id } = await fixture('youtube', 100);
+    const result = await publishing.prepareReviewPublication(id, settings('youtube', { caption }));
+    assert.equal(result.dispatch, true); assert.equal(readStored(id).caption, caption);
+  }
+  assert.equal(scheduled.length, 0, 'Preparation never starts a provider upload itself');
+});
+
+test('YouTube rejects oversized UTF-8 and forbidden title/description brackets before credentials or dispatch', async () => {
+  for (const change of [{ caption: 'é'.repeat(2501) }, { caption: '🌲'.repeat(1251) },
+    { caption: 'A <tree>' }, { title: 'A tree > another' }]) {
+    const { id } = await fixture('youtube', 100);
+    const result = await route.POST(request(id, settings('youtube', change)), context(id));
+    assert.equal(result.status, 400); assert.match((await result.json()).error, /5000 UTF-8 bytes|cannot contain < or >/);
+    assert.equal(accessCalls, 0); assert.equal(scheduled.length, 0);
+    assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  }
+});
+
+test('a legacy saved YouTube request with invalid metadata cannot contact a provider or continue', async () => {
+  const { id } = await fixture('youtube', 100);
+  const { job } = await publishing.prepareReviewPublication(id, settings('youtube'));
+  alterStored(id, saved => { saved.caption = 'é'.repeat(2501); });
+  accessCalls = 0; await publishing.runReviewPublication(id, job.id);
+  const [status] = await publishing.listReviewPublishJobs(id);
+  assert.equal(status.status, 'FAILED'); assert.match(status.detail, /5000 UTF-8 bytes/); assert.equal(accessCalls, 0);
+  await assert.rejects(publishing.prepareReviewPublication(id, { action: 'continue', jobId: job.id, confirm: true }), /5000 UTF-8 bytes/);
+  assert.equal(accessCalls, 0);
+});
+
 test("ten-source Instagram reels omit generated footage footers while retaining complete source metadata", async () => {
   const {id,file}=await fixture('instagram',100,true);
   const sources=Array.from({length:10},(_,index)=>({provider:index%2?'pixabay':'pexels',providerMediaId:String(index+100),providerUrl:index%2?`https://pixabay.com/videos/moving-water-in-forest-${index+100}/`:`https://www.pexels.com/video/moving-water-and-green-trees-${index+100}/`,creator:`Fixture creator ${index}`,licence:'Full source licence metadata '.repeat(20)}));

@@ -12,6 +12,10 @@ export type StockReelOptions = {
   shotCadence?: "brisk-v1" | "adaptive-v2";
   /** Optional visual boundary matching for new automatic reels. */
   continuity?: "visual-v1";
+  /** Grounded catalogue greenery cue, never a user-entered visual claim. */
+  sceneFocus?: "greenery";
+  /** New automatic recipes preserve wide foregrounds over a tiny soft backdrop. */
+  background?: "soft-v1";
   /** Automatic recipe marker; every new stock source-job obeys the same cap. */
   reusePolicy?: "four-in-18-months-v1";
   /** New automatic recipes only. Missing keeps the exact saved legacy music. */
@@ -292,7 +296,7 @@ export function stockPortraitScore(video: { width: number; height: number; durat
 }
 
 /** Fill only when the native aspect already retains at least 92% of the picture. */
-export function stockFraming(info: { width: number; height: number }, mode: StockReelOptions["framing"] = "auto") {
+export function stockFraming(info: { width: number; height: number }, mode: StockReelOptions["framing"] = "auto", softBackground = false) {
   const aspect = info.width / info.height, target = 720 / 1280;
   const retained = Math.min(aspect / target, target / aspect);
   const fills = mode === "auto" && retained >= .92;
@@ -300,8 +304,12 @@ export function stockFraming(info: { width: number; height: number }, mode: Stoc
     name: "9:16" as const, width: 720, height: 1280,
     filter: fills
       ? "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1"
+      : mode === "auto" && softBackground
+        ? "split[backdrop][foreground];[backdrop]scale=180:320:force_original_aspect_ratio=increase,crop=180:320,boxblur=8:2,scale=720:1280[soft];[foreground]scale=720:1280:force_original_aspect_ratio=decrease[whole];[soft][whole]overlay=(W-w)/2:(H-h)/2,setsar=1"
       : "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=#121615,setsar=1",
-    description: fills ? `Native portrait frame fills 9:16; ${Math.round(retained * 100)}% of the picture retained` : "Entire source picture retained inside a quiet dark-neutral 9:16 frame",
+    description: fills ? `Native portrait frame fills 9:16; ${Math.round(retained * 100)}% of the picture retained`
+      : mode === "auto" && softBackground ? "Entire source foreground retained over a low-resolution softened same-source 9:16 backdrop; no subject crop"
+        : "Entire source picture retained inside a quiet dark-neutral 9:16 frame",
   };
 }
 

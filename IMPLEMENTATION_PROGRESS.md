@@ -1,5 +1,34 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 visual-review follow-up — source ready, not yet live
+
+- Public proof 37991500112 passed 463 regressions/build and decoded 8 sources /
+  20.041667s, but direct inspection showed sky-heavy skyline, roadside and grey
+  bare-tree shots plus dark-bar changes. That candidate was NOT activated.
+- Natural vegetation anchors now reject explicitly named roads/skyscrapers/
+  traffic as companion subjects, while normal green city parks remain eligible.
+  Searches preserve the grounded greenery cue and deduplicate inflected words.
+- New automatic `sceneFocus: greenery` uses the same three 2fps/96×54 windows,
+  at most 16 RGB frames / 248832 bytes per window, sequentially; no model or extra
+  decoding pass. Median sustained green-colour evidence narrows movement-based
+  trims and omits known grey/sky-only sources. Missing evidence is unknown, not
+  invented scene understanding; fewer than four usable sources fail explicitly
+  rather than insert filler. Successful bounded evidence is versioned/cached.
+- New automatic `background: soft-v1` retains wide foregrounds over the same
+  source softened at 180×320; native portrait and manual/older recipes unchanged.
+  Exact post-order source endpoints/frame budgets remain retained. The public
+  proof includes former mismatches as negative controls and previews every cut.
+- Posting audit: stored Instagram connection ready; 14 saved Reels and 2 Stories
+  complete. YouTube has no saved connection. This was not fresh token validation
+  or a real posting test. Owner caption failures 503/413 remain untouched.
+  Fixed shared YouTube 5000 UTF-8-byte/forbidden bracket validation and final
+  approval binding to the displayed output revision (not silent disk changes).
+- 127 local edit/audio/order tests, 107 catalogue/route tests (overlap), 142
+  posting/copy/UI tests and scoped lint passed serially. New public proof/full
+  build/visual review/activation remain pending. No guard was lowered, unrelated
+  app closed, owner video deleted, failed job retried, credentials changed or
+  post submitted.
+
 ## October 10 second footage pass — source checkpoint, verification/activation pending
 
 - Read-only recheck confirms no new owner visual-v1 render has completed; the

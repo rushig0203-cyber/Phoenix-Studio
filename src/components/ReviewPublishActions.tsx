@@ -5,7 +5,7 @@ import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import type { ReviewPublishJob, InstagramStoryCapability } from "@/lib/reviewPublishing";
 import { postingDownload, postingText } from "@/lib/posting";
-import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT } from "@/lib/postingCopyPolicy";
+import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "@/lib/postingCopyPolicy";
 import { instagramStoryIdeas } from "@/lib/instagramStoryIdeas";
 import { instagramLocationSuggestions } from "@/lib/instagramLocationSuggestions";
 import { instagramAudioId, instagramAudioPreviewUrl, type InstagramAudioTrack } from "@/lib/instagramAudio";
@@ -50,7 +50,12 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [caption, setCaption] = useState(postingText(file));
   const [privacy, setPrivacy] = useState<"private" | "unlisted" | "public">("private");
   const [madeForKids, setMadeForKids] = useState(file.audience.startsWith("kids"));
-  const [confirmed, setConfirmed] = useState(false);
+  const videoRevision = JSON.stringify([file.id, file.status, file.trashedAt, file.updatedAt, file.outputs]);
+  const latestVideoRevision = useRef(videoRevision);
+  const [confirmedRevision, setConfirmedRevision] = useState("");
+  useEffect(() => { latestVideoRevision.current = videoRevision; setConfirmedRevision(""); }, [videoRevision]);
+  const confirmed = confirmedRevision === videoRevision;
+  function setConfirmed(value: boolean) { setConfirmedRevision(value ? videoRevision : ""); }
   const [tagText, setTagText] = useState("");
   const tagEpoch = useRef(0);
   const [postingDefaultsBusy, setPostingDefaultsBusy] = useState(false);
@@ -269,7 +274,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     catch { setNotice("Clipboard unavailable. Select and copy the posting text in this panel."); }
   }
   async function submit(job?: ReviewPublishJob) {
-    if (!platform || inFlight.current || !confirmed || !setupChecked || (platform === "instagram" && (locationBusy || audioBusy || (!job && (postingDefaultsBusy || !instagramAudioReady))))) return;
+    if (!platform || inFlight.current || !confirmed || latestVideoRevision.current !== videoRevision || !setupChecked || (platform === "instagram" && (locationBusy || audioBusy || (!job && (postingDefaultsBusy || !instagramAudioReady))))) return;
     const channel = channels.find(item => item.platform === platform);
     if (!job && (!channel?.publishReady || !postingDownload(file, platform))) {
       setError("Connect this account with uploading permission before submitting."); return;
@@ -280,6 +285,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     if (!job && platform === "instagram" && requestedUserTags === null) {
       setError(`Enter up to ${INSTAGRAM_USER_TAG_LIMIT} Instagram usernames, separated by commas or spaces. Do not enter profile URLs or Facebook Page IDs.`); return;
     }
+    if (!job && youtubeTextIssue) { setError(youtubeTextIssue); return; }
     inFlight.current = true; setBusy(true); setError("");
     const version = epoch.current;
     try {
@@ -340,6 +346,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const output = platform ? postingDownload(file, platform) : null;
   const metadata = output ? file.outputs[output.target] : null;
   const instagramTags = platform === "instagram" ? captionHashtags(caption).length : 0;
+  const youtubeTextIssue = platform === "youtube" ? youtubePostingTextIssue(title.trim(), caption.trim()) : undefined;
   const publishReady = setupChecked && channel?.publishReady;
   const chooserId = `review-publish-${encodeURIComponent(file.id)}`;
   const locationSuggestions = instagramLocationSuggestions(file);
@@ -381,7 +388,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         </article>)}
         {existing ? <p className="text-xs">This output already has a saved {name} upload request. Check or continue that request instead of creating a duplicate.</p> : <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
           {platform === "youtube" && <label className="block text-xs">YouTube title<input className={input} maxLength={100} required value={title} onChange={event => { setTitle(event.target.value); setConfirmed(false); }} disabled={busy}/></label>}
-          <label className="block text-xs">{platform === "youtube" ? "Description and hashtags" : "Caption and hashtags"}<textarea className={`${input} min-h-24`} maxLength={platform === "youtube" ? 5000 : 2200} value={caption} onChange={event => { setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label>
+          <label className="block text-xs">{platform === "youtube" ? "Description and hashtags" : "Caption and hashtags"}<textarea className={`${input} min-h-24`} maxLength={platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200} value={caption} onChange={event => { setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label>
+          {youtubeTextIssue && <p role="alert" className="text-xs text-red-800">{youtubeTextIssue}</p>}
           {platform === "instagram" && <p className={`text-xs ${instagramTags > INSTAGRAM_HASHTAG_LIMIT ? "text-red-800" : ""}`}>{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags. The candidate bank stays saved; remove extra hashtags here before publishing.</p>}
           {platform === "instagram" && <div aria-label="Instagram posting choices" className="space-y-1 text-xs">
             <p>Posting location · {selectedLocation?.name || locationQuery || "None selected"}{!selectedLocation && locationQuery && " · pending Meta verification; no location tag attached"}{(selectedLocation || locationQuery) && " · your posting choice, not verified filming evidence"}</p>
@@ -431,7 +439,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
           {platform === "instagram" && storyCapability?.requiresBusinessConfirmation && <details className="text-xs"><summary className="cursor-pointer">Confirm Business account for Stories</summary><p className="mt-2">Check Instagram → Settings → Business tools and controls. Creator accounts need a type switch first. This only records your confirmation; it does not change Instagram or post anything.</p><label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={businessConfirmed} disabled={busy} onChange={event => setBusinessConfirmed(event.target.checked)}/><span>I checked: {channel?.name} is a Business account.</span></label><button type="button" className={`${button} mt-2`} disabled={busy || !businessConfirmed || !publishReady} onClick={() => void enableStories()}>Enable matching Stories</button></details>}
           <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady}/><span>I have reviewed this video, hold the required rights, and approve {platform === "instagram" ? includeStory ? "publishing this Reel publicly and then its matching Story" : "publishing this Reel publicly" : `uploading this video as ${privacy}`} to {channel?.name || name}.</span></label>
-          <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (requestedUserTags === null || postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && !title.trim())}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? includeStory ? "Confirm Reel + Story" : "Confirm and publish Reel" : "Confirm upload"}</button>
+          <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (requestedUserTags === null || postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? includeStory ? "Confirm Reel + Story" : "Confirm and publish Reel" : "Confirm upload"}</button>
         </form>}
         <button type="button" className={button} disabled={busy} onClick={() => void open(platform)}>Check status</button>
       </>}

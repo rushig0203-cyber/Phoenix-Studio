@@ -12,7 +12,7 @@ import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
 import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
-import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
+import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
 import {
@@ -120,6 +120,7 @@ type PythonCommand = { command: string; prefixArgs: string[]; label: string };
 type RunOptions = {
   cwd?: string;
   onOutput?: (chunk: string, channel: "stdout" | "stderr") => void | Promise<void>;
+  onStdoutBinary?: (chunk: Buffer) => void;
 };
 
 const reviewRoot = path.join(process.cwd(), "storage", "Phoenix Studio Review Files");
@@ -386,6 +387,11 @@ async function run(command: string, args: string[], options: RunOptions = {}) {
     let output = "";
     let callbackTail: Promise<void> = Promise.resolve();
     const capture = (channel: "stdout" | "stderr", value: Buffer) => {
+      if (channel === "stdout" && options.onStdoutBinary) {
+        try { options.onStdoutBinary(value); }
+        catch (error) { child.kill(); reject(error); }
+        return; // Raw RGB pixels must never become a text log or progress event.
+      }
       const text = value.toString();
       output = (output + text).slice(-128 * 1024);
       if (options.onOutput) callbackTail = callbackTail.then(() => options.onOutput?.(text, channel)).then(() => undefined);
@@ -1500,21 +1506,35 @@ async function processStockReel(
   });
   let motionWindows: StockMotionWindow[][] = shots.map(() => []);
   const sustainedMovement = options.continuity === "visual-v1";
+  const greeneryFocus = sustainedMovement && options.sceneFocus === "greenery";
+  let greeneryCheck: string | undefined;
   if (options.shotCadence === "adaptive-v2") {
     for (let index = 0; index < shots.length; index++) {
       await report(7 + index / shots.length * 5, `Sampling movement · shot ${index + 1} of ${shots.length} · no AI model loaded`);
       const filename = sourcePath(job.id, shots[index].sourceFile), stat = await fs.stat(filename);
       const cacheFile = path.join(directory, `motion-${index + 1}.json`);
-      const identity = crypto.createHash("sha256").update(JSON.stringify({ version: sustainedMovement ? 3 : 2, filename: shots[index].sourceFile, bytes: stat.size, modified: stat.mtimeMs, bounds: pictureBounds[index] })).digest("hex");
+      const identity = crypto.createHash("sha256").update(JSON.stringify({ version: greeneryFocus ? 4 : sustainedMovement ? 3 : 2, filename: shots[index].sourceFile, bytes: stat.size, modified: stat.mtimeMs, bounds: pictureBounds[index] })).digest("hex");
       try {
         const cached = JSON.parse(await fs.readFile(cacheFile, "utf8"));
-        if (cached.identity === identity && Array.isArray(cached.windows) && cached.windows.length <= 3 && cached.windows.every((window: StockMotionWindow) => Number.isFinite(window.start) && Number.isFinite(window.end) && window.start >= pictureBounds[index].start && window.end <= pictureBounds[index].end && window.end > window.start && Number.isFinite(window.motion) && window.motion >= 0 && window.motion <= 255)) {
+        if (cached.identity === identity && Array.isArray(cached.windows) && cached.windows.length <= 3 && cached.windows.every((window: StockMotionWindow) => Number.isFinite(window.start) && Number.isFinite(window.end) && window.start >= pictureBounds[index].start && window.end <= pictureBounds[index].end && window.end > window.start && Number.isFinite(window.motion) && window.motion >= 0 && window.motion <= 255 && (!greeneryFocus || (Number.isFinite(window.greenFraction) && window.greenFraction! >= 0 && window.greenFraction! <= 1)))) {
           motionWindows[index] = cached.windows;
           continue;
         }
       } catch { /* An incomplete cache never blocks a fresh bounded sample. */ }
       for (const window of stockMotionSamples(pictureBounds[index].start, pictureBounds[index].end)) {
         try {
+          if (greeneryFocus) {
+            let bytes = 0;
+            const chunks: Buffer[] = [];
+            await run(ffmpegPath, stockGreeneryArgs(filename, window), { onStdoutBinary(chunk) {
+              bytes += chunk.length;
+              if (bytes > STOCK_COLOUR_MAX_BYTES) throw new Error("Tiny colour sample exceeded its bounded frame budget.");
+              chunks.push(chunk);
+            } });
+            const evidence = stockGreeneryEvidence(Buffer.concat(chunks, bytes));
+            if (evidence) motionWindows[index].push({ ...window, ...evidence });
+            continue;
+          }
           const measurement = await run(ffmpegPath, stockMotionArgs(filename, window));
           const score = sustainedMovement ? stockSustainedMotionScore(measurement) : stockMotionScore(measurement);
           if (score !== undefined) motionWindows[index].push({ ...window, motion: score });
@@ -1524,6 +1544,16 @@ async function processStockReel(
       // failure. Successful measurements are stable across interrupted renders.
       if (motionWindows[index].length) await fs.writeFile(cacheFile, JSON.stringify({ identity, windows: motionWindows[index] }));
     }
+  }
+  if (greeneryFocus) {
+    const selection = stockGreenerySelection(motionWindows);
+    const excluded = shots.filter((_shot, index) => !selection.indices.includes(index));
+    if (selection.indices.length < 4) throw new Error("Not enough related greenery remains after checking tiny colour samples. Phoenix will not insert grey/sky-only filler or slow footage to pad the reel. Choose another starting video.");
+    shots = selection.indices.map(index => shots[index]); infos = selection.indices.map(index => infos[index]);
+    pictureBounds = selection.indices.map(index => pictureBounds[index]); motionWindows = selection.windows;
+    greeneryCheck = selection.threshold !== undefined
+      ? `Grounded greenery cue: sampled green-colour windows retained; ${excluded.length} source(s) omitted (${excluded.map(shot => `${shot.provider}:${shot.mediaId}`).join(", ") || "none"}); unknown samples remain unverified. Colour does not recognize plants, action, season or location`
+      : "Greenery sampling unavailable; source context remains catalogue-only, without invented colour validation";
   }
   const rhythm = options.continuity === "visual-v1" && options.audio === "music" && options.musicVersion === 2
     ? { bpm: stockMusicArrangement(options.mood, job.id).bpm } : undefined;
@@ -1594,7 +1624,7 @@ async function processStockReel(
     const measured = await audioState(source, info.hasAudio, interval.start, interval.end);
     measured.usable = stockAudioUsable(info.hasAudio, measured.mean, measured.max);
     states.push(measured);
-    const frame = stockFraming(info, options.framing), fades = stockShotFades(length, index, shots.length, options.transition);
+    const frame = stockFraming(info, options.framing, options.background === "soft-v1"), fades = stockShotFades(length, index, shots.length, options.transition);
     framingChecks.push(`Shot ${index + 1}: ${frame.description}; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s${interval.speed !== undefined ? `; ${speed}× playback; ${motionWindows[index].length ? "sampled frame-delta movement" : "movement unknown, native speed retained"}` : ""} from ${shots[index].sourcePage}`);
     const shotFile = path.join(directory, `shot-${index + 1}.mp4`);
     const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-ss", interval.start.toFixed(6)];
@@ -1667,6 +1697,7 @@ async function processStockReel(
   item.quality.checks = [
     `Real footage reel: ${shots.length} shots in the ${options.shotCadence === "adaptive-v2" ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v2" ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
+    ...(greeneryCheck ? [greeneryCheck] : []),
     ...(continuityCheck ? [continuityCheck, ...(rhythm ? [reordered
       ? `Measured source cut boundaries retained after colour ordering; final cuts are not claimed beat-aligned to the ${rhythm.bpm} BPM instrumental`
       : `Nearby internal cuts aligned within four picture frames to the actual ${rhythm.bpm} BPM instrumental; total picture duration and source capacities retained`] : [])] : []),

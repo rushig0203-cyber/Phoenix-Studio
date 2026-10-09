@@ -4,7 +4,7 @@ import { configuredStock, MAX_STOCK_DISCOVERY_PAGES, portraitFirstStock, resolve
 import { createSourceJob, createStockReelJob, findStockSourceJob, ffmpegAvailable, readSourceJobs, readStockReuseBlocked, type SourceJob, type StockReelDownload } from "@/lib/sourceProcessing";
 import { JobHistoryConflictError } from "@/lib/jobHistory";
 import { MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, planStockIntervals } from "@/lib/stockReel";
-import { AUTOMATIC_STOCK_REEL_MAX_DURATION, AUTOMATIC_STOCK_REEL_MAX_SOURCES, automaticStockReelOptions, automaticStockChoices, automaticStockCompanions, automaticStockReelMessage, automaticStockSources, recentStockMediaIdentities } from "@/lib/automaticStockReel";
+import { AUTOMATIC_STOCK_REEL_MAX_DURATION, AUTOMATIC_STOCK_REEL_MAX_SOURCES, automaticStockReelOptions, automaticStockGreeneryFocus, automaticStockChoices, automaticStockCompanions, automaticStockReelMessage, automaticStockSources, recentStockMediaIdentities } from "@/lib/automaticStockReel";
 import { getStockProductionGuidance } from "@/lib/stockProductionGuidance";
 
 const providerSchema = z.enum(["pexels", "pixabay"]);
@@ -49,6 +49,8 @@ async function queueAutomaticStockReel(input: { provider: "pexels" | "pixabay"; 
     return { provider: video.provider, mediaId: String(video.id), sourcePage: video.sourcePage, creator: video.creator, title: video.title, start: 0, end: video.duration, trimMode: "auto", open: () => openStockVideo(url) };
   });
   const options = automaticStockReelOptions(query);
+  options.background = "soft-v1";
+  if (automaticStockGreeneryFocus(anchor)) options.sceneFocus = "greenery";
   planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), AUTOMATIC_STOCK_REEL_MAX_DURATION, options.pacing, options.minDuration, options.shotCadence);
   return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration: AUTOMATIC_STOCK_REEL_MAX_DURATION, options,
     managerGuidance: { revision: managerGuidance.revision, feedbackCount: managerGuidance.feedbackCount, rules: managerGuidance.rules } });

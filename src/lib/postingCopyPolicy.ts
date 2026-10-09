@@ -5,6 +5,17 @@ export const VIDEO_HASHTAG_BANK_LIMIT = 20;
 export const INSTAGRAM_HASHTAG_LIMIT = 5;
 export const STOCK_POSTING_CAPTION_WORD_LIMIT = 24;
 export const STOCK_POSTING_CAPTION_CHARACTER_LIMIT = 160;
+export const YOUTUBE_DESCRIPTION_BYTE_LIMIT = 5000;
+
+/** YouTube validates the description as UTF-8 bytes, not JavaScript characters. */
+export function youtubePostingTextIssue(title: string, description: string) {
+  if (/[<>]/.test(title)) return "YouTube titles cannot contain < or >. Edit the title before uploading.";
+  if (/[<>]/.test(description)) return "YouTube descriptions cannot contain < or >. Edit the description before uploading.";
+  if (new TextEncoder().encode(description).byteLength > YOUTUBE_DESCRIPTION_BYTE_LIMIT) {
+    return `YouTube descriptions must contain at most ${YOUTUBE_DESCRIPTION_BYTE_LIMIT} UTF-8 bytes. Shorten the description before uploading.`;
+  }
+  return undefined;
+}
 
 /** Narrated creations keep their existing copy policy; speech cues are separate. */
 export function usesConciseStockPostingCaption(file: Pick<ReviewFile, "source" | "quality">) {

@@ -1,5 +1,30 @@
 # Phoenix Studio
 
+### October 10 visual-review follow-up — release verification pending
+
+The first public-footage proof exposed faults that unit tests cannot judge: a
+green-park edit acquired a skyline/sky pan, roadside traffic, grey bare trees and
+abrupt dark-bar changes. New automatic recipes now ground companion searches in
+the selected natural setting, retain explicit animal/action cues and reject named
+road/skyline subjects unless the chosen opening establishes those settings.
+Explicit greenery openings also reuse the existing tiny movement windows as
+bounded RGB samples: green-colour windows guide trims; known grey/sky-only
+sources are omitted. Unknown samples stay unverified. Colour is not plant,
+action, season, location or audience-performance recognition.
+
+New automatic wide shots retain the entire foreground over a softened same-source
+backdrop, downscaled to 180×320 before blurring; historical/manual framing is
+unchanged. No source slowdown, repeating/padding, new UI control, AI model or paid
+dependency was added. Proof contact sheets now show every final source midpoint.
+Posting fixes share YouTube's 5000 UTF-8-byte metadata validation between the form
+and backend, and invalidate final approval when the displayed video changes.
+Instagram has completed uploads in local history; YouTube has no saved connection
+in this installation. No owner upload/retry was submitted to test these fixes.
+
+Serial checks passed: 127 edit/audio/order regressions, 107 catalogue/route checks
+(with overlap), and 142 posting/copy/UI checks; scoped lint passed. The further
+public-footage render, full release build, visual check and activation are pending.
+
 ### October 10 second footage pass — source ready, release checks pending
 
 Automatic assembly now tries real portrait catalogue metadata first, then up to

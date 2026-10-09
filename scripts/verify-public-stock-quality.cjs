@@ -32,6 +32,7 @@ const reviews = require(path.join(project, 'src/lib/reviewFiles.ts'));
 const automatic = require(path.join(project, 'src/lib/automaticStockReel.ts'));
 const planning = require(path.join(project, 'src/lib/stockReel.ts'));
 const visual = require(path.join(project, 'src/lib/stockVisualContinuity.ts'));
+const movement = require(path.join(project, 'src/lib/stockMotion.ts'));
 const fixtures = [
   [36918287, 'man strolling in lush green park with blossoming trees', 'Nishant Aneja', '36918287/15639615_720_1280_60fps.mp4'],
   [13712406, 'city park and skyscrapers', 'Julio Lopez', '13712406/13712406-hd_720_1280_30fps.mp4'],
@@ -41,6 +42,9 @@ const fixtures = [
   [13439228, 'park in city in birds eye view', 'Marc Espejo', '13439228/13439228-hd_1280_720_30fps.mp4'],
   [37195943, 'aerial view of lush green urban park with fountain', 'Juan Camilo Trujillo Botero', '37195943/15757011_1280_720_30fps.mp4'],
   [36659594, 'tree by roadside in sunny park setting', 'BJ Zurc', '36659594/15541679_720_958_30fps.mp4'],
+  [35995053, 'tranquil park scene with lush greenery', 'Raaj Ugar', '35995053/15262479_720_1280_30fps.mp4'],
+  [4085318, 'people flowers garden park', 'George Morina', '4085318/4085318-hd_1280_720_30fps.mp4'],
+  [39633057, 'sunny park with picnic tables and trees', 'Sururi Ballıdağ Director', '39633057/16895589_1280_720_50fps.mp4'],
 ].map(([id, title, creator, cdn]) => ({ provider: 'pexels', id, title, creator,
   sourcePage: `https://www.pexels.com/video/${title.replaceAll(' ', '-')}-${id}/`, previewUrl: `https://videos.pexels.com/video-files/${cdn}` }));
 function tool(binary, args) {
@@ -89,9 +93,11 @@ async function main() {
   const downloaded = [];
   for (const fixture of fixtures) downloaded.push(await download(fixture)); // One streamed download at a time.
   global.fetch = async () => { throw new Error('Further network/provider calls are forbidden in the isolated render.'); };
-  const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks')];
+  const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks').slice(0, 9)];
   assert.ok(selected.length >= 4 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
+  assert.ok(!selected.some(video => [13712406, 36659594].includes(video.id)), 'Skyline and roadside footage must not pass the chosen green-park setting.');
   const options = automatic.automaticStockReelOptions('Parks'); assert.equal(options.continuity, 'visual-v1');
+  assert.equal(automatic.automaticStockGreeneryFocus(selected[0]), true); options.sceneFocus = 'greenery'; options.background = 'soft-v1';
   const job = await source.createStockReelJob(selected.map(video => ({ provider: video.provider, mediaId: String(video.id), title: video.title,
     creator: video.creator, sourcePage: video.sourcePage, start: 0, end: video.duration, trimMode: 'auto',
     open: async () => ({ stream: Readable.toWeb(fs.createReadStream(video.filename)), expectedBytes: video.bytes }) })),
@@ -106,12 +112,19 @@ async function main() {
   assert.ok(file.quality.checks.some(check => /one continuous bed across every shot/.test(check)));
   await tool(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-']);
   const assembly = path.join(reviews.reviewRoot(), 'work', `source-${job.id}`, 'stock-assembly-v2');
-  const shots = job.stockSource.shots, bounds = [], motion = [], stats = [];
+  let shots = job.stockSource.shots, bounds = [], motion = [], stats = [];
   for (let index = 0; index < shots.length; index++) {
     const filename = path.join(reviews.reviewRoot(), 'sources', `${job.id}-${shots[index].sourceFile}`);
     bounds.push(source.stockSourcePictureInterval(shots[index], await probe(filename), 12, index + 1)); stats.push(fs.statSync(filename));
     motion.push(JSON.parse(fs.readFileSync(path.join(assembly, `motion-${index + 1}.json`), 'utf8')).windows);
   }
+  assert.ok(motion.every(windows => windows.length && windows.every(window => Number.isFinite(window.greenFraction))), 'Real tiny RGB evidence must decode for each public source.');
+  const greenery = movement.stockGreenerySelection(motion);
+  console.log(JSON.stringify({ publicColourSamples: shots.map((shot, index) => ({ id: shot.mediaId, windows: motion[index] })), threshold: greenery.threshold, retainedIndices: greenery.indices }));
+  const omittedAtRender = shots.filter((_shot, index) => !greenery.indices.includes(index)).map(shot => shot.mediaId);
+  shots = greenery.indices.map(index => shots[index]); bounds = greenery.indices.map(index => bounds[index]);
+  stats = greenery.indices.map(index => stats[index]); motion = greenery.windows;
+  assert.ok(shots.length >= 4 && omittedAtRender.includes('3699513'), 'The grey bare-tree source must not survive green-context sampling.');
   const provisional = planning.planStockIntervals(bounds.map((part, index) => ({ ...part, motionWindows: motion[index] })), 40, 'cinematic', undefined,
     'adaptive-v2', { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
   const appearance = shots.map((shot, index) => {
@@ -133,15 +146,24 @@ async function main() {
   assert.equal(hash(output), before, 'Fixture retry must retain the verified output exactly.');
   const edited = path.join(destination, 'coherent-reel.mp4'), contact = path.join(destination, 'after.jpg');
   fs.copyFileSync(output, edited);
+  const midpointFrames = intervals.map(interval => Math.floor((interval.outputStart + interval.outputEnd) / 2 * planning.STOCK_REEL_FPS));
+  assert.equal(new Set(midpointFrames).size, intervals.length, 'Each source interval needs its own midpoint preview.');
+  assert.ok(midpointFrames.every(frame => Number.isSafeInteger(frame) && frame >= 0 && frame < info.frames));
+  const columns = Math.ceil(intervals.length / 2), rows = 2;
+  const midpointSelect = midpointFrames.map(frame => `eq(n,${frame})`).join('+');
   await tool(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-vf',
-    'fps=1/2,scale=160:284,tile=4x2', '-frames:v', '1', '-filter_threads', '1', '-q:v', '3', contact]);
+    `select='${midpointSelect}',setpts=N/FRAME_RATE/TB,scale=160:284,tile=${columns}x${rows}:nb_frames=${intervals.length}:padding=2:margin=2`,
+    '-frames:v', '1', '-filter_threads', '1', '-q:v', '3', contact]);
   fs.writeFileSync(path.join(destination, 'proof.json'), JSON.stringify({ publicLicensedFixture: true, licence: 'https://www.pexels.com/license/',
     selected: selected.map(({ id, title, creator, sourcePage, previewUrl, width, height, duration }) => ({ id, title, creator, sourcePage, previewUrl, width, height, duration })),
+    excludedAtSelection: downloaded.filter(video => !selected.includes(video)).map(({ id, title }) => ({ id, title })),
+    omittedAtRender, greeneryThreshold: greenery.threshold,
     duration: info.videoDuration, frames: info.frames, order, sourceIntervals: intervals, checks: file.quality.checks, sha256: before,
+    contactSheet: { sampling: 'One midpoint frame from every final source interval, in output order', columns, rows, midpointFrames },
     fullyDecoded: true, retryIdempotent: true, ownerJobsRead: 0, ownerMediaUploaded: 0,
     note: 'Public licensed source proof only; pixel statistics do not prove semantic continuity or predict audience performance.' }, null, 2));
   assert.deepEqual(fs.readdirSync(destination).sort(), ['after.jpg', 'coherent-reel.mp4', 'proof.json']);
-  console.log(JSON.stringify({ publicLicensedFixture: true, duration: info.videoDuration, frames: info.frames, shots: selected.length,
+  console.log(JSON.stringify({ publicLicensedFixture: true, duration: info.videoDuration, frames: info.frames, shots: shots.length,
     fullyDecoded: true, retryIdempotent: true, ownerMediaUploaded: 0, retainedArtifacts: 3 }));
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => {

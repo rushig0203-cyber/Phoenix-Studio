@@ -56,6 +56,9 @@ const industrialTransport = /\b(?:ships?|boats?|yachts?|transporters?|freighters
 const parkingScene = /\b(?:parking|car parks?)\b/i;
 const amusementScene = /\b(?:amusement|theme)\s+parks?\b|\bfairgrounds?\b|\bferris\s+wheels?\b/i;
 const rainBuiltScene = /\b(?:billboards?|buildings?|skyscrapers?|parking|car parks?|cars?|vehicles?)\b/i;
+const builtVegetationSetting = /\b(?:skylines?|skyscrapers?|buildings?|roads?|roadside|streets?|traffic|highways?|motorways?|cars?|vehicles?|parking)\b/i;
+const greenVegetationCue = /\b(?:green|lush|verdant|foliage|flowering|blossoming|blossoms?|flowers?)\b/i;
+const naturalHabitatCue = /\b(?:forests?|woodlands?|woods|jungles?|gardens?|flowers?|petals?|blossoms?|tulips?|roses?)\b/i;
 const animalFamilies: Array<{ name: string; cue: RegExp }> = [
   { name: "horse", cue: /\b(?:horses?|ponies|foals?|equine|equestrian)\b/i },
   { name: "dog", cue: /\b(?:dogs?|puppies|canine)\b/i },
@@ -117,6 +120,13 @@ function dayPhaseCompatible(anchorPhase: string | undefined, candidatePhase: str
 function contextMatch(anchorDescription: string, description: string) {
   const context = catalogContext(anchorDescription), candidateContext = catalogContext(description);
   if (context && (!candidateContext || candidateContext.name !== context.name)) return false;
+  // "Park" or "trees" in a title must not turn an explicitly lush/natural
+  // scene into a skyline/road/traffic edit. Urban vegetation remains an option
+  // when the selected anchor explicitly establishes that built setting.
+  const naturalVegetationAnchor = ["park", "forest", "garden"].includes(context?.name || "")
+    && (greenVegetationCue.test(anchorDescription) || naturalHabitatCue.test(anchorDescription))
+    && !builtVegetationSetting.test(anchorDescription);
+  if (naturalVegetationAnchor && builtVegetationSetting.test(description)) return false;
   const anchorParking = parkingScene.test(anchorDescription), candidateParking = parkingScene.test(description);
   if (candidateParking !== anchorParking) return false;
   const anchorAmusement = amusementScene.test(anchorDescription), candidateAmusement = amusementScene.test(description);
@@ -153,6 +163,13 @@ function contextMatch(anchorDescription: string, description: string) {
   return true;
 }
 
+/** Explicit catalogue greenery intent only, not a claim to recognize a scene. */
+export function automaticStockGreeneryFocus(anchor: NaturalStock): boolean {
+  const description = catalogDescription(anchor), context = catalogContext(description);
+  return ["park", "forest", "garden", "field"].includes(context?.name || "")
+    && greenVegetationCue.test(description) && !builtVegetationSetting.test(description);
+}
+
 /** Reuse the existing bounded searches with a more useful query, not more calls. */
 export function automaticStockCompanionQuery(anchor: NaturalStock, query: string) {
   const description = catalogDescription(anchor), context = catalogContext(description);
@@ -161,10 +178,17 @@ export function automaticStockCompanionQuery(anchor: NaturalStock, query: string
   const detail = enrichSetting ? contextDetails.find(item => item.cue.test(description)) : undefined;
   const core = naturalTopic(query) && context ? context.search : query.trim();
   const setting = enrichSetting ? context?.search : undefined;
-  const established = subjectWords([core, setting, detail?.search].filter(Boolean).join(" "));
+  const greenery = enrichSetting && ["park", "forest", "garden"].includes(context?.name || "") && greenVegetationCue.test(description) ? "green" : undefined;
+  const established = subjectWords([core, setting, greenery, detail?.search].filter(Boolean).join(" "));
   const subjects = [...explicitAnimalFamilies(description), ...explicitOutdoorActivities(description)]
     .filter(subject => !subjectWords(subject).every(word => established.includes(word)));
-  return [...new Set([core, setting, ...subjects, detail?.search].filter((word): word is string => !!word))].join(" ").slice(0, 100);
+  const seen = new Set<string>();
+  return [core, setting, greenery, ...subjects, detail?.search].filter((part): part is string => !!part).filter((part, index) => {
+    const words = subjectWords(part);
+    if (index > 0 && words.length && words.every(word => seen.has(word))) return false;
+    for (const word of words) seen.add(word);
+    return true;
+  }).join(" ").slice(0, 100);
 }
 
 function subjectWords(value: string) {

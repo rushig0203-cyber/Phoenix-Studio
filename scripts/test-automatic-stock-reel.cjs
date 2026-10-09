@@ -269,6 +269,61 @@ test('ordinary park and broad Nature starting cards do not imply amusement or pa
   assert.deepEqual(identities(automatic.automaticStockChoices([park, amusement, parking], 'amusement park')), ['pexels:12145278']);
 });
 
+test('an explicitly lush green park does not become a skyline, roadside or traffic reel', () => {
+  const selected = video(1, 'man strolling in lush green park with blossoming trees');
+  const choices = automatic.automaticStockCompanions(selected, [
+    video(2, 'city park and skyscrapers'),
+    video(3, 'tree by roadside in sunny park'),
+    video(4, 'green park beside traffic and buildings'),
+    video(5, 'man strolling through a green park'),
+    video(6, 'empty swing in green park'),
+    video(7, 'sunny park walkway among blossoming trees'),
+  ], 'Parks');
+  assert.deepEqual(identities(choices), ['pexels:5', 'pexels:7', 'pexels:6']);
+  assert.equal(automatic.automaticStockCompanionQuery(selected, 'Parks'), 'Parks green', 'Inflected Parks and park are not duplicated');
+  assert.equal(automatic.automaticStockCompanionQuery(selected, 'Nature'), 'park green');
+});
+
+test('natural forest and garden anchors reject explicit built settings without globally banning urban vegetation', () => {
+  const forest = video(1, 'lush forest canopy of trees');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(forest, [
+    video(2, 'forest trees beside a road with cars'),
+    video(3, 'forest woodland canopy'),
+  ], 'forest')), ['pexels:3']);
+  const garden = video(4, 'lush flowering garden');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(garden, [
+    video(5, 'garden alongside traffic on road'),
+    video(6, 'flowering garden full of flowers'),
+  ], 'garden')), ['pexels:6']);
+  const cityPark = video(7, 'lush green city park and skyscrapers');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(cityPark, [
+    video(8, 'green city park and buildings'),
+    video(9, 'city park below skyscrapers'),
+  ], 'park')), ['pexels:8', 'pexels:9'], 'The selected anchor explicitly opts into an urban park setting');
+  const roadside = video(10, 'green park trees beside a road');
+  assert.deepEqual(identities(automatic.automaticStockCompanions(roadside, [video(11, 'green park trees beside traffic on road')], 'park')), ['pexels:11']);
+});
+
+test('greenery focus uses explicit natural anchor evidence and excludes urban, road and unknown settings', () => {
+  for (const title of ['lush green park with blossoming trees', 'lush green city park', 'lush forest canopy', 'flowering garden', 'green meadow with grass']) {
+    assert.equal(automatic.automaticStockGreeneryFocus(video(1, title)), true, title);
+  }
+  for (const title of ['city park and skyscrapers', 'green park beside traffic on road', 'green forest next to buildings', 'park walkway', 'snowy forest', 'green ocean waves']) {
+    assert.equal(automatic.automaticStockGreeneryFocus(video(2, title)), false, title);
+  }
+  assert.equal(automatic.automaticStockGreeneryFocus(video(3, 'park foliage', { sourcePage: 'https://www.pexels.com/video/lush-green-park-3/' })), true,
+    'Provider slug evidence is considered consistently with selection');
+});
+
+test('authoritative resolution cannot introduce a skyline into a saved natural park selection', async () => {
+  const selected = video(1, 'man strolling in lush green park with blossoming trees');
+  const sources = await automatic.automaticStockSources(selected, 'Parks', ['pexels'], {
+    async search(provider, query) { assert.equal(query, 'Parks green'); return Array.from({ length: 8 }, (_, index) => video(index + 2, 'lush green park with trees')); },
+    async resolve(provider, id) { return video(id, id === 2 ? 'city park and skyscrapers' : 'lush green park with trees'); },
+  });
+  assert.equal(sources[0].id, selected.id); assert.equal(sources.some(source => source.id === 2), false); assert.equal(sources.length, 8);
+});
+
 test('explicit day phase stays consistent across companions even when the anchor phase is unlabeled', () => {
   const anchor = video(1, 'city park greenery');
   const choices = automatic.automaticStockCompanions(anchor, [
@@ -311,10 +366,10 @@ test('named anchor animals remain required for ordinary broad topics and authori
   assert.deepEqual(identities(automatic.automaticStockCompanions(dog, [
     video(2, 'empty path in green park'), video(3, 'dog playing in a green park'),
   ], 'park')), ['pexels:3']);
-  assert.equal(automatic.automaticStockCompanionQuery(dog, 'park'), 'park dog');
+  assert.equal(automatic.automaticStockCompanionQuery(dog, 'park'), 'park green dog');
   const resolved = [];
   const sources = await automatic.automaticStockSources(dog, 'park', ['pexels'], {
-    async search(provider, query) { assert.equal(query, 'park dog'); return Array.from({ length: 8 }, (_, index) => video(index + 2, 'dog playing in green park')); },
+    async search(provider, query) { assert.equal(query, 'park green dog'); return Array.from({ length: 8 }, (_, index) => video(index + 2, 'dog playing in green park')); },
     async resolve(provider, id) { resolved.push(id); return video(id, id === 2 ? 'empty path in green park' : 'dog playing in green park'); },
   });
   assert.equal(sources[0].id, dog.id);
@@ -362,7 +417,7 @@ test("a bird's-eye camera view is not a bird subject in title or URL evidence", 
     video(3, 'city park aerial view', { sourcePage: 'https://www.pexels.com/video/city-park-bird-s-eye-view-3/' }),
     video(4, 'birds flying over a green city park'),
   ], 'park')), ['pexels:2', 'pexels:3']);
-  assert.equal(automatic.automaticStockCompanionQuery(park, 'park'), 'park');
+  assert.equal(automatic.automaticStockCompanionQuery(park, 'park'), 'park green');
   const birdEye = video(5, 'closeup bird eye in a forest');
   assert.deepEqual(identities(automatic.automaticStockCompanions(birdEye, [video(6, 'bird perched in a forest')], 'birds')), ['pexels:6'],
     'An actual bird-eye detail is not erased as a camera phrase');
@@ -665,7 +720,7 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
   assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' },
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [
@@ -674,6 +729,19 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 40, 'cinematic', undefined, h.queued[0].input.options.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
   assert.ok(plan.every(interval => interval.speed === 1), 'Unmeasured catalog previews do not authorize speed changes');
+});
+
+test('greenery focus is derived only from the resolved automatic starting source, not user-forged options', async () => {
+  const h = harness({ resolve: async (provider, id) => video(id, 'lush green park path', { provider }),
+    search: async provider => Array.from({ length: 8 }, (_, index) => video(index + 2, 'lush green park path', { provider })) });
+  const result = await h.api.POST(request({ ...automaticPayload, query: 'Park', options: { sceneFocus: 'sky', background: 'none' } }));
+  assert.equal(result.status, 201); assert.equal(h.queued[0].input.options.sceneFocus, 'greenery');
+  assert.equal(h.queued[0].input.options.background, 'soft-v1');
+  const manual = harness();
+  const legacy = await manual.api.POST(request({ requestId: automaticPayload.requestId, theme: 'Sun City',
+    shots: [{ provider: 'pexels', id: 1, start: 1, end: 10 }], options: { sceneFocus: 'greenery', background: 'soft-v1' } }));
+  assert.equal(legacy.status, 201); assert.equal(manual.queued[0].input.options.sceneFocus, undefined);
+  assert.equal(manual.queued[0].input.options.background, undefined, 'Internal automatic recipe markers cannot change a manual render');
 });
 
 test('automatic POST page stopping counts coherent usable companions against the resolved anchor, not raw cards', async () => {

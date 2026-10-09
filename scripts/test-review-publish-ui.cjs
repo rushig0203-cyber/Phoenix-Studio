@@ -69,7 +69,7 @@ function uiHarness(options = {}) {
   let active, nextInterval = 0;
   const requests = [], intervals = new Map(), cleared = [], deadlines = [], copied = [];
   const document = { hidden: false };
-  const file = options.file || sampleFile();
+  let file = options.file || sampleFile();
   const endpoint = `/api/review-files/${encodeURIComponent(file.id)}/publish`;
   const channels = options.channels || [channel('youtube'), channel('instagram')];
   const savedJobs = options.jobs || [];
@@ -106,7 +106,7 @@ function uiHarness(options = {}) {
   const shared = {
     // The real posting helper validates catalogue URLs before stripping footers.
     // Node VM contexts do not include this browser global by default.
-    document, AbortController, URL,
+    document, AbortController, URL, TextEncoder,
     navigator: { clipboard: { async writeText(value) {
       if (options.clipboardUnavailable) throw new Error('Clipboard unavailable');
       copied.push(value);
@@ -180,7 +180,8 @@ function uiHarness(options = {}) {
   }
   render();
   const h = {
-    file, endpoint, requests, intervals, cleared, deadlines, copied, document, render,
+    get file() { return file; }, endpoint, requests, intervals, cleared, deadlines, copied, document, render,
+    updateFile(next) { file = next; renderer.dirty = true; render(); },
     get tree() { return renderer.tree; }, get text() { return text(renderer.tree); },
     get posts() { return requests.filter(request => request.method === 'POST'); },
     async flush() { for (let pass = 0; pass < 50; pass++) { render(); await Promise.resolve(); } render(); },
@@ -340,6 +341,66 @@ test('editing reviewed title, copy, privacy or kids audience invalidates previou
     h.submit(); await h.flush();
     assert.equal(h.posts.length, 0, 'A stale approval never submits');
   }
+});
+
+test('YouTube uses its 5000-byte metadata limit and rejects forbidden brackets before a confirmed POST', async t => {
+  const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
+  h.choose('Upload to YouTube'); await h.flush();
+  assert.equal(h.control('Description and hashtags', 'textarea').props.maxLength, 5000);
+  for (const [label, type, value, issue] of [
+    ['Description and hashtags', 'textarea', 'é'.repeat(2501), /5000 UTF-8 bytes/],
+    ['Description and hashtags', 'textarea', 'A visible <tree>', /descriptions cannot contain/],
+    ['YouTube title', 'input', 'A tree > another', /titles cannot contain/],
+  ]) {
+    h.change(h.control('YouTube title', 'input'), 'Reviewed title');
+    h.change(h.control('Description and hashtags', 'textarea'), 'Reviewed description'); h.render();
+    h.change(h.control(label, type), value); h.render();
+    h.change(h.confirmation(), true); h.render();
+    assert.match(h.text, issue);
+    assert.equal(h.button('Confirm upload').props.disabled, true);
+    h.submit(); await h.flush();
+    assert.equal(h.posts.length, 0, 'Invalid metadata never reaches the local publishing API');
+  }
+  const caption = 'é'.repeat(2500);
+  h.change(h.control('YouTube title', 'input'), 'Reviewed title');
+  h.change(h.control('Description and hashtags', 'textarea'), caption); h.render();
+  h.change(h.confirmation(), true); h.render();
+  assert.equal(h.button('Confirm upload').props.disabled, false);
+  h.submit(); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(JSON.parse(h.posts[0].body).caption, caption);
+});
+
+test('a changed video revision invalidates approval and a retained old submit handler cannot upload it', async t => {
+  const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
+  h.choose('Upload to YouTube'); await h.flush();
+  h.change(h.confirmation(), true); h.render();
+  assert.equal(h.button('Confirm upload').props.disabled, false);
+  const oldForm = h.form();
+  h.updateFile({ ...h.file, updatedAt: '2026-10-04T00:00:00Z', outputs: { ...h.file.outputs,
+    youtube: { ...h.file.outputs.youtube, duration: 18 } } });
+  assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.button('Confirm upload').props.disabled, true);
+  h.submit(oldForm); h.submit(); await h.flush();
+  assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render();
+  h.submit(oldForm); await h.flush();
+  assert.equal(h.posts.length, 0, 'The old form cannot borrow approval for the changed video');
+  h.submit(); await h.flush();
+  assert.equal(h.posts.length, 1, 'The current video can be explicitly approved again');
+});
+
+test('irrelevant new prop object does not cancel approval but unavailable output does', async t => {
+  const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
+  h.choose('Upload to YouTube'); await h.flush();
+  h.change(h.confirmation(), true); h.render();
+  const available = h.file;
+  h.updateFile({ ...h.file, quality: { ...h.file.quality } });
+  assert.equal(h.confirmation().props.checked, true);
+  h.updateFile({ ...h.file, status: 'NEEDS_RENDERER', outputs: {} });
+  assert.equal(h.confirmation().props.checked, false);
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.updateFile(available);
+  assert.equal(h.confirmation().props.checked, false, 'Restoring the old metadata cannot restore an old approval');
 });
 
 test('missing or unready publishing permission offers setup without starting authorization or an upload', async t => {

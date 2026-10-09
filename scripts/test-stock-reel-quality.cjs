@@ -55,6 +55,18 @@ test('portrait framing fills only when at least 92 percent survives, landscape r
   assert.deepEqual(ranked.map(video => video.id), [2, 1]);
 });
 
+test('new automatic soft framing preserves whole wide foregrounds without changing manual/saved recipes', () => {
+  const wide = { width: 1280, height: 720 };
+  const soft = planning.stockFraming(wide, 'auto', true);
+  assert.match(soft.filter, /split\[backdrop\]\[foreground\]/);
+  assert.match(soft.filter, /scale=180:320.*boxblur=8:2/);
+  assert.match(soft.filter, /\[foreground\]scale=720:1280:force_original_aspect_ratio=decrease\[whole\]/);
+  assert.match(soft.description, /Entire source foreground retained/);
+  assert.doesNotMatch(planning.stockFraming(wide).filter, /split|boxblur/);
+  assert.doesNotMatch(planning.stockFraming(wide, 'fit', true).filter, /split|boxblur/);
+  assert.doesNotMatch(planning.stockFraming({ width: 720, height: 1280 }, 'auto', true).filter, /split|boxblur/);
+});
+
 test('quiet real ambience is preserved conservatively instead of classified as failed audio', () => {
   assert.equal(planning.stockAudioUsable(true, -65, -52), true);
   assert.equal(planning.stockAudioUsable(true, -99, -99), false);

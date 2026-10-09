@@ -6,7 +6,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
-import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT } from "./postingCopyPolicy";
+import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "./postingCopyPolicy";
 import { stripFootageProvenance } from "./posting";
 import { getReviewFile, reviewRoot, safeReviewId, type ReviewTarget } from "./reviewFiles";
 import { reviewMediaPath, selectedReviewTarget } from "./reviewMedia";
@@ -111,10 +111,12 @@ function checkedText(value: unknown, label: string, maximum: number, allowEmpty 
   if (!allowEmpty && !result) throw problem(`${label} is required.`);
   return result;
 }
-function checkPlatformHashtags(platform: ReviewTarget, caption: string) {
+function checkPlatformPostingText(platform: ReviewTarget, title: string, caption: string) {
   if (platform === "instagram" && captionHashtags(caption).length > INSTAGRAM_HASHTAG_LIMIT) {
     throw problem("Instagram allows at most five hashtags per Reel. Remove extra hashtags before posting; no text was silently changed.");
   }
+  const issue = platform === "youtube" ? youtubePostingTextIssue(title, caption) : undefined;
+  if (issue) throw problem(issue);
 }
 function fingerprint(stats: Stats): Fingerprint {
   return { size: stats.size, mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs, ino: stats.ino, dev: stats.dev };
@@ -541,8 +543,8 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
     if (!isPlatform(body.platform)) throw problem("Choose YouTube or Instagram.");
     const platform = body.platform;
     const title = checkedText(body.title, "Video title", 100);
-    const requestedCaption = checkedText(body.caption, "Caption", platform === "youtube" ? 4800 : 2200, true);
-    checkPlatformHashtags(platform, requestedCaption);
+    const requestedCaption = checkedText(body.caption, "Caption", platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200, true);
+    checkPlatformPostingText(platform, title, requestedCaption);
     const revision = checkedText(body.connectionRevision, "Channel connection", 200);
     const privacy = body.privacy ?? "private";
     if (!["public", "unlisted", "private"].includes(String(privacy))) throw problem("Choose public, unlisted, or private visibility.");
@@ -581,7 +583,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
       // report/news citations stay intact. Existing upload jobs keep their
       // already-confirmed immutable metadata on duplicate create/continue.
       const caption = stripFootageProvenance(requestedCaption, media.file);
-      checkPlatformHashtags(platform, caption);
+      checkPlatformPostingText(platform, title, caption);
       if (caption.length > (platform === "youtube" ? 5000 : 2200)) throw problem("Shorten the caption to fit the platform's limit.");
       const access = await accessFor(platform, revision);
       if (platform === "instagram" && access.loginType !== "facebook") throw problem("This Instagram connection verifies identity only. Connect a Facebook-linked professional account with publishing permission.", 403);
@@ -622,7 +624,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
       if (!job || job.id !== body.jobId) return null;
       if (job.phase === "complete" || await operationActive(job) || (job.status === "QUEUED" && Date.now() - job.queuedAt < LEASE_MS)) return { job: await publicJob(job), dispatch: false };
       if (!continuable(job)) throw problem("The provider may have accepted the previous request. Check the destination channel before taking another action; Phoenix will not repeat an ambiguous publish.", 409);
-      checkPlatformHashtags(platform, job.caption);
+      checkPlatformPostingText(platform, job.title, job.caption);
       const access = await accessFor(platform, job.connectionRevision);
       if (access.accountId !== job.accountId) throw problem("The destination account changed. This saved upload cannot be continued.", 409);
       const media = await readyMedia(reviewId, platform, job.fingerprint, job.renderTarget); await assertCurrent(access);
@@ -883,7 +885,7 @@ export async function runReviewPublication(reviewId: string, jobId: string) {
         await persist(job);
         try {
           await withFileLock(path.join(storeRoot(), ".publication-stream.lock"), async () => {
-            checkPlatformHashtags(platform, job.caption);
+            checkPlatformPostingText(platform, job.title, job.caption);
             const access = await accessFor(platform, job.connectionRevision);
             if (access.accountId !== job.accountId) throw problem("The upload destination account changed. The saved upload was stopped.", 409);
             const media = await readyMedia(reviewId, platform, job.fingerprint, job.renderTarget); await assertCurrent(access);
