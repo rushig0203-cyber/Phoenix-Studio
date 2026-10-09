@@ -22,6 +22,12 @@ Groq's saved credentials and existing sampled-frame consent remain separate;
 no images, audio or videos are sent to Cloudflare. JSON mode remains subject to
 Phoenix's existing script/editorial validation.
 
+Posting analysis now uses smaller 448px JPEG samples and a compact grounded
+prompt, with per-image and serialized-request limits. Saved HTTP 413 failures
+are retained, not automatically retried. Groq image quotas still apply even when
+text writing uses Cloudflare; smaller JPEGs do not reduce the documented fixed
+image-token charge. Existing successful captions are not invalidated.
+
 Job cards now keep completed history compact: title, clip count, final duration
 and Completed · 100%. Active progress/ETA and errors remain visible; technical
 and posting details stay available in collapsed disclosures.

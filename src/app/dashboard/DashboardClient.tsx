@@ -61,6 +61,7 @@ type DisplayJob = {
   status: string;
   progress: number;
   detail: string;
+  stage?: string;
   completedClips?: number;
   totalClips?: number;
   error?: string;
@@ -243,7 +244,7 @@ export default function DashboardClient() {
     finally { setRemovingJob(null); }
   }
   const jobs = useMemo<DisplayJob[]>(() => [
-    ...editJobs.map(job => ({ id:job.id,reviewId:job.reviewId,outputId:job.outputId,kind:"edit" as const,title:job.title,status:job.status,progress:job.progress,detail:`Manual edit · ${job.stage}`,error:job.error,createdAt:job.createdAt,elapsedSeconds:job.elapsedSeconds,estimatedRemainingSeconds:job.estimatedRemainingSeconds ?? undefined })),
+    ...editJobs.map(job => ({ id:job.id,reviewId:job.reviewId,outputId:job.outputId,kind:"edit" as const,title:job.title,status:job.status,progress:job.progress,stage:job.stage,detail:`Manual edit · ${job.stage}`,error:job.error,createdAt:job.createdAt,elapsedSeconds:job.elapsedSeconds,estimatedRemainingSeconds:job.estimatedRemainingSeconds ?? undefined })),
     ...sourceJobs.map((job) => ({
       id: job.id,
       kind: "source" as const,
@@ -251,6 +252,7 @@ export default function DashboardClient() {
       status: job.status,
       progress: job.progress,
       completedClips: job.completedClips,
+      stage: job.stage,
       totalClips: job.totalClips,
       detail: `Source video · ${job.stage}${job.totalClips ? ` · ${job.completedClips || 0}/${job.totalClips} clips` : ""}${job.attempts ? ` · attempt ${job.attempts}` : ""}`,
       error: job.error,
@@ -262,6 +264,7 @@ export default function DashboardClient() {
       id: job.id,
       kind: "ai" as const,
       title: job.project.title,
+      stage: job.stage,
       status: job.status,
       progress: job.progress,
       detail: `AI Creation · ${job.stage?.trim() || (job.status === "COMPLETED" ? "Completed · legacy stage details unavailable" : job.status === "FAILED" ? "Failed" : "Queued")}${job.retryCount ? ` · automatic retry ${job.retryCount}/3` : ""}${job.manualRetryCount ? ` · manual retry ${job.manualRetryCount}` : ""}`,
@@ -345,7 +348,7 @@ export default function DashboardClient() {
               {aiOpen ? "Close creation" : "Create a video"}
             </Button>
           </article>
-          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a footage reel</h2><p className="mt-2 text-sm leading-6 text-[#657153]">Type a topic, choose a starting video, and Phoenix edits related stock clips into a 40–45 second reel at their original speed. No generated visuals.</p><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
+          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a footage reel</h2><p className="mt-2 text-sm leading-6 text-[#657153]">Type a topic and choose a starting video. Phoenix edits related real footage into a compact reel, choosing cuts, length and modest speed-ups from sampled movement. No generated visuals.</p><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
         </section>
         {sourceOpen ? <SourceProcessor onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
@@ -399,6 +402,7 @@ export default function DashboardClient() {
                     </div>
                     {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
                     {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
+                    {!completed && !failed && job.stage ? <p className="mt-1 text-xs text-[#687657]">{job.stage}</p> : null}
                     {!completed ? <div className="mt-3 h-2 overflow-hidden rounded bg-[#d5ddb8]">
                       <div className={`h-full transition-[width] duration-500 ${failed ? "bg-[#b55d3d]" : "bg-[#667b42]"}`} style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
                     </div> : null}

@@ -91,6 +91,23 @@ test('retains multiply-linked scratch files so another saved file is never unlin
   assert.equal(await fs.readFile(original, 'utf8'), 'protected original');
 });
 
+test('canonicalizes a benign short-name root before unlinking without accepting links', async t => {
+  const { parent, root, jobDirectory } = await fixture(t);
+  const assembly = path.join(jobDirectory, 'stock-assembly-v2');
+  await fs.mkdir(assembly, { recursive: true });
+  await fs.writeFile(path.join(assembly, 'shot-1.mp4'), 'temporary');
+  const aliasParent = `${parent}-short-alias`;
+  const translate = value => value === aliasParent || value.startsWith(aliasParent + path.sep) ? parent + value.slice(aliasParent.length) : value;
+  const observedFs = { ...fs,
+    lstat: value => fs.lstat(translate(value)),
+    realpath: value => fs.realpath(translate(value)),
+  };
+  const result = await loadCleanup(observedFs)(jobId, path.join(aliasParent, 'work'));
+  assert.equal(result.removedFiles, 1);
+  assert.equal(result.removedBytes, 9);
+  assert.equal(await fs.stat(path.join(assembly, 'shot-1.mp4')).catch(() => null), null);
+});
+
 test('skips linked files and assembly-directory links without following them', async t => {
   const { root, jobDirectory, parent } = await fixture(t);
   const assembly = path.join(jobDirectory, 'stock-assembly-v1');

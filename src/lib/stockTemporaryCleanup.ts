@@ -26,12 +26,11 @@ async function safeDirectory(directory: string) {
     try {
       const stat = await fs.lstat(current);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
-      if (!samePath(current, await fs.realpath(current))) return false;
     } catch {
       return false;
     }
   }
-  return samePath(absolute, await fs.realpath(absolute).catch(() => ""));
+  return true;
 }
 
 function allowedTemporaryNames() {
@@ -53,8 +52,12 @@ export async function cleanupStockTemporaries(
   root = path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "work"),
 ): Promise<StockTemporaryCleanupReport> {
   if (typeof jobId !== "string" || !jobIdPattern.test(jobId)) throw new Error("A canonical stock job UUID is required for temporary cleanup.");
-  const absoluteRoot = path.resolve(root);
-  if (path.basename(absoluteRoot).toLowerCase() !== "work" || !(await safeDirectory(absoluteRoot))) return { ...noWork };
+  const requestedRoot = path.resolve(root);
+  if (path.basename(requestedRoot).toLowerCase() !== "work" || !(await safeDirectory(requestedRoot))) return { ...noWork };
+  // Expand benign Windows short (8.3) aliases only after checking every supplied
+  // ancestor for links. All deletions use this canonical root, never a junction.
+  const absoluteRoot = await fs.realpath(requestedRoot).catch(() => "");
+  if (!absoluteRoot || path.basename(absoluteRoot).toLowerCase() !== "work") return { ...noWork };
 
   const report = { ...noWork };
   const jobDirectory = path.join(absoluteRoot, `source-${jobId}`);

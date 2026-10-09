@@ -20,7 +20,13 @@ test('completed history cards summarize the reel, clip count, duration, and 100 
 
 test('active ETA and progress remain visible, while stage details are collapsed', () => {
   assert.match(cards, /\{!completed && timing\(job\) \? <p/);
+  assert.match(cards, /!completed && !failed && job\.stage \? <p/);
   assert.match(cards, /<details className="mt-2 text-xs text-\[#687657\]">\s*<summary[^>]*>Technical details<\/summary>\s*<p className="mt-1">\{job\.detail\}<\/p>/);
+});
+
+test('Create intro describes the current adaptive edit, not a fixed old duration', () => {
+  assert.match(dashboard, /choosing cuts, length and modest speed-ups from sampled movement/);
+  assert.doesNotMatch(dashboard, /40–45 second reel/);
 });
 
 test('posting tools remain accessible behind a compact disclosure on completed cards', () => {

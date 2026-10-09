@@ -18,13 +18,13 @@ const locks = require('../src/lib/fileLock');
 const reviews = require('../src/lib/reviewFiles');
 const analysis = require('../src/lib/videoPostingAnalysis');
 const { editedPostingTextOrigin } = require('../src/lib/reviewEdits');
-const originals = { fetch: global.fetch, spawn: childProcess.spawn, settings: settings.readWritingSettings, status: resources.heavyWorkStatus, slot: resources.tryWithLocalRenderSlot, activity: activity.analyzeInstagramHashtagActivity };
+const originals = { fetch: global.fetch, spawn: childProcess.spawn, settings: settings.readVideoAnalysisSettings, status: resources.heavyWorkStatus, slot: resources.tryWithLocalRenderSlot, activity: activity.analyzeInstagramHashtagActivity };
 const selected = { provider: 'groq', model: settings.WRITING_GROQ_MODEL, apiKey: 'gsk_test_not_real_12345678901234', freePlanConfirmed: true, allowVideoFrames: true };
 const evidence = { observations: [{ frame: 1, visible: 'A small stream passes moss-covered stones.' }], caption: 'Follow the water between these moss-covered stones.', captionVariants: ['A closer look at this woodland stream.'], hashtags: ['#ForestStream', '#Moss'], confidence: 'clear' };
 let requests, frames;
 beforeEach(() => {
   fs.rmSync(path.join(temp, 'storage'), { recursive: true, force: true }); requests = 0; frames = 0;
-  settings.readWritingSettings = () => ({ ...selected });
+  settings.readVideoAnalysisSettings = () => ({ ...selected });
   resources.heavyWorkStatus = async () => ({ lease: null, waitingForMemory: false });
   resources.tryWithLocalRenderSlot = async work => ({ acquired: true, value: await work() });
   activity.analyzeInstagramHashtagActivity = async () => ({ status: 'UNAVAILABLE', checkedAt: new Date().toISOString(), detail: 'No global trend claim.', samples: [] });
@@ -36,7 +36,7 @@ beforeEach(() => {
   global.fetch = async () => { requests++; return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(evidence) } }] }); };
 });
 after(() => {
-  global.fetch = originals.fetch; childProcess.spawn = originals.spawn; settings.readWritingSettings = originals.settings;
+  global.fetch = originals.fetch; childProcess.spawn = originals.spawn; settings.readVideoAnalysisSettings = originals.settings;
   resources.heavyWorkStatus = originals.status; resources.tryWithLocalRenderSlot = originals.slot; activity.analyzeInstagramHashtagActivity = originals.activity;
   process.chdir(project); fs.rmSync(temp, { recursive: true, force: true });
 });

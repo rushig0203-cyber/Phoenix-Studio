@@ -31,6 +31,15 @@
   junctions and non-allowlisted paths are skipped. No blanket age/source purge.
 - Job history now summarizes name, clip count, final duration and Completed · 100%;
   active progress/ETA and errors remain visible. Technical/posting details collapse.
+- Found saved rain posting analysis HTTP 413. Reduced sampled JPEGs to 448px/q8,
+  120KB/frame, added a 512KiB whole-request guard and compact evidence-preserving
+  prompt (2,900 characters, 400-character transcript). Three images/900 output
+  tokens remain; reserved quota reduced from impossible-for-8K 8,100 to 7,900.
+  Provider limits are not guaranteed by byte/character bounds. No owner failure
+  was retried, real inference sent, or existing successful copy invalidated.
+- First release CI stopped safely on outdated vision mocks and a Windows short-
+  path cleanup fixture. Mocks now use the separate vision settings; canonical
+  cleanup expands benign 8.3 names after checking all original ancestors for links.
 - Read-only disk audit: review tree 9.818 GB decimal; sources 5.465 GB, outputs
   1.241 GB, work 2.654 GB. Stock originals 2.204 GB plus work 1.293 GB and final
   target copies 0.855 GB. No automatic age purge exists; trash/archive retains
