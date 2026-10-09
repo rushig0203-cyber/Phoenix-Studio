@@ -1,6 +1,30 @@
 # Quality-first implementation — September 16, 2026
 
-## October 10: footage-reel quality follow-up — source checkpoint, activation pending
+## October 10: footage-reel quality follow-up — verified installed/live
+
+- Current selected/live bundle is `.next-build-gh-37987565078-1`, BUILD_ID
+  `DGYvzNhP5IFaiDkVUi8JO`, from exact source
+  `295e73a36c7af704bba32a9e2e079552d2583dc6`. Windows run `37987565078`
+  passed 421/421 tests, scoped lint, production compilation, full TypeScript,
+  32 static pages and tracing. Its isolated synthetic FFmpeg proof produced
+  20.333333 seconds / 488 frames and verified tempo, cleanup and idempotency
+  without provider calls or owner jobs.
+- Archive SHA256 `26ee30054452bea1150d7d983823f1c875b835d4b91e4c6f8f9b0b307fc56533`,
+  manifest SHA256 `48153344e130b7ef2d23bf691162e1ea23739459e45907a53723a590b7517e7e`.
+  GitHub asset digests, exact source/runtime/lock and all 488 installed file
+  hashes passed. No laptop production compile or lowered RAM guard was needed.
+- Activation exited zero and independently verified selected/live bundle equality,
+  healthy worker and Lumina, automatic posting off. As on October 9, the launcher
+  initially reported a stale manager heartbeat before final live verification.
+  Current idle resource readings still fluctuate below the 512 MiB reserve;
+  off-laptop builds do not eliminate laptop runtime memory limits.
+- Live automatic Parks search returned 22 eligible candidates, no parking-lot
+  titles and no search errors. Only catalogue metadata was fetched. All five
+  review/source/AI/edit/draft metadata hashes matched before/after activation.
+  No owner job/render/retry/post or credential/provider change was submitted.
+  Removed only task-created unpublished draft release `408323226` after verified
+  installation; its local download, installed and recovery bundles remain.
+  Follow-up docs/proof-tool-only commits need no production rebuild.
 
 - Read the latest real completed Parks job `bdeea9d0-7485-409e-b5fe-37c4010cf480`,
   already using adaptive-v2 (20.291667 seconds). Its saved source list and a small
@@ -22,9 +46,12 @@
   heavy-work lease held, separate temporary queue, full decode and idempotency
   checks. It is opt-in and has not been run at this checkpoint. No owner failures
   retried, jobs modified, credential switches or posts submitted.
-- Local serial checks so far: 15 motion/adaptive/appearance tests and 44 adjacent
-  render/edit/audio/remux regressions passed; scoped lint passed. Further source
-  selection tests, Windows CI, full TypeScript and activation remain pending.
+- Local serial focused checks: 64 selection tests, 16 motion/adaptive/appearance
+  tests and 44 adjacent render/edit/audio/remux regressions passed. Scoped lint
+  and the complete Windows release checks passed as recorded above. Added an
+  early isolated-directory guard to the opt-in proof child's entry; the actual
+  retained-source after-render proof was not run because its guarded headroom
+  was unavailable. Artistic quality still requires final human preview.
   All local work remains serial; no RAM guard was lowered or unrelated app closed.
 
 ## October 9: adaptive reels and compact history — verified installed/live

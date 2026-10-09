@@ -6,6 +6,13 @@ const os = require('node:os');
 const { Readable } = require('node:stream');
 const { spawn } = require('node:child_process');
 const project = path.resolve(__dirname, '..');
+// The child fixture owns an isolated temporary queue, never the owner's queue.
+// Validate before loading runtime modules, even if --fixture is invoked directly.
+if (process.argv.includes('--fixture')) {
+  const fixtureDirectory = fs.realpathSync(process.cwd());
+  assert.equal(path.dirname(fixtureDirectory), fs.realpathSync(os.tmpdir()), 'Fixture must run in its isolated temporary directory.');
+  assert.match(path.basename(fixtureDirectory), /^phoenix-coherent-footage-[A-Za-z0-9]+$/);
+}
 process.env.PHOENIX_FFMPEG_PATH = path.join(project, 'node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe');
 process.env.PHOENIX_FFPROBE_PATH = path.join(project, 'node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 require('ts-node').register({ project: path.join(project, 'tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });

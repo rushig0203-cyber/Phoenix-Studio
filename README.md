@@ -1,6 +1,17 @@
 # Phoenix Studio
 
-### October 10 footage-reel quality follow-up — source changes, release verification pending
+### October 10 footage-reel quality follow-up — installed and live
+
+Current selected and served release: `.next-build-gh-37987565078-1`, BUILD_ID
+`DGYvzNhP5IFaiDkVUi8JO`, built from exact source commit `295e73a`.
+[Windows release run 37987565078](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/37987565078)
+passed 421/421 tests, scoped lint, production compilation, full TypeScript,
+32 static pages and tracing. The isolated synthetic FFmpeg proof verified
+20.333 seconds / 488 frames, tempo, cleanup and idempotent output reuse.
+The download digests and all 488 installed file hashes matched. Production
+was built off the laptop; existing RAM/heavy-work guards remain unchanged.
+Activation exited successfully; the selected marker and live health report
+the same bundle, with healthy worker/Lumina and automatic posting off.
 
 The latest real “Parks” output exposed a concrete selection mistake: parking lots
 and a nighttime amusement ride entered an ordinary daytime park reel. This
@@ -18,12 +29,21 @@ so output-time subtitles do not miss or drift behind a sped-up source interval.
 No scene approval step or new dashboard controls were added. Existing completed
 videos and saved recipes are not automatically rewritten. A real-footage proof
 script can use retained licensed originals in an isolated queue with network
-access disabled, without retrying owner jobs or posting anything. Live activation
-of these follow-up changes remains pending at this source checkpoint.
+access disabled, without retrying owner jobs or posting anything. Its child
+entry refuses to run outside its dedicated temporary directory. The real-source
+after-render proof has not been run on the memory-constrained laptop; release
+checks verify the editing mechanics, not artistic quality or promised engagement.
+Live Parks search returned 22 candidates, no parking-lot titles and no search
+errors. This check fetched catalogue metadata only, not a new video/job.
+All five saved review/job/draft metadata hashes were unchanged across activation.
+No owner render/retry/post, media deletion, credential switch or paid service was
+added. The temporary unpublished release transfer was removed; local downloads,
+installed bundle and previous verified recovery builds remain. Later docs/proof-
+tool-only commits do not change the installed runtime source identity.
 
 ### October 9 adaptive reel editing and compact history — installed and live
 
-Current selected and served release: `.next-build-gh-37957816158-1`, BUILD_ID
+Previous selected and served release: `.next-build-gh-37957816158-1`, BUILD_ID
 `yc3NWrtz0PMzK06XTnjF6`, built from source commit `f609d24`. Windows release run
 `37957816158` passed all 410 serial tests, scoped lint, compilation, full
 TypeScript, 32 static pages and tracing. An isolated real-FFmpeg fixture produced
