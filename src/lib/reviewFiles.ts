@@ -42,6 +42,7 @@ export type ReviewFile = {
     postingAnalysis?: {
       status: "QUEUED" | "ANALYZING" | "WAITING" | "FAILED" | "COMPLETE";
       fingerprint?: string; updatedAt: string; attempts: number; nextAttemptAt?: string;
+      waitReason?: "quota" | "retry";
       detail: string; model?: string; sampledAt?: number[]; observations?: string[];
       alignment?: "consistent" | "mismatch" | "unknown"; alignmentReason?: string;
       copyPolicy?: string; variation?: "distinct" | "similar";

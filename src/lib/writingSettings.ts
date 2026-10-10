@@ -6,6 +6,7 @@ import { withFileLock } from "./fileLock";
 
 export const WRITING_GROQ_MODEL = "openai/gpt-oss-20b";
 export const WRITING_CLOUDFLARE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+export const VISION_CLOUDFLARE_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 export type WritingProvider = "ollama" | "groq" | "cloudflare";
 export type WritingSettings = {
   provider: WritingProvider; model: string; apiKey?: string; accountId?: string; freePlanConfirmed: boolean;
@@ -26,6 +27,7 @@ function readRaw(): Record<string, unknown> {
       || !["ollama", "groq", "cloudflare"].includes(String(value.provider))
       || (value.freePlanConfirmed !== undefined && typeof value.freePlanConfirmed !== "boolean")
       || (value.allowVideoFrames !== undefined && typeof value.allowVideoFrames !== "boolean")
+      || (value.allowCloudflareVideoFrames !== undefined && typeof value.allowCloudflareVideoFrames !== "boolean")
       || (value.groqFreePlanConfirmed !== undefined && typeof value.groqFreePlanConfirmed !== "boolean")
       || (value.apiKey !== undefined && value.apiKey !== "" && !groqKeyValid(value.apiKey))
       || (value.groqApiKey !== undefined && value.groqApiKey !== "" && !groqKeyValid(value.groqApiKey))
@@ -71,6 +73,16 @@ export function readCloudflareWriterSettings(): WritingSettings {
     freePlanConfirmed: value.cloudflareFreePlanConfirmed === true };
 }
 
+/** Separate destination consent; legacy Groq consent never enables this adapter. */
+export function readCloudflareVideoAnalysisSettings(): WritingSettings {
+  const value = readRaw();
+  return { provider: "cloudflare", model: VISION_CLOUDFLARE_MODEL,
+    apiKey: typeof value.cloudflareApiKey === "string" ? value.cloudflareApiKey : undefined,
+    accountId: typeof value.cloudflareAccountId === "string" ? value.cloudflareAccountId : undefined,
+    freePlanConfirmed: value.cloudflareFreePlanConfirmed === true,
+    allowVideoFrames: value.allowCloudflareVideoFrames === true };
+}
+
 export function publicWritingSettings() {
   const raw = readRaw();
   const settings = readWritingSettings();
@@ -78,6 +90,9 @@ export function publicWritingSettings() {
   return { provider: settings.provider, model: settings.model, configured, hasKey: !!settings.apiKey,
     hasGroqVisionKey: !!settings.groqApiKey, hasCloudflareKey: typeof raw.cloudflareApiKey === "string",
     hasGroqKey: !!settings.groqApiKey, freePlanConfirmed: settings.freePlanConfirmed,
+    allowCloudflareVideoFrames: raw.allowCloudflareVideoFrames === true,
+    cloudflareCaptionFreePlanConfirmed: raw.cloudflareFreePlanConfirmed === true,
+    captionFallbackConfigured: raw.allowCloudflareVideoFrames === true && !!raw.cloudflareApiKey && !!raw.cloudflareAccountId && raw.cloudflareFreePlanConfirmed === true,
     allowVideoFrames: settings.allowVideoFrames === true, detail: settings.provider === "ollama"
       ? "Ollama writes on this PC and needs enough free RAM."
       : settings.provider === "groq" ? configured
@@ -108,6 +123,7 @@ export async function saveWritingSettings(input: { provider: WritingProvider; ap
       freePlanConfirmed: input.provider === "groq" && input.freePlanConfirmed === true,
       groqFreePlanConfirmed: input.provider === "groq" ? input.freePlanConfirmed === true : previous.groqFreePlanConfirmed === true || (previous.provider === "groq" && previous.freePlanConfirmed === true),
       cloudflareFreePlanConfirmed: input.provider === "cloudflare" ? input.freePlanConfirmed === true : previous.cloudflareFreePlanConfirmed === true,
+      allowCloudflareVideoFrames: previous.allowCloudflareVideoFrames === true,
       allowVideoFrames: input.allowVideoFrames ?? previous.allowVideoFrames === true };
     const temporary = `${filename()}.${crypto.randomUUID()}.tmp`;
     try {
@@ -115,6 +131,31 @@ export async function saveWritingSettings(input: { provider: WritingProvider; ap
       try { await handle.writeFile(JSON.stringify(document)); await handle.sync(); } finally { await handle.close(); }
       await fsp.rename(temporary, filename());
     } catch { throw new WritingSettingsError("Could not save private writing settings. Check folder access and retry; no key was printed."); }
+    finally { await fsp.rm(temporary, { force: true }).catch(() => undefined); }
+  });
+  return publicWritingSettings();
+}
+
+/** Configures only the caption backup, without switching the text writer or retrying failures. */
+export async function saveCloudflareCaptionFallback(input: { apiKey?: string; accountId?: string; freePlanConfirmed?: boolean; allowCloudflareVideoFrames: boolean }) {
+  if (typeof input.allowCloudflareVideoFrames !== "boolean") throw new WritingSettingsError("Choose whether Cloudflare may receive sampled frames.");
+  const supplied = input.apiKey?.trim(), account = input.accountId?.trim();
+  if (supplied && !cloudflareKeyValid(supplied)) throw new WritingSettingsError("Enter a valid Cloudflare API token, not a Groq key.");
+  if (account && !accountValid(account)) throw new WritingSettingsError("Enter the 32-character Cloudflare Account ID.");
+  if (input.allowCloudflareVideoFrames && input.freePlanConfirmed !== true) throw new WritingSettingsError("Confirm Workers Free before enabling caption fallback. Phoenix cannot verify billing tier.");
+  await withFileLock(`${filename()}.lock`, async () => {
+    const previous = readRaw();
+    const key = supplied || previous.cloudflareApiKey, accountId = account || previous.cloudflareAccountId;
+    if (input.allowCloudflareVideoFrames && (!cloudflareKeyValid(key) || !accountValid(accountId))) throw new WritingSettingsError("Save a Cloudflare API token and Account ID before enabling caption fallback.");
+    const document = { ...previous, allowCloudflareVideoFrames: input.allowCloudflareVideoFrames,
+      ...(input.allowCloudflareVideoFrames ? { cloudflareApiKey: key, cloudflareAccountId: accountId, cloudflareFreePlanConfirmed: true } : {}) };
+    const temporary = `${filename()}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fsp.mkdir(path.dirname(filename()), { recursive: true });
+      const handle = await fsp.open(temporary, "wx", 0o600);
+      try { await handle.writeFile(JSON.stringify(document)); await handle.sync(); } finally { await handle.close(); }
+      await fsp.rename(temporary, filename());
+    } catch { throw new WritingSettingsError("Could not save private caption settings. No secret was printed; check folder access."); }
     finally { await fsp.rm(temporary, { force: true }).catch(() => undefined); }
   });
   return publicWritingSettings();

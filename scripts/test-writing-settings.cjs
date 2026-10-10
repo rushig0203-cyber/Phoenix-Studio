@@ -88,3 +88,35 @@ test('Groq children failures never silently substitute local template story',asy
   const kids=require('../src/lib/kidsRenderer.ts');
   await assert.rejects(kids.createContent({topic:'A bunny plants a seed',duration:75,creationType:'children-story',aspect:'9:16'}, {rules:[],revision:'test',feedbackCount:0}),/503/);
 });
+
+test('caption fallback is off by default and requires separate credentials, Free confirmation and frame consent',async()=>{
+  await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true,allowVideoFrames:true});
+  assert.equal(settings.readCloudflareVideoAnalysisSettings().allowVideoFrames,false);
+  await assert.rejects(settings.saveCloudflareCaptionFallback({allowCloudflareVideoFrames:true}),/Confirm Workers Free/);
+  await assert.rejects(settings.saveCloudflareCaptionFallback({allowCloudflareVideoFrames:true,freePlanConfirmed:true}),/API token and Account ID/);
+  assert.equal(settings.readWritingSettings().provider,'groq');assert.equal(settings.publicWritingSettings().captionFallbackConfigured,false);
+});
+test('caption backup keeps selected writer, both keys and independent consent across later writer saves',async()=>{
+  const token='cf_caption_mock_token_1234567890123456789',accountId='0123456789abcdef0123456789abcdef';
+  await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true,allowVideoFrames:true});
+  const saved=await settings.saveCloudflareCaptionFallback({apiKey:token,accountId,freePlanConfirmed:true,allowCloudflareVideoFrames:true});
+  assert.equal(saved.provider,'groq');assert.equal(saved.captionFallbackConfigured,true);assert.ok(!JSON.stringify(saved).includes(token));assert.ok(!JSON.stringify(saved).includes(accountId));
+  assert.equal(settings.readVideoAnalysisSettings().apiKey,key);assert.equal(settings.readCloudflareVideoAnalysisSettings().apiKey,token);assert.equal(settings.readCloudflareVideoAnalysisSettings().model,settings.VISION_CLOUDFLARE_MODEL);
+  await settings.saveWritingSettings({provider:'groq',freePlanConfirmed:true,allowVideoFrames:false});
+  assert.equal(settings.readCloudflareVideoAnalysisSettings().allowVideoFrames,true);assert.equal(settings.readVideoAnalysisSettings().allowVideoFrames,false);
+  await settings.saveCloudflareCaptionFallback({allowCloudflareVideoFrames:false});assert.equal(settings.publicWritingSettings().captionFallbackConfigured,false);assert.equal(settings.readCloudflareVideoAnalysisSettings().apiKey,token);
+});
+test('caption setup verifies exact vision model read-only without selecting the Cloudflare text writer',async()=>{
+  const token='cf_caption_mock_token_1234567890123456789',accountId='0123456789abcdef0123456789abcdef';let calls=0;
+  await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true});
+  global.fetch=async(url,init)=>{calls++;assert.equal(String(url),`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?search=${encodeURIComponent(settings.VISION_CLOUDFLARE_MODEL)}`);assert.equal(init.body,undefined);return Response.json({success:true,result:[{name:settings.VISION_CLOUDFLARE_MODEL}]});};
+  const response=await route.POST(request({action:'save-caption-fallback',apiKey:token,accountId,freePlanConfirmed:true,allowCloudflareVideoFrames:true}));assert.equal(response.status,200);assert.equal(calls,1);assert.equal(settings.readWritingSettings().provider,'groq');
+  assert.equal((await route.POST(request({action:'save-caption-fallback',allowCloudflareVideoFrames:false}))).status,200);assert.equal(calls,1,'Disabling never contacts provider');
+});
+test('failed caption probe and invalid inputs preserve existing settings and never leak credentials',async()=>{
+  await settings.saveWritingSettings({provider:'groq',apiKey:key,freePlanConfirmed:true});const baseline=fs.readFileSync(file,'utf8');
+  global.fetch=async()=>new Response('private rejected token',{status:401});
+  const response=await route.POST(request({action:'save-caption-fallback',apiKey:'cf_caption_mock_token_1234567890123456789',accountId:'0123456789abcdef0123456789abcdef',freePlanConfirmed:true,allowCloudflareVideoFrames:true}));assert.equal(response.status,400);assert.ok(!(await response.text()).includes('private rejected'));assert.equal(fs.readFileSync(file,'utf8'),baseline);
+  for(const extra of [{allowCloudflareVideoFrames:'yes'},{apiKey:3},{accountId:{}},{freePlanConfirmed:'yes'}])assert.equal((await route.POST(request({action:'save-caption-fallback',allowCloudflareVideoFrames:false,...extra}))).status,400);
+  assert.equal(fs.readFileSync(file,'utf8'),baseline);
+});

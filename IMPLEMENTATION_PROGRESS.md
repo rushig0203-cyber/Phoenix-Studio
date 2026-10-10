@@ -1,5 +1,36 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 free caption backup — source checkpoint, not yet installed
+
+- Owner approved sending up to three small frames to Cloudflare as a Free
+  caption fallback. Current protected settings contain no Cloudflare token or
+  Account ID, so this adapter is deliberately disabled until one-time setup.
+  Groq credentials/consent and selected text writer are not changed.
+- Sanitized audit found 15 completed and three failed analyses among 18 ready
+  reviews, with no current WAITING analysis. The saved missing captions were
+  invalid evidence / exhausted retries, HTTP 503 / exhausted retries, and HTTP
+  413. Current Groq vision cooldown was expired, not an active day-long wait.
+  Historical provider responses were not retained, so no exact quota or rejected
+  payload cause can be reconstructed. No owner failure was retried.
+- New Cloudflare Scout vision adapter uses one bounded three-JPEG request,
+  at most 512 KiB, 900 output tokens and a 1 MiB response bound. Same evidence
+  validator rejects generic/unproven copy; actual successful model is recorded.
+  Credential/frame consent is rechecked before sending. Exact-model connection
+  probe is read-only; it sends no frames, accepts no terms and verifies no billing.
+- Cached/new Groq quota triggers only the separately enabled Free backup. Both
+  quotas persist the earliest reset and do not spend failure attempts or extract
+  frames unnecessarily. Known quota waits can resume before old nextAttemptAt;
+  normal retry backoff, owner edits, successful caches and terminal failures remain
+  protected. Billing/auth/request/evidence errors do not silently change provider.
+- Independent Settings save/test actions preserve text-writer selection and
+  both providers' credentials, support consent disable without network and never
+  return keys. UI separates video completion from caption completion; missing
+  copy is explicit rather than displaying a title as analyzed posting copy.
+- Build remains off-laptop, with the 1664 MiB build and 512 MiB runtime guards
+  unchanged. New mocked adapter/settings/UI tests use isolated stores; full
+  production/regression/build/activation evidence is pending. Previous selected
+  bundle `.next-build-gh-38034610261-1` stays active in the meantime.
+
 ## October 10 posting update — verified installed/live
 
 - Current selected/live bundle `.next-build-gh-38034610261-1`, BUILD_ID

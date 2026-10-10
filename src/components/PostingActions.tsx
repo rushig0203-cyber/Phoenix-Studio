@@ -83,12 +83,12 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
   const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold";
   const hashtags = postingHashtags(file.quality.hashtags);
   return <section aria-label={`Posting tools for ${file.title}`} className="mt-3 space-y-3 rounded-xl border border-[#d5ddbe] bg-[#f7faef] p-3 text-sm">
-    {automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status)) ? <p role="status" className="text-xs text-[#657153]">{analysis?.status === "WAITING" ? analysis.detail : analysis?.status === "ANALYZING" ? "Checking this video’s frames for its own posting caption…" : "Video-specific posting copy is prepared automatically. No re-analysis click is needed."}</p> : null}
-    {analysis?.status === "FAILED" ? <p role="status" className="text-xs text-red-700">{analysis.detail}</p> : null}
+    {automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status)) ? <p role="status" className="text-xs text-[#657153]">{analysis?.status === "WAITING" ? `Video finished · caption waiting. ${analysis.detail}${analysis.nextAttemptAt ? ` Next automatic check: ${new Date(analysis.nextAttemptAt).toLocaleString()}.` : ""}` : analysis?.status === "ANALYZING" ? "Video finished · checking frames for its own caption…" : "Video finished · caption queued automatically. No re-analysis click is needed."}</p> : null}
+    {analysis?.status === "FAILED" ? <p role="status" className="text-xs text-red-700">Video finished · caption analysis failed. {analysis.detail}</p> : null}
     <details ref={copyDetails} className="space-y-3">
       <summary className="cursor-pointer font-semibold">Caption & hashtags</summary>
       <div className="space-y-3 pt-2">
-        <p className="whitespace-pre-wrap break-words select-text">{postingCaption(file)}</p>
+        <p className="whitespace-pre-wrap break-words select-text">{!file.quality.postCopy?.trim() && automaticCopy && analysis?.status !== "COMPLETE" ? "No analyzed caption yet. The video title is not a finished posting caption." : postingCaption(file)}</p>
         <p className="text-xs text-[#657153]">Hashtag candidate bank · {hashtags.length} saved. New analysis aims for 15–20 relevant choices; it does not add unrelated filler to meet a count.</p>
         <p className="break-words text-[#526044] select-text">{hashtags.join(" ") || "No hashtags saved for this video."}</p>
         <p className="text-xs text-[#657153]">Instagram allows up to {INSTAGRAM_HASHTAG_LIMIT} hashtags per Reel; its copy and posting form use the strongest saved choices. YouTube can use the larger bank. More hashtags do not guarantee more views.</p>

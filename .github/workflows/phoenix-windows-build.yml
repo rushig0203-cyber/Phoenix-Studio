@@ -71,7 +71,10 @@ jobs:
           scripts/test-release-refresh.cjs
           scripts/test-launch-release-consistency.cjs
           scripts/test-cloudflare-writer.cjs
+          scripts/test-cloudflare-vision.cjs
           scripts/test-writing-settings.cjs
+          scripts/test-writing-settings-ui.cjs
+          scripts/test-posting-snapshot-order.cjs
           scripts/test-groq-writer.cjs
           scripts/test-startup.cjs
           scripts/test-automatic-stock-reel.cjs
@@ -102,6 +105,7 @@ jobs:
           src/app/api/stock-reels/route.ts
           src/lib/stockProductionGuidance.ts src/components/StockReels.tsx
           src/lib/cloudflareWriter.ts src/lib/writingSettings.ts
+          src/lib/cloudflareVision.ts src/components/PostingActions.tsx
           src/lib/writingModel.ts src/lib/localServiceHealth.ts
           src/components/WritingProviderSettings.tsx src/components/StudioHealth.tsx
           src/app/api/writing-provider/route.ts

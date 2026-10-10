@@ -1,5 +1,32 @@
 # Phoenix Studio
 
+### October 10 free caption backup — source update, activation pending
+
+Caption analysis now supports an optional Cloudflare Workers AI backup using
+`@cf/meta/llama-4-scout-17b-16e-instruct`. It is separate from the text writer:
+Settings → Writing settings → Caption backup accepts a Workers AI API token,
+Account ID, Workers Free confirmation and separate sampled-frame permission.
+The owner approved this new destination, but no Cloudflare credentials are saved
+yet. Setup is still required; Groq-only consent does not enable it by itself.
+
+On a cached or newly returned Groq quota limit, the worker can reuse its three
+bounded JPEG samples through the enabled backup automatically. Existing quota
+waits can resume before the old Groq retry time; ordinary error backoff, explicit
+FAILED analyses, successful cached captions and owner-written text are retained.
+Both providers reaching free limits persists the earliest reset without spending
+failure attempts. No cloud VM, local vision model, full-video upload, provider
+billing upgrade or paid-model fallback is introduced. Each result still passes
+the same observation/caption/hashtag validation and saves its actual model.
+
+[Workers Free provides 10,000 Neurons/day and stops requests at the cap](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+Do not upgrade: Workers Paid can charge above that allocation, and Phoenix cannot
+verify an account's billing tier. [Official REST/token setup](https://developers.cloudflare.com/workers-ai/get-started/rest-api/).
+Caption status now distinguishes a finished MP4 from queued/waiting/failed copy;
+a video title is not presented as completed analyzed copy when its caption is missing.
+
+The previously installed release below remains active until the new Windows
+build is verified, installed and checked against `/api/studio-health`.
+
 ### October 10 posting update — installed and live
 
 The selected and running release is `.next-build-gh-38034610261-1`, BUILD_ID
@@ -231,13 +258,14 @@ explicit Free-plan confirmation; no credentials/provider have been switched.
 not unlimited usage. Quota errors retain queued work; billing errors stop, and
 there is no paid/local/cross-provider fallback. Never upgrade to Workers Paid.
 Groq's saved credentials and existing sampled-frame consent remain separate;
-no images, audio or videos are sent to Cloudflare. JSON mode remains subject to
+the text writer sends no media; only the separately consented caption backup
+described above can send three sampled images. JSON mode remains subject to
 Phoenix's existing script/editorial validation.
 
 Posting analysis now uses smaller 448px JPEG samples and a compact grounded
 prompt, with per-image and serialized-request limits. Saved HTTP 413 failures
 are retained, not automatically retried. Groq image quotas still apply even when
-text writing uses Cloudflare; smaller JPEGs do not reduce the documented fixed
+text writing uses Cloudflare, unless the new caption backup is configured; smaller JPEGs do not reduce the documented fixed
 image-token charge. Existing successful captions are not invalidated.
 
 Job cards now keep completed history compact: title, clip count, final duration

@@ -79,3 +79,14 @@ test('hashtag activity is visible as a timestamped bounded sample, never a globa
   const unavailable=renderToStaticMarkup(React.createElement(Posting,{file:base}));
   assert.match(unavailable,/not verified current trends/);assert.match(unavailable,/Water flowing over rocks/);
 });
+
+test('finished video status does not misrepresent missing failed or quota-waiting copy as finished captions',()=>{
+  for(const status of ['FAILED','WAITING']){
+    const file={...base,quality:{...base.quality,postCopy:'',postingAnalysis:{status,attempts:status==='FAILED'?3:0,updatedAt:'2026-10-10T07:00:00.000Z',nextAttemptAt:status==='WAITING'?'2026-10-10T12:00:00.000Z':undefined,detail:status==='WAITING'?"Groq's free quota is exhausted.":'Invalid evidence; retry explicitly.'}}};
+    const html=renderToStaticMarkup(React.createElement(Posting,{file}));
+    assert.match(html,/Video finished · caption/);assert.match(html,/No analyzed caption yet/);assert.match(html,/title is not a finished posting caption/);
+    if(status==='WAITING')assert.match(html,/Next automatic check:/);
+    else assert.match(html,/caption analysis failed/);
+    assert.match(html,/Post \/ export/);
+  }
+});
