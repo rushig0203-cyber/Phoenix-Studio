@@ -1,5 +1,21 @@
 # Phoenix Studio
 
+### October 10 Vercel deployment correction
+
+The supplied failed-deployment log for `a040dd5` showed successful installation,
+compilation, full TypeScript and all 32 static pages, followed by Vercel looking
+for `.next` instead of the timestamped desktop output. `vercel.json` now selects
+the dedicated Linux cloud builder, locked install and explicit `.next` output.
+Only the exact Vercel environment uses that directory; desktop build/launch
+selection, separate bundles and the 1664 MiB memory guard remain unchanged.
+Cloud builds never select a desktop release or launch the local manager/model.
+The new Linux CI verifies actual `.next` manifests without owner files or keys;
+actual Vercel/Git status verification is pending until its redeploy completes.
+
+This corrects deployment packaging, not remote rendering architecture. Phoenix's
+saved media, polling worker and local services remain on the owner's laptop; a
+Vercel deployment is not automatically a remotely hosted version of those services.
+
 ### October 10 free caption backup — installed and live
 
 The selected and independently verified live release is

@@ -1,0 +1,54 @@
+name: Phoenix Vercel build verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - vercel.json
+      - next.config.ts
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - src/**
+      - scripts/build-vercel.cjs
+      - scripts/next-build-selection.cjs
+      - scripts/test-vercel-build.cjs
+      - scripts/test-next-build-selection.cjs
+      - .github/workflows/phoenix-vercel-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phoenix-vercel-build
+  cancel-in-progress: true
+
+jobs:
+  verified-linux-build:
+    # Standard public-repository runner only; no paid runner, cache or artifacts.
+    if: github.repository == 'rushig0203-cyber/Phoenix-Studio' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Check out committed source only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Use the verified Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Verify cloud output and unchanged desktop safety
+        run: node --max-old-space-size=128 --test --test-concurrency=1 scripts/test-next-build-selection.cjs scripts/test-build-safety.cjs scripts/test-vercel-build.cjs
+      - name: Build the exact Vercel output without owner data or local services
+        env:
+          VERCEL: '1'
+        run: node --max-old-space-size=256 scripts/build-vercel.cjs
+      - name: Verify packaged framework output and absence of desktop selection
+        run: |
+          node -e "const fs=require('fs'); for(const p of ['.next/BUILD_ID','.next/routes-manifest.json','.next/required-server-files.json','.next/server/app-paths-manifest.json'])if(!fs.existsSync(p))throw Error('Missing Vercel output: '+p); if(fs.existsSync('storage/active-build.json'))throw Error('Cloud build wrote desktop selection'); console.log('Vercel .next output verified; no desktop release was selected')"

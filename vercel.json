@@ -1,3 +1,7 @@
 {
+  "framework": "nextjs",
+  "installCommand": "npm ci --legacy-peer-deps --no-audit --no-fund",
+  "buildCommand": "node --max-old-space-size=256 scripts/build-vercel.cjs",
+  "outputDirectory": ".next",
   "crons": []
 }

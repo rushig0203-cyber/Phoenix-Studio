@@ -1,5 +1,27 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 Vercel output correction — source, deployment checks pending
+
+- Latest Git status for a040dd5 showed two failed Vercel contexts: phoenix-studio
+  and phoenix-studio-06. Owner supplied the exact build log: install/Prisma,
+  webpack, full TypeScript and 32 static pages succeeded, but the adapter expected
+  /vercel/path0/.next while the desktop build wrote a timestamped .next-build-*.
+  No install, Prisma, RAM, TypeScript or Git-sync failure was proven by that log.
+- Dedicated Vercel Linux builder outputs .next with the existing 1664 MiB memory
+  floor, 896 MiB child heap and one Next worker. The exact VERCEL='1' config path
+  returns the same .next during build/server/adapter discovery without reading
+  or writing desktop selection. Cloud build cache is left to Next; no local
+  service, worker, model or media deletion is performed.
+- Vercel configuration explicitly selects this builder/output and immutable npm
+  ci install. Independent public standard-runner Linux verification exercises
+  selection/safety tests, real production build and the required .next manifests.
+  Local focused selection/build-safety/cloud checks passed 12/12 with 128 MiB.
+  Actual Linux CI and both Vercel status results are pending after source push.
+- Local selected/live release remains .next-build-gh-38051220040-1. This correction
+  does not migrate persistent worker/media/local services into serverless hosting
+  or claim full remote rendering. No paid plan/runner, hidden Git status, owner
+  credential/job change or local compile is introduced.
+
 ## October 10 free caption backup — verified installed/live
 
 - Selected/live bundle `.next-build-gh-38051220040-1`, BUILD_ID

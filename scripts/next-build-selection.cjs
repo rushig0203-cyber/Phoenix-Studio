@@ -15,6 +15,10 @@ function marker(root, optional = false) {
 function selectNextBuild(phase, { root = path.resolve(__dirname, '..'), env = process.env } = {}) {
   // Development must never overwrite a verified production bundle.
   if (phase === PHASE_DEVELOPMENT_SERVER) return '.next-dev';
+  // Vercel's adapter discovers the output outside our build child process. A
+  // cloud checkout has no desktop selection marker, and must use one stable
+  // directory for compilation, adapter discovery and server configuration.
+  if (env.VERCEL === '1') return '.next';
   if (phase === PHASE_PRODUCTION_BUILD) {
     const selected = env.PHOENIX_BUILD_DIR;
     if (!valid(selected) || selected === marker(root, true)) throw new Error('Use npm run build / Apply Phoenix Update to create a separate guarded build. The installed bundle was not overwritten.');
