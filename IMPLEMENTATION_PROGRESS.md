@@ -1,5 +1,38 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 caption/upload correction — source work, activation pending
+
+- Horses review `7448ad96-bd25-52a9-ad83-8020bc988b07` has a definitive saved
+  Instagram failure at container creation: phase created, no container, zero
+  uploaded bytes. Its original Meta details were discarded, so no offending tag
+  or historical provider code can be proven. A fresh read-only account/permission
+  probe returned HTTP 200, matching `__bitet.hemap`, with instagram_basic,
+  instagram_content_publish and pages_read_engagement currently granted.
+- The caption prompt omitted the required observation `visible` property.
+  Explicit schema instructions now match the validator. Invalid evidence reports
+  safe schema-field/policy reasons, never provider text; grounding and three-attempt
+  limits stay intact. The old failed response was not saved, so its exact failing
+  gate cannot be reconstructed or replaced with another video's evidence.
+- Upload errors now retain bounded numeric provider code/subcode and fixed,
+  secret-free classification/stage guidance instead of discarding all diagnostics.
+  No owner analysis/upload was retried, credential replaced, or media changed.
+- Explicit `revise` accepts only confirmed caption/tags on the same FAILED,
+  pre-container Instagram request, with zero bytes, no private session, unchanged
+  media/account/connection and idle operation locks. It archives the failed record
+  before requeuing the same ID; accepted/partial/ambiguous states and location,
+  audio, privacy, Story or video changes are rejected. Status reads remain local
+  and credential-free. Correction fields use saved request text/tags on reopen.
+- New footage posting reviews automatically choose the lowest-ranked eligible
+  video-evidence music recommendation, not arbitrary search results; reset final
+  approval, preserve explicit user overrides and keep saved audio when unavailable.
+  Existing saved upload audio stays immutable. Saved owner-approved usernames
+  prefill automatically, with final confirmation; no unrelated/random tags chosen.
+  A read-only real `ig_audio` probe returned HTTP 200 / ten entries; no track was
+  downloaded, selected for an owner job, or posted. No local model was loaded.
+- Focused serial checks passed: 142 mocked publishing/UI tests and 35 visual
+  analysis/copy-policy tests, scoped ESLint and diff checks. Full off-laptop release
+  build and activation are pending; no runtime files or owner keys enter Git/CI.
+
 ## October 10 final footage/posting follow-up — verified installed/live
 
 - Current selected/live bundle `.next-build-gh-37999466131-1`, BUILD_ID

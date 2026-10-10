@@ -27,6 +27,7 @@ export type ReviewPublishJob = {
   percent: number; detail: string; accountName: string; privacy: "public" | "unlisted" | "private";
   actualPrivacy?: "public" | "unlisted" | "private"; outputTarget?: ReviewTarget;
   bytesUploaded: number; totalBytes: number; canContinue: boolean;
+  canRevise?: boolean; caption?: string;
   remoteId?: string; remoteUrl?: string; updatedAt: string;
   kind?: "story"; companionStoryApproved?: boolean; companionStory?: ReviewPublishJob;
   location?: InstagramLocation;
@@ -172,6 +173,12 @@ async function operationActive(job: StoredJob) {
 function continuable(job: StoredJob) {
   return !["complete", "session_unknown", "publish_unknown", "initiating", "publishing"].includes(job.phase);
 }
+function revisable(job: StoredJob) {
+  return job.platform === "instagram" && !job.kind && job.status === "FAILED" && job.phase === "created"
+    && !job.containerId && !job.remoteId && !job.remoteUrl && job.bytesUploaded === 0
+    && typeof job.caption === "string" && job.caption.length <= 2200
+    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(job.caption);
+}
 function publicRemoteUrl(value: string | undefined, platform: ReviewTarget) {
   if (!value) return undefined;
   try {
@@ -193,6 +200,9 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
   const parent = job.kind === "story" && job.phase === "created" ? await readStored(job.reviewId, "instagram") : null;
   const waitingForReel = parent && parent.id === job.parentReelId && parent.phase !== "complete";
   const parentStopped = waitingForReel && !["QUEUED", "UPLOADING", "PROCESSING"].includes(parent.status);
+  // Status remains local and credential-free. The confirmed revision POST
+  // independently checks the encrypted session store before changing anything.
+  const canRevise = revisable(job) && !await operationActive(job);
   return {
     id: job.id, reviewId: job.reviewId, platform: job.platform,
     status: waitingForReel ? parentStopped ? "NEEDS_CHECK" : "QUEUED" : interrupted ? "NEEDS_CHECK" : job.status,
@@ -200,6 +210,7 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
     accountName: job.accountName, privacy: job.privacy, outputTarget: job.renderTarget,
     ...(job.actualPrivacy ? { actualPrivacy: job.actualPrivacy } : {}), bytesUploaded: job.bytesUploaded, totalBytes: job.totalBytes,
     canContinue: waitingForReel ? false : interrupted ? continuable(job) : job.canContinue,
+    ...(canRevise ? { canRevise: true, caption: job.caption } : {}),
     ...(job.remoteId ? { remoteId: job.remoteId } : {}), ...(remoteUrl ? { remoteUrl } : {}), updatedAt: job.updatedAt,
     ...(job.kind ? { kind: job.kind } : {}),
     ...(job.location ? { location: publicInstagramLocation(job.location)! } : {}),
@@ -539,6 +550,46 @@ async function assertStoryParent(job: StoredJob) {
 export async function prepareReviewPublication(reviewId: string, body: Record<string, unknown>): Promise<{ job: ReviewPublishJob; dispatch: boolean }> {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
   if (body.confirm !== true) throw problem("Confirm this upload before Phoenix sends the video to the platform.");
+  if (body.action === "revise") {
+    if (!validId(body.jobId) || Object.keys(body).some(key => !["action", "jobId", "confirm", "caption", "userTags"].includes(key))) {
+      throw problem("Confirm only the corrected caption and people tags for this rejected Instagram upload.");
+    }
+    const caption = checkedText(body.caption, "Caption", 2200, true);
+    const userTags = instagramUserTags(body.userTags);
+    if (!userTags) throw problem(`Choose at most ${INSTAGRAM_USER_TAG_LIMIT} valid Instagram usernames, or explicitly choose an empty tag list.`);
+    checkPlatformPostingText("instagram", "", caption);
+    return withFileLock(pairLock(reviewId, "instagram"), async () => {
+      const saved = await readStored(reviewId, "instagram");
+      if (!saved || saved.id !== body.jobId) throw problem("Saved rejected Instagram upload not found.", 404);
+      if (!revisable(saved) || await operationActive(saved)) throw problem("Only a failed Instagram request with no container or video transfer can be corrected. Check or continue the existing upload instead.", 409);
+      return withFileLock(operationLock(saved), async () => {
+        const job = await readStored(reviewId, "instagram");
+        if (!job || job.id !== body.jobId || !revisable(job)) throw problem("This saved upload changed while its corrections were being reviewed. Check its status again.", 409);
+        if (await getChannelUploadSession(job.id)) throw problem("This upload already has a private provider session. Its confirmed posting choices cannot be changed; check the existing upload.", 409);
+        const access = await accessFor("instagram", job.connectionRevision);
+        if (access.accountId !== job.accountId || access.loginType !== "facebook") throw problem("The destination account changed. This saved upload cannot be corrected.", 409);
+        const media = await readyMedia(reviewId, "instagram", job.fingerprint, job.renderTarget);
+        await assertCurrent(access);
+        if (job.companionStoryApproved) {
+          assertStoryMedia(media); await assertStoryAccount(access);
+          const story = await readStored(reviewId, "instagram", "story");
+          if (!story || story.parentReelId !== job.id || story.phase !== "created" || story.containerId || story.remoteId || story.bytesUploaded !== 0
+              || await operationActive(story) || await getChannelUploadSession(story.id)) throw problem("The matching Story's saved state needs inspection before correcting its Reel.", 409);
+        }
+        const correctedCaption = stripFootageProvenance(caption, media.file);
+        checkPlatformPostingText("instagram", job.title, correctedCaption);
+        await assertCurrent(access);
+        // Keep the complete failed attempt privately before reusing this job ID.
+        // A failed archive write leaves the original request untouched.
+        await fs.mkdir(path.join(storeRoot(), "history"), { recursive: true, mode: 0o700 });
+        await writeAtomicJson(path.join(storeRoot(), "history", `${reviewId}-instagram-${job.id}-${crypto.randomUUID()}.json`), job);
+        job.caption = correctedCaption; job.userTags = userTags.length ? userTags : undefined;
+        job.status = "QUEUED"; job.queuedAt = Date.now(); job.canContinue = false; job.percent = 0;
+        job.detail = "Corrected caption and people tags explicitly approved. The previous rejected request is retained in private history.";
+        await persist(job); return { job: await publicJob(job), dispatch: true };
+      }, { timeoutMs: 250, staleMs: LEASE_MS });
+    });
+  }
   if (body.action === "create") {
     if (!isPlatform(body.platform)) throw problem("Choose YouTube or Instagram.");
     const platform = body.platform;
@@ -651,14 +702,21 @@ export function validateReviewUploadUrl(value: string, platform: ReviewTarget) {
   } catch { throw problem("The provider returned an unsafe upload destination. No credentials or video were sent to it.", 502, true); }
 }
 function providerFailure(status: number, json: Record<string, unknown>) {
-  const error = json.error as { code?: unknown; errors?: Array<{ reason?: unknown }> } | undefined;
-  const code = typeof error?.code === "number" ? error.code : undefined;
+  const error = json.error as { code?: unknown; error_subcode?: unknown; message?: unknown; error_user_title?: unknown; error_user_msg?: unknown; errors?: Array<{ reason?: unknown }> } | undefined;
+  const safeCode = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647 ? value : undefined;
+  const code = safeCode(error?.code), subcode = safeCode(error?.error_subcode);
+  const codes = code !== undefined ? ` Platform code ${code}${subcode !== undefined ? `, subcode ${subcode}` : ""}.` : "";
+  // Provider text may contain tokens, URLs, account data or instructions. Never
+  // store/echo it: use only a bounded internal classification and numeric codes.
+  const tagRejection = code === 100 && [error?.message, error?.error_user_title, error?.error_user_msg].some(value =>
+    typeof value === "string" && /user[_ -]?tags|tagged (?:users?|accounts?)|users? tagg(?:ed|ing)|cannot tag|tagging (?:users?|accounts?)/i.test(value.slice(0, 4096)));
   const reason = error?.errors?.[0]?.reason;
-  if (status === 401 || code === 190) return problem("The platform token expired or was revoked. Reconnect the channel, then check this saved upload.", 401);
-  if ([4, 17, 32, 613].includes(code || 0) || status === 429 || reason === "quotaExceeded" || reason === "dailyLimitExceeded") return problem("The platform upload quota or rate limit was reached. Wait for the platform limit to reset; this job is retained.", 429);
+  if (status === 401 || code === 190) return problem(`The platform token expired or was revoked. Reconnect the channel, then check this saved upload.${codes}`, 401);
+  if ([4, 17, 32, 613].includes(code || 0) || status === 429 || reason === "quotaExceeded" || reason === "dailyLimitExceeded") return problem(`The platform upload quota or rate limit was reached. Wait for the platform limit to reset; this job is retained.${codes}`, 429);
   if (reason === "accessNotConfigured" || reason === "serviceDisabled") return problem("Enable YouTube Data API v3 in the connected Google project, then continue this saved upload.", 403);
-  if (status === 403 || code === 10 || code === 200 || reason === "insufficientPermissions") return problem("The platform denied upload permission. Check the app permissions and account role in Channels.", 403);
-  return problem(`The platform rejected this upload (HTTP ${status}). Check its video requirements and your channel permissions.`, 502, status >= 500);
+  if (status === 403 || code === 10 || code === 200 || reason === "insufficientPermissions") return problem(`The platform denied upload permission. Check the app permissions and account role in Channels.${codes}`, 403);
+  if (tagRejection) return problem(`The platform rejected the requested people tags (HTTP ${status}). Check the usernames, public visibility and tagging eligibility; Phoenix did not remove approved tags.${codes}`, 502, status >= 500);
+  return problem(`The platform rejected this upload (HTTP ${status}). Check its video requirements and your channel permissions.${codes}`, 502, status >= 500);
 }
 async function providerCall(url: string, options: RequestInit & { duplex?: "half" }, readBody = true, upload = false, timeoutMs = 20_000): Promise<ProviderResult> {
   const controller = new AbortController();
@@ -898,11 +956,13 @@ export async function runReviewPublication(reviewId: string, jobId: string) {
           const safe = error instanceof ReviewPublishingError ? error : timedOut
             ? problem("The upload slot stayed busy too long. Continue explicitly after the other upload finishes.", 409)
             : problem("Phoenix could not finish this upload safely. The saved job is retained for inspection.", 500, true);
+          const rejectedInstagramContainer = job.platform === "instagram" && job.phase === "initiating" && !safe.ambiguous && !job.containerId;
           if (job.phase === "initiating") job.phase = safe.ambiguous ? "session_unknown" : "created";
           if (job.phase === "publishing") job.phase = safe.ambiguous ? "publish_unknown" : "processing";
           job.status = safe.ambiguous ? "NEEDS_CHECK" : "FAILED";
           job.canContinue = continuable(job);
           job.detail = safe.message;
+          if (rejectedInstagramContainer) job.detail += " Container creation stopped before the video transfer; no video bytes were sent. Continue uses the same approved choices, not corrected tags or caption.";
           if (!job.canContinue && safe.ambiguous) job.detail += " Check the destination channel; Phoenix will not repeat an ambiguous creation or publish request.";
           await persist(job);
         }

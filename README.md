@@ -1,5 +1,26 @@
 # Phoenix Studio
 
+### October 10 caption/upload correction — activation pending
+
+The latest Horses failure occurred before video transfer, not during rendering.
+A fresh read-only Meta check verified the connected account and publishing scopes;
+the original HTTP 400 details were discarded, so its exact cause is unknown.
+Source fixes clarify the mandatory visual-caption observation shape and retain
+safe provider error codes/stage guidance. They do not fabricate a caption, identify
+an offending tag without evidence, or retry/post any owner video. The selected
+runtime below remains live until a verified replacement is activated.
+
+Definitively rejected Instagram requests can re-review their saved caption/tags
+and confirm corrected choices without creating a duplicate job. Existing video,
+account, audio, location and Story approval stay pinned; previous failure is kept
+in private history. Accepted/partial/ambiguous requests remain immutable.
+New footage posting reviews automatically choose the strongest validated,
+video-based Instagram music recommendation and prefill the saved approved tag
+list. No extra music selection or retyping is required before final approval.
+Unavailable/unsupported recommendations retain the MP4's existing soundtrack,
+clearly labelled; random people or generic trending music are not substituted.
+The connected account's real audio catalog returned HTTP 200 in a read-only probe.
+
 ### October 10 final footage/posting follow-up — installed and live
 
 Current selected and served release: `.next-build-gh-37999466131-1`, BUILD_ID

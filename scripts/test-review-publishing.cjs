@@ -22,7 +22,7 @@ for (const key of ["getChannelPublishAccess", "assertChannelPublishAccessCurrent
 const sessions = new Map();
 let accessCalls = 0, assertionCalls = 0, channelChanged = false, permissionDenied = false;
 let instagramAccount = "123456789012345", instagramLogin = "facebook";
-let appSecretProof = null, proofCalls = 0;
+let appSecretProof = null, proofCalls = 0, sessionReads = 0;
 channels.getChannelPublishAccess = async (platform, expectedRevision) => {
   accessCalls++;
   if (permissionDenied || expectedRevision !== "fixture-revision") throw new Error("Untrusted credential error fixture-secret-token");
@@ -34,7 +34,7 @@ channels.createChannelPublishAccessMonitor = async access => {
   await channels.assertChannelPublishAccessCurrent(access);
   return async () => { if (channelChanged) throw new Error("Changed private account fixture-secret-token"); };
 };
-channels.getChannelUploadSession = async id => sessions.get(id) || null;
+channels.getChannelUploadSession = async id => { sessionReads++; return sessions.get(id) || null; };
 channels.saveChannelUploadSession = async (id, value) => { if (value === null) sessions.delete(id); else sessions.set(id, value); };
 channels.getInstagramLocationAppSecretProof = async access => { proofCalls++; await channels.assertChannelPublishAccessCurrent(access); return appSecretProof; };
 const publishing = require(path.join(project, "src/lib/reviewPublishing.ts"));
@@ -87,7 +87,7 @@ async function consumeStream(options, expectedOffset = 0) {
 beforeEach(() => {
   channelChanged = false; permissionDenied = false; accessCalls = 0; assertionCalls = 0; scheduled.length = 0;
   instagramAccount = "123456789012345"; instagramLogin = "facebook";
-  appSecretProof = null; proofCalls = 0;
+  appSecretProof = null; proofCalls = 0; sessionReads = 0;
   fs.rmSync(businessPath(), { force: true });
   fs.rmSync(path.join(process.env.PHOENIX_PUBLISH_STORAGE, 'instagram-posting-defaults.json'), { force: true });
   global.fetch = async () => { assert.fail("Every test must explicitly mock provider calls; real network is forbidden"); };
@@ -945,9 +945,47 @@ test('provider-rejected tags retain the approved list and explicit continuation 
   assert.equal(status.status, 'FAILED'); assert.equal(status.canContinue, true);
   assert.deepEqual(status.userTags, ['public_account']); assert.equal(readStored(id, 'instagram').phase, 'created');
   assert.ok(!status.detail.includes('fixture-secret-token')); assert.equal(creations, 1);
+  assert.match(status.detail, /Platform code 100/);
+  assert.match(status.detail, /Container creation stopped before the video transfer; no video bytes were sent/);
+  assert.match(status.detail, /Continue uses the same approved choices/);
   assert.equal((await publishing.prepareReviewPublication(id, { action: 'continue', confirm: true, jobId: job.id })).dispatch, true);
   await publishing.runReviewPublication(id, job.id);
   assert.equal(creations, 2); assert.deepEqual(readStored(id, 'instagram').userTags, ['public_account']);
+});
+
+test('Meta tag rejections retain safe numeric diagnostics, never unchecked provider text or silently dropped choices', async () => {
+  const { id } = await fixture('instagram', 100);
+  const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { userTags: ['public_account'] }));
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return Response.json({ error: { code: 100, error_subcode: 2207026,
+      message: 'Invalid user_tags fixture-secret-token https://private.example/?access_token=private',
+      error_user_msg: 'Private account explanation never echoed' } }, { status: 400 });
+  };
+  await publishing.runReviewPublication(id, job.id);
+  const status = (await publishing.listReviewPublishJobs(id))[0];
+  assert.equal(calls, 1); assert.equal(status.status, 'FAILED'); assert.equal(status.bytesUploaded, 0);
+  assert.match(status.detail, /rejected the requested people tags/);
+  assert.match(status.detail, /Platform code 100, subcode 2207026/);
+  assert.ok(!status.detail.includes('fixture-secret-token')); assert.ok(!status.detail.includes('private.example'));
+  assert.ok(!status.detail.includes('Private account')); assert.deepEqual(status.userTags, ['public_account']);
+});
+
+test('untrusted or malformed Meta diagnostics never enter saved upload errors', async () => {
+  for (const diagnostic of [
+    { code: 'fixture-secret-token', error_subcode: 'secret-subcode', message: 'user_tags private explanation' },
+    { code: -1, error_subcode: Infinity, message: 'Private explanation' },
+    { code: 100, error_subcode: 'private-subcode', error_user_title: { secret: 'private' }, message: 'Private explanation' },
+  ]) {
+    const { id } = await fixture('instagram', 100);
+    const { job } = await publishing.prepareReviewPublication(id, settings('instagram'));
+    global.fetch = async () => Response.json({ error: diagnostic }, { status: 400 });
+    await publishing.runReviewPublication(id, job.id);
+    const status = (await publishing.listReviewPublishJobs(id))[0];
+    assert.equal(status.status, 'FAILED'); assert.ok(!/secret|Private|subcode|Platform code -1/.test(status.detail));
+    assert.ok(!status.detail.includes('requested people tags'));
+  }
 });
 
 test('ambiguous tagged container creation cannot be repeated by continue, duplicate create or duplicate callbacks', async () => {
@@ -1155,4 +1193,112 @@ test('malformed defaults, missing save confirmation and changed account cannot s
     seedPostingDefaults(fields); await assert.rejects(publishing.getInstagramPostingDefaults(id, 'fixture-revision'), /local inspection/);
   }
   assert.equal(scheduled.length, 0);
+});
+
+async function rejectedReelFixture({ story = false } = {}) {
+  const value = story ? await confirmedStoryFixture() : await fixture('instagram', 100);
+  const { job } = await publishing.prepareReviewPublication(value.id, settings('instagram', {
+    caption: 'The saved approved caption #Horses', userTags: ['old.account'], ...(story ? { companionStory: true } : {}),
+  }));
+  global.fetch = async () => Response.json({ error: { code: 100, message: 'Private rejected parameter fixture-secret-token' } }, { status: 400 });
+  await publishing.runReviewPublication(value.id, job.id);
+  global.fetch = async () => assert.fail('Correction preparation and status must not contact a real or mocked provider');
+  return { ...value, job };
+}
+const correction = (job, changes = {}) => ({ action: 'revise', jobId: job.id, confirm: true, caption: 'Corrected horses caption #Horses', userTags: [], ...changes });
+const revisionHistory = id => {
+  const directory = path.join(process.env.PHOENIX_PUBLISH_STORAGE, 'history');
+  return fs.existsSync(directory) ? fs.readdirSync(directory).filter(name => name.startsWith(`${id}-instagram-`))
+    .map(name => JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'))) : [];
+};
+
+test('rejected Reel correction exposes saved choices through local status and archives the previous request before one confirmed dispatch', async () => {
+  const { id, job } = await rejectedReelFixture({ story: true });
+  alterStored(id, saved => {
+    saved.location = { id: '987654321', name: 'Saved approved place' };
+    saved.audio = { ...audioConfig(), title: 'Saved approved track', display_artist: 'Saved artist' };
+    saved.instagramGraphVersion = 'v22.0';
+  }, 'instagram');
+  const original = readStored(id, 'instagram'), originalStory = readStory(id);
+  const beforeReads = { accessCalls, sessionReads, proofCalls };
+  const status = await (await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish`), context(id))).json();
+  assert.equal(status.jobs[0].canRevise, true); assert.equal(status.jobs[0].caption, original.caption);
+  assert.deepEqual(status.jobs[0].userTags, ['old.account']);
+  assert.deepEqual({ accessCalls, sessionReads, proofCalls }, beforeReads, 'Status never decrypts credentials or upload sessions');
+  assert.equal(scheduled.length, 0);
+  const responses = await Promise.all([route.POST(request(id, correction(job)), context(id)), route.POST(request(id, correction(job)), context(id))]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]); assert.equal(scheduled.length, 1);
+  const revised = readStored(id, 'instagram');
+  assert.equal(revised.id, job.id); assert.equal(revised.status, 'QUEUED'); assert.equal(revised.phase, 'created');
+  assert.equal(revised.caption, 'Corrected horses caption #Horses'); assert.equal(revised.userTags, undefined);
+  for (const key of ['location', 'audio', 'instagramGraphVersion', 'privacy', 'companionStoryApproved', 'fingerprint', 'connectionRevision', 'accountId', 'renderTarget']) {
+    assert.deepEqual(revised[key], original[key], `Correction preserves ${key}`);
+  }
+  assert.deepEqual(readStory(id), originalStory); assert.deepEqual(revisionHistory(id), [original]);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].canRevise, undefined);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].caption, undefined);
+});
+
+test('corrected tags are explicit and canonical while caption, tags and confirmation are mandatory', async () => {
+  const { id, job } = await rejectedReelFixture();
+  const before = accessCalls;
+  for (const changes of [{ confirm: false }, { caption: undefined }, { userTags: undefined }, { userTags: ['invalid/user'] },
+    { caption: '#one #two #three #four #five #six' }, { location: { id: '987654321' } }, { audio: audioConfig() },
+    { privacy: 'private' }, { companionStory: false }, { connectionRevision: 'other' }, { title: 'Other title' }]) {
+    const response = await route.POST(request(id, correction(job, changes)), context(id)); assert.equal(response.status, 400);
+    assert.ok(!JSON.stringify(await response.json()).includes('fixture-secret-token'));
+  }
+  assert.equal(accessCalls, before); assert.equal(scheduled.length, 0); assert.deepEqual(revisionHistory(id), []);
+  const revised = await publishing.prepareReviewPublication(id, correction(job, { userTags: ['@New.Account', 'new.account', 'SECOND'] }));
+  assert.equal(revised.dispatch, true); assert.deepEqual(revised.job.userTags, ['new.account', 'second']);
+  assert.equal(revisionHistory(id).length, 1);
+});
+
+test('partial, active, ambiguous and completed Reel states cannot expose editable caption or revise posting choices', async () => {
+  for (const changes of [
+    { status: 'QUEUED' }, { status: 'UPLOADING' }, { status: 'NEEDS_CHECK' }, { status: 'COMPLETE', phase: 'complete' },
+    { phase: 'session_unknown' }, { phase: 'publish_unknown' }, { phase: 'initiating' }, { phase: 'processing' },
+    { containerId: '987654321' }, { remoteId: '987654321' }, { remoteUrl: 'https://www.instagram.com/reel/fixture/' }, { bytesUploaded: 1 },
+  ]) {
+    const { id, job } = await rejectedReelFixture(); alterStored(id, saved => Object.assign(saved, changes), 'instagram');
+    const original = readStored(id, 'instagram'), before = accessCalls;
+    const status = (await publishing.listReviewPublishJobs(id))[0]; assert.equal(status.canRevise, undefined); assert.equal(status.caption, undefined);
+    await assert.rejects(publishing.prepareReviewPublication(id, correction(job)), /Only a failed Instagram request/);
+    assert.equal(accessCalls, before); assert.deepEqual(readStored(id, 'instagram'), original); assert.deepEqual(revisionHistory(id), []);
+  }
+  const youtube = await fixture('youtube', 100); const { job } = await publishing.prepareReviewPublication(youtube.id, settings());
+  await assert.rejects(publishing.prepareReviewPublication(youtube.id, correction(job)), /not found/);
+  assert.equal(scheduled.length, 0);
+});
+
+test('private sessions and live operation locks block correction without overwriting a failed request', async () => {
+  for (const state of ['session', 'operation']) {
+    const { id, job } = await rejectedReelFixture(); const original = readStored(id, 'instagram');
+    const lock = `${storedPath(id, 'instagram')}.operation.lock`;
+    if (state === 'session') sessions.set(job.id, instagramLocation); else fs.writeFileSync(lock, 'fixture-live-operation');
+    try {
+      if (state === 'operation') {
+        const status = (await publishing.listReviewPublishJobs(id))[0]; assert.equal(status.canRevise, undefined); assert.equal(status.caption, undefined);
+      }
+      await assert.rejects(publishing.prepareReviewPublication(id, correction(job)), /private provider session|Only a failed Instagram request/);
+      assert.deepEqual(readStored(id, 'instagram'), original); assert.deepEqual(revisionHistory(id), []); assert.equal(scheduled.length, 0);
+    } finally { sessions.delete(job.id); if (fs.existsSync(lock)) fs.unlinkSync(lock); }
+  }
+});
+
+test('changed saved video, destination, connection or permission blocks correction before archiving or dispatch', async () => {
+  for (const change of ['video', 'account', 'revision', 'connection', 'permission', 'login']) {
+    const { id, job } = await rejectedReelFixture(); const original = readStored(id, 'instagram');
+    if (change === 'video') fs.appendFileSync(files.outputPath(id, 'instagram'), 'changed');
+    if (change === 'account') instagramAccount = '987654321';
+    if (change === 'revision') alterStored(id, saved => { saved.connectionRevision = 'old-revision'; }, 'instagram');
+    if (change === 'connection') channelChanged = true;
+    if (change === 'permission') permissionDenied = true;
+    if (change === 'login') instagramLogin = 'instagram';
+    try {
+      await assert.rejects(publishing.prepareReviewPublication(id, correction(job)), /video changed|destination account changed|upload permission|connection changed/i);
+      assert.equal(readStored(id, 'instagram').status, 'FAILED'); assert.equal(readStored(id, 'instagram').caption, original.caption);
+      assert.deepEqual(readStored(id, 'instagram').userTags, original.userTags); assert.deepEqual(revisionHistory(id), []); assert.equal(scheduled.length, 0);
+    } finally { instagramAccount = '123456789012345'; channelChanged = false; permissionDenied = false; instagramLogin = 'facebook'; }
+  }
 });
