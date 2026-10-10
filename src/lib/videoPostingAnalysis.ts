@@ -182,7 +182,7 @@ async function requestGroqVisualPosting(images: Buffer[], textPrompt: string, co
 /** Switch only on a known Groq quota, with separate Cloudflare frame consent. */
 export async function requestVisualPosting(images: Buffer[], transcript: string, context?: PostingContext) {
   const settings = readWritingSettings(), fallback = cloudflareFallback(), text = postingPrompt(transcript, context);
-  const useCloudflare = async () => {
+  const runCloudflare = async () => {
     if (!fallback) throw new Error("The free Cloudflare caption fallback is not configured. No images were sent there.");
     try {
       const raw = await requestCloudflareVisual(fallback, images, text);
@@ -198,11 +198,11 @@ export async function requestVisualPosting(images: Buffer[], transcript: string,
     }
   };
   if (!groqAnalysisEnabled(settings)) {
-    if (fallback) return useCloudflare();
+    if (fallback) return runCloudflare();
     throw new Error("Enable sampled-frame analysis in Writing settings. No images were sent.");
   }
   try { return { ...await requestGroqVisualPosting(images, text, context), model: VISION_MODEL, provider: "groq" as const }; }
-  catch (error) { if (error instanceof GroqVisionQuotaError && fallback) return useCloudflare(); throw error; }
+  catch (error) { if (error instanceof GroqVisionQuotaError && fallback) return runCloudflare(); throw error; }
 }
 
 async function outputIdentity(file: ReviewFile) {
