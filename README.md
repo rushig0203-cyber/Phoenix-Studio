@@ -1,6 +1,15 @@
 # Phoenix Studio
 
-### October 10 free caption backup — source update, activation pending
+### October 10 free caption backup — installed and live
+
+The selected and independently verified live release is
+`.next-build-gh-38051220040-1`, BUILD_ID `ZjE9Knqw2s0OUWCHHSd8m`, runtime source
+`fe0aa9e11445f830c1d8e75bc53ece51bc78efdd`.
+[Windows release run 38051220040](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/38051220040)
+passed 578/578 serial regressions, lint, full TypeScript, production compilation
+and both isolated FFmpeg video checks. All five downloaded assets and 488 installed
+file hashes were verified. Dashboard HTTP 200, selected/live bundle equality and
+healthy worker/Lumina were checked after activation. No laptop compile was needed.
 
 Caption analysis now supports an optional Cloudflare Workers AI backup using
 `@cf/meta/llama-4-scout-17b-16e-instruct`. It is separate from the text writer:
@@ -24,12 +33,19 @@ verify an account's billing tier. [Official REST/token setup](https://developers
 Caption status now distinguishes a finished MP4 from queued/waiting/failed copy;
 a video title is not presented as completed analyzed copy when its caption is missing.
 
-The previously installed release below remains active until the new Windows
-build is verified, installed and checked against `/api/studio-health`.
+The backup is not connected yet: protected settings still contain no Cloudflare
+credentials, and no real-account Cloudflare inference has been tested. In Settings
+→ Writing settings → Caption backup, save a Workers Free Account ID and Workers AI
+Read/Edit token, confirm the Free plan and allow sampled frames. Do not paste the
+token in chat or add billing. This does not change the selected Groq text writer.
+All six review/job/draft/private-writer hashes remained unchanged across tests and
+activation; no saved failed analysis or upload was retried, and nothing was posted.
+The Desktop junction, launcher and port 3000 all use this canonical project and
+selected bundle. Later documentation-only commits do not alter runtime identity.
 
-### October 10 posting update — installed and live
+### Included October 10 posting update — previous verified release
 
-The selected and running release is `.next-build-gh-38034610261-1`, BUILD_ID
+The previous selected/live release was `.next-build-gh-38034610261-1`, BUILD_ID
 `DKWWs9BLbX7ivSulTLg-F`, exact runtime source
 `ad9dac8259a2c265385460fb4c229fd411395c7c`.
 [Windows release run 38034610261](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/38034610261)

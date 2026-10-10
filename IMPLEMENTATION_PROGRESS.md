@@ -1,6 +1,30 @@
 # Quality-first implementation — September 16, 2026
 
-## October 10 free caption backup — source checkpoint, not yet installed
+## October 10 free caption backup — verified installed/live
+
+- Selected/live bundle `.next-build-gh-38051220040-1`, BUILD_ID
+  `ZjE9Knqw2s0OUWCHHSd8m`, runtime source
+  `fe0aa9e11445f830c1d8e75bc53ece51bc78efdd`. Windows run 38051220040 passed
+  578/578 serial regressions, lint, full TypeScript, production build, 32 static
+  pages and both isolated FFmpeg proofs. All five asset sizes/digests and 488
+  extracted file hashes were verified before activation.
+  Archive SHA256 `6e54f4263b278ab1c9a35c82062416f3f6400dfdaccaf53511f50dc6b2453ffa`;
+  manifest SHA256 `81c688613e0df5e80f40ae96e10d5ccd9d074a2fa01b2622d7c2df7779d503e3`.
+- Activation exited zero. Independent checks confirm selected/live equality,
+  dashboard HTTP 200, healthy worker/Lumina, idle heavy-work slot and one port-3000
+  listener. The Desktop junction still points to the canonical checkout. All six
+  review/source/AI/edit/draft/private-writer hashes match the pre-change baseline.
+  No owner failed analysis/upload was retried, credential or media changed, or post
+  published. Public licensed proof used no owner jobs/media.
+- Backup connection remains explicitly unconfigured: no protected Cloudflare key
+  or Account ID, frame permission false, public captionFallbackConfigured false.
+  Owner must save a Workers Free token/Account ID and enable the independent frame
+  permission in Caption backup. No real-account Cloudflare inference was verified.
+  The selected Groq text writer and Groq frame consent remain unchanged.
+- Removed only this task's identity-checked unpublished transfer release
+  `phoenix-build-38051220040-1` after independent live verification. Downloaded
+  assets, public proof, installed/recovery bundles and all owner files remain.
+  Later documentation-only commits do not change the runtime source identity.
 
 - Owner approved sending up to three small frames to Cloudflare as a Free
   caption fallback. Current protected settings contain no Cloudflare token or
@@ -28,12 +52,15 @@
   copy is explicit rather than displaying a title as analyzed posting copy.
 - Build remains off-laptop, with the 1664 MiB build and 512 MiB runtime guards
   unchanged. New mocked adapter/settings/UI tests use isolated stores; full
-  production/regression/build/activation evidence is pending. Previous selected
-  bundle `.next-build-gh-38034610261-1` stays active in the meantime.
+  production/regression/build/activation evidence is recorded above. The first
+  Windows run 38050960554 passed 578 checks but lint rejected a helper named like
+  a React hook; renaming it to runCloudflare was the only correction in the final
+  source. Previous bundle `.next-build-gh-38034610261-1` remains a recovery copy,
+  not the selected live release. No local build or weakened guard was used.
 
-## October 10 posting update — verified installed/live
+## Included October 10 posting update — previous verified release
 
-- Current selected/live bundle `.next-build-gh-38034610261-1`, BUILD_ID
+- Previous selected/live bundle `.next-build-gh-38034610261-1`, BUILD_ID
   `DKWWs9BLbX7ivSulTLg-F`, exact runtime source
   `ad9dac8259a2c265385460fb4c229fd411395c7c`. Windows run 38034610261 passed
   543/543 serial checks, production lint (including UI/Library), full TypeScript,
