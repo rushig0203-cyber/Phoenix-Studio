@@ -9,8 +9,16 @@ the dedicated Linux cloud builder, locked install and explicit `.next` output.
 Only the exact Vercel environment uses that directory; desktop build/launch
 selection, separate bundles and the 1664 MiB memory guard remain unchanged.
 Cloud builds never select a desktop release or launch the local manager/model.
-The new Linux CI verifies actual `.next` manifests without owner files or keys;
-actual Vercel/Git status verification is pending until its redeploy completes.
+The [Linux verification run](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/38054179745)
+passed 12 selection/safety checks, full TypeScript, production compilation and
+32 static pages, and verified `.next` manifests without owner files or keys.
+All 18 focused local safety/launcher/refresh checks passed as well. Both Vercel
+commit statuses for the fix `10ec9bb` are verified green:
+[phoenix-studio-06](https://vercel.com/aura-clip/phoenix-studio-06/JD8jJSVUaZ9wREf7mWFrmcVj6PDe)
+and [phoenix-studio](https://vercel.com/aura-clip/phoenix-studio/GXuaM6oYBhoZqUKfBMUnzrE76fVC).
+The latter first returned `git_info_fail` before building; an exact-source
+redeploy using its existing Git connection cloned successfully and became READY.
+No Git status was hidden and no account permission, plan or repository was changed.
 
 This corrects deployment packaging, not remote rendering architecture. Phoenix's
 saved media, polling worker and local services remain on the owner's laptop; a
@@ -31,8 +39,11 @@ Caption analysis now supports an optional Cloudflare Workers AI backup using
 `@cf/meta/llama-4-scout-17b-16e-instruct`. It is separate from the text writer:
 Settings → Writing settings → Caption backup accepts a Workers AI API token,
 Account ID, Workers Free confirmation and separate sampled-frame permission.
-The owner approved this new destination, but no Cloudflare credentials are saved
-yet. Setup is still required; Groq-only consent does not enable it by itself.
+The owner has now saved Cloudflare credentials and selected Cloudflare for text
+writing. With the previously approved sampled-frame permission, the independent
+caption backup is enabled and its read-only model-access check passed. Groq's
+saved credentials are retained. No real-account frame inference or caption-quality
+test has been performed, and stopped failed analyses have not been retried.
 
 On a cached or newly returned Groq quota limit, the worker can reuse its three
 bounded JPEG samples through the enabled backup automatically. Existing quota
@@ -49,11 +60,11 @@ verify an account's billing tier. [Official REST/token setup](https://developers
 Caption status now distinguishes a finished MP4 from queued/waiting/failed copy;
 a video title is not presented as completed analyzed copy when its caption is missing.
 
-The backup is not connected yet: protected settings still contain no Cloudflare
-credentials, and no real-account Cloudflare inference has been tested. In Settings
-→ Writing settings → Caption backup, save a Workers Free Account ID and Workers AI
-Read/Edit token, confirm the Free plan and allow sampled frames. Do not paste the
-token in chat or add billing. This does not change the selected Groq text writer.
+For future setup, use Settings → Writing settings → Caption backup: save a
+Workers Free Account ID and Workers AI Read/Edit token, confirm the Free plan and
+allow sampled frames. Do not paste the token in chat or add billing. The independent
+caption setting does not change the text writer; the current Cloudflare writer
+selection was made by the owner in Settings.
 All six review/job/draft/private-writer hashes remained unchanged across tests and
 activation; no saved failed analysis or upload was retried, and nothing was posted.
 The Desktop junction, launcher and port 3000 all use this canonical project and

@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 10 Vercel output correction — source, deployment checks pending
+## October 10 Vercel output correction — verified cloud deployment
 
 - Latest Git status for a040dd5 showed two failed Vercel contexts: phoenix-studio
   and phoenix-studio-06. Owner supplied the exact build log: install/Prisma,
@@ -15,12 +15,35 @@
 - Vercel configuration explicitly selects this builder/output and immutable npm
   ci install. Independent public standard-runner Linux verification exercises
   selection/safety tests, real production build and the required .next manifests.
-  Local focused selection/build-safety/cloud checks passed 12/12 with 128 MiB.
-  Actual Linux CI and both Vercel status results are pending after source push.
+  Local focused selection/build-safety/cloud checks passed 12/12 with 128 MiB;
+  combined launcher/release-refresh coverage passed 18/18. Linux run 38054179745
+  passed 12/12 cloud/safety checks, full TypeScript, production compilation and
+  32 static pages, then verified .next manifests and absent desktop selection.
+- Exact fix source 10ec9bb3bb363d0b6a3ce9413c36daec71b09d1f has two verified
+  successful Vercel Git statuses. phoenix-studio-06 deployment
+  dpl_JD8jJSVUaZ9wREf7mWFrmcVj6PDe completed. phoenix-studio initially returned
+  git_info_fail with no build events; existing project Git connection was intact.
+  A same-source redeploy dpl_GXuaM6oYBhoZqUKfBMUnzrE76fVC cloned and became READY,
+  and its original commit status changed to success. No connection, permission,
+  protection, plan or Git status was disabled/changed. Team plan readback is Hobby.
 - Local selected/live release remains .next-build-gh-38051220040-1. This correction
   does not migrate persistent worker/media/local services into serverless hosting
   or claim full remote rendering. No paid plan/runner, hidden Git status, owner
   credential/job change or local compile is introduced.
+
+### Owner's Cloudflare setup follow-through
+
+- Owner reported Cloudflare setup done. Public settings confirmed a saved key,
+  Free-plan confirmation and selected Cloudflare text writer, but independent
+  caption frames were still disabled. Enabled Caption backup using the owner's
+  earlier explicit three-frame consent and existing privately saved credentials.
+  The server's read-only exact-model availability probe passed before save.
+- Public flags now confirm captionFallbackConfigured and allowCloudflareVideoFrames
+  true; text writer remains Cloudflare as selected by the owner, Groq credentials
+  are retained. No key/account value was printed or committed, and no actual image
+  inference was performed. Fifteen completed and three failed caption analyses
+  remain unchanged; no owner video, source job or upload was retried/published.
+  This setup supersedes the unconfigured activation-time state recorded below.
 
 ## October 10 free caption backup — verified installed/live
 
