@@ -15,7 +15,7 @@ import { instagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "@/lib/instagramTags
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
 const active = (job: ReviewPublishJob): boolean => ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) || Boolean(job.companionStory && active(job.companionStory));
-const footageMusic = (file: ReviewFile): boolean => (file.source.kind === "pexels" || file.source.kind === "pixabay" || Boolean(file.quality.visualSources?.length))
+const footageMusic = (file: ReviewFile): boolean => (file.source?.kind === "pexels" || file.source?.kind === "pixabay" || Boolean(file.quality.visualSources?.length))
   && ["natural-audio-preserved", "local-music-replaced", "no-audio", "needs-review"].includes(file.quality.audio);
 const musicText = (value: unknown, limit = 200): value is string => typeof value === "string" && value.length <= limit
   && Boolean(value.trim()) && !/[\u0000-\u001f\u007f]/.test(value);

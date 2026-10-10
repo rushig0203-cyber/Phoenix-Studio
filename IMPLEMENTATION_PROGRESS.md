@@ -29,6 +29,10 @@
   stock-audio/arrangement checks passed with serial 192 MiB test heaps. The pure
   music-variation checks are now included in the standard remote Windows release
   suite. These checks do not substitute for actual account lookup/live readback.
+- Initial full Windows release run `38079511535` passed 707/711 regressions,
+  catching missing-source metadata in four existing posting-render fixtures.
+  Music detection now tolerates that missing field; all 84 posting-action/UI
+  regressions pass together. The failed candidate was never installed.
 
 ## October 11 RAM update — verified installed and live
 
