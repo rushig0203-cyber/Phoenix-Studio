@@ -56,8 +56,10 @@ test('queued, uploading, processing, failed and needs-check parents never count 
   }
 });
 test('a successful Story without a successful parent Reel never moves a video into Posted', async () => {
-  write('instagram', parent('instagram', { kind: 'story', parentReelId: crypto.randomUUID() }), 'story');
-  assert.deepEqual(await summaries.reviewPublicationSummary(file.id), { status: 'GENERATED', postedTo: [] });
+  for (const story of [{ kind: 'story', parentReelId: crypto.randomUUID() }, { kind: 'story', standaloneStory: true }]) {
+    write('instagram', parent('instagram', story), 'story');
+    assert.deepEqual(await summaries.reviewPublicationSummary(file.id), { status: 'GENERATED', postedTo: [] });
+  }
   write('instagram', parent('instagram', { kind: 'story' }));
   assert.equal((await summaries.reviewPublicationSummary(file.id)).status, 'GENERATED');
 });

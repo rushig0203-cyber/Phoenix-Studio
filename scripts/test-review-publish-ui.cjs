@@ -782,6 +782,136 @@ test('completed Reel still polls its active companion using read-only status and
   assert.ok(h.requests.every(item => item.method === 'GET'));
 });
 
+const standaloneStoryJob = (extra = {}) => job({ id: 'standalone-story', kind: 'story', standaloneStory: true,
+  platform: 'instagram', accountName: '@owned_instagram', detail: 'Saved standalone Story status.', ...extra });
+
+test('Story-only opening is inert and reads account, saved jobs and capability without Reel posting choices', async t => {
+  const h = uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),
+    story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'}});t.after(()=>h.unmount());
+  await h.flush();assert.equal(h.requests.length,0);
+  h.choose('Post Story only');await h.flush();
+  assert.equal(h.requests.length,3);
+  assert.ok(h.requests.some(request=>request.url==='/api/channels'));
+  assert.ok(h.requests.some(request=>request.url===h.endpoint));
+  assert.equal(h.requests.filter(request=>request.url.includes('?check=story&')).length,1);
+  assert.ok(h.requests.every(request=>request.method==='GET'));
+  assert.equal(h.requests.some(request=>/[?]check=(posting-defaults|audio|location)/.test(request.url)),false);
+  for(const [label,type] of [['Caption and hashtags','textarea'],['Instagram usernames','input'],['Use Instagram music','input'],['Place name or Facebook location Page ID','input'],['Also publish one matching Story','input']]) assert.equal(h.control(label,type),undefined);
+  assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Story only').props.disabled,true);
+  assert.match(h.text,/Destination: @owned_instagram/);assert.match(h.text,/publishing this Story publicly/);
+  h.submit();await h.flush();assert.equal(h.posts.length,0);
+});
+
+test('an eligible Story-only upload requires explicit fresh approval and sends no Reel configuration', async t => {
+  let saved;
+  const h=uiHarness({story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'},post(request){saved=JSON.parse(request.body);return response({job:standaloneStoryJob({status:'QUEUED',percent:0})});}});t.after(()=>h.unmount());
+  h.choose('Post Story only');await h.flush();h.submit();await h.flush();assert.equal(h.posts.length,0);
+  h.change(h.confirmation(),true);h.render();assert.equal(h.button('Confirm Story only').props.disabled,false);
+  h.submit();await h.flush();
+  assert.deepEqual(saved,{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});
+  assert.equal(h.posts.length,1);assert.equal(h.form(),undefined);assert.match(h.text,/Saved standalone Story status/);
+});
+
+test('two synchronous Story-only submissions create one request and disable editing while it is pending', async t => {
+  const waiting=deferred();const h=uiHarness({story:{ready:true,reason:'Confirmed Business account.'},post(){return waiting.promise;}});t.after(()=>h.unmount());
+  h.choose('Post Story only');await h.flush();h.change(h.confirmation(),true);h.render();const form=h.form();
+  h.submit(form);h.submit(form);h.render();assert.equal(h.posts.length,1);
+  assert.deepEqual(JSON.parse(h.posts[0].body),{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});
+  assert.equal(h.confirmation().props.disabled,true);assert.equal(h.button('Post to Instagram').props.disabled,true);assert.equal(h.button('Post Story only').props.disabled,true);
+  waiting.resolve(response({job:standaloneStoryJob({status:'QUEUED',percent:0})}));await h.flush();assert.equal(h.posts.length,1);
+});
+
+test('unverified Business type, unavailable Story media and missing upload permission block Story-only creation', async t => {
+  for(const fixture of [
+    {story:{ready:false,requiresBusinessConfirmation:true,reason:'Confirm the Instagram Business account type before posting Stories.'}},
+    {story:{ready:false,reason:'The saved video exceeds the Story duration limit.'}},
+    {channels:[channel('instagram',{publishReady:false,publishReason:'Instagram publishing permission is unavailable.'})]},
+  ]) {
+    const h=uiHarness(fixture);t.after(()=>h.unmount());h.choose('Post Story only');await h.flush();
+    const approval=h.confirmation();if(approval&&!approval.props.disabled){h.change(approval,true);h.render();}
+    assert.equal(h.button('Confirm Story only').props.disabled,true);
+    if(h.form()){h.submit();await h.flush();}assert.equal(h.posts.length,0);
+    assert.match(h.text,fixture.story?.requiresBusinessConfirmation?/Confirm the Instagram Business account type/:fixture.story?/exceeds the Story duration limit/:/publishing permission is unavailable/);
+  }
+});
+
+test('a failed or completed saved Reel does not prevent a separately approved Story-only upload', async t => {
+  for(const status of ['FAILED','COMPLETE']) {
+    let saved;const h=uiHarness({jobs:[job({platform:'instagram',status,canContinue:status==='FAILED',detail:'Existing Reel status.'})],
+      story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'},post(request){saved=JSON.parse(request.body);return response({job:standaloneStoryJob({status:'QUEUED',percent:0})});}});t.after(()=>h.unmount());
+    h.choose('Post Story only');await h.flush();assert.ok(h.form(),status);assert.equal(h.confirmation().props.checked,false);
+    assert.equal(h.requests.filter(request=>request.url.includes('?check=story&')).length,1,status);
+    h.change(h.confirmation(),true);h.render();h.submit();await h.flush();
+    assert.deepEqual(saved,{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});assert.equal(h.posts.length,1,status);
+    assert.equal(JSON.parse(h.posts[0].body).jobId,undefined,'Creating a standalone Story never continues the saved Reel');
+  }
+});
+
+test('a completed standalone Story shows saved status and its ID without a duplicate form or invented link', async t => {
+  const h=uiHarness({jobs:[standaloneStoryJob({remoteId:'12345',detail:'Standalone Story published.'})]});t.after(()=>h.unmount());
+  h.choose('Post Story only');await h.flush();assert.equal(h.form(),undefined);assert.equal(h.button('Confirm Story only'),undefined);
+  assert.match(h.text,/Standalone Story published/);assert.match(h.text,/Published Story ID: 12345/);
+  assert.equal(nodes(h.tree).some(node=>node.type==='a'&&typeof node.props.href==='string'&&node.props.href.includes('/stories/')),false);
+  assert.equal(h.button('Continue saved upload'),undefined);assert.equal(h.posts.length,0);
+  assert.equal(h.requests.some(request=>/[?]check=(posting-defaults|audio|location)/.test(request.url)),false);
+});
+
+test('a failed standalone Story requires its own explicit confirmation and continues only the saved Story', async t => {
+  const saved=standaloneStoryJob({status:'FAILED',percent:0,canContinue:true,detail:'Retry the saved standalone Story.'});
+  const h=uiHarness({jobs:[saved],post(){return response({job:{...saved,status:'COMPLETE',percent:100,canContinue:false,remoteId:'12345'}});}});t.after(()=>h.unmount());
+  h.choose('Post Story only');await h.flush();assert.equal(h.form(),undefined);assert.equal(h.posts.length,0);
+  const checkbox=nodes(h.tree).find(node=>node.type==='label'&&/Continue.*Story/.test(text(node)));
+  const approval=checkbox&&nodes(checkbox).find(node=>node.type==='input');assert.ok(approval);assert.equal(approval.props.checked,false);
+  const continuation=nodes(h.tree).find(node=>node.type==='button'&&/Continue.*Story/.test(text(node)));assert.ok(continuation);assert.equal(continuation.props.disabled,true);
+  h.change(approval,true);h.render();h.click(text(continuation));await h.flush();
+  assert.deepEqual(JSON.parse(h.posts[0].body),{action:'continue-story',jobId:'standalone-story',confirm:true});assert.equal(h.posts.length,1);
+  assert.match(h.text,/Published Story ID: 12345/);assert.equal(h.form(),undefined);
+});
+
+test('Story-only mode shows an existing matching companion instead of creating a duplicate Story', async t => {
+  for(const status of ['COMPLETE','FAILED']) {
+    const story=job({id:'matching-story',kind:'story',platform:'instagram',status,percent:status==='COMPLETE'?100:0,canContinue:status==='FAILED',
+      detail:'Existing matching Story status.',...(status==='COMPLETE'?{remoteId:'98765'}:{})});
+    const h=uiHarness({jobs:[job({platform:'instagram',companionStoryApproved:true,companionStory:story})],
+      post(){return response({job:{...story,status:'COMPLETE',percent:100,canContinue:false,remoteId:'98765'}});}});t.after(()=>h.unmount());
+    h.choose('Post Story only');await h.flush();assert.equal(h.form(),undefined);assert.equal(h.button('Confirm Story only'),undefined);
+    assert.match(h.text,/Existing matching Story status/);assert.equal(h.posts.length,0);
+    if(status==='FAILED') {
+      const checkbox=nodes(h.tree).find(node=>node.type==='label'&&/Continue.*Story/.test(text(node)));
+      const approval=checkbox&&nodes(checkbox).find(node=>node.type==='input');assert.ok(approval);assert.equal(approval.props.checked,false);
+      const continuation=nodes(h.tree).find(node=>node.type==='button'&&/Continue.*Story/.test(text(node)));assert.ok(continuation);assert.equal(continuation.props.disabled,true);
+      h.change(approval,true);h.render();h.click(text(continuation));await h.flush();
+      assert.deepEqual(JSON.parse(h.posts[0].body),{action:'continue-story',jobId:'matching-story',confirm:true});assert.equal(h.posts.length,1);
+    } else assert.match(h.text,/Published Story ID: 98765/);
+  }
+});
+
+test('an untouched matching Story can become Story only only with fresh approval of the same saved job', async t => {
+  const waiting = deferred();
+  const child = job({ id: 'matching-story', kind: 'story', platform: 'instagram', accountName: '@owned_instagram', status: 'QUEUED', percent: 0, canMakeStandalone: true, detail: 'The Reel failed before this matching Story was sent.' });
+  const h = uiHarness({ jobs: [job({ platform: 'instagram', status: 'FAILED', companionStoryApproved: true, companionStory: child })], story: { ready: true, reason: 'Confirmed Business account; saved MP4 eligible.' }, post() { return waiting.promise; } }); t.after(() => h.unmount());
+  h.choose('Post Story only'); await h.flush();
+  assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm Story only').props.disabled, true);
+  assert.match(h.text, /independently of the failed Reel/); assert.match(h.text, /private history/);
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); const form = h.form(); h.submit(form); h.submit(form); h.render();
+  assert.equal(h.posts.length, 1); assert.deepEqual(JSON.parse(h.posts[0].body), { action: 'create-story', jobId: 'matching-story', confirm: true, connectionRevision: 'revision-instagram' });
+  waiting.resolve(response({ job: standaloneStoryJob({ id: 'matching-story', status: 'QUEUED', percent: 0 }) })); await h.flush();
+  assert.equal(h.form(), undefined); assert.equal(h.posts.length, 1);
+  h.choose('Post to Instagram'); await h.flush(); assert.equal(h.confirmation(), undefined, 'The original saved Reel is never automatically dispatched');
+});
+
+test('switching between Story-only, Reel and YouTube resets final approval before any upload', async t => {
+  const h=uiHarness({story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'}});t.after(()=>h.unmount());
+  h.choose('Post Story only');await h.flush();h.change(h.confirmation(),true);h.render();assert.equal(h.confirmation().props.checked,true);
+  h.choose('Post to Instagram');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.ok(h.control('Caption and hashtags','textarea'));
+  assert.equal(h.button('Confirm Reel + Story').props.disabled,true);h.change(h.confirmation(),true);h.render();
+  h.choose('Post Story only');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.control('Caption and hashtags','textarea'),undefined);
+  assert.equal(h.button('Confirm Story only').props.disabled,true);h.change(h.confirmation(),true);h.render();
+  h.choose('Upload to YouTube');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Story only'),undefined);
+  assert.equal(h.button('Confirm upload').props.disabled,true);assert.equal(h.posts.length,0);
+});
+
 test('everyday Story prompts are collapsed, grounded in the saved clip and never trigger generation or publication', async t => {
   const h = uiHarness({ file: sampleFile({ title: 'A coastal sunrise', quality: { postCopy: 'Calm light.', hashtags: [], captions: [],
     postingAnalysis: { status: 'COMPLETE', observations: ['Waves reflecting orange light'] } } }) });
@@ -1208,14 +1338,27 @@ test('remembering posting choices saves only explicit preferences and still requ
   } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
   h.click('Remember these posting choices'); await h.flush();
-  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: ['approved.person'], location: { id: '123456', name: 'Switzerland' } });
+  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: ['approved.person'], location: { id: '123456', name: 'Switzerland' }, locationQuery: 'Switzerland' });
   assert.equal(h.posts.length, 1); assert.ok(h.form(), 'Saving preferences creates no publishing job'); assert.equal(h.intervals.size, 0);
   assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
   assert.match(h.text, /Posting choices remembered/); assert.match(h.text, /No video was uploaded/);
   h.click('Remove location'); h.render(); h.change(h.control('Instagram usernames', 'input'), ''); h.render();
   h.click('Remember these posting choices'); await h.flush();
-  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: [], location: null });
+  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: [], location: null, locationQuery: '' });
   assert.ok(h.posts.every(request => JSON.parse(request.body).action === 'save-posting-defaults'));
+});
+
+test('an unresolved owner location query can be explicitly remembered without fabricating an eligible location ID', async t => {
+  let saved;
+  const h = uiHarness({ defaults: { userTags: ['approved.person'], locationQuery: 'Switzerland' }, post(request) {
+    saved = JSON.parse(request.body); return response({ defaults: { userTags: saved.userTags, locationQuery: saved.locationQuery } });
+  } }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  assert.equal(h.control('Place name or Facebook location Page ID', 'input').props.value, 'Switzerland');
+  assert.equal(h.button('Remember these posting choices').props.disabled, false);
+  h.click('Remember these posting choices'); await h.flush();
+  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: ['approved.person'], location: null, locationQuery: 'Switzerland' });
+  assert.equal(h.posts.length, 1); assert.ok(h.form()); assert.equal(h.confirmation().props.checked, false);
 });
 
 test('defaults never alter saved uploads and malformed defaults cannot introduce unapproved location or usernames', async t => {

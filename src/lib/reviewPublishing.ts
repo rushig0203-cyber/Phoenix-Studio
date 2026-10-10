@@ -29,7 +29,7 @@ export type ReviewPublishJob = {
   bytesUploaded: number; totalBytes: number; canContinue: boolean;
   canRevise?: boolean; caption?: string;
   remoteId?: string; remoteUrl?: string; updatedAt: string;
-  kind?: "story"; companionStoryApproved?: boolean; companionStory?: ReviewPublishJob;
+  kind?: "story"; standaloneStory?: boolean; canMakeStandalone?: boolean; companionStoryDetached?: boolean; companionStoryApproved?: boolean; companionStory?: ReviewPublishJob;
   location?: InstagramLocation;
   audio?: InstagramAudioSelection;
   userTags?: string[];
@@ -45,6 +45,7 @@ type StoredJob = ReviewPublishJob & {
   renderTarget: ReviewTarget;
   containerId?: string; queuedAt: number;
   parentReelId?: string;
+  detachedFromReelId?: string;
   instagramGraphVersion?: typeof INSTAGRAM_AUDIO_GRAPH_VERSION;
 };
 type PublishInput = { action: "create"; platform: ReviewTarget; title: string; caption: string; privacy?: ReviewPublishJob["privacy"]; madeForKids: boolean; connectionRevision: string; confirm: true };
@@ -150,7 +151,11 @@ async function readStored(reviewId: string, platform: ReviewTarget, kind?: "stor
     const filename = jobPath(reviewId, platform, kind); const stats = await fs.stat(filename);
     if (stats.size > JSON_LIMIT) throw problem("The saved upload status needs local inspection.", 500);
     const value = JSON.parse(await fs.readFile(filename, "utf8")) as StoredJob;
-    if (value.version !== 1 || !validId(value.id) || value.reviewId !== reviewId || value.platform !== platform || value.kind !== kind || (kind === "story" && !validId(value.parentReelId)) || !isPlatform(value.renderTarget) || !value.fingerprint || !Number.isSafeInteger(value.totalBytes)
+    if (value.version !== 1 || !validId(value.id) || value.reviewId !== reviewId || value.platform !== platform || value.kind !== kind
+        || (kind === "story" && (platform !== "instagram" || (value.standaloneStory === true ? value.parentReelId !== undefined : !validId(value.parentReelId)) || value.companionStoryApproved !== undefined))
+        || (value.standaloneStory !== undefined && (kind !== "story" || value.standaloneStory !== true))
+        || (value.detachedFromReelId !== undefined && (kind !== "story" || value.standaloneStory !== true || !validId(value.detachedFromReelId)))
+        || !isPlatform(value.renderTarget) || !value.fingerprint || !Number.isSafeInteger(value.totalBytes)
         || (value.location !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramLocation(value.location)))
         || (value.audio !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramAudioSelection(value.audio) || value.instagramGraphVersion !== INSTAGRAM_AUDIO_GRAPH_VERSION))
         || (value.userTags !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramUserTags(value.userTags)))
@@ -179,6 +184,17 @@ function revisable(job: StoredJob) {
     && typeof job.caption === "string" && job.caption.length <= 2200
     && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(job.caption);
 }
+function detachableStory(job: StoredJob, parent: StoredJob | null) {
+  return job.kind === "story" && !job.standaloneStory && job.phase === "created" && !job.containerId && !job.remoteId
+    && job.bytesUploaded === 0 && ["QUEUED", "FAILED"].includes(job.status)
+    && Boolean(parent && revisable(parent) && parent.id === job.parentReelId && parent.companionStoryApproved
+      && parent.accountId === job.accountId && parent.connectionRevision === job.connectionRevision && parent.renderTarget === job.renderTarget
+      && sameFile(parent.fingerprint, job.fingerprint));
+}
+function detachedStoryMatches(story: StoredJob | null, parent: StoredJob) {
+  return Boolean(story?.standaloneStory && story.detachedFromReelId === parent.id && story.accountId === parent.accountId
+    && story.connectionRevision === parent.connectionRevision && story.renderTarget === parent.renderTarget && sameFile(story.fingerprint, parent.fingerprint));
+}
 function publicRemoteUrl(value: string | undefined, platform: ReviewTarget) {
   if (!value) return undefined;
   try {
@@ -197,12 +213,14 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
   const interrupted = ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) && !freshQueue && !await operationActive(job);
   const remoteUrl = publicRemoteUrl(job.remoteUrl, job.platform);
   const story = job.platform === "instagram" && !job.kind && job.companionStoryApproved ? await readStored(job.reviewId, "instagram", "story") : null;
-  const parent = job.kind === "story" && job.phase === "created" ? await readStored(job.reviewId, "instagram") : null;
+  const companionDetached = detachedStoryMatches(story, job);
+  const parent = job.kind === "story" && !job.standaloneStory && job.phase === "created" ? await readStored(job.reviewId, "instagram") : null;
   const waitingForReel = parent && parent.id === job.parentReelId && parent.phase !== "complete";
   const parentStopped = waitingForReel && !["QUEUED", "UPLOADING", "PROCESSING"].includes(parent.status);
   // Status remains local and credential-free. The confirmed revision POST
   // independently checks the encrypted session store before changing anything.
   const canRevise = revisable(job) && !await operationActive(job);
+  const canMakeStandalone = detachableStory(job, parent) && !freshQueue && !await operationActive(job) && !await operationActive(parent!);
   return {
     id: job.id, reviewId: job.reviewId, platform: job.platform,
     status: waitingForReel ? parentStopped ? "NEEDS_CHECK" : "QUEUED" : interrupted ? "NEEDS_CHECK" : job.status,
@@ -213,17 +231,21 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
     ...(canRevise ? { canRevise: true, caption: job.caption } : {}),
     ...(job.remoteId ? { remoteId: job.remoteId } : {}), ...(remoteUrl ? { remoteUrl } : {}), updatedAt: job.updatedAt,
     ...(job.kind ? { kind: job.kind } : {}),
+    ...(job.standaloneStory ? { standaloneStory: true } : {}),
+    ...(canMakeStandalone ? { canMakeStandalone: true } : {}),
     ...(job.location ? { location: publicInstagramLocation(job.location)! } : {}),
     ...(job.audio ? { audio: publicInstagramAudioSelection(job.audio)! } : {}),
     ...(job.userTags ? { userTags: [...job.userTags] } : {}),
-    ...(job.companionStoryApproved ? { companionStoryApproved: true } : {}),
+    ...(job.companionStoryApproved && !companionDetached ? { companionStoryApproved: true } : {}),
+    ...(companionDetached ? { companionStoryDetached: true } : {}),
     ...(story && story.parentReelId === job.id ? { companionStory: await publicJob(story) } : {}),
   };
 }
 /** Reading status never loads credentials, refreshes tokens, contacts a provider, or dispatches work. */
 export async function listReviewPublishJobs(reviewId: string) {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
-  const jobs = await Promise.all([readStored(reviewId, "youtube"), readStored(reviewId, "instagram")]);
+  const [youtubeJob, instagramJob, story] = await Promise.all([readStored(reviewId, "youtube"), readStored(reviewId, "instagram"), readStored(reviewId, "instagram", "story")]);
+  const jobs = [youtubeJob, instagramJob, story?.standaloneStory ? story : null];
   return Promise.all(jobs.filter((job): job is StoredJob => Boolean(job)).map(publicJob));
 }
 async function accessFor(platform: ReviewTarget, revision: string) {
@@ -346,11 +368,17 @@ export async function getInstagramPostingDefaults(reviewId: string, connectionRe
 /** Explicitly remember approved choices, without creating any upload or post. */
 export async function saveInstagramPostingDefaults(reviewId: string, body: Record<string, unknown>): Promise<InstagramPostingDefaults> {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
-  if (body.action !== "save-posting-defaults" || body.confirm !== true || Object.keys(body).some(key => !["action", "confirm", "connectionRevision", "userTags", "location"].includes(key))) throw problem("Confirm saving only these posting defaults.");
+  if (body.action !== "save-posting-defaults" || body.confirm !== true || Object.keys(body).some(key => !["action", "confirm", "connectionRevision", "userTags", "location", "locationQuery"].includes(key))) throw problem("Confirm saving only these posting defaults.");
   const userTags = publicInstagramUserTags(body.userTags);
   if (!userTags) throw problem("Posting defaults need a canonical list of valid Instagram usernames.");
   const location = body.location === null ? null : publicInstagramLocation(body.location);
   if (body.location !== null && !location) throw problem("Choose a valid Meta location or explicitly save no location.");
+  // A chosen place can be remembered even when Meta cannot resolve it yet.
+  // Keep this separate from a verified Page: text alone is never a location ID.
+  const locationQuery = body.locationQuery === undefined ? undefined : checkedText(body.locationQuery, "Posting location choice", 100, true);
+  if ((typeof body.locationQuery === "string" && /[\u0000-\u001f\u007f]/.test(body.locationQuery)) || (locationQuery && locationQuery.length < 2)) throw problem("Posting location choice must contain a place name of 2–100 characters.");
+  const normalized = (value: string) => value.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+  if (location && locationQuery && normalized(location.name) !== normalized(locationQuery)) throw problem("The chosen location and place name do not match. Check the location before remembering it.");
   const revision = checkedText(body.connectionRevision, "Channel connection", 200);
   await readyMedia(reviewId, "instagram");
   const access = await accessFor("instagram", revision);
@@ -360,9 +388,9 @@ export async function saveInstagramPostingDefaults(reviewId: string, body: Recor
   await withFileLock(`${postingDefaultsPath()}.lock`, async () => {
     await assertCurrent(access);
     await fs.mkdir(storeRoot(), { recursive: true, mode: 0o700 });
-    await writeAtomicJson(postingDefaultsPath(), { version: 1, accountId: access.accountId, userTags, ...(verified ? { location: verified } : {}) } satisfies StoredPostingDefaults);
+    await writeAtomicJson(postingDefaultsPath(), { version: 1, accountId: access.accountId, userTags, ...(verified ? { location: verified } : {}), ...(locationQuery ? { locationQuery } : {}) } satisfies StoredPostingDefaults);
   });
-  return { userTags, ...(verified ? { location: verified } : {}) };
+  return { userTags, ...(verified ? { location: verified } : {}), ...(locationQuery ? { locationQuery } : {}) };
 }
 
 const AUDIO_ACCESS = "Meta could not make this Instagram audio available for the connected account. Check its Facebook Login publishing access or choose another track; no upload was started.";
@@ -495,12 +523,15 @@ async function assertStoryAccount(access: ChannelPublishAccess) {
   // Facebook's Page edge includes Creator accounts and its IG User fields do
   // not document account_type. Never send an unsupported probe or infer type
   // from a Page link. Retain the owner's explicit type confirmation privately,
-  // bound to this exact account and connection; Meta still enforces eligibility.
+  // bound to this exact account. Token renewal does not change an account's
+  // owner-confirmed type; current connection/permissions are checked above.
+  // Meta still enforces present eligibility when the Story is submitted.
   try {
     const stats = await fs.stat(storyBusinessPath());
     if (stats.size > 2048) throw new Error();
     const saved = JSON.parse(await fs.readFile(storyBusinessPath(), "utf8"));
-    if (saved.version === 1 && saved.accountId === access.accountId && saved.connectionRevision === access.connectionRevision
+    if (saved.version === 1 && saved.accountId === access.accountId && typeof saved.connectionRevision === "string" && saved.connectionRevision.trim()
+        && saved.connectionRevision.length <= 200 && !/[\u0000-\u001f\u007f]/.test(saved.connectionRevision)
         && saved.accountType === "BUSINESS" && Number.isFinite(Date.parse(saved.confirmedAt)) && Date.parse(saved.confirmedAt) <= Date.now()) {
       await assertCurrent(access); return;
     }
@@ -531,7 +562,7 @@ export async function checkInstagramStoryCapability(reviewId: string, connection
   try {
     const media = await readyMedia(reviewId, "instagram"); assertStoryMedia(media);
     const access = await accessFor("instagram", revision); await assertStoryAccount(access);
-    return { ready: true, reason: "Business account confirmed for this connection; publishing permission verified. The same saved video can accompany this Reel after it succeeds, without re-rendering. Meta makes the final eligibility check." };
+    return { ready: true, reason: "Business account previously confirmed for this account; current publishing permission verified. Post the saved video as a Story only, or after its approved Reel succeeds, without re-rendering. Meta makes the final eligibility check." };
   } catch (error) {
     const reason = error instanceof ReviewPublishingError ? error.message : "Story capability could not be verified. You can still post the Reel and add a Story manually.";
     return { ready: false, reason, ...(reason === STORY_BUSINESS_CONFIRMATION ? { requiresBusinessConfirmation: true } : {}) };
@@ -539,6 +570,7 @@ export async function checkInstagramStoryCapability(reviewId: string, connection
 }
 
 async function assertStoryParent(job: StoredJob) {
+  if (job.standaloneStory) return;
   const parent = await readStored(job.reviewId, "instagram");
   if (!parent || parent.id !== job.parentReelId || !parent.companionStoryApproved || parent.phase !== "complete" || parent.status !== "COMPLETE" || !parent.remoteId ||
       parent.accountId !== job.accountId || parent.connectionRevision !== job.connectionRevision || parent.renderTarget !== job.renderTarget || !sameFile(parent.fingerprint, job.fingerprint)) {
@@ -550,6 +582,50 @@ async function assertStoryParent(job: StoredJob) {
 export async function prepareReviewPublication(reviewId: string, body: Record<string, unknown>): Promise<{ job: ReviewPublishJob; dispatch: boolean }> {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
   if (body.confirm !== true) throw problem("Confirm this upload before Phoenix sends the video to the platform.");
+  if (body.action === "create-story") {
+    if (Object.keys(body).some(key => !["action", "confirm", "connectionRevision", "jobId"].includes(key)) || (body.jobId !== undefined && !validId(body.jobId))) throw problem("Confirm the saved video as a Story only. Reel caption, tags, location and Instagram music are not Story upload settings.");
+    const revision = checkedText(body.connectionRevision, "Channel connection", 200);
+    // Serialize with Reel-plus-Story creation as both use the same Story slot.
+    return withFileLock(pairLock(reviewId, "instagram"), async () => withFileLock(pairLock(reviewId, "instagram", "story"), async () => {
+      const existing = await readStored(reviewId, "instagram", "story");
+      if (existing) {
+        if (body.jobId === undefined) return { job: await publicJob(existing), dispatch: false };
+        const parent = await readStored(reviewId, "instagram");
+        const freshQueue = existing.status === "QUEUED" && Date.now() - existing.queuedAt < LEASE_MS;
+        if (existing.id !== body.jobId || !detachableStory(existing, parent) || freshQueue || await operationActive(existing) || await operationActive(parent!)) {
+          throw problem("Only an untouched matching Story waiting on a failed, unaccepted Reel can be explicitly approved as Story only. Check the saved requests; active or ambiguous uploads cannot change.", 409);
+        }
+        return withFileLock(operationLock(parent!), async () => withFileLock(operationLock(existing), async () => {
+          const current = await readStored(reviewId, "instagram", "story"), currentParent = await readStored(reviewId, "instagram");
+          if (!current || !currentParent || current.id !== existing.id || currentParent.id !== parent!.id || !detachableStory(current, currentParent)
+              || (current.status === "QUEUED" && Date.now() - current.queuedAt < LEASE_MS)) throw problem("The saved Story or Reel changed before its Story-only approval could be applied. Check their status again.", 409);
+          if (await getChannelUploadSession(current.id) || await getChannelUploadSession(currentParent.id)) throw problem("A provider session already exists. Check the existing uploads before changing the matching Story.", 409);
+          const access = await accessFor("instagram", revision);
+          if (access.accountId !== current.accountId || access.connectionRevision !== current.connectionRevision) throw problem("The destination connection changed. The saved matching Story cannot be changed.", 409);
+          const media = await readyMedia(reviewId, "instagram", current.fingerprint, current.renderTarget);
+          assertStoryMedia(media); await assertStoryAccount(access); await assertCurrent(access);
+          await fs.mkdir(path.join(storeRoot(), "history"), { recursive: true, mode: 0o700 });
+          await writeAtomicJson(path.join(storeRoot(), "history", `${reviewId}-instagram-story-${current.id}-${crypto.randomUUID()}.json`), current);
+          current.detachedFromReelId = current.parentReelId; current.parentReelId = undefined; current.standaloneStory = true;
+          current.status = "QUEUED"; current.queuedAt = Date.now(); current.canContinue = false;
+          current.detail = "Story-only upload explicitly approved from the untouched matching Story. Its previous dependency is retained in private history; no Reel will be created or repeated.";
+          await persist(current); return { job: await publicJob(current), dispatch: true };
+        }, { timeoutMs: 250, staleMs: LEASE_MS }), { timeoutMs: 250, staleMs: LEASE_MS });
+      }
+      if (body.jobId !== undefined) throw problem("Saved matching Story not found.", 404);
+      const media = await readyMedia(reviewId, "instagram"); assertStoryMedia(media);
+      const access = await accessFor("instagram", revision); await assertStoryAccount(access); await assertCurrent(access);
+      const job: StoredJob = {
+        version: 1, id: crypto.randomUUID(), reviewId, platform: "instagram", kind: "story", standaloneStory: true,
+        status: "QUEUED", phase: "created", percent: 0, detail: "Story-only upload explicitly approved and queued. No Reel will be created.",
+        accountName: access.name, accountId: access.accountId, connectionRevision: access.connectionRevision,
+        privacy: "public", title: media.file.title.slice(0, 100), caption: "", madeForKids: false,
+        renderTarget: media.target, fingerprint: media.fingerprint, bytesUploaded: 0, totalBytes: media.fingerprint.size,
+        canContinue: false, queuedAt: Date.now(), updatedAt: now(),
+      };
+      await persist(job); return { job: await publicJob(job), dispatch: true };
+    }));
+  }
   if (body.action === "revise") {
     if (!validId(body.jobId) || Object.keys(body).some(key => !["action", "jobId", "confirm", "caption", "userTags"].includes(key))) {
       throw problem("Confirm only the corrected caption and people tags for this rejected Instagram upload.");
@@ -570,11 +646,15 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
         if (access.accountId !== job.accountId || access.loginType !== "facebook") throw problem("The destination account changed. This saved upload cannot be corrected.", 409);
         const media = await readyMedia(reviewId, "instagram", job.fingerprint, job.renderTarget);
         await assertCurrent(access);
+        let detachedCompanion = false;
         if (job.companionStoryApproved) {
-          assertStoryMedia(media); await assertStoryAccount(access);
           const story = await readStored(reviewId, "instagram", "story");
-          if (!story || story.parentReelId !== job.id || story.phase !== "created" || story.containerId || story.remoteId || story.bytesUploaded !== 0
-              || await operationActive(story) || await getChannelUploadSession(story.id)) throw problem("The matching Story's saved state needs inspection before correcting its Reel.", 409);
+          detachedCompanion = detachedStoryMatches(story, job);
+          if (!detachedCompanion) {
+            assertStoryMedia(media); await assertStoryAccount(access);
+            if (!story || story.parentReelId !== job.id || story.phase !== "created" || story.containerId || story.remoteId || story.bytesUploaded !== 0
+                || await operationActive(story) || await getChannelUploadSession(story.id)) throw problem("The matching Story's saved state needs inspection before correcting its Reel.", 409);
+          }
         }
         const correctedCaption = stripFootageProvenance(caption, media.file);
         checkPlatformPostingText("instagram", job.title, correctedCaption);
@@ -583,6 +663,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
         // A failed archive write leaves the original request untouched.
         await fs.mkdir(path.join(storeRoot(), "history"), { recursive: true, mode: 0o700 });
         await writeAtomicJson(path.join(storeRoot(), "history", `${reviewId}-instagram-${job.id}-${crypto.randomUUID()}.json`), job);
+        if (detachedCompanion) job.companionStoryApproved = undefined;
         job.caption = correctedCaption; job.userTags = userTags.length ? userTags : undefined;
         job.status = "QUEUED"; job.queuedAt = Date.now(); job.canContinue = false; job.percent = 0;
         job.detail = "Corrected caption and people tags explicitly approved. The previous rejected request is retained in private history.";

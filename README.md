@@ -1,5 +1,26 @@
 # Phoenix Studio
 
+### October 10 Story and automatic-location follow-up — activation pending
+
+Posting now offers a Story-only review as well as Reel with a matching Story.
+Story-only does not create a Reel, and a combined approval uploads sequentially
+with separate saved statuses. Existing account-level Business confirmation
+survives token renewal for the same account; current publishing access is still
+checked, and Meta decides final eligibility. Opening the review never posts.
+
+Remembering posting choices retains an explicitly chosen unresolved place name,
+instead of clearing it when tags are saved. Future reviews attempt a unique,
+exact, Meta-eligible match automatically; this is a posting choice, not a filming
+claim. The current app's real Switzerland lookup was denied by Meta Pages Search
+access. No country text, guessed coordinates or invented Page ID is uploaded as
+a location. This access restriction needs Meta approval or a separately verified
+eligible location ID; changing code alone cannot grant Meta permissions.
+
+The prior caption/audio/upload fixes passed Windows run `38033137663`, but that
+intermediate build was not activated while this Story follow-up was being added.
+The live runtime remains the verified release recorded below until final checks
+and activation finish. No owner upload or failed analysis was retried.
+
 ### October 10 caption/upload correction — activation pending
 
 The latest Horses failure occurred before video transfer, not during rendering.

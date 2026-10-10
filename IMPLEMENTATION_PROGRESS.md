@@ -1,5 +1,37 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 Story/location follow-up — source work, activation pending
+
+- The saved BUSINESS confirmation belongs to the current Instagram account but
+  an older token revision. Account-level confirmation now survives same-account
+  token renewal, without rewriting the proof; current access/permissions remain
+  checked on every action and Meta still enforces actual Story eligibility.
+- Add an explicit Story-only approval and independently saved Story status; it
+  cannot create a Reel. Reel-plus-Story retains one approval, sequential uploads,
+  distinct status/recovery and duplicate protection. Story-only does not falsely
+  move a video into Library's confirmed Reel/YouTube Posted group.
+- Posting defaults dropped unresolved place names because their saver accepted
+  only a verified Page or null. Preserve an explicitly approved locationQuery,
+  including clear/validation, so later reviews can resolve it automatically.
+  The current account has five remembered tags but no saved place; the owner's
+  requested Switzerland is a posting choice, never filming-location evidence.
+- Protected read-only lookup confirms Meta currently denies Switzerland Pages
+  Search, even with the existing app secret and connected publishing access.
+  A bounded raw diagnostic returned HTTP 400/code 10 and specifically identified
+  Page Public Metadata access; no invalid-secret/version/endpoint indication was
+  detected. No eligible Page ID/coordinates were returned. No permission was invented,
+  token exposed, owner job retried or Story posted to demonstrate functionality.
+- Caption/audio/upload intermediate Windows run 38033137663 passed, but was not
+  activated while this newer request was implemented. Final combined verification
+  and installed/live release checks are pending. No laptop compile or memory-guard
+  reduction; no paid service, local model or unrelated app shutdown introduced.
+- Focused mocked checks passed 162/162 (75 UI and 87 publishing), serially with
+  192 MiB heaps. A 192 MiB scoped ESLint attempt exhausted its heap; full lint and
+  TypeScript are delegated to the off-laptop release runner, not treated as passed.
+  Explicit conversion archives an untouched Story before detaching a definitively
+  unaccepted failed Reel; locks, re-reads and both private sessions protect it.
+  Later corrected Reel approval respects that independent Story without replay.
+
 ## October 10 caption/upload correction — source work, activation pending
 
 - Horses review `7448ad96-bd25-52a9-ad83-8020bc988b07` has a definitive saved

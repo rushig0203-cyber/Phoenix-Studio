@@ -473,10 +473,14 @@ test("Story enablement requires explicit local Business confirmation and does no
   assert.equal((await status.json()).story.ready, true); assert.equal(scheduled.length, 0);
 });
 
-test("Business confirmation is tied to the exact account, connection and plausible confirmation timestamp", async () => {
+test("Business confirmation is account-bound across token renewal while current access and plausible proof remain required", async () => {
   const { id } = await confirmedStoryFixture();
   const original = fs.readFileSync(businessPath(), "utf8");
-  for (const changes of [{ connectionRevision: "other-revision" }, { accountId: "555555555555555" }, { accountType: "CREATOR" }, { confirmedAt: "not-a-date" }, { confirmedAt: new Date(Date.now() + 60_000).toISOString() }]) {
+  fs.writeFileSync(businessPath(), JSON.stringify({ ...JSON.parse(original), connectionRevision: 'older-token-revision' }));
+  const retained = fs.readFileSync(businessPath(), 'utf8');
+  assert.equal((await publishing.checkInstagramStoryCapability(id, 'fixture-revision')).ready, true);
+  assert.equal(fs.readFileSync(businessPath(), 'utf8'), retained, 'Reading capability never renews or fabricates Business proof');
+  for (const changes of [{ connectionRevision: "" }, { accountId: "555555555555555" }, { accountType: "CREATOR" }, { confirmedAt: "not-a-date" }, { confirmedAt: new Date(Date.now() + 60_000).toISOString() }]) {
     fs.writeFileSync(businessPath(), JSON.stringify({ ...JSON.parse(original), ...changes }));
     const status = await publishing.checkInstagramStoryCapability(id, "fixture-revision");
     assert.equal(status.ready, false); assert.equal(status.requiresBusinessConfirmation, true);
@@ -625,6 +629,101 @@ test("old completed Reels are never retroactively assigned or posted as Stories"
   assert.equal(duplicate.dispatch, false); assert.equal(duplicate.job.companionStory, undefined);
   assert.equal(fs.existsSync(storyPath(id)), false); assert.deepEqual(counters.creations, ["REELS"]);
   assert.equal(counters.publishes.length, 1);
+});
+
+const storyOnlySettings = overrides => ({ action: 'create-story', confirm: true, connectionRevision: 'fixture-revision', ...overrides });
+test('Story-only confirmation creates one independent durable job and publishes no Reel, caption or optional Reel settings', async () => {
+  const { id } = await confirmedStoryFixture(); const counters = installStoryProvider();
+  const response = await route.POST(request(id, storyOnlySettings()), context(id)); assert.equal(response.status, 202);
+  const { job } = await response.json(); assert.equal(job.kind, 'story'); assert.equal(job.standaloneStory, true); assert.equal(scheduled.length, 1);
+  assert.equal(fs.existsSync(storedPath(id, 'instagram')), false); assert.equal(readStory(id).parentReelId, undefined);
+  for (const key of ['location', 'audio', 'userTags', 'companionStoryApproved']) assert.equal(readStory(id)[key], undefined);
+  assert.equal(counters.creations.length, 0, 'Preparation never submits a provider request');
+  const before = { accessCalls, sessionReads }; const status = await publishing.listReviewPublishJobs(id);
+  assert.equal(status.length, 1); assert.equal(status[0].standaloneStory, true); assert.deepEqual({ accessCalls, sessionReads }, before);
+  const duplicate = await publishing.prepareReviewPublication(id, storyOnlySettings()); assert.equal(duplicate.dispatch, false); assert.equal(duplicate.job.id, job.id);
+  await publishing.runReviewPublication(id, job.id); await publishing.runReviewPublication(id, job.id);
+  assert.deepEqual(counters.creations, ['STORIES']); assert.equal(counters.streams.length, 1); assert.equal(counters.publishes.length, 1); assert.equal(counters.permalinkLookups, 0);
+  const completed = (await publishing.listReviewPublishJobs(id))[0]; assert.equal(completed.status, 'COMPLETE'); assert.equal(completed.remoteUrl, undefined);
+});
+
+test('Story-only creation requires explicit approval, current Business access, eligible media and a strict Story-only request', async () => {
+  const { id, file } = await fixture('instagram', 100); const before = accessCalls;
+  for (const changes of [{ confirm: false }, { caption: 'Reel caption' }, { userTags: [] }, { location: { id: '123' } }, { audio: audioConfig() }, { privacy: 'public' }, { companionStory: true }, { platform: 'instagram' }]) {
+    assert.equal((await route.POST(request(id, storyOnlySettings(changes)), context(id))).status, 400);
+  }
+  assert.equal(accessCalls, before); assert.equal(fs.existsSync(storyPath(id)), false); assert.equal(scheduled.length, 0);
+  await assert.rejects(publishing.prepareReviewPublication(id, storyOnlySettings()), /Business, not Creator/);
+  await publishing.confirmInstagramStoryBusiness(id, businessSettings());
+  file.outputs.instagram.duration = 61; await files.saveReviewFile(file);
+  await assert.rejects(publishing.prepareReviewPublication(id, storyOnlySettings()), /ready portrait MP4/);
+  assert.equal(fs.existsSync(storyPath(id)), false); assert.equal(scheduled.length, 0);
+});
+
+test('a separately approved Story is independent of a failed Reel and an existing Story cannot become a second matching companion', async () => {
+  const { id, job: reel } = await rejectedReelFixture();
+  await publishing.confirmInstagramStoryBusiness(id, businessSettings()); const original = readStored(id, 'instagram');
+  const counters = installStoryProvider(); const { job } = await publishing.prepareReviewPublication(id, storyOnlySettings());
+  await publishing.runReviewPublication(id, job.id); assert.deepEqual(readStored(id, 'instagram'), original);
+  const jobs = await publishing.listReviewPublishJobs(id); assert.equal(jobs.length, 2); assert.equal(jobs.find(job => job.id === reel.id).status, 'FAILED');
+  assert.deepEqual(counters.creations, ['STORIES']); assert.equal(counters.publishes.length, 1);
+  const duplicate = await publishing.prepareReviewPublication(id, settings('instagram', { companionStory: true })); assert.equal(duplicate.dispatch, false);
+  assert.equal(counters.publishes.length, 1);
+});
+
+test('Story-only rejection can continue its own job but ambiguous publication and changed video cannot repeat it', async () => {
+  const { id } = await confirmedStoryFixture(); const first = installStoryProvider({ failStoryCreation: true });
+  const { job } = await publishing.prepareReviewPublication(id, storyOnlySettings()); await publishing.runReviewPublication(id, job.id);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'FAILED'); assert.equal(first.publishes.length, 0);
+  const next = installStoryProvider({ ambiguousStoryPublish: true });
+  const continued = await publishing.prepareReviewPublication(id, { action: 'continue-story', jobId: job.id, confirm: true }); assert.equal(continued.dispatch, true);
+  await publishing.runReviewPublication(id, job.id); const ambiguous = (await publishing.listReviewPublishJobs(id))[0];
+  assert.equal(ambiguous.status, 'NEEDS_CHECK'); assert.equal(ambiguous.canContinue, false);
+  await assert.rejects(publishing.prepareReviewPublication(id, { action: 'continue-story', jobId: job.id, confirm: true }), /will not repeat/);
+  await publishing.runReviewPublication(id, job.id); assert.equal(next.publishes.length, 1);
+  const changed = await confirmedStoryFixture(); const prepared = await publishing.prepareReviewPublication(changed.id, storyOnlySettings());
+  const changedStory = readStory(changed.id); changedStory.queuedAt = 0; changedStory.status = 'FAILED'; fs.writeFileSync(storyPath(changed.id), JSON.stringify(changedStory));
+  fs.appendFileSync(files.outputPath(changed.id, 'instagram'), 'changed');
+  await assert.rejects(publishing.prepareReviewPublication(changed.id, { action: 'continue-story', jobId: prepared.job.id, confirm: true }), /video changed/);
+});
+
+test('explicit Story-only conversion archives the untouched child, preserves the failed Reel and never replays that Story during later Reel correction', async () => {
+  const { id, job: reel } = await rejectedReelFixture({ story: true });
+  const child = readStory(id); child.queuedAt = 0; fs.writeFileSync(storyPath(id), JSON.stringify(child));
+  const parent = readStored(id, 'instagram'); const [status] = await publishing.listReviewPublishJobs(id);
+  assert.equal(status.companionStory.canMakeStandalone, true);
+  const approved = await publishing.prepareReviewPublication(id, storyOnlySettings({ jobId: child.id }));
+  assert.equal(approved.dispatch, true); assert.equal(approved.job.id, child.id); assert.equal(approved.job.standaloneStory, true);
+  assert.equal(readStory(id).parentReelId, undefined); assert.equal(readStory(id).detachedFromReelId, reel.id); assert.deepEqual(readStored(id, 'instagram'), parent);
+  const historyDirectory = path.join(process.env.PHOENIX_PUBLISH_STORAGE, 'history');
+  const history = fs.readdirSync(historyDirectory).filter(name => name.startsWith(`${id}-instagram-story-`)).map(name => JSON.parse(fs.readFileSync(path.join(historyDirectory, name), 'utf8')));
+  assert.deepEqual(history, [child]); const parentPublic = (await publishing.listReviewPublishJobs(id)).find(job => job.id === reel.id);
+  assert.equal(parentPublic.companionStoryApproved, undefined); assert.equal(parentPublic.companionStoryDetached, true);
+  const counters = installStoryProvider(); await publishing.runReviewPublication(id, child.id);
+  const revised = await publishing.prepareReviewPublication(id, correction(reel, { caption: 'Fixture caption' })); assert.equal(revised.dispatch, true);
+  assert.equal(readStored(id, 'instagram').companionStoryApproved, undefined);
+  await publishing.runReviewPublication(id, reel.id); await publishing.runReviewPublication(id, child.id);
+  assert.deepEqual(counters.creations, ['STORIES', 'REELS']); assert.equal(counters.publishes.length, 2);
+});
+
+test('Story-only conversion refuses accepted, ambiguous, fresh, session-backed, changed or unrelated saved requests', async () => {
+  for (const changed of ['child-container', 'parent-container', 'ambiguous-parent', 'fresh-child', 'session', 'video', 'account', 'operation']) {
+    const { id } = await rejectedReelFixture({ story: true }); const child = readStory(id); child.queuedAt = 0;
+    if (changed === 'child-container') child.containerId = '12345';
+    if (changed === 'fresh-child') child.queuedAt = Date.now();
+    fs.writeFileSync(storyPath(id), JSON.stringify(child));
+    if (changed === 'parent-container') alterStored(id, parent => { parent.containerId = '12345'; }, 'instagram');
+    if (changed === 'ambiguous-parent') alterStored(id, parent => { parent.status = 'NEEDS_CHECK'; parent.phase = 'session_unknown'; }, 'instagram');
+    if (changed === 'session') sessions.set(child.id, instagramLocation);
+    if (changed === 'video') fs.appendFileSync(files.outputPath(id, 'instagram'), 'changed');
+    if (changed === 'account') instagramAccount = '987654321';
+    const lock = `${storyPath(id)}.operation.lock`; if (changed === 'operation') fs.writeFileSync(lock, 'fixture-live-story');
+    const saved = readStory(id);
+    try {
+      await assert.rejects(publishing.prepareReviewPublication(id, storyOnlySettings({ jobId: child.id })), /untouched matching Story|provider session|video changed|destination connection changed/);
+      assert.deepEqual(readStory(id), saved); assert.equal(scheduled.length, 0);
+    } finally { sessions.delete(child.id); instagramAccount = '123456789012345'; if (fs.existsSync(lock)) fs.unlinkSync(lock); }
+  }
 });
 
 const locationPage = (id = '987654321', name = 'Lake Lucerne', changes = {}) => ({ id, name, location: { latitude: 47.05, longitude: 8.31 }, ...changes });
@@ -1193,6 +1292,38 @@ test('malformed defaults, missing save confirmation and changed account cannot s
     seedPostingDefaults(fields); await assert.rejects(publishing.getInstagramPostingDefaults(id, 'fixture-revision'), /local inspection/);
   }
   assert.equal(scheduled.length, 0);
+});
+
+test('an explicitly approved unresolved posting location query is remembered without provider calls and later resolves only a unique exact eligible place', async () => {
+  const { id } = await fixture('instagram', 100); let providerCalls = 0;
+  global.fetch = async () => { providerCalls++; assert.fail('Saving an unresolved place never searches or posts'); };
+  const body = { action: 'save-posting-defaults', confirm: true, connectionRevision: 'fixture-revision', userTags: ['approved.person'], location: null, locationQuery: ' Switzerland ' };
+  const result = await publishing.saveInstagramPostingDefaults(id, body); assert.deepEqual(result, { userTags: ['approved.person'], locationQuery: 'Switzerland' });
+  assert.equal(providerCalls, 0); assert.equal(scheduled.length, 0); const saved = fs.readFileSync(defaultsPath(), 'utf8');
+  appSecretProof = 'fixture-proof'; global.fetch = async target => {
+    providerCalls++; assert.equal(new URL(target).searchParams.get('q'), 'Switzerland');
+    return Response.json({ data: [locationPage('12345', 'Switzerland'), locationPage('67890', 'Switzerland cafe')] });
+  };
+  const defaults = await publishing.getInstagramPostingDefaults(id, 'fixture-revision');
+  assert.deepEqual(defaults.location, { id: '12345', name: 'Switzerland' }); assert.equal(providerCalls, 1);
+  assert.equal(fs.readFileSync(defaultsPath(), 'utf8'), saved); assert.equal(scheduled.length, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+});
+
+test('invalid or mismatched posting location queries fail before credentials and cannot fabricate an ID', async () => {
+  const { id } = await fixture('instagram', 100);
+  const base = { action: 'save-posting-defaults', confirm: true, connectionRevision: 'fixture-revision', userTags: [], location: null };
+  for (const locationQuery of ['a', 'x'.repeat(101), 'Switzerland\n', '\tSwitzerland', '\u0000', null, 123]) {
+    await assert.rejects(publishing.saveInstagramPostingDefaults(id, { ...base, locationQuery }));
+  }
+  await assert.rejects(publishing.saveInstagramPostingDefaults(id, { ...base, location: { id: '12345', name: 'Lake Lucerne' }, locationQuery: 'Switzerland' }), /do not match/);
+  assert.equal(accessCalls, 0); assert.equal(fs.existsSync(defaultsPath()), false); assert.equal(scheduled.length, 0);
+});
+
+test('an explicit tags-only default save clears a remembered location query without adding or searching for a location', async () => {
+  const { id } = await fixture('instagram', 100); seedPostingDefaults({ userTags: ['old.person'], locationQuery: 'Switzerland' });
+  const result = await publishing.saveInstagramPostingDefaults(id, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'fixture-revision', userTags: ['approved.person'], location: null, locationQuery: '' });
+  assert.deepEqual(result, { userTags: ['approved.person'] }); const saved = JSON.parse(fs.readFileSync(defaultsPath(), 'utf8'));
+  assert.equal(saved.location, undefined); assert.equal(saved.locationQuery, undefined); assert.deepEqual(saved.userTags, ['approved.person']); assert.equal(scheduled.length, 0);
 });
 
 async function rejectedReelFixture({ story = false } = {}) {
