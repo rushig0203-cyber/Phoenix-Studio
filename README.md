@@ -1,5 +1,28 @@
 # Phoenix Studio
 
+### RAM-efficient planning and browser lifecycle
+
+Cloudflare and Groq **text-only** planning can proceed below the local-render
+memory floor. The provider is pinned before entering a writing session, so a
+settings change cannot silently start Ollama without local admission. Cloud
+quotas still apply; singing, frame extraction, downloads and rendering retain
+their existing heavy-work/memory checks and one-at-a-time execution.
+
+The dashboard polls every three seconds during queued/active work or caption
+analysis, and every fifteen seconds after all work queues confirm they are idle.
+Focus/manual refresh wakes it immediately. Hidden browser tabs stop polling.
+An open source-upload form also suspends its own status requests when you leave
+Create, retaining the selected File and split mode. Status requests are bounded
+and aborted on hide/unmount; this does not cancel an accepted upload or worker job.
+
+Preview videos release their source/buffers when the browser tab is hidden.
+Returning restores the position and controls without automatically playing.
+Caption-only updates do not reset playback. These changes reduce Phoenix's
+avoidable background work; they do not guarantee Windows-wide RAM savings or
+make locally running Docker an off-device renderer. No dependency or paid
+service was added. Use the current selected/live release identity from Studio
+health to distinguish source updates from an installed bundle.
+
 ### October 10 Vercel deployment correction
 
 The supplied failed-deployment log for `a040dd5` showed successful installation,

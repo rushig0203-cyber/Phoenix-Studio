@@ -72,6 +72,13 @@ jobs:
           scripts/test-launch-release-consistency.cjs
           scripts/test-cloudflare-writer.cjs
           scripts/test-cloudflare-vision.cjs
+          scripts/test-draft-planning-admission.cjs
+          scripts/test-worker-workflows.cjs
+          scripts/test-render-resources.cjs
+          scripts/test-local-model-resources.cjs
+          scripts/test-dashboard-monitor.cjs
+          scripts/test-dashboard-preview-refresh.cjs
+          scripts/test-source-processor-resources.cjs
           scripts/test-writing-settings.cjs
           scripts/test-writing-settings-ui.cjs
           scripts/test-posting-snapshot-order.cjs
@@ -110,6 +117,8 @@ jobs:
           src/components/WritingProviderSettings.tsx src/components/StudioHealth.tsx
           src/app/api/writing-provider/route.ts
           src/app/dashboard/DashboardClient.tsx
+          src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
+          src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, TriangleAlert, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { startDashboardPolling } from "@/lib/dashboardMonitor";
 
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
 
@@ -39,7 +40,7 @@ function shortDuration(totalSeconds: number) {
   return `${remainder}s`;
 }
 
-export default function SourceProcessor({ onClose, onStarted }: { onClose: () => void; onStarted?: () => void }) {
+export default function SourceProcessor({ onClose, onStarted, active = true }: { onClose: () => void; onStarted?: () => void; active?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"coverage" | "highlights">("coverage");
   const [busy, setBusy] = useState(false);
@@ -51,20 +52,28 @@ export default function SourceProcessor({ onClose, onStarted }: { onClose: () =>
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const processorMounted = useRef(true);
   const uploadInFlight = useRef(false);
+  const statusRequest = useRef<AbortController | null>(null);
+  const pendingWork = useRef(true);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (refreshInFlight.current) return refreshInFlight.current;
+    const controller = new AbortController();
+    statusRequest.current = controller;
     const request = (async () => {
       try {
-        const response = await fetch("/api/source-processing", { cache: "no-store" });
+        const response = await fetch("/api/source-processing", { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
         if (!response.ok) throw new Error(`Status request failed (${response.status}).`);
         const data = await response.json() as { preflight?: Preflight; jobs?: Job[] };
-        if (!processorMounted.current) return;
+        if (!processorMounted.current || controller.signal.aborted) return;
+        pendingWork.current = (data.jobs || []).some(job => ["QUEUED", "PROCESSING", "RUNNING"].includes(job.status));
         setPreflight(data.preflight || null);
         setJobs(data.jobs || []);
         setPollError("");
       } catch {
-        if (processorMounted.current) setPollError("Could not refresh processor status. The displayed queue may be stale.");
+        if (processorMounted.current && !controller.signal.aborted) {
+          pendingWork.current = true;
+          setPollError("Could not refresh processor status. The displayed queue may be stale.");
+        }
       }
     })();
     refreshInFlight.current = request;
@@ -72,18 +81,36 @@ export default function SourceProcessor({ onClose, onStarted }: { onClose: () =>
       await request;
     } finally {
       if (refreshInFlight.current === request) refreshInFlight.current = null;
+      if (statusRequest.current === controller) statusRequest.current = null;
     }
-  }
+  }, []);
 
   useEffect(() => {
     processorMounted.current = true;
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 3000);
     return () => {
-      window.clearInterval(timer);
       processorMounted.current = false;
+      statusRequest.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    const polling = startDashboardPolling({ refresh, offline: () => false, visible: () => !document.hidden, active: () => pendingWork.current });
+    const visibility = () => {
+      if (document.hidden) {
+        statusRequest.current?.abort();
+        refreshInFlight.current = null;
+      }
+      void polling.retry();
+    };
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      polling.stop();
+      document.removeEventListener("visibilitychange", visibility);
+      statusRequest.current?.abort();
+      refreshInFlight.current = null;
+    };
+  }, [active, refresh]);
 
   function selectFile(selected: File | null, input: HTMLInputElement) {
     if (selected && selected.size > MAX_SOURCE_BYTES) {

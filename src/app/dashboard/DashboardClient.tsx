@@ -20,7 +20,7 @@ import StudioHealth, { type StudioHealthState } from "@/components/StudioHealth"
 import ReviewPlayer from "@/components/ReviewPlayer";
 import { completedTransitions } from "@/lib/creationIntent";
 import PostingActions from "@/components/PostingActions";
-import { dashboardMonitorReport, fetchDashboardSnapshot, startDashboardPolling } from "@/lib/dashboardMonitor";
+import { dashboardHasPendingWork, dashboardMonitorReport, fetchDashboardSnapshot, startDashboardPolling } from "@/lib/dashboardMonitor";
 import { refreshInstalledRelease } from "@/lib/releaseRefresh";
 import { JOB_PAGE_SIZE, jobQueuePage, type JobFilter } from "@/lib/dashboardJobs";
 
@@ -121,6 +121,7 @@ export default function DashboardClient() {
   const [monitorError, setMonitorError] = useState("");
   const [offline, setOffline] = useState(false);
   const offlineRef = useRef(false);
+  const pendingWork = useRef(true);
   const monitorRequest = useRef<AbortController | null>(null);
   const [health, setHealth] = useState<StudioHealthState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -149,6 +150,7 @@ export default function DashboardClient() {
       const results = await fetchDashboardSnapshot(controller.signal);
       if (!monitorMounted.current || controller.signal.aborted) return;
       const [review, source, ai, edits, preparation, studio] = results;
+      pendingWork.current = dashboardHasPendingWork(results);
       if (review.status === "fulfilled") setFiles(Array.isArray(review.value) ? review.value.filter((file: ReviewFile) => file.status === "READY") : []);
       if (source.status === "fulfilled") setSourceJobs(source.value.jobs || []);
       if (ai.status === "fulfilled") setAiJobs(Array.isArray(ai.value) ? ai.value : []);
@@ -176,7 +178,7 @@ export default function DashboardClient() {
   useEffect(() => {
     monitorMounted.current = true;
     let firstPoll = true;
-    const polling = startDashboardPolling({ refresh: () => { const silent = !firstPoll; firstPoll = false; return load(silent); }, offline: () => offlineRef.current, visible: () => !document.hidden });
+    const polling = startDashboardPolling({ refresh: () => { const silent = !firstPoll; firstPoll = false; return load(silent); }, offline: () => offlineRef.current, visible: () => !document.hidden, active: () => pendingWork.current });
     const resume = () => { if (!document.hidden) void polling.retry(); };
     window.addEventListener("focus", resume);
     document.addEventListener("visibilitychange", resume);
@@ -350,7 +352,7 @@ export default function DashboardClient() {
           </article>
           <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a footage reel</h2><p className="mt-2 text-sm leading-6 text-[#657153]">Type a topic and choose a starting video. Phoenix edits related real footage into a compact reel, choosing cuts, length and modest speed-ups from sampled movement. No generated visuals.</p><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
         </section>
-        {sourceOpen ? <SourceProcessor onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
+        {sourceOpen ? <SourceProcessor active={section === "create" && !offline} onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
         {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
@@ -364,7 +366,7 @@ export default function DashboardClient() {
               <details className="text-[#687657]">
                 <summary aria-label="About job progress and filters" title="About job progress and filters" className="flex cursor-pointer list-none rounded-full p-1 hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a] [&::-webkit-details-marker]:hidden"><Info aria-hidden="true" className="h-4 w-4" /></summary>
                 <div className="absolute left-0 top-8 z-10 w-64 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-xs leading-5 shadow-lg">
-                  <p>{offline ? "Connection unavailable; displaying the last received job status." : "Updates every three seconds while this window is visible."}</p>
+                  <p>{offline ? "Connection unavailable; displaying the last received job status." : "Updates every three seconds during work, every fifteen seconds when idle, and pauses while this window is hidden."}</p>
                   <p>Active includes preparation and rendering. Needs attention shows saved failures; Completed shows finished jobs. Preparation and rendering are grouped separately, newest history first within each group.</p>
                   <p>Paging keeps every saved job and video available.</p>
                 </div>
@@ -390,7 +392,7 @@ export default function DashboardClient() {
                 const retryKey = `${job.kind}-${job.id}`;
                 const outputFiles = completed ? files.filter(file => job.kind === "edit" ? file.id === job.outputId : file.id === job.id || file.processing?.jobId === job.id) : [];
                 const durationSeconds = outputFiles.reduce((total, file) => {
-                  const durations = Object.values(file.outputs).map(output => output?.duration).filter((duration): duration is number => typeof duration === "number" && Number.isFinite(duration) && duration > 0);
+                  const durations = Object.values(file.outputs || {}).map(output => output?.duration).filter((duration): duration is number => typeof duration === "number" && Number.isFinite(duration) && duration > 0);
                   return total + (durations.length ? Math.max(...durations) : 0);
                 }, 0);
                 const clipCount = job.kind === "source" ? job.completedClips ?? job.totalClips ?? outputFiles.length : outputFiles.length || 1;

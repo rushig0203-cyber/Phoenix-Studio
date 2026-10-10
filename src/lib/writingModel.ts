@@ -6,7 +6,7 @@ import { generateGroqText, WritingConfigurationError, WritingWaitError } from ".
 import { generateCloudflareText } from "./cloudflareWriter";
 import { HeavyWorkWaitError } from "./renderResources";
 
-type SessionOptions = { model?: string; baseUrl?: string; signal?: AbortSignal };
+type SessionOptions = { model?: string; baseUrl?: string; signal?: AbortSignal; expectedIdentity?: string };
 const context = new AsyncLocalStorage<{ settings: WritingSettings; signal?: AbortSignal; closed: boolean }>();
 
 /** Provider identity is part of saved brief/editorial fingerprints, never a key. */
@@ -25,8 +25,15 @@ export function isWritingConfigurationError(error: unknown) {
 /** Fix the provider for a logical writing session. Never fall back on failure. */
 export async function withWritingSession<T>(work: () => Promise<T>, options: SessionOptions = {}): Promise<T> {
   const nested = context.getStore();
-  if (nested) { if (nested.closed) throw new Error("The writing session is closed."); options.signal?.throwIfAborted(); return work(); }
+  if (nested) {
+    if (nested.closed) throw new Error("The writing session is closed.");
+    if (options.expectedIdentity && options.expectedIdentity !== `${nested.settings.provider}:${nested.settings.model}`) throw new WritingConfigurationError("Writing settings changed before planning. Retry to use the selected writer safely.");
+    options.signal?.throwIfAborted(); return work();
+  }
   const settings = readWritingSettings();
+  // RAM-exempt callers pin the remote identity before entry. Check it before
+  // opening any local session, not only once its callback has already started.
+  if (options.expectedIdentity && options.expectedIdentity !== `${settings.provider}:${settings.model}`) throw new WritingConfigurationError("Writing settings changed before planning. Retry to use the selected writer safely.");
   const session = { settings, signal: options.signal, closed: false };
   try {
     return await context.run(session, () => settings.provider !== "ollama" ? work()

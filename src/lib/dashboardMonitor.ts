@@ -28,9 +28,23 @@ export async function fetchDashboardSnapshot(signal: AbortSignal) {
   }));
 }
 
+/** Back off only when every independent work queue has confirmed it is idle. */
+export function dashboardHasPendingWork(results: readonly PromiseSettledResult<unknown>[]) {
+  if (results.length !== DASHBOARD_ENDPOINTS.length) return true;
+  const pending = new Set(["QUEUED", "RUNNING", "PROCESSING", "PLANNING", "APPROVING", "ANALYZING", "WAITING"]);
+  return results.slice(0, 5).some((result, index) => {
+    if (result.status !== "fulfilled") return true;
+    const value = result.value;
+    const records = index === 1 && value && typeof value === "object" && "jobs" in value ? value.jobs : value;
+    if (!Array.isArray(records)) return true;
+    return records.some(record => pending.has(record?.status) || (index === 4 && record?.status === "READY") || (index === 0 && pending.has(record?.quality?.postingAnalysis?.status)));
+  });
+}
+
 /** Schedule after each finished poll, with immediate wake-up and no overlap. */
 export function startDashboardPolling(options: {
   refresh: () => Promise<unknown>; offline: () => boolean; visible: () => boolean;
+  active?: () => boolean;
   schedule?: typeof setTimeout; cancel?: typeof clearTimeout;
 }) {
   const schedule = options.schedule || setTimeout, cancel = options.cancel || clearTimeout;
@@ -43,7 +57,7 @@ export function startDashboardPolling(options: {
     try { await options.refresh(); }
     finally {
       running = false;
-      if (!stopped && options.visible()) timer = schedule(() => { void retry(); }, options.offline() ? 15_000 : 3_000);
+      if (!stopped && options.visible()) timer = schedule(() => { void retry(); }, options.offline() || options.active?.() === false ? 15_000 : 3_000);
     }
   }
   void retry();

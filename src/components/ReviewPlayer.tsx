@@ -14,6 +14,8 @@ export function reviewTarget(file: ReviewFile) {
 export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const video = useRef<HTMLVideoElement>(null);
+  const suspended = useRef(false);
+  const resumeAt = useRef(0);
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState("loading");
   const [error, setError] = useState("");
@@ -27,13 +29,34 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
 
   useEffect(() => {
     const player = video.current;
+    if (!player) return;
+    const visibility = () => {
+      if (document.hidden && !suspended.current) {
+        resumeAt.current = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+        suspended.current = true;
+        player.autoplay = false;
+        player.pause();
+        player.removeAttribute("src");
+        player.load(); // Release buffered media and the decoder, not just mute it.
+        setPhase("paused");
+      } else if (!document.hidden && suspended.current) {
+        suspended.current = false;
+        player.src = `${url}&preview=${attempt}`;
+        setPhase("loading");
+        player.load(); // Restore the position on metadata; never autoplay on return.
+      }
+    };
+    document.addEventListener("visibilitychange", visibility);
+    visibility();
     return () => {
-      if (!player) return;
+      document.removeEventListener("visibilitychange", visibility);
       player.pause();
       player.removeAttribute("src");
       player.load();
+      suspended.current = false;
+      resumeAt.current = 0;
     };
-  }, [attempt]);
+  }, [attempt, url]);
 
   useEffect(() => {
     if (phase !== "loading") return;
@@ -42,6 +65,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
   }, [phase, attempt]);
 
   function failed() {
+    if (suspended.current) return;
     const code = video.current?.error?.code;
     setPhase("error");
     setError(code === 3 || code === 4
@@ -50,6 +74,14 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
   }
 
   function retry() { setError(""); setPhase("loading"); setAttempt(value => value + 1); }
+  function updatePhase(value: string) { if (!suspended.current) setPhase(value); }
+  function restorePosition() {
+    const player = video.current;
+    if (!player || suspended.current || !resumeAt.current) return;
+    const position = resumeAt.current;
+    resumeAt.current = 0;
+    player.currentTime = Number.isFinite(player.duration) ? Math.min(position, player.duration) : position;
+  }
 
   return <dialog ref={dialog} aria-label={`Preview: ${file.title}`} onCancel={event => { event.preventDefault(); onClose(); }} className="fixed inset-0 m-auto w-[min(940px,94vw)] max-h-[94dvh] overflow-y-auto rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-0 text-[#26331f] shadow-2xl backdrop:bg-black/70">
     <div className="flex items-center justify-between gap-4 border-b border-[#dbe1cc] px-5 py-4">
@@ -57,8 +89,8 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       <button type="button" autoFocus onClick={onClose} aria-label="Close video preview" className="rounded-lg border p-2"><X className="h-5 w-5" /></button>
     </div>
     <div className="bg-[#182015]">
-      <video key={attempt} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(62dvh,620px)] w-full object-contain"
-        onLoadedData={() => setPhase("ready")} onPlaying={() => setPhase("playing")} onWaiting={() => setPhase("loading")} onCanPlay={() => setPhase("ready")} onError={failed} />
+      <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(62dvh,620px)] w-full object-contain"
+        onLoadedMetadata={restorePosition} onLoadedData={() => updatePhase("ready")} onPlaying={() => updatePhase("playing")} onWaiting={() => updatePhase("loading")} onCanPlay={() => updatePhase("ready")} onError={failed} />
     </div>
     <div className="space-y-3 p-5">
       {phase === "loading" ? <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Loading video…</p> : null}

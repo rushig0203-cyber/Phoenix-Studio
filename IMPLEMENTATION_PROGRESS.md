@@ -1,5 +1,33 @@
 # Quality-first implementation — September 16, 2026
 
+## October 10 RAM follow-through — source implementation
+
+- Measured verified owned Phoenix services while idle: approximately 75 MiB
+  private resident RAM and 337 MiB private committed allocation at that sample.
+  This is not a peak render measurement. The much larger ChatGPT.exe process
+  belongs to the Codex desktop app, not an unrelated app safe to terminate.
+  No unrelated app, browser data, user media or Windows settings were changed.
+- Both draft admission/execution paths now recognize Cloudflare remote text
+  alongside Groq. A pinned expected writer identity is checked before any local
+  session is opened, protecting the remote-only exemption during a settings race.
+  Songs/local writers/rendering/edits/source jobs retain their heavy-work guards.
+- Source forms keep File/mode state while hidden but suspend status polling,
+  abort pending GETs and ignore stale responses. Dashboard polling backs off to
+  fifteen seconds only after all five work snapshots confirm idle; actual jobs
+  and pending caption analysis keep three-second updates. Visibility/manual
+  wakeups remain immediate. Preview hide releases decoder/buffers; return keeps
+  the seek position without surprise autoplay. Metadata refresh remains stable.
+- Added isolated source lifecycle regressions and repaired older dashboard
+  assertions to exercise the current status dropdown instead of removed tabs.
+  Legacy review metadata lacking output durations no longer crashes job totals.
+  These focused checks use 192 MiB heaps, inert hooks/mocked transports and no
+  owner stores, uploads, provider calls, retries, models or media.
+- Added the RAM/lifecycle regressions to the existing public standard-runner
+  Windows release workflow; no larger runner, billable artifact cache, local
+  compile, new SDK/dependency or weakened 1664/512 MiB safeguards are introduced.
+  Source fixes are not yet a live release at this entry; verified build and
+  activation evidence must be recorded separately once completed.
+
 ## October 10 Vercel output correction — verified cloud deployment
 
 - Latest Git status for a040dd5 showed two failed Vercel contexts: phoenix-studio

@@ -187,8 +187,9 @@ export async function changeDraftStatus(id: string, version: number, action: "re
 
 let planning = false;
 const readyToPlan = (draft: CreationDraft) => (draft.status === "QUEUED" && (!draft.nextAttemptAt || Date.parse(draft.nextAttemptAt) <= Date.now())) || (draft.status === "PLANNING" && (draft.leaseUntil || 0) < Date.now());
+const isRemoteTextIdentity = (identity: string) => identity.startsWith("groq:") || identity.startsWith("cloudflare:");
 const readyForPlanningResources = (draft: CreationDraft, resources: { waitingForMemory: boolean }) => readyToPlan(draft)
-  && (!resources.waitingForMemory || (writingModelIdentity().startsWith("groq:") && draft.input.creationType !== "children-song"));
+  && (!resources.waitingForMemory || (isRemoteTextIdentity(writingModelIdentity()) && draft.input.creationType !== "children-song"));
 
 /** Bounded cloud text planning may run while local media work awaits RAM. */
 export async function creationDraftWorkflowReady(resources: { waitingForMemory: boolean }) {
@@ -260,13 +261,14 @@ export async function processNextCreationDraft() {
         }
         await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
       };
-      if (writingModelIdentity().startsWith("groq:")) {
+      const writerIdentity = writingModelIdentity();
+      if (isRemoteTextIdentity(writerIdentity)) {
         await withWritingSession(async () => {
           // Recheck inside the pinned session. A concurrent settings change must
           // never turn the remote-only exemption into an unreserved local model.
-          if (!writingModelIdentity().startsWith("groq:")) throw new Error("Writing settings changed before planning. Retry to use the selected writer safely.");
+          if (writingModelIdentity() !== writerIdentity || !isRemoteTextIdentity(writingModelIdentity())) throw new Error("Writing settings changed before planning. Retry to use the selected writer safely.");
           await preparePlan();
-        });
+        }, { expectedIdentity: writerIdentity });
       } else {
         // Acquire the heavy slot BEFORE opening the local writer session; the
         // opposite lock order can deadlock against a renderer that also writes.
@@ -274,7 +276,7 @@ export async function processNextCreationDraft() {
       }
       if (draft.input.creationType === "children-song") {
         // Singing generates/stages actual audio and is never RAM-exempt, even
-        // when the lyrics were prepared by Groq. Its own stricter guard stays.
+        // when the lyrics were prepared remotely. Its own stricter guard stays.
         await attemptPlanningSlot(async () => {
           if (draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
             const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
