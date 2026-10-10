@@ -97,7 +97,7 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
     if (url === "/api/review-files") return Response.json(includeFile ? [latest] : []);
     if (url === "/api/generations") return Response.json([{ id: original.id, status: "COMPLETED", progress: 100,
       stage: "Finished", retryCount: 0, createdAt: "2026-10-02T01:00:00Z", project: { title: original.title } }]);
-    if (url === "/api/source-processing") return Response.json({ jobs: [] });
+    if (url === "/api/source-processing?statusOnly=1") return Response.json({ jobs: [] });
     if (url === "/api/studio-health") return Response.json({ worker: { state: "healthy" }, resources: {} });
     if (url === "/api/review-edits" || url === "/api/creation-drafts") return Response.json([]);
     assert.fail(`Unexpected request: ${url}`);
@@ -179,9 +179,15 @@ test("hidden previews release their media, keep their timestamp and do not autop
   for (const callback of listeners) callback(); assert.equal(loads, 1, 'Repeated hidden events do not reload');
   global.document.hidden = false; for (const callback of listeners) callback(); await player.flush();
   assert.equal(video.src, source); assert.equal(loads, 2); assert.equal(video.autoplay, false);
+  // Hide again before restored metadata arrives: currentTime is still zero,
+  // but the earlier pending seek must survive another release/reload cycle.
+  global.document.hidden = true; for (const callback of listeners) callback(); await player.flush();
+  media().props.onLoadedMetadata(); assert.equal(video.currentTime, 0, 'Hidden metadata cannot seek a released source');
+  global.document.hidden = false; for (const callback of listeners) callback(); await player.flush();
+  assert.equal(loads, 4); assert.equal(video.autoplay, false);
   media().props.onLoadedMetadata(); assert.equal(video.currentTime, 23.5);
   video.currentTime = 27; media().props.onLoadedMetadata(); assert.equal(video.currentTime, 27, 'Later metadata does not reseek');
   player.render({ file: { ...file, quality: { postCopy: 'Updated caption' } }, onClose() {} }); await player.flush();
-  assert.equal(loads, 2); assert.equal(video.currentTime, 27, 'Metadata polling does not reset playback');
+  assert.equal(loads, 4); assert.equal(video.currentTime, 27, 'Metadata polling does not reset playback');
   player.unmount(); assert.equal(listeners.size, 0); assert.equal(timers.size, 0); assert.equal(video.src, '');
 });

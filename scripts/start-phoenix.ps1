@@ -40,6 +40,7 @@ function Read-PhoenixReleaseRecords([string]$Path, [switch]$Single) {
         if ((Get-Item -LiteralPath $Path -ErrorAction Stop).Length -gt 8388608) { throw 'Oversized state.' }
         $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
         if (-not $Single -and -not $raw.TrimStart().StartsWith('[')) { throw 'Unexpected state.' }
+        if ($Single -and -not $raw.TrimStart().StartsWith('{')) { throw 'Unexpected upload state.' }
         return @($raw | ConvertFrom-Json)
     } catch { throw 'Cannot safely verify saved job state for activation. Check Jobs and local logs; the running website was left alone.' }
 }
@@ -61,9 +62,13 @@ function Assert-PhoenixReleaseIdle([string]$Root, $Health) {
     }
     $publications = Join-Path $Root 'storage\private\review-publications'
     foreach ($file in @(Get-ChildItem -LiteralPath $publications -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        if ($file.Name -in @('instagram-posting-defaults.json', 'instagram-story-business.json')) { continue }
         $uploads = @(Read-PhoenixReleaseRecords $file.FullName -Single)
-        if (@($uploads | Where-Object { $_.status -in @('UPLOADING', 'PROCESSING') }).Count) {
-            throw 'An approved channel upload is active or awaiting confirmation. Check its posting status before activating the installed update; no process was stopped.'
+        if ($uploads.Count -ne 1 -or $uploads[0].status -isnot [string] -or $uploads[0].status -notin @('QUEUED', 'UPLOADING', 'PROCESSING', 'COMPLETE', 'FAILED', 'NEEDS_CHECK')) {
+            throw 'Cannot safely verify saved upload state for activation. Check its posting status; no process was stopped.'
+        }
+        if ($uploads[0].status -in @('QUEUED', 'UPLOADING', 'PROCESSING')) {
+            throw 'An approved channel upload is queued, active or awaiting confirmation. Check its posting status before activating the installed update; no process was stopped.'
         }
     }
 }

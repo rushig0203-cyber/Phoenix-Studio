@@ -18,13 +18,30 @@ const generation = require('../src/lib/generation.ts');
 const drafts = require('../src/lib/creationDrafts.ts');
 const { createContent } = require('../src/lib/kidsRenderer.ts');
 const { guidanceFromFeedback } = require('../src/lib/qualityManager.ts');
-const { WritingWaitError, WritingConfigurationError } = require('../src/lib/groqWriter.ts');
+const groqWriter = require('../src/lib/groqWriter.ts');
+const cloudflareWriter = require('../src/lib/cloudflareWriter.ts');
+const { WritingWaitError, WritingConfigurationError, WritingOutputValidationError } = groqWriter;
 const { kidsVoicePlan } = require('../src/lib/kidsSpeechTiming.ts');
 const reviewRoot = require('../src/lib/reviewFiles.ts').reviewRoot();
 const expectedRoot = path.join(temporary, 'storage', 'Phoenix Studio Review Files');
 assert.equal(path.resolve(reviewRoot), path.resolve(expectedRoot), 'Refusing to place fixtures in the live review store');
 const store = path.join(reviewRoot, 'creation-drafts.json');
 const originalFetch = global.fetch;
+const originalGenerateWritingModel = writer.generateWritingModel;
+const originalFixtureMethods = [
+  [settings, 'readWritingSettings'], [writer, 'generateWritingModel'],
+  [local, 'withLocalWritingSession'], [resources, 'withLocalRenderSlot'],
+  [generation, 'createGenerationJobs'], [groqWriter, 'generateGroqText'],
+  [cloudflareWriter, 'generateCloudflareText'],
+].map(([target, method]) => [target, method, target[method]]);
+
+function resetFixtureMocks() {
+  mock.reset();
+  // Remocking one export can restore an older stub. Every fixture starts from
+  // the original module exports, including the real provider dispatcher.
+  for (const [target, method, original] of originalFixtureMethods) target[method] = original;
+  global.fetch = originalFetch;
+}
 
 const script = 'Benny held a rainbow kite with its string tangled around a little branch. Tika watched the kite wobble while Benny pulled too quickly. Benny said, “I want our kite to fly above the flowers!” The string tightened and Benny stopped pulling before the branch bent. Tika said, “Let us loosen one loop at a time.” Benny held the kite steady while Tika reached for the loose loop. They carefully untangled the string and placed its small spool beside the flowers. Tika watched as Benny slowly lifted the kite again. This time the rainbow kite rose smoothly and its ribbon followed the wind. Benny said, “Your careful plan worked!” Tika waved while Benny held the straight string, and both friends smiled at their flying kite.';
 const outline = {
@@ -45,6 +62,7 @@ const read = () => JSON.parse(fs.readFileSync(store, 'utf8'));
 let submitted;
 
 beforeEach(() => {
+  resetFixtureMocks();
   const storage = path.join(temporary, 'storage');
   assert.equal(path.dirname(path.resolve(storage)), path.resolve(temporary));
   fs.rmSync(storage, { recursive: true, force: true });
@@ -59,7 +77,7 @@ beforeEach(() => {
   });
   global.fetch = async () => assert.fail('No actual provider, network or media call is allowed');
 });
-afterEach(() => { mock.restoreAll(); global.fetch = originalFetch; });
+afterEach(resetFixtureMocks);
 after(() => {
   process.chdir(previousDirectory);
   assert.match(path.basename(temporary), /^phoenix-kids-direction-/);
@@ -212,4 +230,123 @@ test('an interrupted outline correction is checkpointed and resumes that correct
   await drafts.processNextCreationDraft();
   const [finished]=read();assert.equal(finished.status,'APPROVED',finished.error);
   assert.equal(finished.input.creativeBriefAttempt,undefined);assert.equal(calls,4);assert.equal(submitted.length,1);
+});
+
+function fixtureWriterSettings(provider) {
+  return provider === 'cloudflare'
+    ? { provider, model: settings.WRITING_CLOUDFLARE_MODEL, apiKey: 'fixture_cloudflare_key_never_sent_123456', accountId: 'a'.repeat(32), freePlanConfirmed: true }
+    : provider === 'groq'
+      ? { provider, model: settings.WRITING_GROQ_MODEL, apiKey: 'gsk_fixture_never_sent_1234567890', freePlanConfirmed: true }
+      : { provider: 'ollama', model: 'fixture:local', freePlanConfirmed: false };
+}
+
+function selectFixtureWriter(provider) {
+  mock.method(settings, 'readWritingSettings', () => fixtureWriterSettings(provider));
+}
+
+for (const provider of ['groq', 'cloudflare']) for (const stage of ['outline', 'narration']) {
+  test(`${provider} ${stage} transport, output, quota and configuration failures never return a template story`, async () => {
+    selectFixtureWriter(provider);
+    let failure, calls = 0;
+    mock.method(writer, 'generateWritingModel', async () => {
+      calls++;
+      if (stage === 'narration' && calls === 1) return Response.json({ response: JSON.stringify(outline) });
+      throw failure;
+    });
+    for (const currentFailure of [new Error('Fixture transport interrupted'), new WritingOutputValidationError('Fixture structured response invalid'),
+      new WritingWaitError('Fixture quota wait', 60_000), new WritingConfigurationError('Fixture writer configuration rejected')]) {
+      failure = currentFailure; calls = 0;
+      const input = childInput(); let saved = 0;
+      await assert.rejects(createContent(input, guidanceFromFeedback([], 'children-story'), async () => { saved++; }), caught => caught === failure);
+      assert.equal(calls, stage === 'outline' ? 1 : 2, 'A provider error is not authorization to regenerate or repair content');
+      assert.equal(input.script, undefined); assert.equal(submitted.length, 0);
+      if (stage === 'narration') { assert.equal(input.creativeBrief.version, 2); assert.ok(saved >= 1, 'The exact outline survives a later provider failure'); }
+      else assert.equal(input.creativeBrief, undefined);
+    }
+  });
+}
+
+for (const provider of ['groq', 'cloudflare']) test(`${provider} exhausted malformed-outline repair retains its rejected candidate instead of returning a template`, async () => {
+  selectFixtureWriter(provider);
+  const input = childInput(); let calls = 0;
+  mock.method(writer, 'generateWritingModel', async () => { calls++; return Response.json({ response: '{"unfinished":' }); });
+  await assert.rejects(createContent(input, guidanceFromFeedback([], 'children-story')), /one automatic attempt.*no generic topic template/s);
+  assert.equal(calls, 2); assert.equal(input.creativeBriefAttempt.candidate, '{"unfinished":');
+  assert.equal(input.creativeBriefAttempt.repairAttempted, true); assert.equal(input.script, undefined); assert.equal(submitted.length, 0);
+});
+
+for (const provider of ['groq', 'cloudflare']) for (const stage of ['outline', 'narration']) {
+  test(`direct ${provider} ${stage} transport failure remains visible after settings switch to Ollama`, async () => {
+    assert.equal(writer.generateWritingModel, originalGenerateWritingModel, 'Direct fixtures must exercise the real provider dispatcher');
+    let active = fixtureWriterSettings(provider), calls = 0;
+    mock.method(settings, 'readWritingSettings', () => ({ ...active }));
+    const transport = provider === 'groq' ? groqWriter : cloudflareWriter;
+    const method = provider === 'groq' ? 'generateGroqText' : 'generateCloudflareText';
+    const failure = new Error('Fixture remote transport interrupted while settings changed');
+    mock.method(transport, method, async () => {
+      calls++;
+      if (stage === 'narration' && calls === 1) return Response.json({ response: JSON.stringify(outline) });
+      active = fixtureWriterSettings('ollama');
+      throw failure;
+    });
+    const input = childInput();
+    await assert.rejects(createContent(input, guidanceFromFeedback([], 'children-story')), caught => caught === failure);
+    assert.equal(calls, stage === 'outline' ? 1 : 2);
+    assert.equal(input.script, undefined); assert.equal(submitted.length, 0);
+    if (stage === 'narration') assert.equal(input.creativeBrief.model, `${provider}:${fixtureWriterSettings(provider).model}`);
+    else assert.equal(input.creativeBrief, undefined);
+  });
+}
+
+for (const provider of ['groq', 'cloudflare']) for (const nextProvider of ['ollama', provider === 'groq' ? 'cloudflare' : 'groq']) {
+  test(`direct ${provider} story stops before narration after switching to ${nextProvider}`, async () => {
+    assert.equal(writer.generateWritingModel, originalGenerateWritingModel, 'Direct fixtures must exercise the real provider dispatcher');
+    let active = fixtureWriterSettings(provider), switched = false;
+    const calls = [];
+    mock.method(settings, 'readWritingSettings', () => ({ ...active }));
+    for (const [selected, transport, method] of [
+      ['groq', groqWriter, 'generateGroqText'], ['cloudflare', cloudflareWriter, 'generateCloudflareText'],
+    ]) mock.method(transport, method, async () => {
+      calls.push(selected);
+      return Response.json({ response: JSON.stringify(outline) });
+    });
+    const input = childInput();
+    await assert.rejects(createContent(input, guidanceFromFeedback([], 'children-story'), async saved => {
+      if (saved.creativeBrief && !switched) {
+        switched = true;
+        active = fixtureWriterSettings(nextProvider);
+      }
+    }), error => error instanceof WritingConfigurationError && /settings changed during this job/.test(error.message));
+    assert.equal(switched, true, 'The provider changes after the exact outline is saved');
+    assert.deepEqual(calls, [provider], 'Changed settings cannot dispatch narration to another writer');
+    assert.equal(input.creativeBrief.model, `${provider}:${fixtureWriterSettings(provider).model}`);
+    assert.deepEqual(input.creativeBrief.beats, outline.beats);
+    assert.equal(input.script, undefined); assert.equal(submitted.length, 0);
+  });
+}
+
+for (const stage of ['outline', 'narration']) test(`Ollama keeps its explicit local topic fallback after a ${stage} transport failure`, async () => {
+  selectFixtureWriter('ollama');
+  mock.method(local, 'withLocalWritingSession', async work => work());
+  let calls = 0;
+  mock.method(writer, 'generateWritingModel', async () => {
+    calls++;
+    if (stage === 'narration' && calls === 1) return Response.json({ response: JSON.stringify(outline) });
+    throw new Error('Fixture offline local writer');
+  });
+  const result = await createContent(childInput(), guidanceFromFeedback([], 'children-story'));
+  assert.match(result, /Benny/); assert.match(result, /Tika/); assert.match(result, /kite/);
+  assert.equal(calls, stage === 'outline' ? 1 : 2); assert.equal(submitted.length, 0);
+});
+
+test('Cloudflare selection does not rewrite uploaded song lyrics or change the original local song composer', async () => {
+  selectFixtureWriter('cloudflare');
+  mock.method(writer, 'generateWritingModel', async () => assert.fail('The unchanged song paths must not call a story writer'));
+  const supplied = 'Exact uploaded song lyrics remain unchanged.';
+  const input = { ...childInput(), creationType: 'children-song' };
+  const guidance = guidanceFromFeedback([], 'children-song');
+  assert.equal(await createContent({ ...input, songAudioId: 'fixture-song-not-read', script: supplied }, guidance), supplied);
+  const originalSong = await createContent(input, guidance);
+  assert.match(originalSong, /Benny/); assert.match(originalSong, /Tika/); assert.ok(originalSong.split('\n').length > 8);
+  assert.equal(submitted.length, 0);
 });

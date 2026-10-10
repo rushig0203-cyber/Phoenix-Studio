@@ -31,16 +31,26 @@ function contentLength(request: Request) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-export async function GET() {
-  const [preflight, jobs] = await Promise.all([
-    sourceProcessingPreflight(),
-    readSourceJobs(),
-  ]);
-  return NextResponse.json({
-    rendererAvailable: preflight.ready,
-    preflight,
-    jobs: jobs.map((job) => sourceJobWithTiming(job)),
-  });
+export async function GET(request: Request) {
+  try {
+    if (new URL(request.url).searchParams.get("statusOnly") === "1") {
+      const jobs = await readSourceJobs();
+      return NextResponse.json({ jobs: jobs.map((job) => sourceJobWithTiming(job)) });
+    }
+    const [preflight, jobs] = await Promise.all([
+      sourceProcessingPreflight(),
+      readSourceJobs(),
+    ]);
+    return NextResponse.json({
+      rendererAvailable: preflight.ready,
+      preflight,
+      jobs: jobs.map((job) => sourceJobWithTiming(job)),
+    });
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : "Could not load source processing status.",
+    }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

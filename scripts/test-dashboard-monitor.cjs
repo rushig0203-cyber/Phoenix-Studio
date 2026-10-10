@@ -127,7 +127,7 @@ function harness(t) {
     requests.push({ url, ...init });
     if (mode === 'pending') return new Promise((resolve, reject) => pendingRequests.push({ resolve, reject }));
     if (mode === 'offline') throw new TypeError('Failed to fetch');
-    return Response.json(url === '/api/review-files' ? videos : url === '/api/source-processing' ? { jobs: sourceJobs } : url === '/api/creation-drafts' ? drafts : url === '/api/studio-health' ? { worker: { state: 'healthy' }, resources: {} } : []);
+    return Response.json(url === '/api/review-files' ? videos : url === '/api/source-processing?statusOnly=1' ? { jobs: sourceJobs } : url === '/api/creation-drafts' ? drafts : url === '/api/studio-health' ? { worker: { state: 'healthy' }, resources: {} } : []);
   };
   t.after(() => { h.unmount(); Object.assign(global, previous); currentHarness = undefined; });
   return h;

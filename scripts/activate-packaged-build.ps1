@@ -11,6 +11,7 @@ function Read-PhoenixInstallState([string]$Filename, [switch]$Array) {
     if ((Get-Item -LiteralPath $Filename).Length -gt 8388608) { throw 'Cannot verify oversized saved state; no release was changed.' }
     $content = Get-Content -LiteralPath $Filename -Raw
     if ($Array -and -not $content.TrimStart().StartsWith('[')) { throw 'Invalid saved job state; no release was changed.' }
+    if (-not $Array -and -not $content.TrimStart().StartsWith('{')) { throw 'Invalid saved upload state; no release was changed.' }
     return @($content | ConvertFrom-Json)
 }
 function Assert-PhoenixInstallIdle {
@@ -24,8 +25,10 @@ function Assert-PhoenixInstallIdle {
     $reviews = @(Read-PhoenixInstallState (Join-Path $review 'index.json') -Array)
     if (@($reviews | Where-Object { -not $_.trashedAt -and $_.quality.postingAnalysis.status -eq 'ANALYZING' }).Count) { throw 'Caption analysis is active; no release was changed.' }
     foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $phoenixRoot 'storage\private\review-publications') -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        if ($file.Name -in @('instagram-posting-defaults.json','instagram-story-business.json')) { continue }
         $records = @(Read-PhoenixInstallState $file.FullName)
-        if (@($records | Where-Object { $_.status -in @('UPLOADING','PROCESSING') }).Count) { throw 'An approved upload is active; no release was changed.' }
+        if ($records.Count -ne 1 -or $records[0].status -isnot [string] -or $records[0].status -notin @('QUEUED','UPLOADING','PROCESSING','COMPLETE','FAILED','NEEDS_CHECK')) { throw 'Cannot safely verify saved upload state; no release was changed.' }
+        if ($records[0].status -in @('QUEUED','UPLOADING','PROCESSING')) { throw 'An approved upload is queued or active; no release was changed.' }
     }
 }
 function Test-PhoenixInstalledRelease([string]$Expected) {

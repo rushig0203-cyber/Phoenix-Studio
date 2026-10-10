@@ -1,4 +1,4 @@
-export const DASHBOARD_ENDPOINTS = ["/api/review-files", "/api/source-processing", "/api/generations", "/api/review-edits", "/api/creation-drafts", "/api/studio-health"] as const;
+export const DASHBOARD_ENDPOINTS = ["/api/review-files", "/api/source-processing?statusOnly=1", "/api/generations", "/api/review-edits", "/api/creation-drafts", "/api/studio-health"] as const;
 const labels = ["Video library", "Source jobs", "Creation jobs", "Edited exports", "Video preparation", "Studio health"];
 
 export class MonitorFailure extends Error {

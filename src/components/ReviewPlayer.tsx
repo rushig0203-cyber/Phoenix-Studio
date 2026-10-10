@@ -15,7 +15,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
   const dialog = useRef<HTMLDialogElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const suspended = useRef(false);
-  const resumeAt = useRef(0);
+  const resumeAt = useRef<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState("loading");
   const [error, setError] = useState("");
@@ -32,7 +32,9 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
     if (!player) return;
     const visibility = () => {
       if (document.hidden && !suspended.current) {
-        resumeAt.current = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+        // Metadata may not have restored a previous suspended position yet.
+        // Rapid tab switches must not replace that pending seek with zero.
+        if (resumeAt.current === null) resumeAt.current = Number.isFinite(player.currentTime) ? player.currentTime : 0;
         suspended.current = true;
         player.autoplay = false;
         player.pause();
@@ -54,7 +56,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       player.removeAttribute("src");
       player.load();
       suspended.current = false;
-      resumeAt.current = 0;
+      resumeAt.current = null;
     };
   }, [attempt, url]);
 
@@ -77,10 +79,10 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
   function updatePhase(value: string) { if (!suspended.current) setPhase(value); }
   function restorePosition() {
     const player = video.current;
-    if (!player || suspended.current || !resumeAt.current) return;
+    if (!player || suspended.current || resumeAt.current === null) return;
     const position = resumeAt.current;
-    resumeAt.current = 0;
     player.currentTime = Number.isFinite(player.duration) ? Math.min(position, player.duration) : position;
+    resumeAt.current = null;
   }
 
   return <dialog ref={dialog} aria-label={`Preview: ${file.title}`} onCancel={event => { event.preventDefault(); onClose(); }} className="fixed inset-0 m-auto w-[min(940px,94vw)] max-h-[94dvh] overflow-y-auto rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-0 text-[#26331f] shadow-2xl backdrop:bg-black/70">

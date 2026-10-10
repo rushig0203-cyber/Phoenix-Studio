@@ -1,5 +1,27 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 RAM follow-through — release preparation
+
+- Routine dashboard source-job reads now request `statusOnly=1`, returning timed
+  jobs without preflight. The normal processor GET and upload POST retain their
+  actual tool checks; status reads cannot start Python/faster-whisper checks.
+  Seven isolated route regressions plus browser/monitor lifecycle checks passed
+  36/36 sequentially with 192 MiB test heaps, no real provider/job/video calls.
+- Preview resume preserves its pending seek even through hide/show/hide before
+  loaded metadata. Ordinary direct/legacy children's story writing now pins one
+  writer across outline, narration and catch handling. Remote failures retain
+  saved work rather than substituting a template; local/song behavior is kept.
+- Both installed-release activation guards block queued as well as active
+  approved uploads and fail safely on malformed/unknown publication state.
+  Temporary isolated guard tests pass without reading owner publication stores.
+  The two recognized Instagram settings files are excluded from upload state
+  checks. Story/provider-race and launch regressions passed 33/33 sequentially.
+- Owner stores report no active source/AI/edit/draft work at the current check.
+  Port 3000 was offline at this check. Source/build/live remain distinct; this
+  entry does not claim successful activation or a Windows-wide RAM solution.
+  Full compilation is assigned to the existing standard public Windows runner,
+  with exact-source/runtime/hash verification and unchanged local safety limits.
+
 ## October 10 RAM follow-through — source implementation
 
 - Measured verified owned Phoenix services while idle: approximately 75 MiB

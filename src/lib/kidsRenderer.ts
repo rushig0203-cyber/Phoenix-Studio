@@ -7,7 +7,7 @@ import { requireSongAudio, songAudioPath } from "./songAudio";
 import { preparePixabayAnimationBackground, type PixabayAnimationCredit } from "./pixabayAnimation";
 import { prepareKidsAnimation, KIDS_ANIMATION_FPS } from "./kidsAnimation";
 import { getCreativeGuidance } from "./qualityManager";
-import { generateWritingModel, isWritingWaitError, isWritingConfigurationError, writingModelIdentity } from "./writingModel";
+import { generateWritingModel, withWritingSession, isWritingWaitError, isWritingConfigurationError, writingModelIdentity } from "./writingModel";
 import { readWritingSettings } from "./writingSettings";
 import type { CreativeGuidance } from "./managerTypes";
 import { checkKidsScript } from "./scriptChecks";
@@ -447,6 +447,8 @@ function followsEpisodeBeat(script: string, input: KidsRenderInput) {
   return !input.episodeBeat || isRelevant(script, input.episodeBeat);
 }
 
+const remoteStoryWriterSelected = () => /^(?:groq|cloudflare):/.test(writingModelIdentity());
+
 export async function createContent(input: KidsRenderInput, guidance: CreativeGuidance, onPlanSaved?: (input: KidsRenderInput) => Promise<unknown>) {
   if (input.scriptApproved || input.scriptLocked) {
     if (!input.script?.trim()) throw new Error("The approved narration is empty. Reopen the draft.");
@@ -473,6 +475,12 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
   // original, topic-aware, local, and deterministic.
   if (input.creationType === "children-song") return fallbackSong(input);
 
+  // Direct renders and legacy retries must keep the same writer through the
+  // outline, narration and error handling, just like draft planning does.
+  return withWritingSession(() => createStoryContent(input, guidance, targetWords, onPlanSaved));
+}
+
+async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuidance, targetWords: number, onPlanSaved?: (input: KidsRenderInput) => Promise<unknown>) {
   const storyCast = castFor(input.topic);
   const castNames: [string, string] = [storyCast[0].name, storyCast[1].name];
   const castDirection = `Use exactly these two original leads: ${storyCast.map(character => `${character.name} the ${character.kind}`).join(" and ")}. Keep those exact speaker names beside each quoted dialogue line; do not rename them or add another speaker. Both leads have at least one short line responding to the same problem. Never introduce tools, scissors, glue, a broken kite/string, a repair, or a magical trail that the renderer cannot show. Story narration will use an explicit speaker-labeled line format, version 1.`;
@@ -484,7 +492,7 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
       creationType: input.creationType, feedbackRevision: guidance.revision, guidance: [...guidance.rules, castDirection, ...(seriesDirection ? [seriesDirection] : [])], saved: input.creativeBrief,
       savedAttempt: input.creativeBriefAttempt, onAttemptSaved: async attempt => { input.creativeBriefAttempt = attempt; if (attempt) await onPlanSaved?.(input); } });
   } catch (error) {
-    if (isWritingWaitError(error) || isWritingConfigurationError(error) || writingModelIdentity().startsWith("groq:")) throw error;
+    if (isWritingWaitError(error) || isWritingConfigurationError(error) || remoteStoryWriterSelected()) throw error;
     // Preserve the existing explicit offline topic composer; a remote quota or
     // configuration failure must never be disguised as successful AI writing.
     return fallbackStory(input, guidance);
@@ -535,10 +543,10 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
     if (repairing) throw fail(retained.issues);
     }
   } catch (error) {
-    if (retained || isWritingWaitError(error) || isWritingConfigurationError(error) || writingModelIdentity().startsWith("groq:")) throw error;
+    if (retained || isWritingWaitError(error) || isWritingConfigurationError(error) || remoteStoryWriterSelected()) throw error;
     // The topic-specific local fallback below keeps the job useful and offline.
   }
-  if (writingModelIdentity().startsWith("groq:")) throw new Error("The Groq story did not pass length, topic or episode checks. Retry the saved job; no unrelated replacement story was used.");
+  if (remoteStoryWriterSelected()) throw new Error("The selected remote story did not pass length, topic or episode checks. Retry the saved job; no unrelated replacement story was used.");
   return fallbackStory(input,guidance);
 }
 

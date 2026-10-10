@@ -14,6 +14,9 @@ Focus/manual refresh wakes it immediately. Hidden browser tabs stop polling.
 An open source-upload form also suspends its own status requests when you leave
 Create, retaining the selected File and split mode. Status requests are bounded
 and aborted on hide/unmount; this does not cancel an accepted upload or worker job.
+Routine dashboard queue reads use a status-only source endpoint and do not start
+Python or import the transcription libraries. Opening the episode processor and
+accepting an upload still perform the actual tool-readiness checks.
 
 Preview videos release their source/buffers when the browser tab is hidden.
 Returning restores the position and controls without automatically playing.
@@ -22,6 +25,11 @@ avoidable background work; they do not guarantee Windows-wide RAM savings or
 make locally running Docker an off-device renderer. No dependency or paid
 service was added. Use the current selected/live release identity from Studio
 health to distinguish source updates from an installed bundle.
+
+Ordinary children's story writing also pins the provider throughout outline,
+narration and error handling. A Cloudflare/Groq failure remains an actionable
+failure rather than quietly returning an offline template. Activation refuses
+while an approved upload is queued/active, or its state cannot be verified.
 
 ### October 10 Vercel deployment correction
 
