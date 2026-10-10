@@ -1,6 +1,34 @@
 # Quality-first implementation — September 16, 2026
 
-## October 10 Story/location follow-up — source work, activation pending
+## October 10 posting update — verified installed/live
+
+- Current selected/live bundle `.next-build-gh-38034610261-1`, BUILD_ID
+  `DKWWs9BLbX7ivSulTLg-F`, exact runtime source
+  `ad9dac8259a2c265385460fb4c229fd411395c7c`. Windows run 38034610261 passed
+  543/543 serial checks, production lint (including UI/Library), full TypeScript,
+  production build, 32 static pages and both FFmpeg proofs. All five asset
+  sizes/digests and 488 installed file hashes were verified before selection.
+  Archive SHA256 `bfb963958b32e537a849f10f4a57f1671563512eb0b86b12e0336447d68b8f8f`;
+  manifest SHA256 `60b9d0e10e103e30d1c7cfaaeaf0d955368d1520b4715300c0ae96a8086f6761`.
+- Activation exited zero. Independent live checks confirm selected/build equality,
+  dashboard HTTP 200, healthy worker/Lumina, automatic posting off and Story
+  capability ready without another Business confirmation. Its saved proof hash
+  is unchanged; current Meta eligibility is still checked when actually posting.
+- Explicitly saved the owner's Switzerland posting choice for the current account,
+  preserving all five remembered tags. Subsequent setup attempted location lookup
+  automatically and correctly attached no Page when Meta denied access. The location
+  preference is the only owner-setting mutation in this follow-up.
+- All five review/source/AI/edit/draft hashes and the saved failed Horses upload
+  hash match baseline. Live upload status remains FAILED / zero bytes with the
+  new explicit correction action available. No caption analysis, job, Reel or
+  Story was retried or published; no credential or video was changed. Ollama has
+  zero loaded models. No local build or memory-guard reduction was used.
+- Removed only this task's two identity-checked unpublished transfer releases
+  after installation verification. The final download/proof, installed/recovery
+  bundles, Git source and owner media remain. Documentation-only commits after
+  activation do not change the selected runtime source identity.
+
+### Included Story/location implementation and diagnosis
 
 - The saved BUSINESS confirmation belongs to the current Instagram account but
   an older token revision. Account-level confirmation now survives same-account
@@ -13,7 +41,7 @@
 - Posting defaults dropped unresolved place names because their saver accepted
   only a verified Page or null. Preserve an explicitly approved locationQuery,
   including clear/validation, so later reviews can resolve it automatically.
-  The current account has five remembered tags but no saved place; the owner's
+  Initially the current account had five remembered tags but no saved place; the owner's
   requested Switzerland is a posting choice, never filming-location evidence.
 - Protected read-only lookup confirms Meta currently denies Switzerland Pages
   Search, even with the existing app secret and connected publishing access.
@@ -23,16 +51,16 @@
   token exposed, owner job retried or Story posted to demonstrate functionality.
 - Caption/audio/upload intermediate Windows run 38033137663 passed, but was not
   activated while this newer request was implemented. Final combined verification
-  and installed/live release checks are pending. No laptop compile or memory-guard
+  and installed/live release checks passed as recorded above. No laptop compile or memory-guard
   reduction; no paid service, local model or unrelated app shutdown introduced.
 - Focused mocked checks passed 162/162 (75 UI and 87 publishing), serially with
   192 MiB heaps. A 192 MiB scoped ESLint attempt exhausted its heap; full lint and
-  TypeScript are delegated to the off-laptop release runner, not treated as passed.
+  TypeScript were delegated to the off-laptop release runner and passed there.
   Explicit conversion archives an untouched Story before detaching a definitively
   unaccepted failed Reel; locks, re-reads and both private sessions protect it.
   Later corrected Reel approval respects that independent Story without replay.
 
-## October 10 caption/upload correction — source work, activation pending
+## Included October 10 caption/upload correction
 
 - Horses review `7448ad96-bd25-52a9-ad83-8020bc988b07` has a definitive saved
   Instagram failure at container creation: phase created, no container, zero
@@ -63,11 +91,11 @@
   downloaded, selected for an owner job, or posted. No local model was loaded.
 - Focused serial checks passed: 142 mocked publishing/UI tests and 35 visual
   analysis/copy-policy tests, scoped ESLint and diff checks. Full off-laptop release
-  build and activation are pending; no runtime files or owner keys enter Git/CI.
+  build and activation passed above; no runtime files or owner keys entered Git/CI.
 
-## October 10 final footage/posting follow-up — verified installed/live
+## Previous October 10 footage/posting release — superseded above
 
-- Current selected/live bundle `.next-build-gh-37999466131-1`, BUILD_ID
+- Previously selected/live bundle `.next-build-gh-37999466131-1`, BUILD_ID
   `Oc6siF0NdCHxo6HCYPInk`, exact runtime source
   `6663636fd57f1b3267d9e44ecdd1b2d9f87a913d`. Windows run `37999466131`
   passed 493/493 serial tests, scoped lint, full TypeScript, production compile,

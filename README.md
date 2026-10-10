@@ -1,6 +1,15 @@
 # Phoenix Studio
 
-### October 10 Story and automatic-location follow-up — activation pending
+### October 10 posting update — installed and live
+
+The selected and running release is `.next-build-gh-38034610261-1`, BUILD_ID
+`DKWWs9BLbX7ivSulTLg-F`, exact runtime source
+`ad9dac8259a2c265385460fb4c229fd411395c7c`.
+[Windows release run 38034610261](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/38034610261)
+passed 543/543 serial regressions, production lint, full TypeScript, production
+compilation and both real-video checks. Five downloaded asset digests and all
+488 installed file hashes were verified. Independent checks confirm selected/live
+equality, HTTP 200 dashboard, healthy worker/Lumina and automatic posting off.
 
 Posting now offers a Story-only review as well as Reel with a matching Story.
 Story-only does not create a Reel, and a combined approval uploads sequentially
@@ -11,17 +20,27 @@ checked, and Meta decides final eligibility. Opening the review never posts.
 Remembering posting choices retains an explicitly chosen unresolved place name,
 instead of clearing it when tags are saved. Future reviews attempt a unique,
 exact, Meta-eligible match automatically; this is a posting choice, not a filming
-claim. The current app's real Switzerland lookup was denied by Meta Pages Search
-access. No country text, guessed coordinates or invented Page ID is uploaded as
+claim. Switzerland is now remembered for this owner's account with the existing
+five tags preserved. The current app's real Switzerland lookup was denied by
+Meta Pages Search (HTTP 400/code 10, Page Public Metadata access). No country text,
+guessed coordinates or invented Page ID is uploaded as
 a location. This access restriction needs Meta approval or a separately verified
 eligible location ID; changing code alone cannot grant Meta permissions.
+See [Meta's location-tagging prerequisites](https://github.com/fbsamples/reels_publishing_apis/blob/main/insta_reels_publishing_api_sample/README.md#before-you-start).
 
-The prior caption/audio/upload fixes passed Windows run `38033137663`, but that
-intermediate build was not activated while this Story follow-up was being added.
-The live runtime remains the verified release recorded below until final checks
-and activation finish. No owner upload or failed analysis was retried.
+This installed release includes the caption/audio/upload fixes below. Live
+Story capability now reports ready without requiring another Business confirmation;
+the existing proof file is unchanged. The Horses upload still reports FAILED,
+zero uploaded bytes and an available explicit caption/tag correction action.
+No owner upload or failed analysis was retried, and all six review/job/draft/failure
+metadata hashes remain unchanged. Only the requested location preference changed.
+Ollama has zero loaded models; no laptop compilation or reduced RAM guard was used.
+Only two identity-checked, task-created unpublished build transfers were removed
+after install verification. The final local download, installed/recovery bundles,
+Git source and owner media remain. Later documentation commits do not change
+the runtime source identity.
 
-### October 10 caption/upload correction — activation pending
+### Included October 10 caption/upload correction
 
 The latest Horses failure occurred before video transfer, not during rendering.
 A fresh read-only Meta check verified the connected account and publishing scopes;
@@ -29,7 +48,7 @@ the original HTTP 400 details were discarded, so its exact cause is unknown.
 Source fixes clarify the mandatory visual-caption observation shape and retain
 safe provider error codes/stage guidance. They do not fabricate a caption, identify
 an offending tag without evidence, or retry/post any owner video. The selected
-runtime below remains live until a verified replacement is activated.
+runtime above includes these corrections.
 
 Definitively rejected Instagram requests can re-review their saved caption/tags
 and confirm corrected choices without creating a duplicate job. Existing video,
@@ -42,9 +61,9 @@ Unavailable/unsupported recommendations retain the MP4's existing soundtrack,
 clearly labelled; random people or generic trending music are not substituted.
 The connected account's real audio catalog returned HTTP 200 in a read-only probe.
 
-### October 10 final footage/posting follow-up — installed and live
+### Previous October 10 footage/posting release — superseded above
 
-Current selected and served release: `.next-build-gh-37999466131-1`, BUILD_ID
+Previously selected and served release: `.next-build-gh-37999466131-1`, BUILD_ID
 `Oc6siF0NdCHxo6HCYPInk`, built from exact source commit
 `6663636fd57f1b3267d9e44ecdd1b2d9f87a913d`.
 [Windows release run 37999466131](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/37999466131)
