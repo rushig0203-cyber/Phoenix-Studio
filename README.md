@@ -1,5 +1,27 @@
 # Phoenix Studio
 
+### Automatic Instagram music — October 11 source update
+
+New footage Reel posting reviews no longer expose a manual music picker, search
+box, track buttons or volume controls. Phoenix checks a bounded portion of the
+account's available music catalog and relevant instrumental searches, then ranks
+eligible English originals/instrumental-labelled tracks against the finished
+video's saved visual mood. The compact review names the selected track; only the
+final posting approval submits it. Catalog title/style evidence is not listening,
+beat matching, verified popularity or a guarantee of musical fit.
+
+An empty response, malformed metadata, unavailable access and music that does not
+meet the preference are reported separately. No match retains verified usable
+saved audio, explicitly labelled **not Instagram music**. Silent/unverified
+footage blocks publication instead of silently omitting music. Narration/songs,
+saved upload choices and Stories are not replaced. Output changes invalidate the
+choice and approval. No new model, paid service, music download or owner posting
+is involved. Instagram attaches selected catalog music at publishing; the local
+preview/download and companion Story keep the original MP4 audio.
+
+This source update still needs its exact-source Windows build and guarded live
+activation; the following RAM-release checkpoint remains the current runtime.
+
 Latest verified local RAM update: `.next-build-gh-38077285545-1`, production
 source `9f87212`. The off-laptop Windows build passed 692 regressions, lint,
 real FFmpeg/Pexels render checks and full TypeScript. Selected/served bundle and

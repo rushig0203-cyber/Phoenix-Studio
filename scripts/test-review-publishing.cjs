@@ -1150,14 +1150,14 @@ function installMusicCatalog(onLookup) {
     const url = new URL(target); assert.equal(url.pathname, '/v22.0/ig_audio');
     assert.equal(options.method || 'GET', 'GET'); assert.equal(options.redirect, 'error');
     assert.equal(url.searchParams.get('audio_type'), 'music'); assert.equal(url.searchParams.get('user_id'), instagramAccount);
-    const q = url.searchParams.get('search_query'); assert.ok(q, 'Never request blank generic trends'); queries.push(q);
+    const q = url.searchParams.get('search_query') || ''; queries.push(q);
     const override = await onLookup?.(url, queries.length); if (override) return override;
-    const seed = REEL_MUSIC_SEEDS.find(item => item.title === q); assert.ok(seed);
-    return Response.json({ audio: [
-      audioTrack({ audio_id: `${90000 + queries.length}`, title: seed.title, display_artist: 'Unverified cover artist' }),
-      audioTrack({ audio_id: `${91000 + queries.length}`, title: `${seed.title} Remix`, display_artist: seed.artist }),
-      audioTrack({ audio_id: `${92000 + queries.length}`, title: seed.title, display_artist: seed.artist }),
-    ] });
+    const seeds = ['Holocene', 'Banana Pancakes', 'saman'].map(title=>REEL_MUSIC_SEEDS.find(item=>item.title===title));
+    return Response.json({ audio: seeds.flatMap((seed,index) => [
+      audioTrack({ audio_id: `${90000 + index}`, title: seed.title, display_artist: 'Unverified cover artist' }),
+      audioTrack({ audio_id: `${91000 + index}`, title: `${seed.title} Remix`, display_artist: seed.artist }),
+      audioTrack({ audio_id: `${92000 + index}`, title: seed.title, display_artist: seed.artist }),
+    ]) });
   };
   return queries;
 }
@@ -1165,6 +1165,7 @@ test('music recommendations reuse current visual evidence, bound Meta lookups an
   const { id, file } = await musicFixture(); const queries = installMusicCatalog();
   const response = await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish?check=audio-recommendations&connectionRevision=fixture-revision`), context(id));
   const result = await response.json(); assert.equal(response.status, 200); assert.equal(queries.length, 3);
+  assert.deepEqual(queries,['','ambient instrumental','instrumental']);assert.equal(result.outcome,'matched');
   assert.equal(result.recommendation.preference, 'english-and-instrumental'); assert.equal(result.recommendation.basis, 'sampled-frames');
   assert.equal(result.audio.length, 3); assert.ok(result.audio.some(track => track.recommendation.kind === 'english-vocal'));
   assert.ok(result.audio.some(track => track.recommendation.kind === 'instrumental'));
@@ -1204,7 +1205,35 @@ test('older completed caption analysis derives a labelled editorial mood from sa
 test('catalog omission and wrong-language-looking unverified identities return no forced recommendation', async () => {
   const { id } = await musicFixture(); const queries = installMusicCatalog(() => Response.json({ audio: [audioTrack({ title: 'English-looking unknown song', display_artist: 'Unverified artist' })] }));
   const result = await publishing.recommendInstagramAudio(id, 'fixture-revision'); assert.equal(queries.length, 3); assert.deepEqual(result.audio, []);
-  assert.match(result.reason, /none of the matching/); assert.equal(scheduled.length, 0);
+  assert.equal(result.outcome,'no-preferred-match');assert.match(result.reason, /no inspected track/); assert.equal(scheduled.length, 0);
+});
+
+test('automatic catalog discovery finds a relevant non-seed instrumental beyond the old first-six cutoff', async () => {
+  const { id, file } = await musicFixture();
+  const queries = installMusicCatalog(() => Response.json({ audio: [
+    ...Array.from({length:9},(_,index)=>audioTrack({audio_id:`${97000+index}`,title:'Unrelated Dance Vocal',display_artist:'Unverified singer'})),
+    audioTrack({audio_id:'98000',title:'Peaceful Meadow (Instrumental)',display_artist:'Fixture composer'}),
+  ] }));
+  const result = await publishing.recommendInstagramAudio(id,'fixture-revision');
+  assert.equal(queries.length,3);assert.equal(result.outcome,'matched');assert.equal(result.audio.length,1);
+  assert.equal(result.audio[0].audio_id,'98000');assert.equal(result.audio[0].recommendation.kind,'instrumental');
+  assert.equal(result.catalog.inspected,30);assert.equal(result.catalog.eligible,1);
+  assert.equal(scheduled.length,0);assert.deepEqual(await files.getReviewFile(id),file);
+  assert.deepEqual(await publishing.listReviewPublishJobs(id),[]);
+});
+
+test('automatic music outcomes distinguish empty provider catalog, malformed metadata and no fitting preferred track', async () => {
+  for(const [payload,outcome,reason] of [
+    [{audio:[]},'empty-catalog',/empty music catalog/],
+    [{audio:[{audio_id:'bad',title:'Broken'}]},'malformed-catalog',/unreadable music metadata/],
+    [{data:[]},'malformed-catalog',/unreadable music metadata/],
+    [{audio:[audioTrack({title:'Peaceful Meadow',display_artist:'Unknown vocals'})]},'no-preferred-match',/no inspected track/],
+  ]) {
+    const {id}=await musicFixture();installMusicCatalog(()=>Response.json(payload));
+    const result=await publishing.recommendInstagramAudio(id,'fixture-revision');
+    assert.equal(result.outcome,outcome);assert.deepEqual(result.audio,[]);assert.match(result.reason,reason);
+    assert.equal(result.catalog.requests,3);assert.equal(scheduled.length,0);assert.deepEqual(await publishing.listReviewPublishJobs(id),[]);
+  }
 });
 test('music lookup quota or permission failure stops immediately and discards partial results without secret leakage', async () => {
   for (const status of [403, 429]) {

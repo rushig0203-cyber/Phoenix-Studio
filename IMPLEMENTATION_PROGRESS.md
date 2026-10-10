@@ -1,5 +1,35 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 automatic Instagram music — source preparation
+
+- Removed the manual music search/radio/track/volume panel from new Reel final
+  review. A bounded automatic lookup selects the lowest validated rank, explains
+  the track in a compact summary, and retains the existing final approval gate.
+  Checked output revision is required; close/platform/output changes invalidate
+  pending selection, and music lookup cannot publish or create a job.
+- Broadened discovery beyond exact matches from three preset songs: bounded
+  account catalog plus mood/instrumental searches, up to 30 inspected records per
+  read and six ranked results. Known-original identity tolerates safe edition
+  suffixes/verified credits, not covers/remixes. Unknown tracks need explicit
+  instrumental labels and matching descriptive style; English vocals require a
+  verified original recording identity. No guessed
+  language, new model, audio downloads, ADS API or paid service was added.
+- Separate empty/unreadable/unavailable/no-preferred-match outcomes. Fallback is
+  explicitly saved MP4 audio, only when existing audio is verified usable.
+  Silent/unverified footage blocks publishing; narration/songs, matching Story
+  audio and already approved upload requests remain unchanged.
+- Read-only live catalog probes succeeded but showed unrelated/fuzzy search
+  results, confirming exact-song lookup failure is not total music unavailability.
+  Meta's official June 16 Audio API guide was read: supported Facebook Login,
+  account-specific third-party catalog, keyword search and no combined preview.
+  Actual account selection and exact-source build/live activation remain to be
+  verified; no owner job was retried or video posted during this source update.
+- Isolated checks: 77/77 posting UI regressions, 26/26 metadata/music-ranking
+  regressions, 13/13 publishing music/configuration fixtures, and 13/13 original
+  stock-audio/arrangement checks passed with serial 192 MiB test heaps. The pure
+  music-variation checks are now included in the standard remote Windows release
+  suite. These checks do not substitute for actual account lookup/live readback.
+
 ## October 11 RAM update — verified installed and live
 
 - Production source `9f87212dd5ca61f418b183faeafeafe008c36439` passed public

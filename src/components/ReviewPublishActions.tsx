@@ -8,7 +8,7 @@ import { postingDownload, postingText } from "@/lib/posting";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "@/lib/postingCopyPolicy";
 import { instagramStoryIdeas } from "@/lib/instagramStoryIdeas";
 import { instagramLocationSuggestions } from "@/lib/instagramLocationSuggestions";
-import { instagramAudioId, instagramAudioPreviewUrl, type InstagramAudioTrack } from "@/lib/instagramAudio";
+import { instagramAudioId, instagramAudioPreviewUrl } from "@/lib/instagramAudio";
 import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/reelMusic";
 import { instagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "@/lib/instagramTags";
 
@@ -54,7 +54,11 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const videoRevision = JSON.stringify([file.id, file.status, file.trashedAt, file.updatedAt, file.outputs]);
   const latestVideoRevision = useRef(videoRevision);
   const [confirmedRevision, setConfirmedRevision] = useState("");
-  useEffect(() => { latestVideoRevision.current = videoRevision; setConfirmedRevision(""); }, [videoRevision]);
+  useEffect(() => {
+    latestVideoRevision.current = videoRevision; setConfirmedRevision("");
+    audioEpoch.current++; audioRequest.current?.abort();
+    setAudioBusy(false); setSelectedAudio(null); setAudioCheckedRevision("");
+  }, [videoRevision]);
   const confirmed = confirmedRevision === videoRevision;
   function setConfirmed(value: boolean) { setConfirmedRevision(value ? videoRevision : ""); }
   const [tagText, setTagText] = useState("");
@@ -72,13 +76,9 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [locationError, setLocationError] = useState("");
   const locationRequest = useRef<AbortController | null>(null);
   const locationEpoch = useRef(0);
-  const [audioQuery, setAudioQuery] = useState("");
-  const [audioMode, setAudioMode] = useState<"instagram" | "saved">("saved");
-  const [audioTracks, setAudioTracks] = useState<RecommendedInstagramAudio[]>([]);
   const [audioRecommendation, setAudioRecommendation] = useState<ReelMusicRecommendation | null>(null);
-  const [selectedAudio, setSelectedAudio] = useState<InstagramAudioTrack | null>(null);
-  const [audioVolume, setAudioVolume] = useState("100");
-  const [videoVolume, setVideoVolume] = useState("1");
+  const [selectedAudio, setSelectedAudio] = useState<RecommendedInstagramAudio | null>(null);
+  const [audioCheckedRevision, setAudioCheckedRevision] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState("");
   const audioRequest = useRef<AbortController | null>(null);
@@ -110,9 +110,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     if (busy) return;
     const version = ++epoch.current;
     controller.current?.abort();
-    changeLocationQuery(""); changeAudioQuery(""); setAudioVolume("100"); setVideoVolume("1");
+    changeLocationQuery(""); resetAudio();
     const preferInstagramMusic = next === "instagram" && mode === "reel" && footageMusic(file);
-    setAudioMode("saved");
     const abort = new AbortController(); controller.current = abort;
     setPlatform(next); setInstagramMode(next === "instagram" ? mode : "reel"); setConfirmed(false); changeTagText(""); setPostingDefaultsBusy(false); setLoading(true); setError(""); setNotice(""); setSetupChecked(false);
     setTitle(file.title.slice(0, 100)); setCaption(postingText(file, next));
@@ -143,7 +142,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         // music and saved posting defaults still need final posting approval.
         await Promise.all([
           loadPostingDefaults(destination, version, abort),
-          preferInstagramMusic ? loadAudio("", destination, version, true) : Promise.resolve(),
+          preferInstagramMusic ? loadAudio(destination, version) : Promise.resolve(),
           loadStoryCapability(destination, version, abort, !existingStory),
         ]);
       }
@@ -153,7 +152,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   function close() {
     epoch.current++; controller.current?.abort(); setChooserOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
     changeLocationQuery("");
-    changeAudioQuery("");
+    resetAudio();
     changeTagText(""); setPostingDefaultsBusy(false);
   }
   function changeTagText(text: string) {
@@ -228,60 +227,48 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       if (epoch.current === version && locationEpoch.current === serial && !abort.signal.aborted) setLocationError(cause instanceof Error ? cause.message : "Could not check Meta locations. No location has been selected.");
     } finally { if (epoch.current === version && locationEpoch.current === serial) setLocationBusy(false); }
   }
-  function changeAudioQuery(query: string) {
+  function resetAudio() {
     audioEpoch.current++; audioRequest.current?.abort();
-    setAudioQuery(query); setAudioTracks([]); setAudioRecommendation(null); setSelectedAudio(null); setAudioError(""); setAudioBusy(false); setConfirmed(false);
+    setAudioRecommendation(null); setSelectedAudio(null); setAudioCheckedRevision(""); setAudioError(""); setAudioBusy(false); setConfirmed(false);
   }
-  async function searchAudio() {
-    const destination = channels.find(item => item.platform === "instagram"), query = audioQuery.trim();
-    if (platform !== "instagram" || audioMode !== "instagram" || busy || audioBusy || !setupChecked || !destination?.publishReady || !destination.connectionRevision) return;
-    await loadAudio(query, destination, epoch.current);
-  }
-  async function loadAudio(query: string, destination: ChannelStatus, version: number, automatic = false) {
+  async function loadAudio(destination: ChannelStatus, version: number) {
     if (!destination.publishReady || !destination.connectionRevision || epoch.current !== version) return;
-    if (query.length > 100) { setAudioError("Keep the audio search within 100 characters."); return; }
     const serial = ++audioEpoch.current;
+    const checkedRevision = videoRevision;
     audioRequest.current?.abort();
     const abort = new AbortController(); audioRequest.current = abort;
-    const contextual = !query;
-    setAudioBusy(true); setAudioTracks([]); setAudioRecommendation(null); setSelectedAudio(null); setAudioError(""); setConfirmed(false);
+    setAudioBusy(true); setAudioCheckedRevision(""); setAudioRecommendation(null); setSelectedAudio(null); setAudioError(""); setConfirmed(false);
     try {
-      const check = contextual ? "audio-recommendations" : `audio&q=${encodeURIComponent(query)}`;
-      const response = await fetch(`${endpoint}?check=${check}&connectionRevision=${encodeURIComponent(destination.connectionRevision)}`, {
-        cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(contextual ? 45000 : 25000)]),
+      const response = await fetch(`${endpoint}?check=audio-recommendations&connectionRevision=${encodeURIComponent(destination.connectionRevision)}`, {
+        cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(45000)]),
       });
       const payload: unknown = await response.json();
       const data = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
       if (!response.ok) throw new Error(musicText(data.error) ? data.error : "Instagram audio is unavailable for this account.");
-      if (epoch.current === version && audioEpoch.current === serial && !abort.signal.aborted) {
-        const summary = contextual ? publicMusicRecommendation(data.recommendation) : null;
+      if (epoch.current === version && audioEpoch.current === serial && latestVideoRevision.current === checkedRevision && !abort.signal.aborted) {
+        const summary = publicMusicRecommendation(data.recommendation);
         const seen = new Set<string>();
         const tracks = (Array.isArray(data.audio) ? data.audio.slice(0, 6) : []).flatMap((value: unknown) => {
           if (!value || typeof value !== "object" || Array.isArray(value)) return [];
           const track = value as { audio_id?: unknown; title?: unknown; display_artist?: unknown; preview_url?: unknown; recommendation?: unknown };
           if (!instagramAudioId(track?.audio_id) || typeof track.title !== "string" || !track.title.trim() || track.title.length > 200
               || typeof track.display_artist !== "string" || track.display_artist.length > 200 || /[\u0000-\u001f\u007f]/.test(`${track.title}${track.display_artist}`)) return [];
-          const recommendation = contextual ? publicTrackRecommendation(track.recommendation) : undefined;
-          if ((contextual && (!summary || !recommendation)) || seen.has(track.audio_id)) return [];
+          const recommendation = publicTrackRecommendation(track.recommendation);
+          if (!summary || !recommendation || seen.has(track.audio_id)) return [];
           seen.add(track.audio_id);
           const preview = instagramAudioPreviewUrl(track.preview_url);
           return [{ audio_id: track.audio_id, title: track.title.trim(), display_artist: track.display_artist.trim(), ...(preview ? { preview_url: preview } : {}), ...(recommendation ? { recommendation } : {}) }];
         });
-        setAudioTracks(tracks);
         setAudioRecommendation(summary);
-        const reason = musicText(data.reason) ? data.reason : !tracks.length ? contextual ? "No matching recommendation is available. Search for a track or artist, or keep the saved video's audio." : "No available Instagram audio was found. Try another search or keep the saved video's audio." : "";
-        if (automatic) {
-          const recommended = [...tracks].sort((left, right) => (left.recommendation?.rank || 99) - (right.recommendation?.rank || 99))[0];
-          if (recommended) { setSelectedAudio(recommended); setAudioMode("instagram"); setConfirmed(false); }
-          else { setAudioMode("saved"); setSelectedAudio(null); }
-          setAudioError(recommended ? reason : `${reason} Keeping the saved video's audio; no Instagram track will be added.`);
-        } else setAudioError(reason);
+        const reason = musicText(data.reason) ? data.reason : "No eligible Instagram music matched this video's evidence and your English/instrumental preference.";
+        const recommended = [...tracks].sort((left, right) => (left.recommendation?.rank || 99) - (right.recommendation?.rank || 99))[0];
+        setSelectedAudio(recommended || null); setAudioCheckedRevision(checkedRevision); setConfirmed(false);
+        setAudioError(recommended ? "" : reason);
       }
     } catch (cause) {
-      if (epoch.current === version && audioEpoch.current === serial && !abort.signal.aborted) {
+      if (epoch.current === version && audioEpoch.current === serial && latestVideoRevision.current === checkedRevision && !abort.signal.aborted) {
         const reason = cause instanceof Error ? cause.message : "Could not check Instagram audio. No track is selected.";
-        if (automatic) { setAudioMode("saved"); setSelectedAudio(null); }
-        setAudioError(automatic ? `${reason} Keeping the saved video's audio; no Instagram track will be added.` : reason);
+        setSelectedAudio(null); setAudioCheckedRevision(checkedRevision); setAudioError(reason); setConfirmed(false);
       }
     } finally { if (epoch.current === version && audioEpoch.current === serial) setAudioBusy(false); }
   }
@@ -320,7 +307,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
           connectionRevision: channel?.connectionRevision, confirm: true,
           ...(platform === "instagram" ? { companionStory: includeStory && storyCapability?.ready === true, ...(selectedLocation ? { location: { id: selectedLocation.id } } : {}),
             ...(requestedUserTags?.length ? { userTags: requestedUserTags } : {}),
-            ...(selectedAudio ? { audio: { audio_id: selectedAudio.audio_id, audio_volume: Number(audioVolume), video_volume: Number(videoVolume) } } : {}) } : {}),
+            ...(selectedAudio ? { audio: { audio_id: selectedAudio.audio_id, audio_volume: 100, video_volume: 1 } } : {}) } : {}),
         }),
       });
       const data = await response.json();
@@ -376,8 +363,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const publishReady = setupChecked && channel?.publishReady;
   const chooserId = `review-publish-${encodeURIComponent(file.id)}`;
   const locationSuggestions = instagramLocationSuggestions(file);
-  const audioVolumesValid = [audioVolume, videoVolume].every(value => /^\d{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 100);
-  const instagramAudioReady = audioMode === "saved" || Boolean(selectedAudio && audioVolumesValid);
+  const savedAudioAvailable = ["natural-audio-preserved", "local-music-replaced"].includes(file.quality.audio);
+  const instagramAudioReady = !footageMusic(file) || (audioCheckedRevision === videoRevision && Boolean(selectedAudio || savedAudioAvailable));
   const requestedUserTags = instagramUserTags(tagText.trim() ? tagText.trim().split(/[\s,]+/) : []);
   const revisableJob = platformJobs.find(job => job.canRevise === true && job.platform === "instagram" && typeof job.caption === "string");
   const revisableCaption = revisableJob?.caption;
@@ -476,26 +463,23 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
             {selectedLocation ? <p>Selected: {selectedLocation.name} <button type="button" className="underline" disabled={busy} onClick={() => changeLocationQuery("")}>Remove location</button></p> : <p>No location selected. This Reel will post without a tag unless you select an eligible result; you can also add the location manually in Instagram.</p>}
             {locationError && <p role="status" className="text-amber-900">{locationError}</p>}
           </details>}
-          {platform === "instagram" && <section aria-label="Reel music" className="space-y-2 rounded-lg border border-[#bdc7a5] p-3 text-xs">
-            <p className="font-semibold">Reel music</p>
-            <label className="flex items-center gap-2"><input type="radio" name={`${chooserId}-music`} checked={audioMode === "instagram"} disabled={busy} onChange={() => { changeAudioQuery(audioQuery); setAudioMode("instagram"); }}/><span>Use Instagram music</span></label>
-            <label className="flex items-center gap-2"><input type="radio" name={`${chooserId}-music`} checked={audioMode === "saved"} disabled={busy} onClick={() => { if (audioMode === "saved" && audioBusy) { changeAudioQuery(""); setAudioMode("saved"); } }} onChange={() => { changeAudioQuery(""); setAudioMode("saved"); }}/><span>Keep saved video audio</span></label>
-            {audioMode === "instagram" ? <>
-            <p className="mt-2">Preference: English songs + instrumentals. Leave the search blank for recommendations, or enter a track or artist to choose your own music. Meta&apos;s API catalog differs from the Instagram app; some songs are unavailable.</p>
-            <p>Recommendations use sampled visual evidence to suggest a mood fit. Audio listening, BPM measurement and whole-video analysis are not performed. The local MP4 stays unchanged.</p>
-            <label className="block">Track or artist<input type="search" className={input} value={audioQuery} maxLength={100} disabled={busy} onChange={event => changeAudioQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void searchAudio(); } }}/></label>
-            <button type="button" className={button} disabled={busy || audioBusy || !publishReady} onClick={() => void searchAudio()}>{audioBusy ? "Checking Instagram audio…" : "Find Instagram audio"}</button>
-            {audioRecommendation && <p role="status">Visual mood: {audioRecommendation.mood} · energy: {audioRecommendation.energy}. {audioRecommendation.basis === "sampled-frames" ? "Based on sampled frames." : "Based on saved observations of sampled frames."} {audioRecommendation.reason}</p>}
-            {audioError && <p role="status">{audioError}</p>}
-            {audioTracks.map(track => <div key={track.audio_id} className="flex flex-wrap items-center gap-2"><button type="button" className={button} disabled={busy || audioBusy} aria-pressed={selectedAudio?.audio_id === track.audio_id} onClick={() => { audioEpoch.current++; audioRequest.current?.abort(); setAudioBusy(false); setSelectedAudio(track); setConfirmed(false); }}>{track.title}{track.display_artist ? ` · ${track.display_artist}` : ""}</button>{track.recommendation && <span>#{track.recommendation.rank} · {track.recommendation.kind === "english-vocal" ? "English vocals" : "Instrumental"} · {track.recommendation.reason}</span>}{track.preview_url && <a className="underline" href={track.preview_url} target="_blank" rel="noopener noreferrer">Preview on Instagram</a>}</div>)}
-            {selectedAudio ? <><p>Selected: {selectedAudio.title}{selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}</p><div className="grid gap-2 sm:grid-cols-2">
-              <label>Instagram track volume (%)<input className={input} type="number" min={1} max={100} step={1} value={audioVolume} disabled={busy || audioBusy} onChange={event => { setAudioVolume(event.target.value); setConfirmed(false); }}/></label>
-              <label>Saved video volume (%)<input className={input} type="number" min={1} max={100} step={1} value={videoVolume} disabled={busy || audioBusy} onChange={event => { setVideoVolume(event.target.value); setConfirmed(false); }}/></label>
-            </div>{!audioVolumesValid && <p role="status">Both volumes must be whole numbers from 1 to 100.</p>}<p>Meta cannot preview the combined Reel before publishing. This track applies to the Reel; a matching Story keeps the saved MP4&apos;s audio.</p></> : <p role="status">Choose an Instagram track before publishing, or keep the saved video audio above. New footage reviews automatically select the first eligible video-based recommendation when available.</p>}
-            </> : <><p>The saved MP4 audio will be posted. No Instagram track will be added.</p>{audioBusy && <p role="status">Checking for an eligible track that matches this video…</p>}{audioError && <p role="status">{audioError}</p>}</>}
+          {platform === "instagram" && <section aria-label="Automatic Reel music" className="space-y-1 rounded-lg bg-[#f7faef] px-3 py-2 text-xs" aria-live="polite">
+            {footageMusic(file) ? audioBusy ? <p role="status">Choosing Instagram music for this video…</p>
+              : selectedAudio ? <>
+                <p><span className="font-semibold">Instagram music:</span> {selectedAudio.title}{selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}</p>
+                <details><summary className="cursor-pointer">Music choice details</summary>
+                  <p>{selectedAudio.recommendation?.reason || audioRecommendation?.reason}</p>
+                  <p>Based on sampled visual evidence, not listening or beat analysis. Instagram adds this track when the Reel is published; the local preview/download and matching Story keep the saved MP4 audio.</p>
+                </details>
+              </> : audioCheckedRevision === videoRevision ? <>
+                <p>{audioError}</p>
+                {savedAudioAvailable ? <p>Keeping the saved video audio; no Instagram track will be added.</p>
+                  : <p role="alert">This video has no verified usable saved audio. Publishing is paused until suitable Instagram music is available. Check status to check availability again.</p>}
+              </> : <p role="status">Instagram music has not been checked for this version. Check status before approving.</p>
+              : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
           </section>}
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
-          <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady}/><span>I have reviewed this video, hold the required rights, and approve {platform === "instagram" ? includeStory ? "publishing this Reel publicly and then its matching Story" : "publishing this Reel publicly" : `uploading this video as ${privacy}`} to {channel?.name || name}.</span></label>
+          <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady || (platform === "instagram" && (audioBusy || !instagramAudioReady))}/><span>I have reviewed this video{platform === "instagram" && footageMusic(file) ? " and the music choice above" : ""}, hold the required rights, and approve {platform === "instagram" ? includeStory ? "publishing this Reel publicly and then its matching Story" : "publishing this Reel publicly" : `uploading this video as ${privacy}`} to {channel?.name || name}.</span></label>
           <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (requestedUserTags === null || postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? includeStory ? "Confirm Reel + Story" : "Confirm and publish Reel" : "Confirm upload"}</button>
         </form>}
         <button type="button" className={button} disabled={busy} onClick={() => void open(platform, instagramMode)}>Check status</button>

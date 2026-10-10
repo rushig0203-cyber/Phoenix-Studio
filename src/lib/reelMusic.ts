@@ -25,17 +25,26 @@ export const REEL_MUSIC_SEEDS: readonly Seed[] = [
   { title: "Upside Down", artist: "Jack Johnson", kind: "english-vocal", moods: ["playful", "warm", "uplifting"], energy: "medium", character: "light, curious acoustic vocals", source: "https://jackjohnsonmusic.com/music/singalongsandlullabiesforthefilmcuriousgeorge/" },
   { title: "A Walk", artist: "Tycho", kind: "instrumental", moods: ["calm", "warm", "uplifting"], energy: "medium", character: "spacious ambient instrumental", source: "https://tycho.bandcamp.com/track/a-walk" },
   { title: "saman", artist: "Ólafur Arnalds", kind: "instrumental", moods: ["calm", "reflective", "warm"], energy: "low", character: "gentle piano instrumental", source: "https://olafurarnalds.com/works/" },
-  { title: "Experience", artist: "Ludovico Einaudi", aliases: ["Ludovico Einaudi Daniel Hope I Virtuosi Italiani"], kind: "instrumental", moods: ["reflective", "uplifting", "energetic"], energy: "medium", character: "building cinematic instrumental", source: "https://ludovicoeinaudi.com/in-a-time-lapse/" },
+  { title: "Experience", artist: "Ludovico Einaudi", aliases: ["Ludovico Einaudi Daniel Hope I Virtuosi Italiani", "Ludovico Einaudi, Daniel Hope, I Virtuosi Italiani"], kind: "instrumental", moods: ["reflective", "uplifting", "energetic"], energy: "medium", character: "building cinematic instrumental", source: "https://ludovicoeinaudi.com/in-a-time-lapse/" },
   { title: "Carefree", artist: "Kevin MacLeod", kind: "instrumental", moods: ["playful", "warm", "uplifting"], energy: "medium", character: "light, bouncy ukulele instrumental", source: "https://incompetech.com/music/royalty-free/index.html?gt=&isrc=USUAN1400037" },
   { title: "Monkeys Spinning Monkeys", artist: "Kevin MacLeod", kind: "instrumental", moods: ["playful", "uplifting"], energy: "high", character: "comic flute and plucked-string instrumental", source: "https://incompetech.com/music/royalty-free/?isrc=USUAN1400011" },
 ];
 export const REEL_MUSIC_LOOKUP_LIMIT = 3;
 const normalized = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+function originalTitle(title: string) {
+  // Reissues preserve the recording identity. Covers, live versions, remixes
+  // and arbitrary suffixes cannot inherit its verified vocal-language label.
+  return normalized(title.replace(/\s*(?:\(|\[|[-–—])\s*(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|original (?:mix|version)|album version)\s*[)\]]?\s*$/i, ""));
+}
+function artistCredits(artist: string) {
+  return artist.split(/\s*(?:,|&|\band\b)\s*/i).map(normalized).filter(Boolean).sort().join("|");
+}
 export function musicSeedMatches(track: InstagramAudioTrack, seed: Seed) {
   // A Latin/English-looking title does not establish vocal language. Accept
   // only the verified original title/artist, not covers, remixes or extra acts.
-  return normalized(track.title) === normalized(seed.title)
-    && [seed.artist, ...(seed.aliases || [])].some(artist => normalized(track.display_artist) === normalized(artist));
+  return originalTitle(track.title) === normalized(seed.title)
+    && [seed.artist, ...(seed.aliases || [])].some(artist => normalized(track.display_artist) === normalized(artist)
+      || (artist.includes(",") && artistCredits(track.display_artist) === artistCredits(artist)));
 }
 export function musicSeedsFor(brief: ReelMusicBrief) {
   if (brief.mood === "uncertain") return [];
@@ -50,6 +59,62 @@ export function musicSeedsFor(brief: ReelMusicBrief) {
     if (alternative) chosen[chosen.length - 1] = alternative;
   }
   return chosen;
+}
+
+const moodCatalog = {
+  calm: { query: "ambient", cues: /\b(?:calm|ambient|peaceful|quiet|gentle|soft|relaxing|relaxed|chill|dreamy|meditation|piano)\b/ },
+  warm: { query: "acoustic", cues: /\b(?:warm|acoustic|sunset|sunshine|sunny|gentle|relaxed|folk|ukulele)\b/ },
+  reflective: { query: "piano", cues: /\b(?:reflective|piano|cinematic|quiet|melancholy|nostalgic|rain|dreamy|ambient)\b/ },
+  uplifting: { query: "uplifting", cues: /\b(?:uplifting|hopeful|inspiring|bright|happy|adventure|cinematic|acoustic)\b/ },
+  energetic: { query: "upbeat", cues: /\b(?:energetic|upbeat|lively|dance|driving|electronic|funk|bright)\b/ },
+  playful: { query: "playful", cues: /\b(?:playful|fun|cheerful|happy|bouncy|comic|ukulele|funk)\b/ },
+} as const;
+
+/** One account catalog read and two relevant instrumental searches, never paging or retries. */
+export function musicCatalogQueries(brief: ReelMusicBrief): string[] {
+  if (brief.mood === "uncertain") return [];
+  return ["", `${moodCatalog[brief.mood].query} instrumental`, "instrumental"].slice(0, REEL_MUSIC_LOOKUP_LIMIT);
+}
+
+/** Prefer known recordings or explicit catalog labels; titles in English alone prove no vocal language. */
+export function rankMusicCatalog(tracks: readonly InstagramAudioTrack[], brief: ReelMusicBrief, limit = 6): RecommendedInstagramAudio[] {
+  if (brief.mood === "uncertain") return [];
+  const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
+  const candidates = new Map<string, { track: InstagramAudioTrack; kind: "english-vocal" | "instrumental"; score: number; reason: string }>();
+  for (const track of tracks) {
+    const original = REEL_MUSIC_SEEDS.find(seed => musicSeedMatches(track, seed));
+    let kind: "english-vocal" | "instrumental", score: number, reason: string;
+    if (original) {
+      if (!original.moods.includes(brief.mood)) continue;
+      kind = original.kind;
+      score = 100 - 15 * Math.abs({ low: 0, medium: 1, high: 2 }[original.energy] - energy);
+      reason = `${original.character} fits the ${brief.mood} visual mood. Verified recording identity; editorial fit, not audio analysis.`;
+    } else {
+      const title = normalized(track.title);
+      const instrumental = /\b(?:instrumental|no vocals|without vocals)\b/.test(title);
+      // Explicit absence labels are allowed; any other vocal declaration,
+      // including language-qualified singing, contradicts an instrumental.
+      const remainingLabels = title.replace(/\b(?:no vocals|without vocals)\b/g, "");
+      const conflictingVocals = /\b(?:vocal\w*|sing(?:ing|er|ers)?|sung|lyric\w*|chant\w*|choir|choral|rap(?:ping)?)\b/.test(remainingLabels);
+      // Unknown vocal language, generic trends and keyword hits without a
+      // matching descriptive title never become automatic recommendations.
+      if (!instrumental || conflictingVocals || !moodCatalog[brief.mood].cues.test(title)
+        || /\b(?:cover|remix|karaoke|tribute)\b/.test(title)
+        || /\b(?:not|non)\s*(?:(?:an?|fully|purely)\s+)?instrumental\b/.test(title)) continue;
+      kind = "instrumental";
+      const low = /\b(?:gentle|soft|quiet|calm|relaxing|ambient|meditation)\b/.test(title);
+      const high = /\b(?:energetic|upbeat|dance|driving|lively)\b/.test(title);
+      if ((brief.energy === "low" && high) || (brief.energy === "high" && low)) continue;
+      score = 65 + ((energy === 0 && low) || (energy === 2 && high) ? 10 : 0);
+      reason = `Catalog title labels an instrumental and a style fitting the ${brief.mood} mood. Metadata fit; audio was not analyzed.`;
+    }
+    const previous = candidates.get(track.audio_id);
+    if (!previous || previous.score < score) candidates.set(track.audio_id, { track, kind, score, reason });
+  }
+  return [...candidates.values()].sort((left, right) => right.score - left.score || normalized(left.track.title).localeCompare(normalized(right.track.title))
+    || left.track.audio_id.localeCompare(right.track.audio_id)).slice(0, Math.min(6, Math.max(0, limit))).map((candidate, index) => ({
+      ...candidate.track, recommendation: { rank: index + 1, kind: candidate.kind, reason: candidate.reason },
+    }));
 }
 
 /** Uses actual saved frame observations, never a topic/title/hashtag template. */

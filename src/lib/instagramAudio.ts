@@ -2,8 +2,15 @@
 export type InstagramAudioTrack = { audio_id: string; title: string; display_artist: string; preview_url?: string };
 export type InstagramAudioConfiguration = { audio_id: string; audio_volume: number; video_volume: number };
 export type InstagramAudioSelection = InstagramAudioConfiguration & { title: string; display_artist: string };
-export type InstagramAudioSearch = { audio: import("./reelMusic").RecommendedInstagramAudio[]; reason?: string; recommendation?: import("./reelMusic").ReelMusicRecommendation };
+export type InstagramAudioSearch = {
+  audio: import("./reelMusic").RecommendedInstagramAudio[];
+  reason?: string;
+  recommendation?: import("./reelMusic").ReelMusicRecommendation;
+  outcome?: "matched" | "empty-catalog" | "malformed-catalog" | "no-preferred-match" | "unavailable" | "missing-evidence" | "uncertain";
+  catalog?: { requests: number; received: number; inspected: number; valid: number; malformed: number; eligible: number; truncated: boolean };
+};
 export const INSTAGRAM_AUDIO_SEARCH_LIMIT = 6;
+export const INSTAGRAM_AUDIO_CATALOG_LIMIT = 30;
 // Meta's June 2026 Audio API guide documents v22.0. Legacy uploads retain v21.0.
 export const INSTAGRAM_AUDIO_GRAPH_VERSION = "v22.0";
 export const instagramAudioId = (value: unknown): value is string => typeof value === "string" && /^[0-9]{1,40}$/.test(value) && !/[\r\n]/.test(value);
@@ -25,6 +32,17 @@ export function publicInstagramAudioTrack(value: unknown): InstagramAudioTrack |
   const preview = instagramAudioPreviewUrl(track.on_platform_audio_preview_link);
   return { audio_id: track.audio_id, title: track.title.trim(), display_artist: typeof track.display_artist === "string" ? track.display_artist.trim() : "",
     ...(preview ? { preview_url: preview } : {}) };
+}
+/** Bound metadata inspection before ranking; an unreadable response is not an empty catalog. */
+export function instagramAudioCatalog(value: unknown) {
+  const response = value && typeof value === "object" && !Array.isArray(value) ? value as { audio?: unknown } : null;
+  if (!response || !Array.isArray(response.audio)) {
+    return { tracks: [] as InstagramAudioTrack[], received: 0, inspected: 0, malformed: 1, truncated: false };
+  }
+  const records = response.audio.slice(0, INSTAGRAM_AUDIO_CATALOG_LIMIT);
+  const tracks = records.flatMap(record => { const track = publicInstagramAudioTrack(record); return track ? [track] : []; });
+  return { tracks, received: response.audio.length, inspected: records.length, malformed: records.length - tracks.length,
+    truncated: response.audio.length > records.length };
 }
 export function instagramAudioConfiguration(value: unknown): InstagramAudioConfiguration | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

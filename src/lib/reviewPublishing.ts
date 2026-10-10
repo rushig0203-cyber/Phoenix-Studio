@@ -11,10 +11,10 @@ import { stripFootageProvenance } from "./posting";
 import { getReviewFile, reviewRoot, safeReviewId, type ReviewTarget } from "./reviewFiles";
 import { reviewMediaPath, selectedReviewTarget } from "./reviewMedia";
 import { eligibleInstagramLocation, instagramLocationId, publicInstagramLocation, INSTAGRAM_LOCATION_SEARCH_LIMIT, type InstagramLocation, type InstagramLocationSearch } from "./instagramLocations";
-import { instagramAudioId, instagramAudioConfiguration, publicInstagramAudioTrack, publicInstagramAudioSelection, INSTAGRAM_AUDIO_SEARCH_LIMIT, INSTAGRAM_AUDIO_GRAPH_VERSION,
+import { instagramAudioId, instagramAudioConfiguration, instagramAudioCatalog, publicInstagramAudioTrack, publicInstagramAudioSelection, INSTAGRAM_AUDIO_SEARCH_LIMIT, INSTAGRAM_AUDIO_GRAPH_VERSION,
   type InstagramAudioConfiguration, type InstagramAudioSelection, type InstagramAudioSearch } from "./instagramAudio";
 import { instagramUserTags, publicInstagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "./instagramTags";
-import { musicBriefFromReview, musicSeedMatches, musicSeedsFor, type RecommendedInstagramAudio } from "./reelMusic";
+import { musicBriefFromReview, musicCatalogQueries, rankMusicCatalog, type RecommendedInstagramAudio } from "./reelMusic";
 import { postingMediaFingerprint } from "./postingEvidence";
 import {
   assertLocalChannelRequest, assertChannelPublishAccessCurrent, createChannelPublishAccessMonitor, getChannelPublishAccess,
@@ -426,14 +426,16 @@ export async function searchInstagramAudio(reviewId: string, query: string, conn
   url.searchParams.set("audio_type", "music"); url.searchParams.set("user_id", access.accountId);
   if (q) url.searchParams.set("search_query", q);
   try {
-    const result = await audioProviderGet(url, access), seen = new Set<string>();
-    const audio = (Array.isArray(result.audio) ? result.audio.slice(0, INSTAGRAM_AUDIO_SEARCH_LIMIT) : []).flatMap(value => {
-      const track = publicInstagramAudioTrack(value);
-      if (!track || seen.has(track.audio_id)) return [];
+    const result = instagramAudioCatalog(await audioProviderGet(url, access)), seen = new Set<string>();
+    const audio = result.tracks.flatMap(track => {
+      if (seen.has(track.audio_id)) return [];
       seen.add(track.audio_id); return [track];
-    });
-    return { audio, ...(!audio.length ? { reason: "Meta returned no available Instagram audio. Try another search or keep this video's saved audio." } : {}) };
-  } catch (error) { if (error instanceof ReviewPublishingError) return { audio: [], reason: error.message }; throw error; }
+    }).slice(0, INSTAGRAM_AUDIO_SEARCH_LIMIT);
+    const outcome = audio.length ? "matched" : result.malformed ? "malformed-catalog" : "empty-catalog";
+    return { audio, outcome, catalog: { requests: 1, received: result.received, inspected: result.inspected, valid: result.tracks.length,
+      malformed: result.malformed, eligible: audio.length, truncated: result.truncated },
+      ...(!audio.length ? { reason: outcome === "malformed-catalog" ? "Meta returned unreadable music metadata. No Instagram track could be selected." : "Meta returned an empty music catalog for this account and search." } : {}) };
+  } catch (error) { if (error instanceof ReviewPublishingError) return { audio: [], outcome: "unavailable", reason: error.message }; throw error; }
 }
 
 async function mediaDigest(filename: string) {
@@ -470,41 +472,42 @@ export async function recommendInstagramAudio(reviewId: string, connectionRevisi
   const access = await accessFor("instagram", revision);
   if (access.loginType !== "facebook") throw problem("Instagram audio needs the existing Facebook-linked publishing connection.", 403);
   const evidence = await matchingMusicEvidence(media);
-  if (!evidence) return { audio: [], reason: "Music recommendations need caption analysis of this finished output. Its analysis is missing or out of date; no generic trending music was substituted. You can search a track yourself or keep the saved audio." };
+  if (!evidence) return { audio: [], outcome: "missing-evidence", reason: "The finished output's visual analysis is missing or out of date. No Instagram music was selected." };
   const profile = musicBriefFromReview(media.file);
-  if (!profile) return { audio: [], reason: "There is not enough saved visual evidence to recommend fitting English songs or instrumentals. No extra model call was made. You can search a track yourself or keep the saved audio." };
+  if (!profile) return { audio: [], outcome: "missing-evidence", reason: "There is not enough saved visual evidence to choose fitting English vocals or instrumentals. No extra model call was made." };
   const recommendation = { preference: "english-and-instrumental" as const, basis: profile.basis, mood: profile.brief.mood, energy: profile.brief.energy, reason: profile.brief.reason };
-  const seeds = musicSeedsFor(profile.brief);
-  if (!seeds.length) return { audio: [], recommendation, reason: "The sampled visual mood is uncertain. No unrelated trending track was substituted; choose music yourself or keep the saved audio." };
-  const seen = new Set<string>(); const audio: RecommendedInstagramAudio[] = [];
+  const queries = musicCatalogQueries(profile.brief);
+  if (!queries.length) return { audio: [], outcome: "uncertain", recommendation, reason: "The sampled visual mood is uncertain. No unrelated Instagram track was selected." };
+  const tracks: RecommendedInstagramAudio[] = [];
+  const catalog = { requests: 0, received: 0, inspected: 0, valid: 0, malformed: 0, eligible: 0, truncated: false };
   try {
-    // At most three sequential, bounded metadata requests. Strict original
-    // title/artist matching establishes the seed identity, never vocal language
-    // inferred from an English-looking title. Meta decides account availability.
-    for (const seed of seeds) {
+    // At most three sequential metadata reads. Rank the bounded account catalog
+    // as well as mood/instrumental searches; never infer vocals from an English title.
+    for (const query of queries) {
       await readyMedia(reviewId, "instagram", media.fingerprint, media.target);
       const url = new URL(`${AUDIO_GRAPH}/ig_audio`);
       url.searchParams.set("audio_type", "music"); url.searchParams.set("user_id", access.accountId);
-      url.searchParams.set("search_query", seed.title);
-      const result = await audioProviderGet(url, access);
-      for (const value of Array.isArray(result.audio) ? result.audio.slice(0, INSTAGRAM_AUDIO_SEARCH_LIMIT) : []) {
-        const track = publicInstagramAudioTrack(value);
-        if (!track || seen.has(track.audio_id) || !musicSeedMatches(track, seed)) continue;
-        seen.add(track.audio_id);
-        audio.push({ ...track, recommendation: { rank: audio.length + 1, kind: seed.kind,
-          reason: `${seed.character} for a ${profile.brief.mood} visual mood (${profile.brief.energy} suggested energy). Editorial fit, not beat or lyric analysis.` } });
-        break; // One original per seed, not multiple copies of the same song.
-      }
+      if (query) url.searchParams.set("search_query", query);
+      const result = instagramAudioCatalog(await audioProviderGet(url, access));
+      catalog.requests++; catalog.received += result.received; catalog.inspected += result.inspected;
+      catalog.valid += result.tracks.length; catalog.malformed += result.malformed; catalog.truncated ||= result.truncated;
+      tracks.push(...result.tracks);
     }
     await assertCurrent(access);
     const latest = await readyMedia(reviewId, "instagram", media.fingerprint, media.target);
     await readyMedia(reviewId, "instagram", evidence.fingerprint, evidence.target);
     if (latest.file.quality.postingAnalysis?.fingerprint !== evidence.identity || JSON.stringify(musicBriefFromReview(latest.file)) !== JSON.stringify(profile)) throw problem("This video's analysis changed during music lookup. Check its latest recommendations before choosing a track.", 409);
-    return { audio, recommendation, ...(!audio.length ? { reason: "Meta returned none of the matching English songs or instrumentals for this account. No unrelated track was substituted. Search another track or keep the saved audio." } : {}) };
+    const audio = rankMusicCatalog(tracks, profile.brief, INSTAGRAM_AUDIO_SEARCH_LIMIT);
+    catalog.eligible = audio.length;
+    const outcome = audio.length ? "matched" : !catalog.valid && catalog.malformed ? "malformed-catalog" : !catalog.received ? "empty-catalog" : "no-preferred-match";
+    const reason = outcome === "malformed-catalog" ? "Meta returned unreadable music metadata. No Instagram track could be selected."
+      : outcome === "empty-catalog" ? "Meta returned an empty music catalog for this account and the relevant searches."
+        : "Meta returned music, but no inspected track had verified English vocals or an instrumental label with a style fitting this video's mood.";
+    return { audio, recommendation, outcome, catalog, ...(!audio.length ? { reason } : {}) };
   } catch (error) {
     // A rate/permission/output change discards partial results. No retry, paid
     // fallback, automatic track selection or upload is triggered by this read.
-    if (error instanceof ReviewPublishingError) return { audio: [], recommendation, reason: error.message };
+    if (error instanceof ReviewPublishingError) return { audio: [], recommendation, outcome: "unavailable", reason: error.message };
     throw error;
   }
 }

@@ -35,3 +35,22 @@ test('configuration requires the exact documented immutable fields with integer 
   assert.equal(audio.INSTAGRAM_AUDIO_GRAPH_VERSION, 'v22.0');
   assert.equal(audio.INSTAGRAM_AUDIO_SEARCH_LIMIT, 6);
 });
+
+test('catalog inspection distinguishes malformed shape, empty catalog and rejected metadata', () => {
+  const empty=audio.instagramAudioCatalog({audio:[]});
+  assert.equal(empty.received,0);assert.equal(empty.malformed,0);assert.equal(empty.tracks.length,0);
+  for(const value of [null,[],{}, {audio:{}}, {data:[]}]) {
+    const result=audio.instagramAudioCatalog(value);
+    assert.equal(result.received,0);assert.equal(result.malformed,1);
+  }
+  const rejected=audio.instagramAudioCatalog({audio:[{audio_id:'bad',title:'Broken'},null]});
+  assert.equal(rejected.received,2);assert.equal(rejected.inspected,2);assert.equal(rejected.malformed,2);assert.equal(rejected.tracks.length,0);
+});
+
+test('catalog inspects thirty bounded records before selection and strips private provider fields', () => {
+  const records=Array.from({length:35},(_,index)=>({audio_id:`${1000+index}`,title:`Song ${index}`,display_artist:'Fixture artist',download_url:'https://private.test/token'}));
+  const result=audio.instagramAudioCatalog({audio:records});
+  assert.equal(audio.INSTAGRAM_AUDIO_CATALOG_LIMIT,30);
+  assert.equal(result.received,35);assert.equal(result.inspected,30);assert.equal(result.tracks.length,30);assert.equal(result.truncated,true);
+  assert.ok(!JSON.stringify(result).includes('download_url'));assert.ok(!JSON.stringify(result).includes('private.test'));
+});

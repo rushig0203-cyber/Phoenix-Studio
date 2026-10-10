@@ -969,280 +969,313 @@ test('an untagged Reel omits the optional parameter and continued uploads use on
   assert.deepEqual(JSON.parse(continued.posts[0].body),{action:'continue',jobId:'saved-upload',confirm:true});
 });
 
-test('Instagram music is visible, with saved audio retained for non-footage until explicitly changed', async t => {
-  const h = uiHarness({ audio: [audioResult({ preview_url: 'https://www.instagram.com/reels/audio/587784541076604/?tracking=x' })] }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush();
-  const panel = nodes(h.tree).find(node => node.type === 'section' && node.props['aria-label'] === 'Reel music');
-  assert.ok(panel); assert.equal(h.control('Keep saved video audio', 'input').props.checked, true);
-  assert.equal(h.requests.some(request => request.url.includes('?check=audio')), false);
-  h.change(h.control('Use Instagram music', 'input'), true); h.render();
-  const before = h.requests.length; h.change(h.control('Track or artist', 'input'), 'calm'); h.render(); assert.equal(h.requests.length, before);
-  h.click('Find Instagram audio'); await h.flush();
-  assert.ok(h.requests.at(-1).url.includes('?check=audio&q=calm&connectionRevision=revision-instagram'));
-  assert.ok(h.button('Calm track · Fixture artist')); assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
-  const preview = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Preview on Instagram');
-  assert.equal(preview.props.href, 'https://www.instagram.com/reels/audio/587784541076604/');
-  assert.equal(nodes(h.tree).some(node => node.type === 'audio'), false, 'The panel never autoplays or downloads catalog media');
+const footageFile = (audio = 'local-music-replaced') => sampleFile({
+  source: { kind: 'pexels', filename: 'saved-stock.mp4' }, quality: { audio, hashtags: [], captions: [] },
 });
-test('track and volume changes require renewed final approval and only the documented configuration joins the confirmed Reel', async t => {
-  let saved;
-  const h = uiHarness({ audio: [audioResult()], post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram', audio: { ...saved.audio, title: 'Calm track', display_artist: 'Fixture artist' } }) }); } });
-  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.change(h.control('Use Instagram music', 'input'), true); h.render();
-  h.click('Find Instagram audio'); await h.flush();
-  assert.ok(h.requests.at(-1).url.includes('?check=audio-recommendations&connectionRevision=revision-instagram'), 'Blank search asks for contextual English-vocal and instrumental recommendations');
-  h.change(h.confirmation(), true); h.render(); h.click('Calm track · Fixture artist'); h.render(); assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.control('Instagram track volume (%)', 'input').props.value, '100'); assert.equal(h.control('Saved video volume (%)', 'input').props.value, '1');
-  for (const [label, value] of [['Instagram track volume (%)', '80'], ['Saved video volume (%)', '25']]) {
-    h.change(h.confirmation(), true); h.render(); h.change(h.control(label, 'input'), value); h.render(); assert.equal(h.confirmation().props.checked, false);
+const automaticMusicPanel = h => nodes(h.tree).find(node => node.type === 'section' && node.props['aria-label'] === 'Automatic Reel music');
+function assertNoManualMusicControls(h) {
+  for (const label of ['Use Instagram music', 'Keep saved video audio', 'Track or artist', 'Instagram track volume (%)', 'Saved video volume (%)']) {
+    assert.equal(h.control(label, 'input'), undefined, label);
   }
-  assert.match(h.text, /cannot preview the combined Reel/); assert.match(h.text, /matching Story keeps the saved MP4/);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
-  assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 80, video_volume: 25 }); assert.equal(h.posts.length, 1);
-  assert.match(h.text, /Approved Instagram audio: Calm track/); assert.equal(h.button('Find Instagram audio'), undefined);
-});
-test('invalid volume blocks submission and clearing a track or editing search resets its final approval', async t => {
-  const h = uiHarness({ audio: [audioResult()] }); t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.change(h.control('Use Instagram music', 'input'), true); h.render();
-  h.click('Find Instagram audio'); await h.flush(); h.click('Calm track · Fixture artist'); h.render();
-  h.change(h.control('Saved video volume (%)', 'input'), '0'); h.render(); h.change(h.confirmation(), true); h.render();
-  assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.control('Keep saved video audio', 'input'), true); h.render(); assert.equal(h.confirmation().props.checked, false); assert.equal(h.control('Saved video volume (%)', 'input'), undefined);
-  h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush();
-  h.click('Calm track · Fixture artist'); h.render(); h.change(h.confirmation(), true); h.render();
-  h.change(h.control('Track or artist', 'input'), 'different'); h.render(); assert.equal(h.confirmation().props.checked, false);
-  assert.match(h.text, /Choose an Instagram track before publishing/);
-});
-test('editing or leaving during catalog search aborts and ignores stale audio results', async t => {
-  const waiting = deferred(); const h = uiHarness({ read(request) { if (request.url.includes('?check=audio')) return waiting.promise; } }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush(); h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush(); const search = h.requests.at(-1);
-  assert.equal(h.button('Checking Instagram audio…').props.disabled, true);
-  h.change(h.control('Track or artist', 'input'), 'new query'); await h.flush(); assert.equal(search.signal.aborted, true);
-  waiting.resolve(response({ audio: [audioResult({ title: 'Stale track' })], recommendation: recommendationResult({ reason: 'Stale visual evidence.' }) })); await h.flush(); assert.equal(h.button('Stale track · Fixture artist'), undefined); assert.doesNotMatch(h.text, /Stale visual evidence/); assert.equal(h.posts.length, 0);
+  assert.equal(h.button('Find Instagram audio'), undefined);
+  assert.equal(nodes(automaticMusicPanel(h)).some(node => node.type === 'button' || node.type === 'input'), false,
+    'Automatic music has no manual selection, search or volume controls');
+  assert.equal(nodes(h.tree).some(node => node.type === 'audio'), false, 'Catalog audio is never downloaded or autoplayed');
+}
+
+test('narration and song reviews preserve their saved MP4 audio without a manual music panel or catalog lookup', async t => {
+  for (const creationType of ['children-story', 'children-song']) {
+    let saved;
+    const h = uiHarness({ file: sampleFile({ source: { kind: 'local' }, audience: 'kids-3-6',
+      delivery: { creationType }, quality: { audio: 'local-narration-music', hashtags: [], captions: [] } }),
+      audio: [audioResult()], post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assertNoManualMusicControls(h);
+    assert.equal(h.requests.some(request => request.url.includes('?check=audio')), false);
+    assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+    h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+    assert.equal(saved.audio, undefined); assert.equal(h.posts.length, 1);
+  }
 });
 
-test('footage retains saved audio during lookup then selects a validated recommendation for fresh final approval', async t => {
-  let saved; const waiting = deferred();
-  const h = uiHarness({ file: sampleFile({source:{kind:'pexels',filename:'stock.mp4'},quality:{audio:'local-music-replaced',postCopy:'A quiet forest',hashtags:[],captions:[]}}),
-    read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; },
-    post(request) { saved=JSON.parse(request.body); return response({job:job({platform:'instagram'})}); } }); t.after(()=>h.unmount());
-  h.choose('Post to Instagram'); await h.flush();
-  assert.equal(h.control('Keep saved video audio','input').props.checked,true);
-  assert.equal(h.control('Use Instagram music','input').props.checked,false);
-  assert.equal(h.requests.filter(r=>r.url.includes('?check=audio-recommendations&connectionRevision=revision-instagram')).length,1);
-  h.change(h.confirmation(),true); h.render(); assert.equal(h.button('Confirm and publish Reel').props.disabled,true);
-  h.submit(); await h.flush(); assert.equal(h.posts.length,0);
-  waiting.resolve(response({ audio: [audioResult()], recommendation: recommendationResult() })); await h.flush();
-  assert.equal(h.control('Use Instagram music','input').props.checked,true);
-  assert.equal(h.button('Calm track · Fixture artist').props['aria-pressed'],true);
-  assert.equal(h.confirmation().props.checked,false, 'Applying a recommendation invalidates approval of the saved soundtrack');
-  assert.equal(h.button('Confirm and publish Reel').props.disabled,true); assert.equal(h.posts.length,0);
-  h.submit(); await h.flush(); assert.equal(h.posts.length,0);
-  h.change(h.confirmation(),true); h.render(); h.submit(); await h.flush();
-  assert.deepEqual(saved.audio,{audio_id:'587784541076604',audio_volume:100,video_volume:1});
-  assert.equal(h.posts.length,1);
-});
-
-test('footage automatically selects the lowest validated recommendation rank rather than catalog order', async t => {
+test('automatic music presents one eligible track with fixed volumes only after final approval', async t => {
   let saved;
-  const h = uiHarness({ file: sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}), audio: [
+  const h = uiHarness({ file: footageFile(), audio: [audioResult({ preview_url: 'https://www.instagram.com/reels/audio/587784541076604/?tracking=x' })],
+    post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram',
+      audio: { ...saved.audio, title: 'Calm track', display_artist: 'Fixture artist' } }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  const panel = automaticMusicPanel(h); assert.ok(panel); assertNoManualMusicControls(h);
+  assert.match(text(panel), /Calm track/); assert.match(text(panel), /Fixture artist/);
+  assert.equal(h.requests.filter(request => request.url === h.endpoint + '?check=audio-recommendations&connectionRevision=revision-instagram').length, 1);
+  assert.equal(h.requests.some(request => request.url.includes('?check=audio&q=')), false);
+  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 });
+  assert.equal(h.posts.length, 1); assert.match(h.text, /Approved Instagram audio: Calm track/);
+});
+
+test('a changed output revision clears selected music and approval and cannot borrow a retained submit handler', async t => {
+  let saved;
+  const h = uiHarness({ file: footageFile(), audio: [audioResult()],
+    post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  h.change(h.confirmation(), true); h.render(); const oldForm = h.form();
+  h.updateFile({ ...h.file, updatedAt: '2026-10-11T01:00:00Z',
+    outputs: { ...h.file.outputs, instagram: { ...h.file.outputs.instagram, duration: 18 } } }); await h.flush();
+  assert.equal(h.confirmation().props.checked, false);
+  assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
+  h.submit(oldForm); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.click('Check status'); await h.flush(); assert.match(text(automaticMusicPanel(h)), /Calm track/);
+  assert.equal(h.confirmation().props.checked, false);
+  h.change(h.confirmation(), true); h.render(); h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush(); assert.equal(saved.audio.audio_id, '587784541076604'); assert.equal(h.posts.length, 1);
+});
+
+test('changing output during automatic lookup aborts and ignores the old recommendation', async t => {
+  const waiting = deferred();
+  const h = uiHarness({ file: footageFile(), read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  const search = h.requests.find(request => request.url.includes('?check=audio-recommendations'));
+  assert.ok(search);
+  h.updateFile({ ...h.file, updatedAt: '2026-10-11T02:00:00Z',
+    outputs: { ...h.file.outputs, instagram: { ...h.file.outputs.instagram, filename: 'changed-output.mp4' } } }); await h.flush();
+  assert.equal(search.signal.aborted, true);
+  waiting.resolve(response({ audio: [audioResult({ title: 'Stale output track' })], recommendation: recommendationResult({ reason: 'Stale output visual evidence.' }) })); await h.flush();
+  assert.doesNotMatch(h.text, /Stale output track|Stale output visual evidence/);
+  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+});
+
+test('automatic music blocks confirmation during lookup and requires fresh approval of its selected result', async t => {
+  let saved; const waiting = deferred();
+  const h = uiHarness({ file: footageFile(), read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; },
+    post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  assert.ok(automaticMusicPanel(h)); assert.match(text(automaticMusicPanel(h)), /Choosing Instagram music for this video/); assertNoManualMusicControls(h);
+  assert.equal(Boolean(h.confirmation().props.disabled), true); assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  waiting.resolve(response({ audio: [audioResult()], recommendation: recommendationResult() })); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /Calm track/);
+  assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 }); assert.equal(h.posts.length, 1);
+});
+
+test('automatic music selects the lowest validated recommendation rank rather than catalog order', async t => {
+  let saved;
+  const h = uiHarness({ file: footageFile(), audio: [
     audioResult({ audio_id: '10', title: 'Invalid first choice', recommendation: { rank: 0, kind: 'english-vocal', reason: 'Invalid rank evidence.' } }),
     audioResult({ audio_id: '30', title: 'Third choice', recommendation: { rank: 3, kind: 'instrumental', reason: 'Third-ranked instrumental fit.' } }),
     audioResult({ audio_id: '20', title: 'Second choice', recommendation: { rank: 2, kind: 'english-vocal', reason: 'Second-ranked vocal fit.' } }),
     audioResult({ audio_id: '1', title: 'First choice' }),
-  ], post(request) { saved = JSON.parse(request.body); return response({job:job({platform:'instagram'})}); } }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush();
-  assert.equal(h.button('Invalid first choice · Fixture artist'), undefined);
-  assert.equal(h.button('First choice · Fixture artist').props['aria-pressed'], true);
-  for (const title of ['Second choice', 'Third choice']) assert.equal(h.button(`${title} · Fixture artist`).props['aria-pressed'], false);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+  ], post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /First choice/); assert.doesNotMatch(text(automaticMusicPanel(h)), /Invalid first choice|Second choice|Third choice/);
+  assertNoManualMusicControls(h); assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
   h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
-  assert.deepEqual(saved.audio, {audio_id:'1',audio_volume:100,video_volume:1});
+  assert.deepEqual(saved.audio, { audio_id: '1', audio_volume: 100, video_volume: 1 });
 });
 
-test('unavailable or unverified footage music retains saved audio and permits only an explicitly approved ordinary Reel', async t => {
-  for (const fixture of [
-    { name: 'no visual evidence', result: response({audio:[],reason:'No usable visual evidence is saved for this footage.'}) },
-    { name: 'no eligible catalog track', result: response({audio:[],recommendation:recommendationResult()}) },
-    { name: 'missing summary', result: response({audio:[audioResult()],recommendation:null}) },
-    { name: 'invalid summary', result: response({audio:[audioResult()],recommendation:recommendationResult({basis:'whole-video'})}) },
-    { name: 'invalid track', result: response({audio:[audioResult({audio_id:'invalid'})],recommendation:recommendationResult()}) },
-    { name: 'provider lookup failure', result: response({error:'Instagram catalog lookup is unavailable.'},503) },
-    { name: 'network failure', reject: true },
+test('unavailable or unverified automatic music explicitly retains only verified saved audio before final approval', async t => {
+  for (const audio of ['natural-audio-preserved', 'local-music-replaced']) for (const fixture of [
+    { name: 'no visual evidence', result: response({ audio: [], reason: 'No usable visual evidence is saved for this footage.' }), reason: /No usable visual evidence/ },
+    { name: 'no eligible catalog track', result: response({ audio: [], recommendation: recommendationResult() }) },
+    { name: 'missing summary', result: response({ audio: [audioResult()], recommendation: null }) },
+    { name: 'invalid summary', result: response({ audio: [audioResult()], recommendation: recommendationResult({ basis: 'whole-video' }) }) },
+    { name: 'invalid track', result: response({ audio: [audioResult({ audio_id: 'invalid' })], recommendation: recommendationResult() }) },
+    { name: 'provider lookup failure', result: response({ error: 'Instagram catalog lookup is unavailable.' }, 503), reason: /Instagram catalog lookup is unavailable/ },
+    { name: 'network failure', reject: true, reason: /Could not check Instagram audio/ },
   ]) {
     let saved;
-    const h=uiHarness({file:sampleFile({source:{kind:'pixabay',filename:'stock.mp4'},quality:{audio:'no-audio',hashtags:[],captions:[]}}),
+    const h = uiHarness({ file: footageFile(audio),
       read(request) { if (request.url.includes('?check=audio-recommendations')) return fixture.reject ? Promise.reject(new Error('Mock catalog connection failed.')) : fixture.result; },
-      post(request) {saved=JSON.parse(request.body);return response({job:job({platform:'instagram'})});}});t.after(()=>h.unmount());
-    h.choose('Post to Instagram');await h.flush();
-    assert.equal(h.control('Keep saved video audio','input').props.checked,true,fixture.name);
-    assert.equal(h.control('Use Instagram music','input').props.checked,false,fixture.name);
-    assert.equal(h.button('Calm track · Fixture artist'),undefined,fixture.name);
-    assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm and publish Reel').props.disabled,true);
-    assert.match(h.text,/No Instagram track will be added/);h.submit();await h.flush();assert.equal(h.posts.length,0);
-    h.change(h.confirmation(),true);h.render();assert.equal(h.button('Confirm and publish Reel').props.disabled,false,fixture.name);
-    h.submit();await h.flush();assert.equal(saved.audio,undefined,fixture.name);assert.equal(h.posts.length,1);
+      post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assertNoManualMusicControls(h); assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
+    assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added\./, fixture.name);
+    if (fixture.reason) assert.match(h.text, fixture.reason);
+    assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+    h.change(h.confirmation(), true); h.render(); assert.equal(h.button('Confirm and publish Reel').props.disabled, false, fixture.name);
+    h.submit(); await h.flush(); assert.equal(saved.audio, undefined, fixture.name); assert.equal(h.posts.length, 1);
   }
 });
 
-test('saved uploads, narration, unavailable accounts and YouTube never auto-search music', async t => {
-  for(const options of [
-    {file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-narration-music',hashtags:[],captions:[]}})},
-    ...['COMPLETE','FAILED','NEEDS_CHECK','UPLOADING'].map(status => ({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),
-      jobs:[job({platform:'instagram',status,percent:status === 'COMPLETE' ? 100 : 0,canContinue:status === 'FAILED' || status === 'NEEDS_CHECK',
-        audio:{audio_id:'587784541076604',audio_volume:70,video_volume:10,title:'Saved approved track',display_artist:'Saved artist'}})]})),
-    {file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),channels:[channel('instagram',{publishReady:false})]},
-  ]) {const h=uiHarness(options);t.after(()=>h.unmount());h.choose('Post to Instagram');await h.flush();assert.equal(h.requests.some(r=>r.url.includes('?check=audio')),false);assert.equal(h.posts.length,0);
-    if(options.jobs) {assert.match(h.text,/Approved Instagram audio: Saved approved track · Saved artist · track volume 70% · saved video volume 10%/);assert.equal(h.control('Use Instagram music','input'),undefined);assert.equal(h.control('Track or artist','input'),undefined);}
+test('footage with missing or unverified saved audio cannot publish after automatic music fails', async t => {
+  for (const audio of ['no-audio', 'needs-review']) for (const failure of [
+    response({ audio: [], reason: 'No usable visual evidence is saved for this footage.' }),
+    response({ audio: [], recommendation: recommendationResult() }),
+    response({ error: 'Instagram catalog lookup is unavailable.' }, 503),
+  ]) {
+    const h = uiHarness({ file: footageFile(audio), read(request) { if (request.url.includes('?check=audio-recommendations')) return failure; } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assertNoManualMusicControls(h); assert.doesNotMatch(h.text, /Keeping the saved video audio; no Instagram track will be added/);
+    assert.match(text(automaticMusicPanel(h)), /no verified usable saved audio/i);
+    assert.match(text(automaticMusicPanel(h)), /Publishing is paused until suitable Instagram music is available/);
+    h.confirmation().props.onChange({ target: { checked: true } }); h.render();
+    assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   }
 });
 
-test('changing to saved audio aborts automatic catalog load and ignores stale results', async t => {
-  const waiting=deferred();const h=uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),read(request){if(request.url.includes('?check=audio'))return waiting.promise;}});t.after(()=>h.unmount());
-  h.choose('Post to Instagram');await h.flush();const search=h.requests.find(r=>r.url.includes('?check=audio'));assert.ok(search);
-  h.change(h.control('Keep saved video audio','input'),true);await h.flush();assert.equal(search.signal.aborted,true);
-  waiting.resolve(response({audio:[audioResult({title:'Stale auto track'})],recommendation:recommendationResult({reason:'Stale visual evidence.'})}));await h.flush();assert.equal(h.button('Stale auto track · Fixture artist'),undefined);assert.doesNotMatch(h.text,/Stale visual evidence/);assert.equal(h.posts.length,0);
+test('eligible Instagram music can supply a final-approved Reel even when its saved audio is missing or unverified', async t => {
+  for (const audio of ['no-audio', 'needs-review']) {
+    let saved;
+    const h = uiHarness({ file: footageFile(audio), audio: [audioResult()],
+      post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assert.match(text(automaticMusicPanel(h)), /Calm track/); assert.equal(h.confirmation().props.checked, false);
+    h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+    h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+    assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 });
+  }
 });
 
-test('clicking already checked saved audio cancels automatic lookup and ignores its late recommendation', async t => {
-  const waiting=deferred();const h=uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),read(request){if(request.url.includes('?check=audio-recommendations'))return waiting.promise;}});t.after(()=>h.unmount());
-  h.choose('Post to Instagram');await h.flush();const search=h.requests.find(r=>r.url.includes('?check=audio-recommendations'));assert.ok(search);
-  const savedAudio=h.control('Keep saved video audio','input');assert.equal(savedAudio.props.checked,true);assert.equal(Boolean(savedAudio.props.disabled),false);
-  assert.equal(typeof savedAudio.props.onClick,'function');savedAudio.props.onClick();await h.flush();assert.equal(search.signal.aborted,true);
-  h.change(h.confirmation(),true);h.render();
-  waiting.resolve(response({audio:[audioResult({title:'Stale auto track'})],recommendation:recommendationResult({reason:'Stale visual evidence.'})}));await h.flush();
-  assert.equal(h.control('Keep saved video audio','input').props.checked,true);assert.equal(h.control('Use Instagram music','input').props.checked,false);
-  assert.equal(h.button('Stale auto track · Fixture artist'),undefined);assert.doesNotMatch(h.text,/Stale visual evidence/);
-  assert.equal(h.confirmation().props.checked,true);assert.equal(h.button('Confirm and publish Reel').props.disabled,false);assert.equal(h.posts.length,0);
+test('saved uploads, narration, unavailable accounts, Story-only and YouTube never auto-search music', async t => {
+  for (const options of [
+    { file: sampleFile({ source: { kind: 'pexels' }, quality: { audio: 'local-narration-music', hashtags: [], captions: [] } }) },
+    ...['COMPLETE', 'FAILED', 'NEEDS_CHECK', 'UPLOADING'].map(status => ({ file: footageFile(),
+      jobs: [job({ platform: 'instagram', status, percent: status === 'COMPLETE' ? 100 : 0, canContinue: status === 'FAILED' || status === 'NEEDS_CHECK',
+        audio: { audio_id: '587784541076604', audio_volume: 70, video_volume: 10, title: 'Saved approved track', display_artist: 'Saved artist' } })] })),
+    { file: footageFile(), channels: [channel('instagram', { publishReady: false })] },
+    { file: footageFile(), opening: 'Upload to YouTube' },
+    { file: footageFile(), opening: 'Post Story only', story: { ready: true, reason: 'Saved MP4 is eligible.' } },
+  ]) {
+    const savedJobs = JSON.stringify(options.jobs);
+    const h = uiHarness(options); t.after(() => h.unmount()); h.choose(options.opening || 'Post to Instagram'); await h.flush();
+    assert.equal(h.requests.some(request => request.url.includes('?check=audio')), false); assert.equal(h.posts.length, 0);
+    assertNoManualMusicControls(h); assert.equal(JSON.stringify(options.jobs), savedJobs, 'Opening never changes approved saved jobs');
+    if (options.jobs) assert.match(h.text, /Approved Instagram audio: Saved approved track · Saved artist · track volume 70% · saved video volume 10%/);
+  }
 });
 
-test('manual music mode cancels automatic lookup and its late recommendation cannot replace a reviewed manual track', async t => {
+test('Check status refreshes automatic music and invalidates approval while the new result is pending', async t => {
+  let checks = 0, saved; const waiting = deferred();
+  const h = uiHarness({ file: footageFile(), read(request) {
+    if (request.url.includes('?check=audio-recommendations')) return ++checks === 1
+      ? response({ audio: [audioResult({ title: 'First automatic track' })], recommendation: recommendationResult() }) : waiting.promise;
+  }, post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
+  h.click('Check status'); await h.flush();
+  assert.equal(checks, 2); assert.equal(h.confirmation().props.checked, false); assert.equal(Boolean(h.confirmation().props.disabled), true);
+  assert.doesNotMatch(text(automaticMusicPanel(h)), /First automatic track/); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  waiting.resolve(response({ audio: [audioResult({ audio_id: '123456', title: 'Fresh automatic track' })], recommendation: recommendationResult() })); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /Fresh automatic track/); assert.equal(h.confirmation().props.checked, false);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush(); assert.equal(saved.audio.audio_id, '123456');
+});
+
+test('Check status cannot silently retain an earlier selected track after its recommendation becomes unavailable', async t => {
+  let checks = 0, saved;
+  const h = uiHarness({ file: footageFile(), read(request) {
+    if (request.url.includes('?check=audio-recommendations')) return ++checks === 1
+      ? response({ audio: [audioResult()], recommendation: recommendationResult() })
+      : response({ audio: [], reason: 'Previously eligible music is now unavailable.' });
+  }, post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
+  h.click('Check status'); await h.flush();
+  assert.equal(h.confirmation().props.checked, false); assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
+  assert.match(h.text, /Previously eligible music is now unavailable/); assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added/);
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush(); assert.equal(saved.audio, undefined);
+});
+
+test('switching from an automatic Reel track to Story-only uses the saved MP4 without sending Reel music', async t => {
+  let saved;
+  const h = uiHarness({ file: footageFile(), audio: [audioResult()], story: { ready: true, reason: 'Saved MP4 is eligible.' },
+    post(request) { saved = JSON.parse(request.body); return response({ job: standaloneStoryJob({ status: 'QUEUED', percent: 0 }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /Calm track/); h.choose('Post Story only'); await h.flush();
+  assert.equal(automaticMusicPanel(h), undefined); assert.match(h.text, /saved soundtrack/);
+  assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.deepEqual(saved, { action: 'create-story', confirm: true, connectionRevision: 'revision-instagram' });
+});
+
+test('late Story eligibility cannot expand an already approved automatic-music Reel into a Reel plus Story', async t => {
   const waiting = deferred();
-  const h = uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),read(request){
-    if(request.url.includes('?check=audio-recommendations')) return waiting.promise;
-    if(request.url.includes('?check=audio&q=')) return response({audio:[audioResult({audio_id:'123456',title:'Manual choice'})]});
-  }});t.after(()=>h.unmount());
-  h.choose('Post to Instagram');await h.flush();const automatic=h.requests.find(r=>r.url.includes('?check=audio-recommendations'));assert.ok(automatic);
-  h.change(h.control('Use Instagram music','input'),true);await h.flush();assert.equal(automatic.signal.aborted,true);
-  h.change(h.control('Track or artist','input'),'Bon Iver');h.render();h.click('Find Instagram audio');await h.flush();
-  assert.equal(h.button('Manual choice · Fixture artist').props['aria-pressed'],false,'Manual search results still require a track choice');
-  h.click('Manual choice · Fixture artist');h.render();h.change(h.confirmation(),true);h.render();
-  waiting.resolve(response({audio:[audioResult({title:'Stale automatic choice'})],recommendation:recommendationResult({reason:'Stale automatic visual evidence.'})}));await h.flush();
-  assert.equal(h.button('Manual choice · Fixture artist').props['aria-pressed'],true);
-  assert.equal(h.button('Stale automatic choice · Fixture artist'),undefined);assert.doesNotMatch(h.text,/Stale automatic visual evidence/);
-  assert.equal(h.confirmation().props.checked,true,'An ignored automatic response cannot change reviewed manual choices');assert.equal(h.posts.length,0);
+  const h = uiHarness({ file: footageFile(), audio: [audioResult()], read(request) { if (request.url.includes('?check=story')) return waiting.promise; } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  h.change(h.confirmation(), true); h.render(); assert.equal(h.confirmation().props.checked, true);
+  waiting.resolve(response({ story: { ready: true, reason: 'Fixture Business eligible' } })); await h.flush();
+  assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
+  assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm Reel + Story').props.disabled, true); assert.equal(h.posts.length, 0);
 });
 
-test('late Story eligibility cannot expand an already approved Reel into a Reel plus Story', async t => {
-  const waiting=deferred();const h=uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),
-    audio:[audioResult()],read(request){if(request.url.includes('?check=story'))return waiting.promise;}});t.after(()=>h.unmount());
-  h.choose('Post to Instagram');await h.flush();h.change(h.control('Keep saved video audio','input'),true);h.render();
-  h.change(h.confirmation(),true);h.render();assert.equal(h.confirmation().props.checked,true);
-  waiting.resolve(response({story:{ready:true,reason:'Fixture Business eligible'}}));await h.flush();
-  assert.equal(h.control('Also publish one matching Story','input').props.checked,true);
-  assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Reel + Story').props.disabled,true);assert.equal(h.posts.length,0);
-});
-
-test('closing or switching during automatic music lookup aborts it without leaking a late track', async t => {
-  for(const leave of ['close','youtube']) {
-    const waiting=deferred();const h=uiHarness({file:sampleFile({source:{kind:'pexels'},quality:{audio:'local-music-replaced',hashtags:[],captions:[]}}),read(request){if(request.url.includes('?check=audio'))return waiting.promise;}});t.after(()=>h.unmount());
-    h.choose('Post to Instagram');await h.flush();const search=h.requests.find(r=>r.url.includes('?check=audio'));assert.ok(search);
-    if(leave==='close')h.click('Close');else h.choose('Upload to YouTube');await h.flush();assert.equal(search.signal.aborted,true);
-    waiting.resolve(response({audio:[audioResult({title:'Stale auto track'})],recommendation:recommendationResult({reason:'Stale visual evidence.'})}));await h.flush();
-    assert.equal(h.button('Stale auto track · Fixture artist'),undefined);assert.doesNotMatch(h.text,/Stale visual evidence/);assert.equal(h.posts.length,0);
+test('closing, switching platform or unmounting during automatic music lookup aborts and ignores late results', async t => {
+  for (const leave of ['close', 'youtube', 'unmount']) {
+    const waiting = deferred();
+    const h = uiHarness({ file: footageFile(), read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    const search = h.requests.find(request => request.url.includes('?check=audio-recommendations')); assert.ok(search);
+    if (leave === 'close') h.click('Close'); else if (leave === 'youtube') h.choose('Upload to YouTube'); else h.unmount();
+    await h.flush(); assert.equal(search.signal.aborted, true);
+    waiting.resolve(response({ audio: [audioResult({ title: 'Stale automatic track' })], recommendation: recommendationResult({ reason: 'Stale visual evidence.' }) })); await h.flush();
+    assert.doesNotMatch(h.text, /Stale automatic track|Stale visual evidence/); assert.equal(h.posts.length, 0);
   }
 });
 
-test('contextual music explains its visual basis and English plus instrumental preference without choosing or publishing', async t => {
+test('automatic music explains its validated visual basis and ignores optional backend diagnostics', async t => {
   for (const basis of ['sampled-frames', 'saved-observations']) {
-    const h = uiHarness({ recommendation: recommendationResult({ basis }), audio: [audioResult(), audioResult({
-      audio_id: '123456', title: 'Gentle piano', display_artist: 'Piano artist',
-      recommendation: { rank: 2, kind: 'instrumental', reason: 'Gentle piano fits the calm sampled scenery.' },
-    })] }); t.after(() => h.unmount());
-    h.choose('Post to Instagram'); await h.flush();
-    h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush();
-    assert.equal(h.requests.at(-1).url, `${h.endpoint}?check=audio-recommendations&connectionRevision=revision-instagram`);
-    assert.ok(h.deadlines.includes(45000));
-    assert.match(h.text, /Preference: English songs \+ instrumentals/);
-    assert.match(h.text, /Visual mood: calm · energy: low/);
-    assert.match(h.text, basis === 'sampled-frames' ? /Based on sampled frames/ : /Based on saved observations of sampled frames/);
-    assert.match(h.text, /Sampled frames show still water and trees/);
-    assert.match(h.text, /#1 · English vocals · Reflective English vocals/);
-    assert.match(h.text, /#2 · Instrumental · Gentle piano fits/);
-    assert.match(h.text, /Audio listening, BPM measurement and whole-video analysis are not performed/);
-    assert.match(h.text, /The local MP4 stays unchanged/);
-    assert.doesNotMatch(h.text, /trending audio/);
-    assert.equal(h.button('Calm track · Fixture artist').props['aria-pressed'], false);
-    assert.equal(h.button('Gentle piano · Piano artist').props['aria-pressed'], false);
-    assert.equal(h.confirmation().props.checked, false);
-    assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
-    assert.ok(h.requests.every(request => request.method === 'GET'));
-    assert.equal(h.posts.length, 0);
+    const h = uiHarness({ file: footageFile(), audio: [audioResult()], recommendation: recommendationResult({ basis }),
+      read(request) { if (request.url.includes('?check=audio-recommendations')) return response({
+        audio: [audioResult()], recommendation: recommendationResult({ basis }), diagnostics: { secret: 'Never expose diagnostic payload' },
+      }); } });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assert.ok(h.deadlines.includes(45000)); assertNoManualMusicControls(h);
+    assert.match(text(automaticMusicPanel(h)), /Calm track/);
+    assert.match(h.text, /Reflective English vocals fit the quiet scenery/);
+    assert.match(h.text, /Based on sampled visual evidence, not listening or beat analysis/);
+    assert.match(h.text, /local preview\/download and matching Story keep the saved MP4 audio/);
+    assert.doesNotMatch(h.text, /trending audio|Never expose diagnostic payload/);
+    assert.equal(h.confirmation().props.checked, false); assert.ok(h.requests.every(request => request.method === 'GET')); assert.equal(h.posts.length, 0);
   }
 });
 
-test('a manual artist search replaces contextual details and remains current when an older recommendation arrives', async t => {
-  const waiting = deferred();
-  const h = uiHarness({ read(request) {
-    if (request.url.includes('?check=audio-recommendations')) return waiting.promise;
-    if (request.url.includes('?check=audio&q=')) return response({ audio: [audioResult({ title: 'Manual choice' })],
-      recommendation: recommendationResult({ reason: 'Manual searches must not display this recommendation.' }) });
-  } }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush();
-  h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush();
-  const previous = h.requests.at(-1);
-  h.change(h.control('Track or artist', 'input'), '  Bon Iver  '); await h.flush();
-  assert.equal(previous.signal.aborted, true);
-  h.click('Find Instagram audio'); await h.flush();
-  assert.equal(h.requests.at(-1).url, `${h.endpoint}?check=audio&q=Bon%20Iver&connectionRevision=revision-instagram`);
-  assert.equal(h.deadlines.at(-1), 25000);
-  assert.ok(h.button('Manual choice · Fixture artist'));
-  assert.equal(h.button('Manual choice · Fixture artist').props['aria-pressed'], false, 'Manual searches never select a returned track automatically');
-  assert.doesNotMatch(h.text, /Visual mood:|#1 · English vocals|Manual searches must not display/);
-  waiting.resolve(response({ audio: [audioResult({ title: 'Old recommendation' })],
-    recommendation: recommendationResult({ reason: 'Old sampled visual evidence.' }) })); await h.flush();
-  assert.ok(h.button('Manual choice · Fixture artist'));
-  assert.equal(h.button('Old recommendation · Fixture artist'), undefined);
-  assert.doesNotMatch(h.text, /Old sampled visual evidence/);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+test('a newer automatic status lookup wins and an older recommendation cannot change final approval', async t => {
+  let checks = 0; const waiting = deferred();
+  const h = uiHarness({ file: footageFile(), read(request) {
+    if (request.url.includes('?check=audio-recommendations')) return ++checks === 1 ? waiting.promise
+      : response({ audio: [audioResult({ title: 'Current automatic track' })], recommendation: recommendationResult() });
+  } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  const previous = h.requests.find(request => request.url.includes('?check=audio-recommendations')); h.click('Check status'); await h.flush();
+  assert.equal(previous.signal.aborted, true); assert.equal(checks, 2);
+  assert.match(text(automaticMusicPanel(h)), /Current automatic track/); h.change(h.confirmation(), true); h.render();
+  waiting.resolve(response({ audio: [audioResult({ title: 'Old recommendation' })], recommendation: recommendationResult({ reason: 'Old sampled visual evidence.' }) })); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /Current automatic track/); assert.doesNotMatch(h.text, /Old recommendation|Old sampled visual evidence/);
+  assert.equal(h.confirmation().props.checked, true); assert.equal(h.posts.length, 0);
 });
 
-test('invalid contextual summary cannot present unverified recommendations as eligible choices', async t => {
+test('invalid contextual summary cannot silently select an unverified automatic track', async t => {
   for (const recommendation of [null, [], recommendationResult({ preference: 'hindi-vocals' }),
     recommendationResult({ basis: 'whole-video' }), recommendationResult({ mood: 'unknown-mood' }),
     recommendationResult({ energy: 'extreme' }), recommendationResult({ reason: 'x'.repeat(201) }),
     recommendationResult({ reason: 'Unsafe\nmetadata' })]) {
-    const h = uiHarness({ recommendation, audio: [audioResult()] }); t.after(() => h.unmount());
-    h.choose('Post to Instagram'); await h.flush();
-    h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush();
-    assert.equal(h.button('Calm track · Fixture artist'), undefined);
-    assert.doesNotMatch(h.text, /Visual mood:|Unsafe|unknown-mood|extreme|hindi-vocals/);
-    assert.match(h.text, /No matching recommendation is available/);
-    assert.equal(h.button('Confirm and publish Reel').props.disabled, true); assert.equal(h.posts.length, 0);
+    const h = uiHarness({ file: footageFile(), recommendation, audio: [audioResult()] });
+    t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+    assert.doesNotMatch(h.text, /Calm track|Visual mood:|Unsafe|unknown-mood|extreme|hindi-vocals/);
+    assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added/);
+    assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm and publish Reel').props.disabled, true); assert.equal(h.posts.length, 0);
   }
 });
 
-test('contextual choices reject invalid metadata, duplicates and unsafe previews while bounding public results', async t => {
-  const h = uiHarness({ audio: [
-    audioResult(),
+test('automatic choices reject invalid metadata, duplicates and unsafe previews while bounding public results', async t => {
+  let saved;
+  const h = uiHarness({ file: footageFile(), audio: [
+    audioResult({ audio_id: '1', title: 'Invalid ID metadata', display_artist: 'Unsafe\nartist' }),
     audioResult({ audio_id: '2', title: 'Invalid rank', recommendation: { rank: 0, kind: 'english-vocal', reason: 'Invalid rank evidence.' } }),
     audioResult({ audio_id: '3', title: 'Unverified language', recommendation: { rank: 2, kind: 'hindi-vocal', reason: 'Unverified language evidence.' } }),
     audioResult({ audio_id: '4', title: 'Unbounded reason', recommendation: { rank: 2, kind: 'instrumental', reason: 'x'.repeat(201) } }),
     audioResult({ audio_id: '5', title: 'Valid instrumental', preview_url: 'https://example.com/private-audio.mp3',
       recommendation: { rank: 2, kind: 'instrumental', reason: 'Piano fits the sampled calm scenery.' }, privateData: 'Do not expose private fields' }),
-    audioResult({ title: 'Duplicate track' }),
+    audioResult({ audio_id: '5', title: 'Duplicate track', recommendation: { rank: 1, kind: 'instrumental', reason: 'Duplicate cannot replace the first validated ID.' } }),
     audioResult({ audio_id: '7', title: 'Beyond public bound' }),
-  ] }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush();
-  h.change(h.control('Use Instagram music', 'input'), true); h.render(); h.click('Find Instagram audio'); await h.flush();
-  assert.ok(h.button('Calm track · Fixture artist')); assert.ok(h.button('Valid instrumental · Fixture artist'));
-  for (const title of ['Invalid rank', 'Unverified language', 'Unbounded reason', 'Duplicate track', 'Beyond public bound']) {
-    assert.equal(h.button(`${title} · Fixture artist`), undefined);
-  }
-  assert.doesNotMatch(h.text, /Do not expose private fields|Unverified language evidence/);
-  assert.equal(nodes(h.tree).some(node => node.type === 'a' && text(node) === 'Preview on Instagram'), false);
-  assert.equal(nodes(h.tree).some(node => node.type === 'audio'), false);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+  ], post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
+  assert.match(text(automaticMusicPanel(h)), /Valid instrumental/);
+  assert.doesNotMatch(h.text, /Invalid ID metadata|Invalid rank|Unverified language|Unbounded reason|Duplicate track|Beyond public bound|Do not expose private fields/);
+  assert.equal(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://example.com/private-audio.mp3'), false);
+  assertNoManualMusicControls(h); assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.deepEqual(saved.audio, { audio_id: '5', audio_volume: 100, video_volume: 1 });
 });
 
 test('new Instagram review visibly applies validated saved location and owner tags only to a final approved Reel', async t => {
@@ -1276,12 +1309,12 @@ test('defaults, contextual music and Story capability start together while final
   h.choose('Post to Instagram'); await h.flush();
   for (const check of ['posting-defaults', 'audio-recommendations', 'story']) assert.ok(h.requests.some(request => request.url.includes(`?check=${check}&`)), `${check} starts without waiting for another check`);
   assert.match(h.text, /Checking saved posting choices/);
-  h.change(h.confirmation(), true); h.render(); assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
+  assert.equal(Boolean(h.confirmation().props.disabled), true); assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
   defaults.resolve(response({ defaults: { userTags: ['approved.owner'], location: { id: '123456', name: 'Switzerland' } } })); await h.flush();
   assert.equal(h.confirmation().props.checked, false, 'Applying defaults resets earlier final approval');
   story.resolve(response({ story: { ready: false, reason: 'Stories unavailable in this fixture.' } }));
   audio.resolve(response({ audio: [audioResult()], recommendation: recommendationResult() })); await h.flush();
-  assert.ok(h.button('Calm track · Fixture artist')); assert.equal(h.button('Calm track · Fixture artist').props['aria-pressed'], true);
+  assert.match(text(automaticMusicPanel(h)), /Calm track/); assertNoManualMusicControls(h);
   assert.equal(h.confirmation().props.checked, false, 'Automatic music also requires renewed final approval after defaults settle');
   assert.match(h.text, /Posting location · Switzerland/); assert.equal(h.posts.length, 0);
 });

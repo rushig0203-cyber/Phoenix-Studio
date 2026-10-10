@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const path=require('node:path');
 require('ts-node').register({project:path.join(__dirname,'../tsconfig.json'),transpileOnly:true,compilerOptions:{module:'commonjs',moduleResolution:'node'}});
-const {REEL_MUSIC_SEEDS,REEL_MUSIC_LOOKUP_LIMIT,reelMusicBriefSchema,musicSeedMatches,musicSeedsFor,musicBriefFromReview}=require('../src/lib/reelMusic');
+const {REEL_MUSIC_SEEDS,REEL_MUSIC_LOOKUP_LIMIT,reelMusicBriefSchema,musicSeedMatches,musicSeedsFor,musicCatalogQueries,rankMusicCatalog,musicBriefFromReview}=require('../src/lib/reelMusic');
 const {postingMediaFingerprint,VISION_MODEL}=require('../src/lib/postingEvidence');
 
 const brief=(mood='calm',energy='low',extra={})=>({version:1,mood,energy,reason:'Soft light and trees suggest a restrained visual mood.',evidenceFrames:[1],...extra});
@@ -22,6 +22,81 @@ test('verified originals require exact normalized title and artist',()=>{
   assert.equal(musicSeedMatches(track('Take Me Home Country Roads','JOHN DENVER'),seed('Take Me Home, Country Roads')),true);
   assert.equal(musicSeedMatches(track('saman','Olafur Arnalds'),seed('saman')),true);
   assert.equal(musicSeedMatches(track('Experience','Ludovico Einaudi, Daniel Hope & I Virtuosi Italiani'),seed('Experience')),true);
+});
+
+test('recognized original reissue suffixes and known artist credits preserve identity without accepting extra artists',()=>{
+  for(const title of ['Holocene (Remastered)', 'Holocene - 2024 Remaster', 'Holocene [Original Version]', 'Holocene - Album Version']) {
+    assert.equal(musicSeedMatches(track(title,'Bon Iver'),seed('Holocene')),true,title);
+  }
+  assert.equal(musicSeedMatches(track('Experience','Daniel Hope & I Virtuosi Italiani, Ludovico Einaudi'),seed('Experience')),true);
+  assert.equal(musicSeedMatches(track('Experience','Daniel Hope & I Virtuosi Italiani, Ludovico Einaudi, Guest'),seed('Experience')),false);
+  assert.equal(musicSeedMatches(track('Holocene (Remastered)','A cover artist'),seed('Holocene')),false);
+});
+
+test('bounded discovery reads the available catalog and mood/style plus instrumental searches',()=>{
+  const queries=musicCatalogQueries(brief());
+  assert.deepEqual(queries,['','ambient instrumental','instrumental']);
+  assert.equal(musicCatalogQueries(brief('energetic','high'))[1],'upbeat instrumental');
+  assert.deepEqual(musicCatalogQueries(brief('uncertain','unknown')),[]);
+  assert.ok(queries.length<=REEL_MUSIC_LOOKUP_LIMIT);
+});
+
+test('non-seed catalog instrumentals with relevant descriptive styles can rank without an original-song allowlist',()=>{
+  const result=rankMusicCatalog([
+    track('Peaceful Meadow (Instrumental)','Fixture composer','201'),
+    track('Quiet Rain - No Vocals','Fixture piano','202'),
+    track('Holocene - Remastered','Bon Iver','203'),
+    track('Quiet Rain - No Vocals','Fixture piano','202'),
+  ],brief());
+  assert.equal(result.length,3);
+  assert.equal(result[0].audio_id,'203');
+  assert.deepEqual(result.map(value=>value.recommendation.rank),[1,2,3]);
+  assert.ok(result.some(value=>value.audio_id==='201'&&value.recommendation.kind==='instrumental'));
+  assert.ok(result.every(value=>value.recommendation.reason.length<=200));
+});
+
+test('English-looking titles, unknown vocals, unrelated trends and conflicting metadata cannot auto-select',()=>{
+  const candidates=[
+    track('Peaceful Meadow','Unknown artist','301'),
+    track('Calm English Song','Unknown singer','302'),
+    track('Dance Party (Instrumental)','Unknown artist','303'),
+    track('Calm Dance Instrumental','Unknown artist','304'),
+    track('Calm Instrumental With Vocals','Unknown artist','305'),
+    track('Calm Not English Vocals','Unknown artist','306'),
+    track('Holocene - Live','Bon Iver','307'),
+    track('Holocene','Cover artist','308'),
+    track('Peaceful Piano (Karaoke Instrumental)','Unknown artist','309'),
+  ];
+  assert.deepEqual(rankMusicCatalog(candidates,brief()),[]);
+  const explicit=rankMusicCatalog([track('Warm Acoustic (English Vocals)','Fixture singer','310')],brief('warm','low'));
+  assert.deepEqual(explicit,[],'A title label cannot verify the language of unknown vocals');
+  assert.deepEqual(rankMusicCatalog(candidates,brief('uncertain','unknown')),[]);
+});
+
+test('instrumental labels reject conflicting vocals while preserving explicit no-vocals labels',()=>{
+  for(const title of [
+    'Calm instrumental with Hindi vocals',
+    'Calm instrumental featuring vocals',
+    'Calm instrumental with English singing',
+    'Calm instrumental featuring a singer',
+    'Calm instrumental with vocal harmonies',
+    'Calm without vocals instrumental featuring Hindi vocals',
+    'Calm not instrumental',
+    'Calm noninstrumental no vocals',
+    'Calm non-instrumental',
+  ]) assert.deepEqual(rankMusicCatalog([track(title,'Fixture artist')],brief()),[],title);
+  for(const title of ['Calm without vocals instrumental','Calm instrumental no vocals','Calm - No Vocals']) {
+    const result=rankMusicCatalog([track(title,'Fixture artist')],brief());
+    assert.equal(result.length,1,title);assert.equal(result[0].recommendation.kind,'instrumental');
+  }
+});
+
+test('catalog ranking returns at most six stable, unique tracks after comparing the entire bounded input',()=>{
+  const candidates=Array.from({length:20},(_,index)=>track(`Peaceful Meadow ${index} (Instrumental)`,'Fixture composer',`${400+index}`));
+  const result=rankMusicCatalog([...candidates,track('Holocene','Bon Iver','499')],brief());
+  assert.equal(result.length,6);assert.equal(result[0].audio_id,'499');
+  assert.equal(new Set(result.map(value=>value.audio_id)).size,6);
+  assert.deepEqual(result.map(value=>value.recommendation.rank),[1,2,3,4,5,6]);
 });
 
 test('covers, remixes, live variants and extra artists do not inherit original-song labels',()=>{
