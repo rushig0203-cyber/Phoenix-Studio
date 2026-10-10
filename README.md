@@ -1,5 +1,11 @@
 # Phoenix Studio
 
+Latest verified local RAM update: `.next-build-gh-38077285545-1`, production
+source `9f87212`. The off-laptop Windows build passed 692 regressions, lint,
+real FFmpeg/Pexels render checks and full TypeScript. Selected/served bundle and
+worker/manager health matched after activation; saved videos/jobs were preserved.
+Documentation-only follow-ups do not require rebuilding this installed runtime.
+
 ### RAM-efficient planning and browser lifecycle
 
 Cloudflare and Groq **text-only** planning can proceed below the local-render

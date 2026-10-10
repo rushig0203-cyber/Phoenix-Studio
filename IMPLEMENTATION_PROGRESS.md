@@ -1,5 +1,32 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 RAM update — verified installed and live
+
+- Production source `9f87212dd5ca61f418b183faeafeafe008c36439` passed public
+  standard Windows runner `38077285545`: 692/692 serial regressions, production
+  lint, isolated FFmpeg/adaptive and public-Pexels renders, full TypeScript and
+  production compilation. Both Vercel Git contexts for this source are green.
+  The first release attempt found one obsolete history regex; its correction
+  adds a behavioral regression for missing outputs and non-duplicated durations.
+- Downloaded/staged bundle `.next-build-gh-38077285545-1` was bound to that exact
+  source, Windows x64 Node 24.19.0, installed lockfile/dependencies, archive and
+  individual file hashes. BUILD_ID is `XWsPoUSnk66mkYkH-Vudn`. Guarded idle
+  activation completed; independent selected/live readback matched, worker and
+  Lumina were healthy, and the heavy-work slot was idle. No local compile ran.
+- Live `/api/source-processing?statusOnly=1` returns only timed `jobs`, not the
+  readiness response. The refreshed browser loaded its existing completed jobs
+  without errors. Metadata-only and hidden/rapid-preview lifecycle behavior is
+  separately covered by isolated regressions; this is not a new owner render.
+- Hashes of all five review/job metadata stores and the existing credential
+  files remained unchanged across startup/install/activation. No owner failed
+  job was retried, video posted, media deleted or paid provider added. The prior
+  verified bundle remains available for rollback. Subsequent documentation-only
+  commits do not require a new runtime build.
+- Physical free RAM fluctuated from about 417 MiB to 1.2–1.3 GiB during the work.
+  Phoenix cannot guarantee system-wide headroom while other apps run. At the
+  owner's explicit request only the current-user WhatsApp Store app was
+  uninstalled; no phone account or exported backup file was targeted.
+
 ## October 11 RAM follow-through — release preparation
 
 - Routine dashboard source-job reads now request `statusOnly=1`, returning timed
