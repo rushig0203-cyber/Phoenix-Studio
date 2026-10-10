@@ -233,6 +233,24 @@ test('a completed episode exposes three output controls and the Library link rat
   assert.equal(h.requests.length, 6); assert.ok(h.requests.every(request => !request.method));
 });
 
+test('completed history tolerates legacy files without outputs and sums valid per-clip durations only once', async t => {
+  const h = harness(t); global.window.location.hash = '#jobs';
+  h.setJobs([source('legacy-duration', 'COMPLETED')]);
+  h.setFiles([
+    { id: 'legacy-no-outputs', status: 'READY', processing: { jobId: 'legacy-duration' } },
+    { id: 'same-content-exports', status: 'READY', processing: { jobId: 'legacy-duration' }, outputs: {
+      instagram: { duration: 24 }, youtube: { duration: 24 }, invalid: { duration: NaN }, missing: {},
+    } },
+    { id: 'second-clip', status: 'READY', processing: { jobId: 'legacy-duration' }, outputs: {
+      instagram: { duration: 11 }, invalid: { duration: -20 },
+    } },
+  ]);
+  await h.flush();
+  assert.match(h.text, /3 clips · 35s/);
+  assert.doesNotMatch(h.text, /NaN|undefined/);
+  assert.ok(h.requests.every(request => !request.method));
+});
+
 test('successful preparation retry feedback selects Active page one without retrying from the dashboard callback', async t => {
   const h = harness(t);
   global.window.location.hash = '#jobs';

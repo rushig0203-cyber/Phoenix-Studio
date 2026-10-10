@@ -13,7 +13,7 @@ test('completed history cards summarize the reel, clip count, duration, and 100 
   assert.match(cards, /const completed = job\.status === "COMPLETED"/);
   assert.match(cards, /completed \? "Completed · 100%"/);
   assert.match(cards, /\{clipCount\} \{clipCount === 1 \? "clip" : "clips"\} · \{durationSeconds > 0 \? formatTime\(durationSeconds\) : "Duration unavailable"\}/);
-  assert.match(cards, /Object\.values\(file\.outputs\)/);
+  assert.match(cards, /Object\.values\(file\.outputs \|\| \{\}\)/);
   assert.match(cards, /Math\.max\(\.\.\.durations\)/);
   assert.match(cards, /!completed \? <div className="mt-3 h-2/);
 });
