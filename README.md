@@ -1,5 +1,20 @@
 # Phoenix Studio
 
+### Compact job list — October 11, source update awaiting activation
+
+Preparation and rendering now share one small chronological list rather than
+separate large boxes. Each row shows the name, creation date/time, Delete and
+Recover for failed jobs. Click the name to expand status, progress, errors and
+finished video/posting controls. Filters and eight-row paging are retained.
+
+Recover is the existing explicit failed-job retry, not restoration of deleted
+history; failed edits open their saved editor. Delete removes history and retains
+videos; deleting a queued entry cancels that pending job. Active work cannot be
+deleted, and rapid Delete/Recover clicks cannot submit conflicting queue actions.
+The focused UI/monitor regression run passes 46/46 and lint passes. No owner job
+was retried, deleted or posted. The following release remains live until the
+new production bundle is independently verified and activated.
+
 ### Backend cleanup — October 11, verified live
 
 Removed unused cloud-storage/publishing stubs, superseded credential helpers and

@@ -85,6 +85,9 @@ jobs:
           scripts/test-local-model-resources.cjs
           scripts/test-dashboard-monitor.cjs
           scripts/test-dashboard-preview-refresh.cjs
+          scripts/test-dashboard-job-views.cjs
+          scripts/test-preparation-retry-ui.cjs
+          scripts/test-studio-navigation.cjs
           scripts/test-source-processor-resources.cjs
           scripts/test-source-status-polling.cjs
           scripts/test-kids-writing-direction.cjs
@@ -130,6 +133,7 @@ jobs:
           src/components/WritingProviderSettings.tsx src/components/StudioHealth.tsx
           src/app/api/writing-provider/route.ts
           src/app/dashboard/DashboardClient.tsx
+          src/components/CreationDrafts.tsx
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
           src/app/api/source-processing/route.ts

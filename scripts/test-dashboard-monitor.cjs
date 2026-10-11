@@ -144,7 +144,7 @@ test('dashboard retains snapshots, shows one actionable offline banner, and Retr
   assert.equal(library().props.files[0].id, h.savedVideo.id, 'Connection loss does not erase saved snapshots');
   assert.equal(nodes(h.tree, node => node.type === 'fieldset')[0].props.disabled, true);
   global.window.location.hash = '#jobs'; await h.event('hashchange');
-  const preparationControls = nodes(h.tree, node => node.type === 'fieldset' && node.props['aria-label'] === 'Video preparation controls')[0];
+  const preparationControls = nodes(h.tree, node => node.type === 'fieldset' && node.props['aria-label'] === 'Job controls')[0];
   assert.equal(preparationControls.props.disabled, true, 'Preparation retry/cancel/history controls cannot mutate queues offline');
   h.setMode('ready'); h.button('Retry connection').props.onClick(); await h.flush();
   assert.equal(nodes(h.tree, node => node.props?.role === 'alert').length, 0);
@@ -201,6 +201,47 @@ test('one status filter counts and selects preparations as well as renders, with
   assert.deepEqual(drafts().map(item => item.id), ['failed-plan']);
   assert.deepEqual(nodes(h.tree, node => node.type === 'article' && node.key).map(node => node.key), ['source-failed-render']);
   assert.equal(h.requests.length, 6, 'Tabs are presentation only; no retry or analysis request is sent');
+  assert.ok(h.requests.every(request => !request.method));
+});
+
+test('compact rows keep preparations and renders in one chronological list with closed details and safe actions', async t => {
+  const h = harness(t); global.window.location.hash = '#jobs';
+  h.setJobs([source('new-render', 'FAILED', 8), source('old-render', 'FAILED', 1)], [{ ...preparation('middle-plan', 'FAILED'), createdAt: '2026-10-04T00:00:00Z' }]);
+  await h.flush();
+  const list = nodes(h.tree, node => node.props?.['aria-label'] === 'Job list')[0];
+  assert.deepEqual(list.props.children.map(row => row.key), ['source-new-render', 'preparation-middle-plan', 'source-old-render']);
+  assert.equal(nodes(h.tree, node => node.type === 'section' && node.props?.['aria-label'] === 'Preparing videos').length, 0);
+  for (const row of list.props.children.filter(row => row.type === 'article')) {
+    const disclosure = nodes(row, node => node.type === 'details')[0];
+    assert.equal(disclosure.props.open, undefined);
+    const summary = nodes(disclosure, node => node.type === 'summary')[0];
+    assert.ok(nodes(summary, node => node.type === 'time')[0].props.dateTime);
+    const buttons = nodes(row, node => typeof node.props?.onClick === 'function');
+    assert.deepEqual(buttons.map(text), ['Recover', 'Delete']);
+  }
+  assert.equal(h.requests.length, 6); assert.ok(h.requests.every(request => !request.method));
+});
+
+test('Recover and Delete cannot submit duplicate or conflicting actions before rerendering', async t => {
+  const h = harness(t); global.window.location.hash = '#jobs';
+  h.setJobs([source('failed-fixture', 'FAILED')]); await h.flush();
+  const recover = h.button('Recover'), remove = h.button('Delete');
+  recover.props.onClick(); recover.props.onClick(); remove.props.onClick(); await h.flush();
+  const mutations = h.requests.filter(request => request.method);
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].url, '/api/source-processing/run');
+  assert.equal(mutations[0].method, 'POST');
+  assert.deepEqual(JSON.parse(mutations[0].body), { id: 'failed-fixture' });
+});
+
+test('Delete is disabled for rendering, describes queued cancellation, and tolerates missing dates', async t => {
+  const h = harness(t); global.window.location.hash = '#jobs';
+  h.setJobs([source('active', 'PROCESSING'), { ...source('queued', 'QUEUED'), createdAt: 'unknown' }]); await h.flush();
+  const removes = nodes(h.tree, node => typeof node.props?.onClick === 'function' && text(node) === 'Delete');
+  const active = removes.find(button => button.props['aria-label'].endsWith(': Video active'));
+  assert.equal(active.props.disabled, true);
+  assert.match(removes.find(button => button !== active).props.title, /Cancel this queued job/);
+  assert.match(h.text, /Date unavailable/); assert.doesNotMatch(h.text, /Invalid Date/);
   assert.ok(h.requests.every(request => !request.method));
 });
 

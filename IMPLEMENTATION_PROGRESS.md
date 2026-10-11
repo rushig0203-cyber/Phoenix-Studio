@@ -1,5 +1,22 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 compact job list — source update, not yet activated
+
+- Preparation and render/source/edit histories use the existing shared queue
+  order and eight-row paging in one compact list. Removed the separate nested
+  preparation category and oversized default card details. Rows expose name,
+  local creation date/time and eligible Delete/Recover; clicking the name opens
+  progress, ETA, error, output/player/posting and regeneration controls.
+- Recover currently means explicit failed-job retry; failed manual edits open
+  their saved editor. No deleted-job restoration API was invented or claimed.
+  Delete retains saved media and cancels pending jobs; active work stays protected.
+  A synchronous ref prevents duplicate/conflicting render-history actions before
+  React rerenders. Draft actions keep version/409 and single-request protections.
+- Focused real-handler/UI/monitor regressions pass 46/46; changed-component lint
+  passes. Added chronological cross-phase ordering, dates/disclosure, active
+  deletion, queued-cancellation wording and duplicate-action tests. Full remote
+  build and guarded activation are still pending; owner jobs/media are untouched.
+
 ## October 11 backend cleanup — verified installed and live
 
 - Removed seven modules with no tracked callers, dynamic imports or test/config

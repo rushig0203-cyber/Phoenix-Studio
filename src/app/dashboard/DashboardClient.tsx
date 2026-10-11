@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileVideo, RefreshCw, RotateCcw, Sparkles, Trash2, Plus, ListVideo, FolderOpen, Settings, Film, Info } from "lucide-react";
+import { FileVideo, RefreshCw, RotateCcw, Sparkles, Plus, ListVideo, FolderOpen, Settings, Film, Info } from "lucide-react";
 import SourceProcessor from "@/components/SourceProcessor";
 import AICreation from "@/components/AICreation";
 import { Button } from "@/components/ui/button";
@@ -128,6 +128,7 @@ export default function DashboardClient() {
   const [jobFilter, setJobFilter] = useState<JobFilter | null>(null);
   const [jobPage, setJobPage] = useState(1);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const jobActionInFlight = useRef(false);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const monitorMounted = useRef(true);
 
@@ -204,7 +205,8 @@ export default function DashboardClient() {
 
   async function retry(job: DisplayJob, regenerate = false) {
     if (offlineRef.current) { setNotice("Reconnect Phoenix before retrying a job."); return; }
-    if (retrying) return;
+    if (jobActionInFlight.current) return;
+    jobActionInFlight.current = true;
     setRetrying(`${job.kind}-${job.id}`);
     try {
       const response = job.kind === "source"
@@ -227,13 +229,15 @@ export default function DashboardClient() {
     } catch {
       setNotice("Could not reach the local retry queue.");
     } finally {
+      jobActionInFlight.current = false;
       setRetrying(null);
     }
   }
 
   async function removeJob(job: DisplayJob) {
     if (offlineRef.current) { setNotice("Reconnect Phoenix before changing job history."); return; }
-    if (removingJob) return;
+    if (jobActionInFlight.current) return;
+    jobActionInFlight.current = true;
     setRemovingJob(`${job.kind}-${job.id}`);
     try {
       const endpoint = job.kind === "ai" ? "/api/generations" : job.kind === "source" ? "/api/source-processing" : "/api/review-edits";
@@ -243,7 +247,7 @@ export default function DashboardClient() {
       setNotice(job.status === "QUEUED" ? "Queued job cancelled and removed." : "Job removed from history. Finished review files are still available.");
       await load();
     } catch(error) { setNotice(error instanceof Error ? error.message : "Could not reach the queue."); }
-    finally { setRemovingJob(null); }
+    finally { jobActionInFlight.current = false; setRemovingJob(null); }
   }
   const jobs = useMemo<DisplayJob[]>(() => [
     ...editJobs.map(job => ({ id:job.id,reviewId:job.reviewId,outputId:job.outputId,kind:"edit" as const,title:job.title,status:job.status,progress:job.progress,stage:job.stage,detail:`Manual edit · ${job.stage}`,error:job.error,createdAt:job.createdAt,elapsedSeconds:job.elapsedSeconds,estimatedRemainingSeconds:job.estimatedRemainingSeconds ?? undefined })),
@@ -304,8 +308,6 @@ export default function DashboardClient() {
     ...jobs.map(job => ({ ...job, phase: "render" as const, job })),
     ...drafts.map(draft => ({ id: draft.id, status: draft.status, createdAt: draft.createdAt, phase: "preparation" as const, draft })),
   ], jobFilter, jobPage), [jobs, drafts, jobFilter, jobPage]);
-  const displayedDrafts = queue.displayed.flatMap(entry => "draft" in entry ? [entry.draft] : []);
-  const displayedJobs = queue.displayed.flatMap(entry => "job" in entry ? [entry.job] : []);
   const activeCount = queue.counts.active;
   const failedCount = queue.counts.failed;
   const sections = [
@@ -359,34 +361,37 @@ export default function DashboardClient() {
         </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
         {section === "create" || section === "jobs" ? <>
-        <section aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-6">
+        <section aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-xl border border-[#bfcaa6] bg-[#fffdf7] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex items-center gap-2">
-              <h2 className="text-xl font-semibold">{section === "create" ? "Jobs & progress" : "Jobs & history"}</h2>
+              <h2 className="text-base font-semibold">Jobs</h2>
               <details className="text-[#687657]">
                 <summary aria-label="About job progress and filters" title="About job progress and filters" className="flex cursor-pointer list-none rounded-full p-1 hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a] [&::-webkit-details-marker]:hidden"><Info aria-hidden="true" className="h-4 w-4" /></summary>
                 <div className="absolute left-0 top-8 z-10 w-64 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-xs leading-5 shadow-lg">
                   <p>{offline ? "Connection unavailable; displaying the last received job status." : "Updates every three seconds during work, every fifteen seconds when idle, and pauses while this window is hidden."}</p>
-                  <p>Active includes preparation and rendering. Needs attention shows saved failures; Completed shows finished jobs. Preparation and rendering are grouped separately, newest history first within each group.</p>
+                  <p>Active includes preparation and rendering in one list. Needs attention shows saved failures; Completed shows finished jobs. History is newest first. Click a name for details and finished video controls.</p>
+                  <p>Delete removes history, not saved videos; queued jobs are cancelled. Recover retries a failed job only when you click it.</p>
                   <p>Paging keeps every saved job and video available.</p>
                 </div>
               </details>
             </div>
-            <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
             </Button>
           </div>
-          {notice ? <p role="status" className="mt-3 rounded-xl bg-[#eef3df] p-3 text-sm text-[#4f5c31]">{notice}</p> : null}
-          <label className="mt-4 inline-flex items-center gap-2 text-xs font-semibold"><span>Show</span><select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setJobPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-3 py-2">
+          {notice ? <p role="status" className="mt-2 text-xs text-[#4f5c31]">{notice}</p> : null}
+          <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold"><span>Show</span><select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setJobPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-2 py-1">
             {([["active", "Active"], ["failed", "Needs attention"], ["completed", "Completed"], ["all", "All jobs"]] as const).map(([value, label]) => <option key={value} value={value}>{label} · {queue.counts[value]}</option>)}
           </select></label>
-          {queue.total > 0 ? <p className="mt-3 text-xs text-[#687657]">Showing {(queue.page - 1) * JOB_PAGE_SIZE + 1}–{Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of {queue.total} {queue.filter === "active" ? "active jobs" : "saved jobs"}.</p> : null}
-          <fieldset disabled={offline} className="min-w-0 border-0 p-0" aria-label="Video preparation controls"><CreationDrafts drafts={displayedDrafts} onRefresh={load} failedOnly={queue.filter === "failed"} onRequeued={draft => { setJobFilter("active"); setJobPage(1); setNotice(`“${draft.input.topic}” queued again. Follow its progress in Active.`); }} /></fieldset>
+          {queue.total > 0 ? <p className="mt-2 text-xs text-[#687657]">Showing {(queue.page - 1) * JOB_PAGE_SIZE + 1}–{Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of {queue.total} {queue.filter === "active" ? "active jobs" : "saved jobs"}.</p> : null}
+          <fieldset disabled={offline} aria-label="Job controls" className="min-w-0 border-0 p-0">
           {queue.total === 0 ? (
             <p className="mt-5 rounded-xl border border-dashed border-[#bfcaa6] p-5 text-center text-sm text-[#778269]">{loading ? "Loading jobs…" : queue.filter === "active" ? "Nothing is processing or waiting right now. Finished videos are in Completed and Library." : queue.filter === "failed" ? "No jobs need attention." : queue.filter === "completed" ? "No finished jobs yet. Use Create to start a video." : "No saved jobs yet. Use Create to start a video."}</p>
           ) : (
-            <div className="mt-5 space-y-3">
-              {displayedJobs.map((job) => {
+            <div aria-label="Job list" className="mt-2 divide-y divide-[#e0e5d5]">
+              {queue.displayed.map((entry) => {
+                if ("draft" in entry) return <fieldset key={`preparation-${entry.id}`} disabled={offline} className="min-w-0 border-0 p-0" aria-label="Video preparation controls"><CreationDrafts drafts={[entry.draft]} onRefresh={load} onRequeued={draft => { setJobFilter("active"); setJobPage(1); setNotice(`“${draft.input.topic}” queued again. Follow its progress in Active.`); }} /></fieldset>;
+                const job = entry.job;
                 const failed = job.status === "FAILED" || job.status === "BLOCKED";
                 const completed = job.status === "COMPLETED";
                 const retryKey = `${job.kind}-${job.id}`;
@@ -396,12 +401,14 @@ export default function DashboardClient() {
                   return total + (durations.length ? Math.max(...durations) : 0);
                 }, 0);
                 const clipCount = job.kind === "source" ? job.completedClips ?? job.totalClips ?? outputFiles.length : outputFiles.length || 1;
+                const dated = Number.isFinite(Date.parse(job.createdAt));
+                const active = ["RUNNING", "PROCESSING"].includes(job.status);
                 return (
-                  <article key={retryKey} className="rounded-xl border border-[#d5ddb8] bg-[#f7f9ef] p-4 [content-visibility:auto]">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-semibold">{job.title}</h3>
-                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${failed ? "bg-[#ffe1d3] text-[#914527]" : "bg-[#e5ebcf] text-[#4f5c31]"}`}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</span>
-                    </div>
+                  <article key={retryKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
+                    <details className="min-w-0">
+                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time></summary>
+                      <div className="mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]">
+                    <p className={failed ? "font-semibold text-[#914527]" : "font-semibold text-[#4f5c31]"}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</p>
                     {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
                     {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
                     {!completed && !failed && job.stage ? <p className="mt-1 text-xs text-[#687657]">{job.stage}</p> : null}
@@ -409,34 +416,28 @@ export default function DashboardClient() {
                       <div className={`h-full transition-[width] duration-500 ${failed ? "bg-[#b55d3d]" : "bg-[#667b42]"}`} style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
                     </div> : null}
                     {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
-                    <details className="mt-2 text-xs text-[#687657]">
-                      <summary className="w-fit cursor-pointer select-none">Technical details</summary>
                       <p className="mt-1">{job.detail}</p>
                       {completed && timing(job) ? <p className="mt-1">{timing(job)}</p> : null}
                       {completed && !outputFiles.length ? <p className="mt-1">The finished file is not in this Library snapshot. It may be in Trash; history remains saved.</p> : null}
-                    </details>
                     {completed ? <div className="mt-2 flex flex-wrap items-start gap-2">{outputFiles.slice(0, 3).map((file, index) => <div key={file.id} className="flex flex-wrap items-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setPreview(file)}>Watch video{job.kind === "source" ? ` ${index + 1}` : ""}</Button><details className="text-xs"><summary className="cursor-pointer rounded-lg border border-[#bdc7a5] px-3 py-2 font-semibold">Posting tools{outputFiles.length > 1 ? ` ${index + 1}` : ""}</summary><PostingActions file={file} /></details></div>)}{outputFiles.length > 3 ? <a href="#library" className="text-xs font-semibold underline">All {outputFiles.length} clips are in Library</a> : null}</div> : null}
-                    {failed && job.kind !== "edit" ? (
-                      <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null} onClick={() => void retry(job)} className="mt-3">
-                        <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Retry"}
-                      </Button>
-                    ) : null}
-                    {job.kind === "edit" && failed ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} className="mt-3 inline-block text-xs">Open the original video’s editor to export again.</Link> : null}
                     {job.kind === "ai" && job.status === "COMPLETED" ? (
-                      <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null} onClick={() => void retry(job, true)} className="mt-3">
+                      <Button type="button" variant="outline" size="sm" disabled={offline || retrying !== null || removingJob !== null} onClick={() => void retry(job, true)} className="mt-3">
                         <RotateCcw className="mr-1 h-3.5 w-3.5" />{retrying === retryKey ? "Queueing…" : "Regenerate"}
                       </Button>
                     ) : null}
-                    {!["RUNNING", "PROCESSING"].includes(job.status) ? (
-                      <Button type="button" variant="outline" size="sm" disabled={offline || removingJob !== null} onClick={() => void removeJob(job)} className="ml-2 mt-3" aria-label={`${job.status === "QUEUED" ? "Cancel queued job" : "Remove job from history"}: ${job.title}`}>
-                        <Trash2 className="mr-1 h-3.5 w-3.5" />{removingJob === retryKey ? "Removing…" : job.status === "QUEUED" ? "Cancel queued job" : "Remove from history"}
-                      </Button>
-                    ) : <p className="mt-2 text-xs text-[#687657]">History removal is available when this active render finishes.</p>}
+                      </div>
+                    </details>
+                    <div className="flex items-center gap-1 pt-0.5">
+                      {failed && job.kind !== "edit" ? <Button type="button" variant="ghost" size="sm" disabled={offline || retrying !== null || removingJob !== null} aria-label={`Recover failed job: ${job.title}`} title="Retry this failed job" onClick={() => void retry(job)}>{retrying === retryKey ? "Queueing…" : "Recover"}</Button> : null}
+                      {failed && job.kind === "edit" && !offline ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} aria-label={`Recover failed edit: ${job.title}`} title="Open the saved edit to export again" className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]">Recover</Link> : null}
+                      <Button type="button" variant="ghost" size="sm" disabled={offline || active || removingJob !== null || retrying !== null} onClick={() => void removeJob(job)} aria-label={`${job.status === "QUEUED" ? "Cancel queued job and delete history" : "Delete job history"}: ${job.title}`} title={active ? "Available when this render finishes" : job.status === "QUEUED" ? "Cancel this queued job and remove its history; saved videos are kept" : "Remove history only; saved videos are kept"}>{removingJob === retryKey ? "Removing…" : "Delete"}</Button>
+                    </div>
                   </article>
                 );
               })}
             </div>
           )}
+          </fieldset>
           {queue.pages > 1 ? <nav aria-label="Job pages" className="mt-5 flex items-center justify-center gap-4 text-sm"><button type="button" disabled={queue.page <= 1} onClick={() => setJobPage(queue.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span>Page {queue.page} of {queue.pages}</span><button type="button" disabled={queue.page >= queue.pages} onClick={() => setJobPage(queue.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></nav> : null}
         </section>
 

@@ -4,7 +4,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 
 const dashboard = fs.readFileSync(path.join(__dirname, '..', 'src/app/dashboard/DashboardClient.tsx'), 'utf8');
-const cardStart = dashboard.indexOf('{displayedJobs.map((job) => {');
+const cardStart = dashboard.indexOf('{queue.displayed.map((entry) => {');
 const cardEnd = dashboard.indexOf('\n              })}', cardStart);
 assert.ok(cardStart >= 0 && cardEnd > cardStart, 'Job cards have a bounded render block');
 const cards = dashboard.slice(cardStart, cardEnd);
@@ -18,10 +18,14 @@ test('completed history cards summarize the reel, clip count, duration, and 100 
   assert.match(cards, /!completed \? <div className="mt-3 h-2/);
 });
 
-test('active ETA and progress remain visible, while stage details are collapsed', () => {
+test('compact job names and dates reveal progress, ETA, stage and errors only inside a closed disclosure', () => {
   assert.match(cards, /\{!completed && timing\(job\) \? <p/);
   assert.match(cards, /!completed && !failed && job\.stage \? <p/);
-  assert.match(cards, /<details className="mt-2 text-xs text-\[#687657\]">\s*<summary[^>]*>Technical details<\/summary>\s*<p className="mt-1">\{job\.detail\}<\/p>/);
+  assert.match(cards, /<details className="min-w-0">\s*<summary title="Show job details"/);
+  assert.match(cards, /<time dateTime=\{dated \? job\.createdAt : undefined\}/);
+  assert.match(cards, /dateStyle: "medium", timeStyle: "short"/);
+  assert.ok(cards.indexOf('<details className="min-w-0">') < cards.indexOf('{job.error ? <p'));
+  assert.doesNotMatch(cards, /<details[^>]*\bopen(?:\s|=|>)/);
 });
 
 test('Create intro describes the current adaptive edit, not a fixed old duration', () => {
@@ -35,10 +39,12 @@ test('posting tools remain accessible behind a compact disclosure on completed c
   assert.match(cards, /Watch video/);
 });
 
-test('failed job errors and retry controls remain outside technical details', () => {
-  const error = cards.indexOf('{job.error ? <p');
-  const details = cards.indexOf('<details className="mt-2');
-  assert.ok(error >= 0 && details > error, 'Actionable error appears before collapsed technical details');
+test('Delete and explicit failed-job Recover stay outside details, while both phases share one ordered list', () => {
   assert.match(cards, /job\.status === "FAILED" \|\| job\.status === "BLOCKED"/);
   assert.match(cards, /failed && job\.kind !== "edit"/);
+  assert.ok(cards.indexOf('Recover failed job:') > cards.lastIndexOf('</details>'));
+  assert.match(cards, /Delete job history/);
+  assert.match(cards, /disabled=\{offline \|\| active \|\| removingJob !== null \|\| retrying !== null\}/);
+  assert.doesNotMatch(dashboard, /displayedDrafts|displayedJobs|grouped separately/);
+  assert.match(cards, /if \("draft" in entry\)/);
 });

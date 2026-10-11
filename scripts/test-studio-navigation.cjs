@@ -22,7 +22,7 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   assert.match(html, /aria-current="page"/);
   assert.doesNotMatch(html, /href="#ideas"/);
   assert.match(html, /aria-label="Jobs and progress"/);
-  assert.match(html, /Jobs &amp; progress/);
+  assert.match(html, /<h2[^>]*>Jobs<\/h2>/);
   assert.ok(html.indexOf('aria-label="Creation workflows"') < html.indexOf('aria-label="Jobs and progress"'));
   assert.doesNotMatch(html, /aria-label="Review library"/);
   assert.doesNotMatch(html, /Creation preparation|Edit plan|Finish automatically|Rendering &amp; history|Your channels|Ideas for your next video/);
@@ -74,7 +74,9 @@ test('prompt-first routing is conservative and completion navigation ignores his
 test('preparation cards offer retry/cancel only, with no editing or approval gate', () => {
   const Preparation = require('../src/components/CreationDrafts').default;
   const html = renderToStaticMarkup(React.createElement(Preparation, { onRefresh: async () => {}, drafts: [{ id: 'fixture', status: 'FAILED', stage: 'Could not find footage', error: 'No suitable asset', input: { topic: 'My video', duration: 60, aspect: '9:16' } }] }));
-  assert.match(html, /Retry job/);
+  assert.match(html, /Recover/);
+  assert.match(html, /Delete/);
+  assert.doesNotMatch(html, /Preparing videos|Preparation needs attention/);
   assert.match(html, /Why this job failed/);
   assert.doesNotMatch(html, /Edit plan|Finish automatically|Approve &amp; render|textarea/);
 });
