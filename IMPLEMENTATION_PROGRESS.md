@@ -1,5 +1,17 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 single Jobs location — source verified, activation pending
+
+- Removed the separate Jobs section/sidebar link; the compact list stays below
+  Create. Legacy Jobs/storyboards hashes select Create and scroll to the inline
+  list. Completion from Settings selects Create; historical results, Library,
+  open previews and unfinished forms retain their existing protections.
+- Reused the existing queue/actions without backend/storage changes. Focused
+  navigation, queue, preview and recovery regressions pass 47/47; scoped lint
+  passes. This Ponytail-guided change adds no dependencies or paid services and
+  does not delete, rerun or post any owner job. Production build and activation
+  still need verification; the previous compact-list release remains live.
+
 ## October 11 compact job list — verified installed and live
 
 - Preparation and render/source/edit histories use the existing shared queue

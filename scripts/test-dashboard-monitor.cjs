@@ -95,7 +95,7 @@ function harness(t) {
   const previous = { fetch: global.fetch, window: global.window, document: global.document, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
   let position = 0, dirty = true, pending = [], tree, timerId = 0, mode = 'ready', stateWrites = 0;
   let sourceJobs = [], drafts = [];
-  const hooks = [], timers = new Map(), listeners = new Map(), requests = [], pendingRequests = [];
+  const hooks = [], timers = new Map(), listeners = new Map(), requests = [], pendingRequests = [], scrolls = [];
   const savedVideo = { id: 'fixture-video', title: 'Saved video', status: 'READY' };
   let videos = [savedVideo];
   const h = {
@@ -117,12 +117,12 @@ function harness(t) {
       return { selected: select.props.value === option.props.value, choose: () => select.props.onChange({ target: { value: option.props.value } }) };
     },
     unmount() { hooks.forEach(hook => hook.cleanup?.()); },
-    get tree() { return tree; }, get text() { return text(tree); }, get stateWrites() { return stateWrites; }, requests, timers, listeners, savedVideo, pendingRequests,
+    get tree() { return tree; }, get text() { return text(tree); }, get stateWrites() { return stateWrites; }, requests, timers, listeners, savedVideo, pendingRequests, scrolls,
   };
   global.setTimeout = (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; };
   global.clearTimeout = id => timers.delete(id);
   global.window = { location: { hash: '#library', search: '' }, scrollTo() {}, addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: name => listeners.delete(name) };
-  global.document = { hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: name => listeners.delete(name) };
+  global.document = { hidden: false, getElementById: id => nodes(tree, node => node.props?.id === id).length ? { scrollIntoView: options => scrolls.push({ id, ...options }) } : null, addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: name => listeners.delete(name) };
   global.fetch = async (url, init = {}) => {
     requests.push({ url, ...init });
     if (mode === 'pending') return new Promise((resolve, reject) => pendingRequests.push({ resolve, reject }));
@@ -160,7 +160,7 @@ test('dashboard wakes idle polling immediately for saved caption work and marks 
   const processor = () => nodes(h.tree, node => node.type?.name === 'SourceProcessor')[0];
   const identity = processor().type;
   assert.equal(processor().props.active, true);
-  global.window.location.hash = '#jobs'; await h.event('hashchange');
+  global.window.location.hash = '#settings'; await h.event('hashchange');
   assert.equal(processor().type, identity, 'Keep the mounted form and selected file rather than discarding user input');
   assert.equal(processor().props.active, false);
   global.window.location.hash = '#create'; await h.event('hashchange');
@@ -325,7 +325,8 @@ for (const [label, componentName, acceptedMessage] of [
   assert.equal(nodes(h.tree, node => node.type?.name === componentName).length, 0);
   assert.equal(nodes(h.tree, node => node.props?.['data-studio-screen'] === 'create')[0].props.hidden, false);
   assert.equal(h.filter('Active · 1').selected, true); assert.match(h.text, /Video accepted-fixture/);
-  assert.ok(nodes(h.tree, node => node.type === 'a' && node.props.href === '#jobs').length >= 1, 'Standalone Jobs navigation remains available');
+  const nav = nodes(h.tree, node => node.type === 'nav' && node.props['aria-label'] === 'Studio sections')[0];
+  assert.equal(nodes(nav, node => node.type === 'a' && node.props.href === '#jobs').length, 0, 'There is no separate Jobs category');
   assert.equal(h.requests.length, 12); assert.ok(h.requests.every(request => !request.method), 'Parent acceptance only refreshes saved state; it cannot create/retry work');
 });
 
@@ -358,7 +359,22 @@ test('a new completion never interrupts the separate Library but preserves compl
   global.window.location.hash = '#settings'; await h.event('hashchange');
   h.setJobs([source('library-completion', 'COMPLETED'), source('settings-completion', 'PROCESSING')]); await h.event('focus');
   h.setJobs([source('library-completion', 'COMPLETED'), source('settings-completion', 'COMPLETED')]); await h.event('focus');
-  assert.equal(global.window.location.hash, 'jobs'); assert.equal(h.filter('Completed · 2').selected, true);
+  assert.equal(global.window.location.hash, 'create'); assert.equal(h.filter('Completed · 2').selected, true);
+});
+
+test('legacy Jobs and storyboards bookmarks show only the inline list under Create', async t => {
+  const h = harness(t); await h.flush();
+  for (const hash of ['#jobs', '#storyboards']) {
+    global.window.location.hash = hash; await h.event('hashchange');
+    assert.equal(nodes(h.tree, node => node.props?.['data-studio-screen'] === 'create')[0].props.hidden, false);
+    assert.equal(nodes(h.tree, node => node.props?.['aria-label'] === 'Jobs and progress').length, 1);
+    const nav = nodes(h.tree, node => node.type === 'nav' && node.props['aria-label'] === 'Studio sections')[0];
+    assert.deepEqual(nodes(nav, node => node.type === 'a').map(node => node.props.href), ['#create', '#library', '#settings']);
+    assert.equal(nodes(nav, node => node.props['aria-current'] === 'page')[0].props.href, '#create');
+    assert.ok(h.requests.every(request => !request.method), 'Opening a bookmark does not start or retry a job');
+    global.window.location.hash = '#library'; await h.event('hashchange');
+  }
+  assert.deepEqual(h.scrolls, [{ id: 'jobs', block: 'start' }, { id: 'jobs', block: 'start' }]);
 });
 
 test('a playing review preview and its selected queue tab are not replaced by another job completing', async t => {

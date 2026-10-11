@@ -1,5 +1,14 @@
 # Phoenix Studio
 
+### Jobs under Create only — October 11, source verified
+
+The separate Jobs navigation screen is removed. Create keeps the existing compact
+job list below its creation controls; Library and Settings remain separate.
+Old `#jobs` and `#storyboards` bookmarks open Create and scroll to that list.
+Completed work returns to Create without interrupting Library or an open preview.
+The 47 focused navigation/queue/preview checks and scoped lint pass. Production
+build and live activation are pending; saved jobs and media are unchanged.
+
 ### Compact job list — October 11, verified live
 
 Preparation and rendering now share one small chronological list rather than

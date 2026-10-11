@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileVideo, RefreshCw, RotateCcw, Sparkles, Plus, ListVideo, FolderOpen, Settings, Film, Info } from "lucide-react";
+import { FileVideo, RefreshCw, RotateCcw, Sparkles, Plus, FolderOpen, Settings, Film, Info } from "lucide-react";
 import SourceProcessor from "@/components/SourceProcessor";
 import AICreation from "@/components/AICreation";
 import { Button } from "@/components/ui/button";
@@ -95,10 +95,18 @@ export default function DashboardClient() {
   const [drafts, setDrafts] = useState<CreationDraft[]>([]);
   const navigate = useCallback((value: StudioSection) => { setSection(value); window.location.hash = value; }, []);
   useEffect(() => {
-    const sync = () => { setSection(studioSection(window.location.hash)); window.scrollTo(0, 0); };
+    const sync = () => {
+      setSection(studioSection(window.location.hash));
+      if (!["#jobs", "#storyboards"].includes(window.location.hash)) window.scrollTo(0, 0);
+    };
     sync(); window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
+  useEffect(() => {
+    if (section === "create" && ["#jobs", "#storyboards"].includes(window.location.hash)) {
+      document.getElementById("jobs")?.scrollIntoView({ block: "start" });
+    }
+  }, [section]);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
@@ -195,7 +203,7 @@ export default function DashboardClient() {
   useEffect(() => {
     // Settings/library can contain unsaved nested editors. Do not replace them
     // or a playing preview; a fresh tab always gets the installed server build.
-    const defer = !["create", "jobs"].includes(section) || sourceOpen || aiOpen || stockOpen || !!preview || document.hidden;
+    const defer = section !== "create" || sourceOpen || aiOpen || stockOpen || !!preview || document.hidden;
     if (!health?.build || defer) return;
     try {
       refreshInstalledRelease({ loaded: process.env.NEXT_PUBLIC_PHOENIX_RELEASE, serving: health.build, defer,
@@ -291,7 +299,7 @@ export default function DashboardClient() {
     if (section === "library" || preview) return;
     setJobFilter("completed");
     setJobPage(1);
-    if (section !== "create") navigate("jobs");
+    if (section !== "create") navigate("create");
   }, [jobs, navigate, section, preview]);
 
   function started(message: string, workflow: "source" | "stock" | "creation") {
@@ -312,16 +320,15 @@ export default function DashboardClient() {
   const failedCount = queue.counts.failed;
   const sections = [
     { id: "create" as const, label: "Create", icon: Plus },
-    { id: "jobs" as const, label: "Jobs", icon: ListVideo },
     { id: "library" as const, label: "Library", icon: FolderOpen },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
-  const pageCopy = { create: ["What will you make today?", ""], ideas: ["Find your next idea", "Browse inspiration, pick a topic, then make it your own."], jobs: ["Your production queue", "Follow progress here. You only approve the finished video."], library: ["Your video library", ""], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
+  const pageCopy = { create: ["What will you make today?", ""], library: ["Your video library", ""], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
     <div className="min-h-screen bg-[#f4f0e7] text-[#1e2719]">
       <aside className="border-b border-[#dadfce] bg-[#fffdf7] p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6">
         <a href="#create" className="flex items-center gap-3 text-lg font-semibold tracking-tight"><span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#bfcaa6] text-base font-semibold">P</span>Phoenix Studio</a>
-        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors ${section === id ? "bg-[#34462b] text-white" : "text-[#637155] hover:bg-[#edf1e5]"}`}><Icon className="h-4 w-4" />{label}{id === "jobs" && activeCount + failedCount > 0 ? <span className="ml-auto rounded-full bg-[#e4eace] px-2 text-xs text-[#33422b]" aria-label={`${activeCount} active, ${failedCount} failed`}>{activeCount || failedCount}</span> : null}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
+        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors ${section === id ? "bg-[#34462b] text-white" : "text-[#637155] hover:bg-[#edf1e5]"}`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
       </aside>
       <main className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-[#dce1d2] pb-6">
@@ -360,8 +367,8 @@ export default function DashboardClient() {
         {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
         </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
-        {section === "create" || section === "jobs" ? <>
-        <section aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-xl border border-[#bfcaa6] bg-[#fffdf7] p-3 sm:p-4">
+        {section === "create" ? <>
+        <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-xl border border-[#bfcaa6] bg-[#fffdf7] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex items-center gap-2">
               <h2 className="text-base font-semibold">Jobs</h2>

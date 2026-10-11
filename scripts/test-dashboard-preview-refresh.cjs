@@ -84,7 +84,7 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
   global.window = { location: { hash: "#jobs", search: "" }, scrollTo() {},
     setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
     addEventListener: addListener, removeEventListener: removeListener };
-  global.document = { hidden: false, addEventListener: addListener, removeEventListener: removeListener };
+  global.document = { hidden: false, getElementById: () => ({ scrollIntoView() {} }), addEventListener: addListener, removeEventListener: removeListener };
   const original = {
     id: "preview-analysis-fixture", title: "Lake sunrise", status: "READY", audience: "general",
     outputs: { youtube: { filename: "fixture.mp4", duration: 60, width: 720, height: 1280 } },
@@ -107,6 +107,8 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
   const dashboard = hooks(Dashboard), player = hooks(ReviewPlayer, { dialog, video }), posting = hooks(PostingActions);
   t.after(() => { dashboard.unmount(); player.unmount(); posting.unmount(); Object.assign(global, previous); current = undefined; });
   await dashboard.flush();
+  assert.equal(nodes(dashboard.tree, node => node.props?.['data-studio-screen'] === 'create')[0].props.hidden, false, 'Old Jobs bookmarks now open Create');
+  assert.equal(nodes(dashboard.tree, node => node.props?.['aria-label'] === 'Jobs and progress').length, 1);
   const statusFilter = () => nodes(dashboard.tree, node => node.type === "select" && node.props?.["aria-label"] === "Job status filter")[0];
   assert.equal(statusFilter().props.value, "completed", "Idle queues still select completed history by default");
   assert.deepEqual(nodes(statusFilter(), node => node.type === "option").map(text), ["Active · 0", "Needs attention · 0", "Completed · 1", "All jobs · 1"]);

@@ -5,11 +5,13 @@ require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'c
 require('tsconfig-paths').register({ baseUrl: path.resolve(__dirname, '..'), paths: { '@/*': ['src/*'] } });
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
-const { studioSection } = require('../src/lib/studioNavigation');
+const { studioSection, STUDIO_SECTIONS } = require('../src/lib/studioNavigation');
 test('section links restore the right screen and retain old bookmarks', () => {
-  for (const value of ['create', 'jobs', 'library', 'settings']) assert.equal(studioSection('#' + value), value);
+  assert.deepEqual(STUDIO_SECTIONS, ['create', 'library', 'settings']);
+  for (const value of STUDIO_SECTIONS) assert.equal(studioSection('#' + value), value);
+  assert.equal(studioSection('#jobs'), 'create');
   assert.equal(studioSection('#ideas'), 'create');
-  assert.equal(studioSection('#storyboards'), 'jobs');
+  assert.equal(studioSection('#storyboards'), 'create');
   assert.equal(studioSection('#channels'), 'settings');
   assert.equal(studioSection('#writing-settings'), 'settings');
   assert.equal(studioSection('#unknown'), 'create');
@@ -19,6 +21,10 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   const html = renderToStaticMarkup(React.createElement(Dashboard));
   assert.match(html, /What will you make today/);
   assert.match(html, /aria-label="Studio sections"/);
+  const nav = /<nav[^>]*aria-label="Studio sections"[\s\S]*?<\/nav>/.exec(html)[0];
+  assert.doesNotMatch(nav, /href="#jobs"|>Jobs</);
+  assert.equal((html.match(/aria-label="Jobs and progress"/g) || []).length, 1);
+  assert.match(html, /id="jobs"/);
   assert.match(html, /aria-current="page"/);
   assert.doesNotMatch(html, /href="#ideas"/);
   assert.match(html, /aria-label="Jobs and progress"/);
