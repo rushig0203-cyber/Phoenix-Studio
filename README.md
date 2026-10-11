@@ -1,13 +1,25 @@
 # Phoenix Studio
 
-### Jobs under Create only — October 11, source verified
+### Jobs under Create only — October 11, verified live
 
 The separate Jobs navigation screen is removed. Create keeps the existing compact
 job list below its creation controls; Library and Settings remain separate.
 Old `#jobs` and `#storyboards` bookmarks open Create and scroll to that list.
 Completed work returns to Create without interrupting Library or an open preview.
-The 47 focused navigation/queue/preview checks and scoped lint pass. Production
-build and live activation are pending; saved jobs and media are unchanged.
+The 47 focused navigation/queue/preview checks and scoped lint pass. Public
+Windows run `38148657650` passed 762 Node and 36 model-free Python checks, lint,
+real synthetic/public-footage renders, full TypeScript and production compilation.
+Both Vercel Git checks are green for production source `1ae5525`.
+
+Verified archive/source/dependency/file hashes preceded guarded installation of
+`.next-build-gh-38148657650-1`, BUILD_ID `FsB35B3M5NzYqeiI09DcE`. Selected and
+live builds match; website, manager, worker and renderer are healthy/ready.
+Browser verification confirms only Create, Library and Settings in navigation,
+one inline Jobs list and all 25 completed records still available. All 29 saved
+metadata/credential hashes and 87 output sizes/timestamps are unchanged; no
+owner job was deleted, retried or posted. Browser warning/error scan is empty.
+This Ponytail-guided navigation change adds no dependency or paid service and
+does not claim to fix unrelated content-quality or Windows memory issues.
 
 ### Compact job list — October 11, verified live
 

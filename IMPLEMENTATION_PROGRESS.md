@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 11 single Jobs location — source verified, activation pending
+## October 11 single Jobs location — verified installed and live
 
 - Removed the separate Jobs section/sidebar link; the compact list stays below
   Create. Legacy Jobs/storyboards hashes select Create and scroll to the inline
@@ -9,8 +9,23 @@
 - Reused the existing queue/actions without backend/storage changes. Focused
   navigation, queue, preview and recovery regressions pass 47/47; scoped lint
   passes. This Ponytail-guided change adds no dependencies or paid services and
-  does not delete, rerun or post any owner job. Production build and activation
-  still need verification; the previous compact-list release remains live.
+  does not delete, rerun or post any owner job. Same-section Jobs/storyboards
+  anchor changes are covered too; hidden upload forms still deactivate on Settings.
+- Public standard Windows run `38148657650` passed 762/762 Node checks, 19/19
+  transcription and 17/17 timed-caption Python checks, lint, synthetic real FFmpeg
+  and licensed public-Pexels fixtures, full TypeScript and production compilation.
+  Both Vercel Git checks are green for source
+  `1ae552503c75cabe1be3982dd95713806a9820a2`.
+- Draft release `409730869` archive/source/runtime/dependency/extracted file hashes
+  were verified before guarded activation selected `.next-build-gh-38148657650-1`.
+  Independent live health/selection and BUILD_ID `FsB35B3M5NzYqeiI09DcE` match.
+  Website, manager, worker and renderer are healthy/ready, and heavy work is idle.
+- All 29 pre-install metadata/credential hashes and 87 output sizes/timestamps
+  stayed unchanged. Browser reload of the old Jobs hash now shows Create's
+  workflows and one compact list (25 completed records), with only Create,
+  Library and Settings navigation. Console warning/error scan is empty. No owner
+  retries, deletions, posting, local builds, models or new paid services occurred.
+  Screenshot: `C:\Users\rishi\Documents\Codex\2026-09-04\r\artifacts\phoenix-single-jobs-20261011.jpg`.
 
 ## October 11 compact job list — verified installed and live
 
