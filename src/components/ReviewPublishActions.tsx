@@ -10,7 +10,7 @@ import { instagramStoryIdeas } from "@/lib/instagramStoryIdeas";
 import { instagramLocationSuggestions } from "@/lib/instagramLocationSuggestions";
 import { instagramAudioId, instagramAudioPreviewUrl } from "@/lib/instagramAudio";
 import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/reelMusic";
-import { instagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "@/lib/instagramTags";
+import { automaticInstagramUserTags } from "@/lib/instagramTags";
 
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
@@ -47,6 +47,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [setupChecked, setSetupChecked] = useState(false);
+  const [viewEpoch, setViewEpoch] = useState(0);
   const [title, setTitle] = useState(file.title.slice(0, 100));
   const [caption, setCaption] = useState(postingText(file));
   const [privacy, setPrivacy] = useState<"private" | "unlisted" | "public">("private");
@@ -61,8 +62,6 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }, [videoRevision]);
   const confirmed = confirmedRevision === videoRevision;
   function setConfirmed(value: boolean) { setConfirmedRevision(value ? videoRevision : ""); }
-  const [tagText, setTagText] = useState("");
-  const tagEpoch = useRef(0);
   const [postingDefaultsBusy, setPostingDefaultsBusy] = useState(false);
   const [savingPostingDefaults, setSavingPostingDefaults] = useState(false);
   const [postingDefaultsReason, setPostingDefaultsReason] = useState("");
@@ -109,11 +108,12 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   async function open(next: ChannelPlatform, mode: "reel" | "story" = "reel") {
     if (busy) return;
     const version = ++epoch.current;
+    setViewEpoch(version);
     controller.current?.abort();
     changeLocationQuery(""); resetAudio();
     const preferInstagramMusic = next === "instagram" && mode === "reel" && footageMusic(file);
     const abort = new AbortController(); controller.current = abort;
-    setPlatform(next); setInstagramMode(next === "instagram" ? mode : "reel"); setConfirmed(false); changeTagText(""); setPostingDefaultsBusy(false); setLoading(true); setError(""); setNotice(""); setSetupChecked(false);
+    setPlatform(next); setInstagramMode(next === "instagram" ? mode : "reel"); setConfirmed(false); setPostingDefaultsBusy(false); setLoading(true); setError(""); setNotice(""); setSetupChecked(false);
     setTitle(file.title.slice(0, 100)); setCaption(postingText(file, next));
     setPrivacy("private"); setMadeForKids(file.audience.startsWith("kids"));
     setStoryCapability(null); setIncludeStory(false); setBusinessConfirmed(false);
@@ -127,7 +127,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       if (epoch.current === version && !abort.signal.aborted) {
         setChannels(results[0].channels); setJobs(results[1].jobs); setSetupChecked(true); setLoading(false);
         const rejected = next === "instagram" && mode === "reel" && (results[1].jobs as ReviewPublishJob[]).find(job => job.platform === "instagram" && job.canRevise === true && typeof job.caption === "string");
-        if (rejected) { setCaption(rejected.caption!); setTagText(rejected.userTags?.join(", ") || ""); setConfirmed(false); }
+        if (rejected) { setCaption(rejected.caption!); setConfirmed(false); }
       }
       const destination = (results[0].channels as ChannelStatus[]).find(item => item.platform === "instagram");
       if (epoch.current !== version || abort.signal.aborted) return;
@@ -153,10 +153,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     epoch.current++; controller.current?.abort(); setChooserOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
     changeLocationQuery("");
     resetAudio();
-    changeTagText(""); setPostingDefaultsBusy(false);
-  }
-  function changeTagText(text: string) {
-    tagEpoch.current++; setTagText(text); setConfirmed(false);
+    setPostingDefaultsBusy(false);
   }
   async function loadStoryCapability(destination: ChannelStatus, version: number, abort: AbortController, allowCompanion = true) {
     try {
@@ -167,7 +164,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     } catch { if (epoch.current === version && !abort.signal.aborted) setStoryCapability({ ready: false, reason: "Story capability could not be verified. You can post this Reel normally and add a Story manually." }); }
   }
   async function loadPostingDefaults(destination: ChannelStatus, version: number, abort: AbortController) {
-    const locationSerial = locationEpoch.current, tagSerial = tagEpoch.current;
+    const locationSerial = locationEpoch.current;
     setPostingDefaultsBusy(true);
     try {
       const response = await fetch(`${endpoint}?check=posting-defaults&connectionRevision=${encodeURIComponent(destination.connectionRevision!)}`, {
@@ -175,13 +172,9 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       });
       const payload: unknown = await response.json();
       const data = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-      if (!response.ok) throw new Error(musicText(data.error, 600) ? data.error : "Saved posting choices could not be checked. You can choose location and tags below.");
+      if (!response.ok) throw new Error(musicText(data.error, 600) ? data.error : "Saved posting location could not be checked. You can choose a location below.");
       if (epoch.current !== version || abort.signal.aborted || !data.defaults || typeof data.defaults !== "object" || Array.isArray(data.defaults)) return;
-      const defaults = data.defaults as { userTags?: unknown; location?: unknown; locationQuery?: unknown; locationReason?: unknown };
-      if (tagEpoch.current === tagSerial) {
-        const tags = instagramUserTags(defaults.userTags);
-        if (tags) { setTagText(tags.join(", ")); setConfirmed(false); }
-      }
+      const defaults = data.defaults as { location?: unknown; locationQuery?: unknown; locationReason?: unknown };
       if (locationEpoch.current === locationSerial) {
         const location = defaults.location && typeof defaults.location === "object" && !Array.isArray(defaults.location)
           ? defaults.location as { id?: unknown; name?: unknown } : null;
@@ -193,7 +186,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         setConfirmed(false);
       }
     } catch (cause) {
-      if (epoch.current === version && !abort.signal.aborted && locationEpoch.current === locationSerial) setPostingDefaultsReason(cause instanceof Error ? cause.message : "Saved posting choices could not be checked. Choose location and tags below.");
+      if (epoch.current === version && !abort.signal.aborted && locationEpoch.current === locationSerial) setPostingDefaultsReason(cause instanceof Error ? cause.message : "Saved posting location could not be checked. Choose a location below.");
     } finally { if (epoch.current === version && !abort.signal.aborted) setPostingDefaultsBusy(false); }
   }
   function changeLocationQuery(query: string) {
@@ -282,7 +275,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }
   async function submit(job?: ReviewPublishJob, revise = false, makeStandalone = false) {
     const createStory = platform === "instagram" && instagramMode === "story" && (!job || makeStandalone);
-    if (!platform || inFlight.current || !confirmed || latestVideoRevision.current !== videoRevision || !setupChecked || (!createStory && platform === "instagram" && (locationBusy || audioBusy || (!job && (postingDefaultsBusy || !instagramAudioReady))))) return;
+    const directReelPost = platform === "instagram" && !createStory && (!job || revise);
+    if (!platform || inFlight.current || (!directReelPost && !confirmed) || epoch.current !== viewEpoch || latestVideoRevision.current !== videoRevision || !setupChecked || (!createStory && platform === "instagram" && (locationBusy || audioBusy || (!job && (postingDefaultsBusy || !instagramAudioReady))))) return;
     if (createStory && storyCapability?.ready !== true) return;
     if (makeStandalone && (!createStory || !job?.canMakeStandalone)) return;
     const channel = channels.find(item => item.platform === platform);
@@ -293,20 +287,17 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     if ((!job || revise) && !createStory && platform === "instagram" && captionHashtags(caption).length > INSTAGRAM_HASHTAG_LIMIT) {
       setError("Instagram allows at most five hashtags per Reel. Remove extra hashtags before posting; your caption has not been changed."); return;
     }
-    if ((!job || revise) && !createStory && platform === "instagram" && requestedUserTags === null) {
-      setError(`Enter up to ${INSTAGRAM_USER_TAG_LIMIT} Instagram usernames, separated by commas or spaces. Do not enter profile URLs or Facebook Page IDs.`); return;
-    }
     if (!job && youtubeTextIssue) { setError(youtubeTextIssue); return; }
     inFlight.current = true; setBusy(true); setError("");
     const version = epoch.current;
     try {
       const response = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000),
-        body: JSON.stringify(createStory ? { action: "create-story", confirm: true, connectionRevision: channel?.connectionRevision, ...(makeStandalone ? { jobId: job!.id } : {}) } : revise ? { action: "revise", jobId: job!.id, confirm: true, caption, userTags: requestedUserTags } : job ? { action: job.kind === "story" ? "continue-story" : "continue", jobId: job.id, confirm: true } : {
+        body: JSON.stringify(createStory ? { action: "create-story", confirm: true, connectionRevision: channel?.connectionRevision, ...(makeStandalone ? { jobId: job!.id } : {}) } : revise ? { action: "revise", jobId: job!.id, confirm: true, caption, automaticTags: true } : job ? { action: job.kind === "story" ? "continue-story" : "continue", jobId: job.id, confirm: true } : {
           action: "create", platform, title, caption, privacy: platform === "instagram" ? "public" : privacy, madeForKids,
           connectionRevision: channel?.connectionRevision, confirm: true,
           ...(platform === "instagram" ? { companionStory: includeStory && storyCapability?.ready === true, ...(selectedLocation ? { location: { id: selectedLocation.id } } : {}),
-            ...(requestedUserTags?.length ? { userTags: requestedUserTags } : {}),
+            automaticTags: true,
             ...(selectedAudio ? { audio: { audio_id: selectedAudio.audio_id, audio_volume: 100, video_volume: 1 } } : {}) } : {}),
         }),
       });
@@ -321,13 +312,13 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }
 
   async function rememberPostingChoices() {
-    if (platform !== "instagram" || inFlight.current || postingDefaultsBusy || locationBusy || !publishReady || !channel?.connectionRevision || requestedUserTags === null || existing) return;
+    if (platform !== "instagram" || inFlight.current || postingDefaultsBusy || locationBusy || !publishReady || !channel?.connectionRevision || existing) return;
     inFlight.current = true; setBusy(true); setSavingPostingDefaults(true); setError(""); setNotice(""); setConfirmed(false);
     const version = epoch.current;
     try {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000),
         body: JSON.stringify({ action: "save-posting-defaults", confirm: true, connectionRevision: channel.connectionRevision,
-          userTags: requestedUserTags, location: selectedLocation || null, locationQuery: selectedLocation ? selectedLocation.name : locationQuery.trim() }) });
+          userTags: automaticTags, location: selectedLocation || null, locationQuery: selectedLocation ? selectedLocation.name : locationQuery.trim() }) });
       const data = await response.json();
       if (!response.ok) throw new Error(musicText(data.error) ? data.error : "Posting choices could not be remembered.");
       if (epoch.current === version) setNotice("Posting choices remembered for this Instagram account. No video was uploaded; review and approve this Reel before publishing.");
@@ -365,14 +356,13 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const locationSuggestions = instagramLocationSuggestions(file);
   const savedAudioAvailable = ["natural-audio-preserved", "local-music-replaced"].includes(file.quality.audio);
   const instagramAudioReady = !footageMusic(file) || (audioCheckedRevision === videoRevision && Boolean(selectedAudio || savedAudioAvailable));
-  const requestedUserTags = instagramUserTags(tagText.trim() ? tagText.trim().split(/[\s,]+/) : []);
+  const automaticTags = automaticInstagramUserTags(file, channel?.name);
   const revisableJob = platformJobs.find(job => job.canRevise === true && job.platform === "instagram" && typeof job.caption === "string");
   const revisableCaption = revisableJob?.caption;
-  const revisableTags = revisableJob?.userTags?.join(", ") || "";
   useEffect(() => {
     if (revisableCaption === undefined) return;
-    setCaption(revisableCaption); setTagText(revisableTags); setConfirmedRevision("");
-  }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption, revisableTags]);
+    setCaption(revisableCaption); setConfirmedRevision("");
+  }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
   return <>
     <button type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => setChooserOpen(true)}>Post / export</button>
     {chooserOpen && <section id={chooserId} aria-label="Post or export this video" className="w-full space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3">
@@ -397,7 +387,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
           {job.actualPrivacy && <p>Platform-confirmed visibility: {job.actualPrivacy}</p>}
           {job.location && <p>Approved location tag: {job.location.name}. This is a posting location, not proof of where filming happened.</p>}
           {job.audio && <p>Approved Instagram audio: {job.audio.title}{job.audio.display_artist ? ` · ${job.audio.display_artist}` : ""} · track volume {job.audio.audio_volume}% · saved video volume {job.audio.video_volume}%</p>}
-          {job.userTags?.length ? <p>Approved Reel tags: {job.userTags.map(username => `@${username}`).join(", ")}</p> : null}
+          {job.userTags?.length && !job.canRevise ? <p>Reel tags: {job.userTags.map(username => `@${username}`).join(", ")}</p> : null}
+          {job.omittedUserTags?.length ? <p>Meta rejected the optional tags; this request continued without them.</p> : null}
           {job.remoteUrl && <a className="underline" href={job.remoteUrl} target="_blank" rel="noopener noreferrer">View uploaded video ↗</a>}
           {job.kind === "story" && job.remoteId && <p>Published Story ID: {job.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
           {job.companionStoryDetached && <p>The matching Story was separately approved as Story only. This Reel will not create or repeat it.</p>}
@@ -405,19 +396,14 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
             <p>This matching Story has not been sent, and its Reel failed before being accepted. Approve the same saved video as a Story only; the old request will be retained in private history.</p>
             <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={busy || !publishReady || storyCapability?.ready !== true} onChange={event => setConfirmed(event.target.checked)}/><span>I have reviewed this video, hold the required rights, and approve publishing this Story publicly to {job.accountName}, independently of the failed Reel.</span></label>
             <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || storyCapability?.ready !== true}>{busy ? "Saving Story request…" : "Confirm Story only"}</button>
-          </form> : job.canRevise && typeof job.caption === "string" ? <details className="space-y-2"><summary className="cursor-pointer">Correct rejected caption / tags</summary>
-            <form className="space-y-2" onSubmit={event => { event.preventDefault(); void submit(job, true); }}>
-              <p>This request failed before Instagram accepted a container or video transfer. Review the saved caption and usernames below. The previous failed request will be retained in private history.</p>
-              <p>The saved location, audio, visibility and matching Story approval stay as previously confirmed.</p>
-              <label className="block">Corrected caption and hashtags<textarea className={`${input} min-h-24`} maxLength={2200} value={caption} disabled={busy} onChange={event => { setCaption(event.target.value); setConfirmed(false); }}/></label>
+          </form> : job.canRevise && typeof job.caption === "string" ? <form className="space-y-2" onSubmit={event => { event.preventDefault(); void submit(job, true); }}>
+              <p>The previous request failed before any video transfer. Posting again keeps its saved location, audio, visibility and matching Story choice; the failed request stays in private history.</p>
+              <details><summary className="cursor-pointer">Edit caption and hashtags · optional</summary><label className="block">Corrected caption and hashtags<textarea className={`${input} min-h-24`} maxLength={2200} value={caption} disabled={busy} onChange={event => { setCaption(event.target.value); setConfirmed(false); }}/></label></details>
               <p className={instagramTags > INSTAGRAM_HASHTAG_LIMIT ? "text-red-800" : ""}>{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags.</p>
-              <label className="block">Corrected Instagram usernames<input className={input} maxLength={700} value={tagText} disabled={busy} onChange={event => changeTagText(event.target.value)}/></label>
-              <p>Public Instagram usernames only. Meta decides whether each account permits tagging. Clearing this field explicitly approves no people tags.</p>
-              {requestedUserTags === null ? <p role="alert" className="text-red-800">Use up to {INSTAGRAM_USER_TAG_LIMIT} valid usernames separated by commas or spaces.</p> : <p>Corrected Reel tags: {requestedUserTags.length ? requestedUserTags.map(username => `@${username}`).join(", ") : "None selected"}</p>}
-              <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={busy || !publishReady} onChange={event => setConfirmed(event.target.checked)}/><span>I have reviewed this video and these corrected posting choices, hold the required rights, and approve publishing this Reel publicly{job.companionStoryApproved ? " and then its matching Story" : ""} to {job.accountName}.</span></label>
-              <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || requestedUserTags === null || instagramTags > INSTAGRAM_HASHTAG_LIMIT}>{busy ? "Saving corrected request…" : "Confirm corrected Reel"}</button>
-            </form>
-          </details> : job.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue this saved {job.kind === "story" ? "Story" : "upload"} to {job.accountName}, using its saved posting choices.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job)}>{job.kind === "story" ? job.standaloneStory ? "Continue Story only" : "Continue matching Story" : "Continue saved upload"}</button></>}
+              <p>Automatic Reel tags · {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "No matching profiles"}. If Meta rejects optional tags, publish without them.</p>
+              <p>Clicking Post approves publishing this Reel publicly{job.companionStoryApproved ? " and then its matching Story" : ""} to {job.accountName}, with the required rights.</p>
+              <button type="submit" className={button} disabled={busy || !publishReady || !output || locationBusy || audioBusy || instagramTags > INSTAGRAM_HASHTAG_LIMIT}>{busy ? "Saving upload request…" : "Post to Instagram"}</button>
+            </form> : job.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue this saved {job.kind === "story" ? "Story" : "upload"} to {job.accountName}, using its saved posting choices.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job)}>{job.kind === "story" ? job.standaloneStory ? "Continue Story only" : "Continue matching Story" : "Continue saved upload"}</button></>}
           {job.companionStoryApproved && <div className="space-y-2 border-t border-[#bdc7a5] pt-2" aria-label="Matching Story status">
             {job.companionStory ? <><p className="font-semibold">Matching Story · {job.companionStory.status.replaceAll("_", " ")} · {Math.round(job.companionStory.percent)}%</p><p role="status">{job.companionStory.detail}</p>
               {job.companionStory.remoteId && <p>Published Story ID: {job.companionStory.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
@@ -433,22 +419,15 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
           <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || storyCapability?.ready !== true}>{busy ? "Saving Story request…" : "Confirm Story only"}</button>
         </form> : <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
           {platform === "youtube" && <label className="block text-xs">YouTube title<input className={input} maxLength={100} required value={title} onChange={event => { setTitle(event.target.value); setConfirmed(false); }} disabled={busy}/></label>}
-          <label className="block text-xs">{platform === "youtube" ? "Description and hashtags" : "Caption and hashtags"}<textarea className={`${input} min-h-24`} maxLength={platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200} value={caption} onChange={event => { setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label>
+          {platform === "youtube" ? <label className="block text-xs">Description and hashtags<textarea className={`${input} min-h-24`} maxLength={YOUTUBE_DESCRIPTION_BYTE_LIMIT} value={caption} onChange={event => { setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label> : <details className="text-xs"><summary className="cursor-pointer">Edit caption and hashtags · optional</summary><label className="block">Caption and hashtags<textarea className={`${input} min-h-24`} maxLength={2200} value={caption} onChange={event => { setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label></details>}
           {youtubeTextIssue && <p role="alert" className="text-xs text-red-800">{youtubeTextIssue}</p>}
           {platform === "instagram" && <p className={`text-xs ${instagramTags > INSTAGRAM_HASHTAG_LIMIT ? "text-red-800" : ""}`}>{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags. The candidate bank stays saved; remove extra hashtags here before publishing.</p>}
           {platform === "instagram" && <div aria-label="Instagram posting choices" className="space-y-1 text-xs">
             <p>Posting location · {selectedLocation?.name || locationQuery || "None selected"}{!selectedLocation && locationQuery && " · pending Meta verification; no location tag attached"}{(selectedLocation || locationQuery) && " · your posting choice, not verified filming evidence"}</p>
-            <p>Reel tags · {requestedUserTags === null ? "Check usernames below" : requestedUserTags.length ? requestedUserTags.map(username => `@${username}`).join(", ") : "None selected"}</p>
+            <p>Automatic Reel tags · {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "No matching profiles"}. If Meta rejects optional tags, publish without them.</p>
             {postingDefaultsBusy && <p role="status">Checking saved posting choices…</p>}
             {postingDefaultsReason && <p role="status">{postingDefaultsReason}</p>}
           </div>}
-          {platform === "instagram" && <details className="space-y-2 text-xs"><summary className="cursor-pointer">Tag people / pages · optional</summary>
-            <label className="block">Instagram usernames<input className={input} maxLength={700} value={tagText} placeholder="@person, @brand" autoComplete="off" disabled={busy} onChange={event => changeTagText(event.target.value)}/></label>
-            <p>Public Instagram accounts only, including brand/profile pages. Use usernames, not Facebook Page IDs or URLs. Meta checks whether each account permits tagging. These are Reel tags, not collaboration invitations; matching Stories are not tagged.</p>
-            {requestedUserTags === null ? <p role="alert" className="text-red-800">Use up to {INSTAGRAM_USER_TAG_LIMIT} valid usernames separated by commas or spaces.</p> : requestedUserTags.length ? <p>Reel tags: {requestedUserTags.map(username => `@${username}`).join(", ")}</p> : <p>No accounts tagged. You can also type @mentions directly in the caption.</p>}
-            <p>Remember the selected location tag and these usernames for this Instagram account. With no eligible tag selected, saving clears the remembered location. Saving these choices does not upload or publish a video.</p>
-            <button type="button" className={button} disabled={busy || postingDefaultsBusy || locationBusy || !publishReady || requestedUserTags === null} onClick={() => void rememberPostingChoices()}>{savingPostingDefaults ? "Remembering posting choices…" : "Remember these posting choices"}</button>
-          </details>}
           {platform === "youtube" && <><label className="block text-xs">Privacy<select className={input} value={privacy} onChange={event => { setPrivacy(event.target.value as typeof privacy); setConfirmed(false); }} disabled={busy}><option value="private">Private (recommended first upload)</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={madeForKids} onChange={event => { setMadeForKids(event.target.checked); setConfirmed(false); }} disabled={busy}/>This video is made for kids</label><p className="text-xs">YouTube may apply your channel&apos;s visibility settings. Phoenix reports the visibility returned by YouTube.</p></>}
           {platform === "instagram" && <p className="text-xs">Instagram will publish this Reel publicly when processing finishes. Local-file upload requires a Page-linked professional account with Facebook Login publishing permissions.</p>}
           {platform === "instagram" && <details className="space-y-2 text-xs">
@@ -462,6 +441,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
             {locations.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Eligible Meta locations">{locations.map(place => <button key={place.id} type="button" className={button} disabled={busy || locationBusy} aria-pressed={selectedLocation?.id === place.id} onClick={() => { locationEpoch.current++; setSelectedLocation(place); setConfirmed(false); }}>{place.name}</button>)}</div>}
             {selectedLocation ? <p>Selected: {selectedLocation.name} <button type="button" className="underline" disabled={busy} onClick={() => changeLocationQuery("")}>Remove location</button></p> : <p>No location selected. This Reel will post without a tag unless you select an eligible result; you can also add the location manually in Instagram.</p>}
             {locationError && <p role="status" className="text-amber-900">{locationError}</p>}
+            <p>Remember this posting location for your Instagram account. Saving does not upload or publish a video.</p>
+            <button type="button" className={button} disabled={busy || postingDefaultsBusy || locationBusy || !publishReady} onClick={() => void rememberPostingChoices()}>{savingPostingDefaults ? "Remembering posting choices…" : "Remember posting location"}</button>
           </details>}
           {platform === "instagram" && <section aria-label="Automatic Reel music" className="space-y-1 rounded-lg bg-[#f7faef] px-3 py-2 text-xs" aria-live="polite">
             {footageMusic(file) ? audioBusy ? <p role="status">Choosing Instagram music for this video…</p>
@@ -479,8 +460,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
               : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
           </section>}
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
-          <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady || (platform === "instagram" && (audioBusy || !instagramAudioReady))}/><span>I have reviewed this video{platform === "instagram" && footageMusic(file) ? " and the music choice above" : ""}, hold the required rights, and approve {platform === "instagram" ? includeStory ? "publishing this Reel publicly and then its matching Story" : "publishing this Reel publicly" : `uploading this video as ${privacy}`} to {channel?.name || name}.</span></label>
-          <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (requestedUserTags === null || postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? includeStory ? "Confirm Reel + Story" : "Confirm and publish Reel" : "Confirm upload"}</button>
+          {platform === "youtube" ? <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady}/><span>I have reviewed this video, hold the required rights, and approve uploading this video as {privacy} to {channel?.name || name}.</span></label> : <p className="text-xs">Clicking Post approves publishing this Reel publicly{includeStory ? " and then its matching Story" : ""} to {channel?.name || name}, with the required rights.</p>}
+          <button type="submit" className={button} disabled={busy || (platform === "youtube" && !confirmed) || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? "Post to Instagram" : "Confirm upload"}</button>
         </form>}
         <button type="button" className={button} disabled={busy} onClick={() => void open(platform, instagramMode)}>Check status</button>
       </>}

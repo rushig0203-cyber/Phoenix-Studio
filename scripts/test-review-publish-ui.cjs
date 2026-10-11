@@ -189,7 +189,7 @@ function uiHarness(options = {}) {
       renderer.mounted = false;
       for (const effect of renderer.effects) effect?.cleanup?.();
     },
-    button(label) { return nodes(renderer.tree).find(node => node.type === 'button' && text(node) === label); },
+    button(label) { const matches = nodes(renderer.tree).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0]; },
     control(label, type) {
       const parent = nodes(renderer.tree).find(node => node.type === 'label' && text(node).startsWith(label));
       return parent && nodes(parent).find(node => node.type === type);
@@ -204,7 +204,10 @@ function uiHarness(options = {}) {
     },
     choose(label) {
       if (!h.button(label)) { h.click('Post / export'); render(); }
-      h.click(label);
+      const chooser = nodes(renderer.tree).find(node => node.props['aria-label'] === 'Choose a platform');
+      const target = nodes(chooser).find(node => node.type === 'button' && text(node) === label);
+      assert.ok(target, `Expected platform: ${label}`); assert.equal(Boolean(target.props.disabled), false);
+      target.props.onClick();
     },
     change(control, value) {
       assert.ok(control, 'Expected a visible form control');
@@ -267,10 +270,10 @@ test('location ideas are optional, honest and inert until explicit Meta search',
   assert.ok(lookup.url.includes('?check=location&q=Switzerland&connectionRevision=revision-instagram'));
   assert.match(h.text, /No eligible Meta location was found/);
   assert.equal(h.posts.length, 0);
-  assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.confirmation(), undefined);
 });
 
-test('eligible result requires selection and fresh final approval; only its ID joins the confirmed Reel', async t => {
+test('eligible location selection joins the Reel only when Post is clicked', async t => {
   let saved;
   const h = uiHarness({ locations: [{ id: '123456', name: 'Zurich, Switzerland' }], post(request) {
     saved = JSON.parse(request.body);
@@ -279,11 +282,10 @@ test('eligible result requires selection and fresh final approval; only its ID j
   h.choose('Post to Instagram'); await h.flush();
   h.change(h.control('Place name or Facebook location Page ID', 'input'), 'Zurich'); h.render();
   h.click('Find location'); await h.flush();
-  h.change(h.confirmation(), true); h.render();
   h.click('Zurich, Switzerland'); h.render();
-  assert.equal(h.confirmation().props.checked, false, 'Changing posting location resets final approval');
-  assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  assert.equal(h.button('Post to Instagram').props.disabled, false);
+  h.submit(); await h.flush();
   assert.deepEqual(saved.location, { id: '123456' });
   assert.equal(h.posts.length, 1);
   assert.match(h.text, /Approved location tag: Zurich, Switzerland/);
@@ -300,7 +302,7 @@ test('Meta setup failure is actionable and does not block ordinary untagged post
   h.click('Switzerland'); h.render(); h.click('Find location'); await h.flush();
   assert.match(h.text, /Configure your Meta App Secret/);
   assert.match(h.text, /Reel will post without a tag/);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  h.submit(); await h.flush();
   assert.equal(saved.location, undefined);
   assert.equal(h.posts.length, 1);
 });
@@ -505,7 +507,7 @@ test('YouTube sends the reviewed title, copy, account revision, private privacy 
   assert.equal(h.form(), undefined, 'An accepted saved request replaces the creation form');
 });
 
-test('Instagram explicitly confirms public publication and submits public privacy with the connected account revision', async t => {
+test('Instagram Post is the final approval and sends public privacy and automatic tagging with the account revision', async t => {
   const h = uiHarness({ post: () => response({ job: job({ platform: 'instagram', accountName: '@owned_instagram', privacy: 'public' }) }) });
   t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
@@ -513,16 +515,14 @@ test('Instagram explicitly confirms public publication and submits public privac
   assert.equal(h.control('Privacy', 'select'), undefined);
   assert.equal(h.control('Caption and hashtags', 'textarea').props.maxLength, 2200);
   assert.match(h.text, /publishing this Reel publicly to @owned_instagram/);
-  assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false);
   h.change(h.control('Caption and hashtags', 'textarea'), 'Approved Reel caption #fixture'); await h.flush();
-  assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); await h.flush();
   assert.equal(h.posts.length, 0);
   h.submit(); await h.flush();
   assert.equal(h.posts.length, 1);
   assert.deepEqual(JSON.parse(h.posts[0].body), {
     action: 'create', platform: 'instagram', title: 'Saved review video', caption: 'Approved Reel caption #fixture',
-    privacy: 'public', madeForKids: false, connectionRevision: 'revision-instagram', confirm: true, companionStory: false,
+    privacy: 'public', madeForKids: false, connectionRevision: 'revision-instagram', confirm: true, companionStory: false, automaticTags: true,
   });
 });
 
@@ -544,8 +544,8 @@ test('owner-added excess Instagram hashtags disable submission and return an exp
   const h=uiHarness();t.after(()=>h.unmount());
   h.choose('Post to Instagram');await h.flush();
   const caption='Owner approved text #one #two #three #four #five ＃six';
-  h.change(h.control('Caption and hashtags','textarea'),caption);h.change(h.confirmation(),true);await h.flush();
-  assert.match(h.text,/6\/5 Instagram hashtags/);assert.equal(h.button('Confirm and publish Reel').props.disabled,true);
+  h.change(h.control('Caption and hashtags','textarea'),caption);await h.flush();
+  assert.match(h.text,/6\/5 Instagram hashtags/);assert.equal(h.button('Post to Instagram').props.disabled,true);
   h.submit();await h.flush();
   assert.equal(h.posts.length,0);assert.match(h.text,/at most five hashtags/);
   assert.equal(h.control('Caption and hashtags','textarea').props.value,caption);
@@ -704,7 +704,7 @@ test('switching panels aborts the old setup request and rejects its stale accoun
   assert.equal(h.posts.length, 0);
 });
 
-test('eligible matching Story defaults on but cannot post without final Reel and Story approval', async t => {
+test('eligible matching Story defaults on and the final Post approves the visible Reel and Story choice', async t => {
   const h = uiHarness({ story: { ready: true, reason: 'Business confirmed; same saved MP4.' },
     post: () => response({ job: job({ platform: 'instagram', companionStoryApproved: true }) }) });
   t.after(() => h.unmount());
@@ -712,15 +712,13 @@ test('eligible matching Story defaults on but cannot post without final Reel and
   assert.equal(h.requests.filter(item => item.url.includes('?check=story')).length, 1);
   assert.ok(h.requests.every(item => item.method === 'GET'));
   assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
-  assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.button('Confirm Reel + Story').props.disabled, true);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to Instagram').props.disabled, false);
   assert.match(h.text, /publishing this Reel publicly and then its matching Story/);
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); await h.flush();
   h.change(h.control('Also publish one matching Story', 'input'), false); await h.flush();
-  assert.equal(h.confirmation().props.checked, false, 'Changing the Story choice invalidates the old approval');
+  assert.equal(h.posts.length, 0, 'Changing the Story choice never starts an upload');
   h.change(h.control('Also publish one matching Story', 'input'), true);
-  h.change(h.confirmation(), true); await h.flush();
+  await h.flush();
   h.submit(); await h.flush();
   assert.equal(h.posts.length, 1);
   assert.equal(JSON.parse(h.posts[0].body).companionStory, true);
@@ -736,13 +734,12 @@ test('Business confirmation only saves type evidence and still requires a separa
   assert.equal(h.posts.length, 0);
   const details = nodes(h.tree).find(item => item.type === 'details' && text(item).startsWith('Confirm Business account'));
   assert.equal(Boolean(details.props.open), false);
-  h.change(h.confirmation(), true); await h.flush();
   h.change(h.control('I checked:', 'input'), true); await h.flush();
   h.click('Enable matching Stories'); await h.flush();
   assert.deepEqual(JSON.parse(h.posts[0].body), { action: 'confirm-story-business', connectionRevision: 'revision-instagram', businessAccountConfirmed: true, confirm: true });
   assert.equal(h.posts.length, 1);
-  assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.button('Confirm Reel + Story').props.disabled, true);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to Instagram').props.disabled, false);
   assert.ok(h.form(), 'Setup confirmation does not create a publishing job');
 });
 
@@ -904,8 +901,8 @@ test('an untouched matching Story can become Story only only with fresh approval
 test('switching between Story-only, Reel and YouTube resets final approval before any upload', async t => {
   const h=uiHarness({story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'}});t.after(()=>h.unmount());
   h.choose('Post Story only');await h.flush();h.change(h.confirmation(),true);h.render();assert.equal(h.confirmation().props.checked,true);
-  h.choose('Post to Instagram');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.ok(h.control('Caption and hashtags','textarea'));
-  assert.equal(h.button('Confirm Reel + Story').props.disabled,true);h.change(h.confirmation(),true);h.render();
+  h.choose('Post to Instagram');await h.flush();assert.equal(h.confirmation(),undefined);assert.ok(h.control('Caption and hashtags','textarea'));
+  assert.equal(h.button('Post to Instagram').props.disabled,false);
   h.choose('Post Story only');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.control('Caption and hashtags','textarea'),undefined);
   assert.equal(h.button('Confirm Story only').props.disabled,true);h.change(h.confirmation(),true);h.render();
   h.choose('Upload to YouTube');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Story only'),undefined);
@@ -928,42 +925,34 @@ test('everyday Story prompts are collapsed, grounded in the saved clip and never
 
 const audioResult = (extra = {}) => ({ audio_id: '587784541076604', title: 'Calm track', display_artist: 'Fixture artist',
   recommendation: { rank: 1, kind: 'english-vocal', reason: 'Reflective English vocals fit the quiet scenery.' }, ...extra });
-test('Reel tagging is collapsed and explicit, clears approval and submits only normalized handles', async t => {
-  let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram', userTags: saved.userTags }) }); } }); t.after(() => h.unmount());
+test('automatic Reel tagging has no manual controls and sends only server-selected tagging policy', async t => {
+  let saved; const h = uiHarness({ file: sampleFile({ title: 'Swiss mountain scenery' }), post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram', automaticTags: true, userTags: ['nature'] }) }); } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
   const details = nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Tag people / pages · optional'));
-  assert.ok(details); assert.equal(Boolean(details.props.open), false);
-  assert.match(h.text, /Public Instagram accounts only/); assert.match(h.text, /not collaboration invitations/);
-  const requests = h.requests.length;
-  h.change(h.confirmation(), true); h.render();
-  h.change(h.control('Instagram usernames', 'input'), '@Person, @Brand.page person'); h.render();
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.requests.length, requests, 'Editing tags never searches or contacts accounts');
-  assert.match(h.text, /Reel tags: @person, @brand.page/);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
-  assert.deepEqual(saved.userTags, ['person', 'brand.page']); assert.equal(h.posts.length, 1);
-  assert.match(h.text, /Approved Reel tags: @person, @brand.page/);
-  assert.equal(h.control('Instagram usernames', 'input'), undefined, 'Saved approval is immutable');
+  assert.equal(details, undefined); assert.equal(h.control('Instagram usernames', 'input'), undefined);
+  assert.match(h.text, /Automatic Reel tags · @/); assert.match(h.text, /If Meta rejects optional tags, publish without them/);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
+  assert.equal(saved.automaticTags, true); assert.equal(saved.userTags, undefined); assert.equal(h.posts.length, 1);
+  assert.match(h.text, /Reel tags: @nature/);
 });
 
-test('invalid Reel tags block POST, blank input omits tags and switching platforms clears them', async t => {
+test('automatic tag policy is Instagram-only and no manual tag entry appears on either platform', async t => {
   let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job() }); } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
-  for (const invalid of ['https://instagram.com/person', 'bad..name', Array.from({length:21}, (_,i) => `user${i}`).join(',')]) {
-    h.change(h.control('Instagram usernames', 'input'), invalid); h.render(); h.change(h.confirmation(), true); h.render();
-    assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  }
-  h.change(h.control('Instagram usernames', 'input'), '@person'); h.render();
+  assert.equal(h.control('Instagram usernames', 'input'), undefined); assert.equal(h.posts.length, 0);
   h.choose('Upload to YouTube'); await h.flush(); assert.equal(h.control('Instagram usernames', 'input'), undefined);
-  h.choose('Post to Instagram'); await h.flush(); assert.equal(h.control('Instagram usernames', 'input').props.value, '');
+  h.choose('Post to Instagram'); await h.flush(); assert.equal(h.control('Instagram usernames', 'input'), undefined);
   h.choose('Upload to YouTube'); await h.flush(); h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
   assert.equal(saved.userTags, undefined, 'Instagram tags never leak to YouTube');
+  assert.equal(saved.automaticTags, undefined);
 });
 
 test('an untagged Reel omits the optional parameter and continued uploads use only the saved job', async t => {
   let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({platform:'instagram'}) }); } }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(),true); h.render(); h.submit(); await h.flush(); assert.equal(saved.userTags,undefined);
+  h.choose('Post to Instagram'); await h.flush(); h.submit(); await h.flush(); assert.equal(saved.userTags,undefined); assert.equal(saved.automaticTags,true);
   const continued = uiHarness({ jobs:[job({platform:'instagram',status:'NEEDS_CHECK',canContinue:true,userTags:['saved.person']})], post(request) { return response({job:job({platform:'instagram'})}); } }); t.after(() => continued.unmount());
-  continued.choose('Post to Instagram'); await continued.flush(); assert.match(continued.text,/Approved Reel tags: @saved.person/);
+  continued.choose('Post to Instagram'); await continued.flush(); assert.match(continued.text,/Reel tags: @saved.person/);
   assert.equal(continued.control('Instagram usernames','input'),undefined);
   continued.change(continued.control('Continue this saved upload','input'),true); continued.render(); continued.click('Continue saved upload'); await continued.flush();
   assert.deepEqual(JSON.parse(continued.posts[0].body),{action:'continue',jobId:'saved-upload',confirm:true});
@@ -992,8 +981,8 @@ test('narration and song reviews preserve their saved MP4 audio without a manual
     t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
     assertNoManualMusicControls(h);
     assert.equal(h.requests.some(request => request.url.includes('?check=audio')), false);
-    assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-    h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+    assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+    h.submit(); await h.flush();
     assert.equal(saved.audio, undefined); assert.equal(h.posts.length, 1);
   }
 });
@@ -1008,9 +997,8 @@ test('automatic music presents one eligible track with fixed volumes only after 
   assert.match(text(panel), /Calm track/); assert.match(text(panel), /Fixture artist/);
   assert.equal(h.requests.filter(request => request.url === h.endpoint + '?check=audio-recommendations&connectionRevision=revision-instagram').length, 1);
   assert.equal(h.requests.some(request => request.url.includes('?check=audio&q=')), false);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
   assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 });
   assert.equal(h.posts.length, 1); assert.match(h.text, /Approved Instagram audio: Calm track/);
 });
@@ -1020,15 +1008,15 @@ test('a changed output revision clears selected music and approval and cannot bo
   const h = uiHarness({ file: footageFile(), audio: [audioResult()],
     post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.change(h.confirmation(), true); h.render(); const oldForm = h.form();
+  const oldForm = h.form();
   h.updateFile({ ...h.file, updatedAt: '2026-10-11T01:00:00Z',
     outputs: { ...h.file.outputs, instagram: { ...h.file.outputs.instagram, duration: 18 } } }); await h.flush();
-  assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.confirmation(), undefined);
   assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
   h.submit(oldForm); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   h.click('Check status'); await h.flush(); assert.match(text(automaticMusicPanel(h)), /Calm track/);
-  assert.equal(h.confirmation().props.checked, false);
-  h.change(h.confirmation(), true); h.render(); h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
+  assert.equal(h.confirmation(), undefined);
+  h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
   h.submit(); await h.flush(); assert.equal(saved.audio.audio_id, '587784541076604'); assert.equal(h.posts.length, 1);
 });
 
@@ -1043,21 +1031,21 @@ test('changing output during automatic lookup aborts and ignores the old recomme
   assert.equal(search.signal.aborted, true);
   waiting.resolve(response({ audio: [audioResult({ title: 'Stale output track' })], recommendation: recommendationResult({ reason: 'Stale output visual evidence.' }) })); await h.flush();
   assert.doesNotMatch(h.text, /Stale output track|Stale output visual evidence/);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
 });
 
-test('automatic music blocks confirmation during lookup and requires fresh approval of its selected result', async t => {
+test('automatic music blocks Post during lookup and final Post uses the settled choice', async t => {
   let saved; const waiting = deferred();
   const h = uiHarness({ file: footageFile(), read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; },
     post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   assert.ok(automaticMusicPanel(h)); assert.match(text(automaticMusicPanel(h)), /Choosing Instagram music for this video/); assertNoManualMusicControls(h);
-  assert.equal(Boolean(h.confirmation().props.disabled), true); assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to Instagram').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   waiting.resolve(response({ audio: [audioResult()], recommendation: recommendationResult() })); await h.flush();
   assert.match(text(automaticMusicPanel(h)), /Calm track/);
-  assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
   assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 }); assert.equal(h.posts.length, 1);
 });
 
@@ -1071,8 +1059,8 @@ test('automatic music selects the lowest validated recommendation rank rather th
   ], post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   assert.match(text(automaticMusicPanel(h)), /First choice/); assert.doesNotMatch(text(automaticMusicPanel(h)), /Invalid first choice|Second choice|Third choice/);
-  assertNoManualMusicControls(h); assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assertNoManualMusicControls(h); assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
   assert.deepEqual(saved.audio, { audio_id: '1', audio_volume: 100, video_volume: 1 });
 });
 
@@ -1094,8 +1082,8 @@ test('unavailable or unverified automatic music explicitly retains only verified
     assertNoManualMusicControls(h); assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
     assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added\./, fixture.name);
     if (fixture.reason) assert.match(h.text, fixture.reason);
-    assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-    h.change(h.confirmation(), true); h.render(); assert.equal(h.button('Confirm and publish Reel').props.disabled, false, fixture.name);
+    assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+    assert.equal(h.button('Post to Instagram').props.disabled, false, fixture.name);
     h.submit(); await h.flush(); assert.equal(saved.audio, undefined, fixture.name); assert.equal(h.posts.length, 1);
   }
 });
@@ -1111,8 +1099,8 @@ test('footage with missing or unverified saved audio cannot publish after automa
     assertNoManualMusicControls(h); assert.doesNotMatch(h.text, /Keeping the saved video audio; no Instagram track will be added/);
     assert.match(text(automaticMusicPanel(h)), /no verified usable saved audio/i);
     assert.match(text(automaticMusicPanel(h)), /Publishing is paused until suitable Instagram music is available/);
-    h.confirmation().props.onChange({ target: { checked: true } }); h.render();
-    assert.equal(h.button('Confirm and publish Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+    assert.equal(h.confirmation(), undefined);
+    assert.equal(h.button('Post to Instagram').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   }
 });
 
@@ -1122,9 +1110,8 @@ test('eligible Instagram music can supply a final-approved Reel even when its sa
     const h = uiHarness({ file: footageFile(audio), audio: [audioResult()],
       post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
     t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-    assert.match(text(automaticMusicPanel(h)), /Calm track/); assert.equal(h.confirmation().props.checked, false);
-    h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-    h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+    assert.match(text(automaticMusicPanel(h)), /Calm track/); assert.equal(h.confirmation(), undefined);
+    assert.equal(h.posts.length, 0); h.submit(); await h.flush();
     assert.deepEqual(saved.audio, { audio_id: '587784541076604', audio_volume: 100, video_volume: 1 });
   }
 });
@@ -1147,19 +1134,19 @@ test('saved uploads, narration, unavailable accounts, Story-only and YouTube nev
   }
 });
 
-test('Check status refreshes automatic music and invalidates approval while the new result is pending', async t => {
+test('Check status refreshes automatic music and blocks Post while the new result is pending', async t => {
   let checks = 0, saved; const waiting = deferred();
   const h = uiHarness({ file: footageFile(), read(request) {
     if (request.url.includes('?check=audio-recommendations')) return ++checks === 1
       ? response({ audio: [audioResult({ title: 'First automatic track' })], recommendation: recommendationResult() }) : waiting.promise;
   }, post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
-  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   h.click('Check status'); await h.flush();
-  assert.equal(checks, 2); assert.equal(h.confirmation().props.checked, false); assert.equal(Boolean(h.confirmation().props.disabled), true);
+  assert.equal(checks, 2); assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, true);
   assert.doesNotMatch(text(automaticMusicPanel(h)), /First automatic track/); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   waiting.resolve(response({ audio: [audioResult({ audio_id: '123456', title: 'Fresh automatic track' })], recommendation: recommendationResult() })); await h.flush();
-  assert.match(text(automaticMusicPanel(h)), /Fresh automatic track/); assert.equal(h.confirmation().props.checked, false);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush(); assert.equal(saved.audio.audio_id, '123456');
+  assert.match(text(automaticMusicPanel(h)), /Fresh automatic track/); assert.equal(h.confirmation(), undefined);
+  h.submit(); await h.flush(); assert.equal(saved.audio.audio_id, '123456');
 });
 
 test('Check status cannot silently retain an earlier selected track after its recommendation becomes unavailable', async t => {
@@ -1169,12 +1156,12 @@ test('Check status cannot silently retain an earlier selected track after its re
       ? response({ audio: [audioResult()], recommendation: recommendationResult() })
       : response({ audio: [], reason: 'Previously eligible music is now unavailable.' });
   }, post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
-  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
+  t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   h.click('Check status'); await h.flush();
-  assert.equal(h.confirmation().props.checked, false); assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
+  assert.equal(h.confirmation(), undefined); assert.doesNotMatch(text(automaticMusicPanel(h)), /Calm track/);
   assert.match(h.text, /Previously eligible music is now unavailable/); assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added/);
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush(); assert.equal(saved.audio, undefined);
+  assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush(); assert.equal(saved.audio, undefined);
 });
 
 test('switching from an automatic Reel track to Story-only uses the saved MP4 without sending Reel music', async t => {
@@ -1189,14 +1176,14 @@ test('switching from an automatic Reel track to Story-only uses the saved MP4 wi
   assert.deepEqual(saved, { action: 'create-story', confirm: true, connectionRevision: 'revision-instagram' });
 });
 
-test('late Story eligibility cannot expand an already approved automatic-music Reel into a Reel plus Story', async t => {
+test('late Story eligibility updates visible choices but does not publish before the final Post', async t => {
   const waiting = deferred();
   const h = uiHarness({ file: footageFile(), audio: [audioResult()], read(request) { if (request.url.includes('?check=story')) return waiting.promise; } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.change(h.confirmation(), true); h.render(); assert.equal(h.confirmation().props.checked, true);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
   waiting.resolve(response({ story: { ready: true, reason: 'Fixture Business eligible' } })); await h.flush();
   assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm Reel + Story').props.disabled, true); assert.equal(h.posts.length, 0);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false); assert.equal(h.posts.length, 0);
 });
 
 test('closing, switching platform or unmounting during automatic music lookup aborts and ignores late results', async t => {
@@ -1225,7 +1212,7 @@ test('automatic music explains its validated visual basis and ignores optional b
     assert.match(h.text, /Based on sampled visual evidence, not listening or beat analysis/);
     assert.match(h.text, /local preview\/download and matching Story keep the saved MP4 audio/);
     assert.doesNotMatch(h.text, /trending audio|Never expose diagnostic payload/);
-    assert.equal(h.confirmation().props.checked, false); assert.ok(h.requests.every(request => request.method === 'GET')); assert.equal(h.posts.length, 0);
+    assert.equal(h.confirmation(), undefined); assert.ok(h.requests.every(request => request.method === 'GET')); assert.equal(h.posts.length, 0);
   }
 });
 
@@ -1238,10 +1225,10 @@ test('a newer automatic status lookup wins and an older recommendation cannot ch
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   const previous = h.requests.find(request => request.url.includes('?check=audio-recommendations')); h.click('Check status'); await h.flush();
   assert.equal(previous.signal.aborted, true); assert.equal(checks, 2);
-  assert.match(text(automaticMusicPanel(h)), /Current automatic track/); h.change(h.confirmation(), true); h.render();
+  assert.match(text(automaticMusicPanel(h)), /Current automatic track/);
   waiting.resolve(response({ audio: [audioResult({ title: 'Old recommendation' })], recommendation: recommendationResult({ reason: 'Old sampled visual evidence.' }) })); await h.flush();
   assert.match(text(automaticMusicPanel(h)), /Current automatic track/); assert.doesNotMatch(h.text, /Old recommendation|Old sampled visual evidence/);
-  assert.equal(h.confirmation().props.checked, true); assert.equal(h.posts.length, 0);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false); assert.equal(h.posts.length, 0);
 });
 
 test('invalid contextual summary cannot silently select an unverified automatic track', async t => {
@@ -1253,7 +1240,7 @@ test('invalid contextual summary cannot silently select an unverified automatic 
     t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
     assert.doesNotMatch(h.text, /Calm track|Visual mood:|Unsafe|unknown-mood|extreme|hindi-vocals/);
     assert.match(h.text, /Keeping the saved video audio; no Instagram track will be added/);
-    assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm and publish Reel').props.disabled, true); assert.equal(h.posts.length, 0);
+    assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false); assert.equal(h.posts.length, 0);
   }
 });
 
@@ -1273,12 +1260,12 @@ test('automatic choices reject invalid metadata, duplicates and unsafe previews 
   assert.match(text(automaticMusicPanel(h)), /Valid instrumental/);
   assert.doesNotMatch(h.text, /Invalid ID metadata|Invalid rank|Unverified language|Unbounded reason|Duplicate track|Beyond public bound|Do not expose private fields/);
   assert.equal(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://example.com/private-audio.mp3'), false);
-  assertNoManualMusicControls(h); assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assertNoManualMusicControls(h); assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
   assert.deepEqual(saved.audio, { audio_id: '5', audio_volume: 100, video_volume: 1 });
 });
 
-test('new Instagram review visibly applies validated saved location and owner tags only to a final approved Reel', async t => {
+test('new Instagram review preserves valid location but ignores legacy tag defaults and waits for Post', async t => {
   let saved;
   const h = uiHarness({ defaults: { userTags: ['@Owner', 'Allowed.page'], location: { id: '123456', name: 'Switzerland' }, locationQuery: 'Switzerland',
     locationReason: 'This is your saved posting choice, not a verified filming location.' }, post(request) {
@@ -1288,15 +1275,14 @@ test('new Instagram review visibly applies validated saved location and owner ta
   assert.equal(h.requests.filter(request => request.url === `${h.endpoint}?check=posting-defaults&connectionRevision=revision-instagram`).length, 1);
   assert.equal(h.requests.length, 4, 'New Instagram review reads accounts, saved jobs, defaults and Story capability');
   const summary = nodes(h.form()).find(node => node.props['aria-label'] === 'Instagram posting choices');
-  assert.ok(summary); assert.match(text(summary), /Posting location · Switzerland/); assert.match(text(summary), /Reel tags · @owner, @allowed.page/);
+  assert.ok(summary); assert.match(text(summary), /Posting location · Switzerland/); assert.match(text(summary), /Automatic Reel tags · No matching profiles/);
   assert.match(text(summary), /your posting choice, not verified filming evidence/);
   assert.ok(nodes(h.form()).filter(node => node.type === 'details').every(details => !nodes(details).includes(summary)), 'Choices stay visible outside collapsed controls');
-  assert.equal(h.control('Instagram usernames', 'input').props.value, 'owner, allowed.page');
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.posts.length, 0);
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
-  assert.equal(saved.action, 'create'); assert.deepEqual(saved.location, { id: '123456' }); assert.deepEqual(saved.userTags, ['owner', 'allowed.page']);
-  assert.equal(h.posts.length, 1); assert.equal(h.button('Remember these posting choices'), undefined);
+  assert.equal(h.control('Instagram usernames', 'input'), undefined); assert.doesNotMatch(h.text, /@owner|@allowed.page/);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
+  assert.equal(saved.action, 'create'); assert.deepEqual(saved.location, { id: '123456' }); assert.equal(saved.userTags, undefined); assert.equal(saved.automaticTags, true);
+  assert.equal(h.posts.length, 1); assert.equal(h.button('Remember posting location'), undefined);
 });
 
 test('defaults, contextual music and Story capability start together while final posting waits for stable choices', async t => {
@@ -1309,25 +1295,24 @@ test('defaults, contextual music and Story capability start together while final
   h.choose('Post to Instagram'); await h.flush();
   for (const check of ['posting-defaults', 'audio-recommendations', 'story']) assert.ok(h.requests.some(request => request.url.includes(`?check=${check}&`)), `${check} starts without waiting for another check`);
   assert.match(h.text, /Checking saved posting choices/);
-  assert.equal(Boolean(h.confirmation().props.disabled), true); assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, true);
   defaults.resolve(response({ defaults: { userTags: ['approved.owner'], location: { id: '123456', name: 'Switzerland' } } })); await h.flush();
-  assert.equal(h.confirmation().props.checked, false, 'Applying defaults resets earlier final approval');
+  assert.equal(h.button('Post to Instagram').props.disabled, true, 'Applying defaults cannot bypass unsettled music');
   story.resolve(response({ story: { ready: false, reason: 'Stories unavailable in this fixture.' } }));
   audio.resolve(response({ audio: [audioResult()], recommendation: recommendationResult() })); await h.flush();
   assert.match(text(automaticMusicPanel(h)), /Calm track/); assertNoManualMusicControls(h);
-  assert.equal(h.confirmation().props.checked, false, 'Automatic music also requires renewed final approval after defaults settle');
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false);
   assert.match(h.text, /Posting location · Switzerland/); assert.equal(h.posts.length, 0);
 });
 
-test('late posting defaults respect manual location and tag edits, including explicit clearing', async t => {
+test('late posting defaults respect location edits and never reintroduce legacy tag defaults', async t => {
   for (const edit of ['replace', 'clear']) {
     const waiting = deferred();
     const h = uiHarness({ read(request) { if (request.url.includes('?check=posting-defaults')) return waiting.promise; } }); t.after(() => h.unmount());
     h.choose('Post to Instagram'); await h.flush();
-    h.change(h.control('Instagram usernames', 'input'), edit === 'replace' ? '@manual.person' : ''); h.render();
     h.change(h.control('Place name or Facebook location Page ID', 'input'), edit === 'replace' ? 'Norway' : ''); h.render();
     waiting.resolve(response({ defaults: { userTags: ['stale.person'], location: { id: '123456', name: 'Switzerland' }, locationQuery: 'Switzerland', locationReason: 'Stale default reason.' } })); await h.flush();
-    assert.equal(h.control('Instagram usernames', 'input').props.value, edit === 'replace' ? '@manual.person' : '');
+    assert.equal(h.control('Instagram usernames', 'input'), undefined);
     assert.equal(h.control('Place name or Facebook location Page ID', 'input').props.value, edit === 'replace' ? 'Norway' : '');
     assert.doesNotMatch(h.text, /stale.person|Stale default reason/);
     assert.doesNotMatch(text(nodes(h.tree).find(node => node.props['aria-label'] === 'Instagram posting choices')), /Switzerland/);
@@ -1359,24 +1344,24 @@ test('an unresolved Switzerland posting choice exposes Meta reason without inven
   assert.ok(text(summary).includes(reason), 'Meta permission explanation remains visible outside collapsed location controls');
   assert.equal(h.control('Place name or Facebook location Page ID', 'input').props.value, 'Switzerland');
   assert.equal(h.button('Find location').props.disabled, false);
-  assert.equal(h.confirmation().props.checked, false);
-  h.change(h.confirmation(), true); h.render(); assert.equal(h.button('Confirm and publish Reel').props.disabled, false);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to Instagram').props.disabled, false);
   h.submit(); await h.flush(); assert.equal(saved.location, undefined); assert.equal(saved.userTags, undefined); assert.equal(h.posts.length, 1);
 });
 
-test('remembering posting choices saves only explicit preferences and still requires a separate final publish approval', async t => {
+test('remembering the location is inert and preserves automatic tag choices rather than old owner defaults', async t => {
   let saved;
   const h = uiHarness({ defaults: { userTags: ['approved.person'], location: { id: '123456', name: 'Switzerland' } }, post(request) {
     saved = JSON.parse(request.body); return response({ defaults: { userTags: saved.userTags, location: saved.location } });
   } }); t.after(() => h.unmount());
-  h.choose('Post to Instagram'); await h.flush(); h.change(h.confirmation(), true); h.render();
-  h.click('Remember these posting choices'); await h.flush();
-  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: ['approved.person'], location: { id: '123456', name: 'Switzerland' }, locationQuery: 'Switzerland' });
+  h.choose('Post to Instagram'); await h.flush();
+  h.click('Remember posting location'); await h.flush();
+  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: [], location: { id: '123456', name: 'Switzerland' }, locationQuery: 'Switzerland' });
   assert.equal(h.posts.length, 1); assert.ok(h.form(), 'Saving preferences creates no publishing job'); assert.equal(h.intervals.size, 0);
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm and publish Reel').props.disabled, true);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false);
   assert.match(h.text, /Posting choices remembered/); assert.match(h.text, /No video was uploaded/);
-  h.click('Remove location'); h.render(); h.change(h.control('Instagram usernames', 'input'), ''); h.render();
-  h.click('Remember these posting choices'); await h.flush();
+  h.click('Remove location'); h.render();
+  h.click('Remember posting location'); await h.flush();
   assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: [], location: null, locationQuery: '' });
   assert.ok(h.posts.every(request => JSON.parse(request.body).action === 'save-posting-defaults'));
 });
@@ -1388,10 +1373,10 @@ test('an unresolved owner location query can be explicitly remembered without fa
   } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
   assert.equal(h.control('Place name or Facebook location Page ID', 'input').props.value, 'Switzerland');
-  assert.equal(h.button('Remember these posting choices').props.disabled, false);
-  h.click('Remember these posting choices'); await h.flush();
-  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: ['approved.person'], location: null, locationQuery: 'Switzerland' });
-  assert.equal(h.posts.length, 1); assert.ok(h.form()); assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.button('Remember posting location').props.disabled, false);
+  h.click('Remember posting location'); await h.flush();
+  assert.deepEqual(saved, { action: 'save-posting-defaults', confirm: true, connectionRevision: 'revision-instagram', userTags: [], location: null, locationQuery: 'Switzerland' });
+  assert.equal(h.posts.length, 1); assert.ok(h.form()); assert.equal(h.confirmation(), undefined);
 });
 
 test('defaults never alter saved uploads and malformed defaults cannot introduce unapproved location or usernames', async t => {
@@ -1399,13 +1384,13 @@ test('defaults never alter saved uploads and malformed defaults cannot introduce
     defaults: { userTags: ['different.person'], location: { id: '999', name: 'Different location' } } }); t.after(() => existing.unmount());
   existing.choose('Post to Instagram'); await existing.flush();
   assert.equal(existing.requests.length, 2); assert.equal(existing.requests.some(request => request.url.includes('?check=posting-defaults')), false);
-  assert.match(existing.text, /Approved location tag: Approved location/); assert.match(existing.text, /Approved Reel tags: @approved.person/);
-  assert.equal(existing.button('Remember these posting choices'), undefined);
+  assert.match(existing.text, /Approved location tag: Approved location/); assert.match(existing.text, /Reel tags: @approved.person/);
+  assert.equal(existing.button('Remember posting location'), undefined);
   for (const defaults of [null, [], { userTags: Array.from({ length: 21 }, (_, i) => `person${i}`), location: { id: 'not-numeric', name: 'Invalid location' } },
     { userTags: [], location: { id: '123456\n', name: 'Invalid location' } },
     { userTags: ['https://instagram.com/person'], location: { id: '123456', name: 'Unsafe\nlocation' }, locationQuery: 'q'.repeat(101), locationReason: 'r'.repeat(601) }]) {
     const h = uiHarness({ defaults }); t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-    assert.equal(h.control('Instagram usernames', 'input').props.value, '');
+    assert.equal(h.control('Instagram usernames', 'input'), undefined);
     assert.equal(h.control('Place name or Facebook location Page ID', 'input').props.value, '');
     assert.doesNotMatch(h.text, /Invalid location|Unsafe|https:\/\/instagram.com\/person/); assert.equal(h.posts.length, 0);
   }
@@ -1422,66 +1407,100 @@ const rejectedJob = (extra = {}) => job({ platform: 'instagram', accountName: '@
   canContinue: true, canRevise: true, caption: 'The exact previously approved caption #Horses', userTags: ['saved.person', 'saved.brand'],
   updatedAt: '2026-10-10T00:00:00Z', ...extra });
 
-test('rejected Reel correction opens collapsed with exact saved caption and tags, and reopening preserves them without loading defaults or audio', async t => {
+test('rejected Reel keeps its saved caption and other choices but automatic tags replace the failed list', async t => {
   const saved = rejectedJob({ location: { id: '123456', name: 'Saved place' }, audio: { audio_id: '12345', audio_volume: 80, video_volume: 10, title: 'Saved track', display_artist: 'Saved artist' } });
   const h = uiHarness({ file: sampleFile({ source: { kind: 'pexels' }, quality: { audio: 'local-music-replaced', postCopy: 'Unrelated new file caption', hashtags: [], captions: [] } }),
     jobs: [saved], defaults: { userTags: ['unrelated.default'] } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
-  const details = nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Correct rejected caption / tags'));
+  const details = nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Edit caption and hashtags · optional'));
   assert.ok(details); assert.equal(Boolean(details.props.open), false);
   assert.equal(h.control('Corrected caption and hashtags', 'textarea').props.value, saved.caption);
-  assert.equal(h.control('Corrected Instagram usernames', 'input').props.value, 'saved.person, saved.brand');
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.button('Confirm corrected Reel').props.disabled, true);
+  assert.equal(h.control('Corrected Instagram usernames', 'input'), undefined);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false);
   assert.equal(h.button('Continue saved upload'), undefined); assert.equal(h.requests.length, 2); assert.equal(h.posts.length, 0);
-  assert.match(h.text, /saved location, audio, visibility and matching Story approval stay as previously confirmed/);
+  assert.match(h.text, /saved location, audio, visibility and matching Story choice/);
   assert.match(h.text, /publishing this Reel publicly to @saved_destination/); assert.match(h.text, /Approved Instagram audio: Saved track/);
-  h.change(h.control('Corrected caption and hashtags', 'textarea'), 'Unsaved edit'); h.change(h.control('Corrected Instagram usernames', 'input'), '');
-  h.change(h.confirmation(), true); h.render(); h.choose('Post to Instagram'); await h.flush();
+  h.change(h.control('Corrected caption and hashtags', 'textarea'), 'Unsaved edit');
+  h.render(); h.choose('Post to Instagram'); await h.flush();
   assert.equal(h.control('Corrected caption and hashtags', 'textarea').props.value, saved.caption);
-  assert.equal(h.control('Corrected Instagram usernames', 'input').props.value, 'saved.person, saved.brand');
-  assert.equal(h.confirmation().props.checked, false); assert.equal(h.requests.length, 4);
+  assert.equal(h.control('Corrected Instagram usernames', 'input'), undefined);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.requests.length, 4);
   assert.ok(h.requests.every(request => request.method === 'GET' && !request.url.includes('?check=')));
 });
 
-test('corrected Reel requires renewed approval and submits exactly one explicit caption and empty tag list without changing other choices', async t => {
+test('Post repairs a rejected Reel with one automatic-tag request and retains all other saved choices', async t => {
   const waiting = deferred(); let saved;
   const h = uiHarness({ jobs: [rejectedJob({ companionStoryApproved: true })], post(request) { saved = JSON.parse(request.body); return waiting.promise; } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.change(h.control('Corrected caption and hashtags', 'textarea'), 'A corrected caption #Horses'); h.render();
-  assert.equal(h.confirmation().props.checked, false);
-  h.change(h.confirmation(), true); h.render(); h.change(h.control('Corrected Instagram usernames', 'input'), ''); h.render();
-  assert.equal(h.confirmation().props.checked, false); assert.match(h.text, /Corrected Reel tags: None selected/);
+  assert.equal(h.posts.length, 0);
+  h.change(h.control('Corrected caption and hashtags', 'textarea'), 'A corrected caption #Horses'); h.render();
+  assert.equal(h.confirmation(), undefined); assert.match(h.text, /Automatic Reel tags · No matching profiles/);
   assert.match(h.text, /publishing this Reel publicly and then its matching Story to @saved_destination/);
-  h.change(h.confirmation(), true); h.render(); const form = h.form(); h.submit(form); h.submit(form); await h.flush();
+  const form = h.form(); h.submit(form); h.submit(form); await h.flush();
   assert.equal(h.posts.length, 1);
-  assert.deepEqual(saved, { action: 'revise', jobId: 'saved-upload', confirm: true, caption: 'A corrected caption #Horses', userTags: [] });
+  assert.deepEqual(saved, { action: 'revise', jobId: 'saved-upload', confirm: true, caption: 'A corrected caption #Horses', automaticTags: true });
   waiting.resolve(response({ job: rejectedJob({ status: 'QUEUED', canRevise: undefined, caption: undefined, canContinue: false }) })); await h.flush();
   assert.equal(h.control('Corrected caption and hashtags', 'textarea'), undefined); assert.equal(h.button('Continue saved upload'), undefined);
   assert.equal(h.posts.length, 1);
 });
 
-test('invalid corrected tags or excess hashtags block correction and ordinary saved states keep immutable continuation', async t => {
+test('excess hashtags still block repaired posting and ordinary saved states keep immutable continuation', async t => {
   const h = uiHarness({ jobs: [rejectedJob()] }); t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  h.change(h.control('Corrected Instagram usernames', 'input'), 'https://instagram.com/person'); h.render(); h.change(h.confirmation(), true); h.render();
-  assert.equal(h.button('Confirm corrected Reel').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.control('Corrected Instagram usernames', 'input'), 'saved.person'); h.change(h.control('Corrected caption and hashtags', 'textarea'), '#one #two #three #four #five #six'); h.render();
-  h.change(h.confirmation(), true); h.render(); assert.equal(h.button('Confirm corrected Reel').props.disabled, true);
+  assert.equal(h.control('Corrected Instagram usernames', 'input'), undefined);
+  h.change(h.control('Corrected caption and hashtags', 'textarea'), '#one #two #three #four #five #six'); h.render();
+  assert.equal(h.button('Post to Instagram').props.disabled, true);
   h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   for (const state of ['NEEDS_CHECK', 'UPLOADING', 'COMPLETE', 'FAILED']) {
     const ordinary = uiHarness({ jobs: [rejectedJob({ status: state, canRevise: undefined, caption: undefined, canContinue: state === 'NEEDS_CHECK' || state === 'FAILED' })] });
     t.after(() => ordinary.unmount()); ordinary.choose('Post to Instagram'); await ordinary.flush();
-    assert.equal(ordinary.control('Corrected Instagram usernames', 'input'), undefined); assert.equal(ordinary.button('Confirm corrected Reel'), undefined);
+    assert.equal(ordinary.control('Corrected Instagram usernames', 'input'), undefined); assert.equal(nodes(ordinary.tree).some(node => node.type === 'button' && node.props.type === 'submit' && text(node) === 'Post to Instagram'), false);
     assert.equal(Boolean(ordinary.button('Continue saved upload')), state === 'NEEDS_CHECK' || state === 'FAILED'); assert.equal(ordinary.posts.length, 0);
   }
 });
 
-test('saved approved usernames automatically accompany a new Reel without manual tag entry or invented identities', async t => {
+test('old rejected tag defaults cannot accompany a new Reel or appear as manual controls', async t => {
   const usernames = ['telepgone.cbscura', 'benedikt.hoehny', 'harvon.x', 'leopard.1787844', 'patagonico']; let saved;
   const h = uiHarness({ defaults: { userTags: usernames }, post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } });
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
-  assert.equal(h.control('Instagram usernames', 'input').props.value, usernames.join(', ')); assert.equal(h.confirmation().props.checked, false);
-  assert.match(h.text, /Meta checks whether each account permits tagging/); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
-  assert.deepEqual(saved.userTags, usernames); assert.equal(h.posts.length, 1);
+  assert.equal(h.control('Instagram usernames', 'input'), undefined); assert.equal(h.confirmation(), undefined);
+  for (const username of usernames) assert.equal(h.text.includes(username), false);
+  assert.match(h.text, /If Meta rejects optional tags, publish without them/); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
+  assert.equal(saved.userTags, undefined); assert.equal(saved.automaticTags, true); assert.equal(h.posts.length, 1);
+});
+
+test('automatic Reel Post prevents synchronous duplicates and keeps all controls busy until acceptance', async t => {
+  const waiting = deferred();
+  const h = uiHarness({ file: sampleFile({ title: 'Mountain journey' }), post: () => waiting.promise }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  const form = h.form(); h.submit(form); h.submit(form); h.render();
+  assert.equal(h.posts.length, 1); assert.equal(h.button('Saving upload request…').props.disabled, true);
+  assert.equal(h.control('Caption and hashtags', 'textarea').props.disabled, true); assert.equal(h.button('Close').props.disabled, true);
+  assert.equal(JSON.parse(h.posts[0].body).automaticTags, true); assert.equal(JSON.parse(h.posts[0].body).userTags, undefined);
+  waiting.resolve(response({ job: job({ platform: 'instagram', status: 'QUEUED', percent: 0, automaticTags: true }) })); await h.flush();
+  assert.equal(h.form(), undefined); assert.equal(h.posts.length, 1);
+});
+
+test('retained Reel form cannot post stale choices after checking status or switching platform', async t => {
+  let saved;
+  const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush(); const oldForm = h.form();
+  h.click('Check status'); await h.flush();
+  h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
+  const freshForm = h.form(); h.choose('Upload to YouTube'); await h.flush();
+  h.submit(freshForm); await h.flush(); assert.equal(h.posts.length, 0);
+  h.choose('Post to Instagram'); await h.flush(); h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 1); assert.equal(saved.platform, 'instagram');
+});
+
+test('automatic tag preview excludes the destination and reports omitted optional tags without new publication', async t => {
+  const destination = channel('instagram', { name: '@nature' });
+  const h = uiHarness({ file: sampleFile({ title: 'Mountain nature scenery' }), channels: [destination] }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  const summary = nodes(h.form()).find(node => node.props['aria-label'] === 'Instagram posting choices');
+  assert.match(text(summary), /Automatic Reel tags/); assert.doesNotMatch(text(summary), /@nature\b/); assert.equal(h.posts.length, 0);
+  const omitted = uiHarness({ jobs: [job({ platform: 'instagram', automaticTags: true, omittedUserTags: ['nature'], userTags: [] })] }); t.after(() => omitted.unmount());
+  omitted.choose('Post to Instagram'); await omitted.flush();
+  assert.match(omitted.text, /Meta rejected the optional tags; this request continued without them/);
+  assert.equal(omitted.posts.length, 0); assert.ok(omitted.requests.every(request => request.method === 'GET'));
 });

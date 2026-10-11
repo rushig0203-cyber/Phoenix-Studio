@@ -13,7 +13,7 @@ import { reviewMediaPath, selectedReviewTarget } from "./reviewMedia";
 import { eligibleInstagramLocation, instagramLocationId, publicInstagramLocation, INSTAGRAM_LOCATION_SEARCH_LIMIT, type InstagramLocation, type InstagramLocationSearch } from "./instagramLocations";
 import { instagramAudioId, instagramAudioConfiguration, instagramAudioCatalog, publicInstagramAudioTrack, publicInstagramAudioSelection, INSTAGRAM_AUDIO_SEARCH_LIMIT, INSTAGRAM_AUDIO_GRAPH_VERSION,
   type InstagramAudioConfiguration, type InstagramAudioSelection, type InstagramAudioSearch } from "./instagramAudio";
-import { instagramUserTags, publicInstagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "./instagramTags";
+import { automaticInstagramUserTags, instagramUserTags, publicInstagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "./instagramTags";
 import { musicBriefFromReview, musicCatalogQueries, rankMusicCatalog, type RecommendedInstagramAudio } from "./reelMusic";
 import { postingMediaFingerprint } from "./postingEvidence";
 import {
@@ -33,6 +33,8 @@ export type ReviewPublishJob = {
   location?: InstagramLocation;
   audio?: InstagramAudioSelection;
   userTags?: string[];
+  automaticTags?: true;
+  omittedUserTags?: string[];
 };
 export type InstagramStoryCapability = { ready: boolean; reason: string; requiresBusinessConfirmation?: boolean };
 export type InstagramPostingDefaults = { userTags: string[]; location?: InstagramLocation; locationQuery?: string; locationReason?: string };
@@ -68,9 +70,9 @@ const validId = (value: unknown): value is string => typeof value === "string" &
 const now = () => new Date().toISOString();
 
 export class ReviewPublishingError extends Error {
-  constructor(message: string, public readonly statusCode = 400, public readonly ambiguous = false) { super(message); }
+  constructor(message: string, public readonly statusCode = 400, public readonly ambiguous = false, public readonly peopleTagsRejected = false) { super(message); }
 }
-const problem = (message: string, status = 400, ambiguous = false) => new ReviewPublishingError(message, status, ambiguous);
+const problem = (message: string, status = 400, ambiguous = false, peopleTagsRejected = false) => new ReviewPublishingError(message, status, ambiguous, peopleTagsRejected);
 
 export function assertReviewPublishRequest(request: Request, mutation = false) {
   try { assertLocalChannelRequest(request, mutation); }
@@ -159,6 +161,8 @@ async function readStored(reviewId: string, platform: ReviewTarget, kind?: "stor
         || (value.location !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramLocation(value.location)))
         || (value.audio !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramAudioSelection(value.audio) || value.instagramGraphVersion !== INSTAGRAM_AUDIO_GRAPH_VERSION))
         || (value.userTags !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramUserTags(value.userTags)))
+        || (value.automaticTags !== undefined && (platform !== "instagram" || kind === "story" || value.automaticTags !== true))
+        || (value.omittedUserTags !== undefined && (value.automaticTags !== true || value.userTags !== undefined || !publicInstagramUserTags(value.omittedUserTags)?.length))
         || (value.instagramGraphVersion !== undefined && (value.instagramGraphVersion !== INSTAGRAM_AUDIO_GRAPH_VERSION || !value.audio))) throw problem("The saved upload status needs local inspection.", 500);
     return value;
   } catch (error) {
@@ -236,6 +240,8 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
     ...(job.location ? { location: publicInstagramLocation(job.location)! } : {}),
     ...(job.audio ? { audio: publicInstagramAudioSelection(job.audio)! } : {}),
     ...(job.userTags ? { userTags: [...job.userTags] } : {}),
+    ...(job.automaticTags ? { automaticTags: true } : {}),
+    ...(job.omittedUserTags ? { omittedUserTags: [...job.omittedUserTags] } : {}),
     ...(job.companionStoryApproved && !companionDetached ? { companionStoryApproved: true } : {}),
     ...(companionDetached ? { companionStoryDetached: true } : {}),
     ...(story && story.parentReelId === job.id ? { companionStory: await publicJob(story) } : {}),
@@ -585,6 +591,10 @@ async function assertStoryParent(job: StoredJob) {
 export async function prepareReviewPublication(reviewId: string, body: Record<string, unknown>): Promise<{ job: ReviewPublishJob; dispatch: boolean }> {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
   if (body.confirm !== true) throw problem("Confirm this upload before Phoenix sends the video to the platform.");
+  if (body.automaticTags !== undefined && (body.automaticTags !== true || !["create", "revise"].includes(String(body.action))
+      || (body.action === "create" && body.platform !== "instagram") || body.userTags !== undefined)) {
+    throw problem("Automatic people tags are only available for an Instagram Reel; do not also supply manual usernames.");
+  }
   if (body.action === "create-story") {
     if (Object.keys(body).some(key => !["action", "confirm", "connectionRevision", "jobId"].includes(key)) || (body.jobId !== undefined && !validId(body.jobId))) throw problem("Confirm the saved video as a Story only. Reel caption, tags, location and Instagram music are not Story upload settings.");
     const revision = checkedText(body.connectionRevision, "Channel connection", 200);
@@ -630,11 +640,11 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
     }));
   }
   if (body.action === "revise") {
-    if (!validId(body.jobId) || Object.keys(body).some(key => !["action", "jobId", "confirm", "caption", "userTags"].includes(key))) {
+    if (!validId(body.jobId) || Object.keys(body).some(key => !["action", "jobId", "confirm", "caption", "userTags", "automaticTags"].includes(key))) {
       throw problem("Confirm only the corrected caption and people tags for this rejected Instagram upload.");
     }
     const caption = checkedText(body.caption, "Caption", 2200, true);
-    const userTags = instagramUserTags(body.userTags);
+    const userTags = body.automaticTags === true ? [] : instagramUserTags(body.userTags);
     if (!userTags) throw problem(`Choose at most ${INSTAGRAM_USER_TAG_LIMIT} valid Instagram usernames, or explicitly choose an empty tag list.`);
     checkPlatformPostingText("instagram", "", caption);
     return withFileLock(pairLock(reviewId, "instagram"), async () => {
@@ -667,9 +677,12 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
         await fs.mkdir(path.join(storeRoot(), "history"), { recursive: true, mode: 0o700 });
         await writeAtomicJson(path.join(storeRoot(), "history", `${reviewId}-instagram-${job.id}-${crypto.randomUUID()}.json`), job);
         if (detachedCompanion) job.companionStoryApproved = undefined;
-        job.caption = correctedCaption; job.userTags = userTags.length ? userTags : undefined;
+        const selectedTags = body.automaticTags === true ? automaticInstagramUserTags(media.file, access.name) : userTags;
+        job.caption = correctedCaption; job.userTags = selectedTags.length ? selectedTags : undefined;
+        job.automaticTags = body.automaticTags === true ? true : undefined; job.omittedUserTags = undefined;
         job.status = "QUEUED"; job.queuedAt = Date.now(); job.canContinue = false; job.percent = 0;
-        job.detail = "Corrected caption and people tags explicitly approved. The previous rejected request is retained in private history.";
+        job.detail = body.automaticTags === true ? "Post approved with automatic relevant people tags. Meta-ineligible optional tags will be skipped; the previous rejected request is retained in private history."
+          : "Corrected caption and people tags explicitly approved. The previous rejected request is retained in private history.";
         await persist(job); return { job: await publicJob(job), dispatch: true };
       }, { timeoutMs: 250, staleMs: LEASE_MS });
     });
@@ -726,6 +739,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
       if (body.companionStory === true) { assertStoryMedia(media); await assertStoryAccount(access); }
       const location = requestedLocation ? await verifiedInstagramLocation(requestedLocation, access) : undefined;
       const audio = requestedAudio ? await verifiedInstagramAudio(requestedAudio, access) : undefined;
+      if (body.automaticTags === true) requestedUserTags = automaticInstagramUserTags(media.file, access.name);
       const job: StoredJob = {
         version: 1, id: crypto.randomUUID(), reviewId, platform, status: "QUEUED", phase: "created",
         percent: 0, detail: "Confirmed upload queued. Keep Phoenix running while it sends the saved video.", accountName: access.name,
@@ -737,12 +751,14 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
         ...(location ? { location } : {}),
         ...(audio ? { audio, instagramGraphVersion: INSTAGRAM_AUDIO_GRAPH_VERSION } : {}),
         ...(requestedUserTags?.length ? { userTags: requestedUserTags } : {}),
+        ...(body.automaticTags === true ? { automaticTags: true } : {}),
       };
       if (job.companionStoryApproved) {
         const orphan = await readStored(reviewId, "instagram", "story");
         if (orphan) throw problem("A saved matching Story already exists without its Reel record. Inspect the local upload history before creating another request.", 409);
         const story: StoredJob = { ...job, id: crypto.randomUUID(), kind: "story", parentReelId: job.id, companionStoryApproved: undefined,
-          location: undefined, audio: undefined, userTags: undefined, instagramGraphVersion: undefined, caption: "", detail: "Matching Story approved. Waiting for this Reel to finish; the same saved MP4 will be reused." };
+          location: undefined, audio: undefined, userTags: undefined, automaticTags: undefined, omittedUserTags: undefined,
+          instagramGraphVersion: undefined, caption: "", detail: "Matching Story approved. Waiting for this Reel to finish; the same saved MP4 will be reused." };
         await persist(story);
       }
       await persist(job); return { job: await publicJob(job), dispatch: true };
@@ -792,14 +808,15 @@ function providerFailure(status: number, json: Record<string, unknown>) {
   const codes = code !== undefined ? ` Platform code ${code}${subcode !== undefined ? `, subcode ${subcode}` : ""}.` : "";
   // Provider text may contain tokens, URLs, account data or instructions. Never
   // store/echo it: use only a bounded internal classification and numeric codes.
-  const tagRejection = code === 100 && [error?.message, error?.error_user_title, error?.error_user_msg].some(value =>
-    typeof value === "string" && /user[_ -]?tags|tagged (?:users?|accounts?)|users? tagg(?:ed|ing)|cannot tag|tagging (?:users?|accounts?)/i.test(value.slice(0, 4096)));
+  const tagRejection = status === 400 && ((code === 110 && subcode === 2207018) || (code === 100 && subcode !== 2207026
+    && [error?.message, error?.error_user_title, error?.error_user_msg].some(value =>
+      typeof value === "string" && /user[_ -]?tags|tagged (?:users?|accounts?)|users? tagg(?:ed|ing)|cannot tag|tagging (?:users?|accounts?)/i.test(value.slice(0, 4096)))));
   const reason = error?.errors?.[0]?.reason;
   if (status === 401 || code === 190) return problem(`The platform token expired or was revoked. Reconnect the channel, then check this saved upload.${codes}`, 401);
   if ([4, 17, 32, 613].includes(code || 0) || status === 429 || reason === "quotaExceeded" || reason === "dailyLimitExceeded") return problem(`The platform upload quota or rate limit was reached. Wait for the platform limit to reset; this job is retained.${codes}`, 429);
   if (reason === "accessNotConfigured" || reason === "serviceDisabled") return problem("Enable YouTube Data API v3 in the connected Google project, then continue this saved upload.", 403);
   if (status === 403 || code === 10 || code === 200 || reason === "insufficientPermissions") return problem(`The platform denied upload permission. Check the app permissions and account role in Channels.${codes}`, 403);
-  if (tagRejection) return problem(`The platform rejected the requested people tags (HTTP ${status}). Check the usernames, public visibility and tagging eligibility; Phoenix did not remove approved tags.${codes}`, 502, status >= 500);
+  if (tagRejection) return problem(`The platform rejected the requested people tags (HTTP ${status}). Check the usernames, public visibility and tagging eligibility; Phoenix did not remove approved tags.${codes}`, 502, false, true);
   return problem(`The platform rejected this upload (HTTP ${status}). Check its video requirements and your channel permissions.${codes}`, 502, status >= 500);
 }
 async function providerCall(url: string, options: RequestInit & { duplex?: "half" }, readBody = true, upload = false, timeoutMs = 20_000): Promise<ProviderResult> {
@@ -953,12 +970,28 @@ async function instagram(job: StoredJob, access: ChannelPublishAccess) {
     }
     job.phase = "initiating"; job.status = "UPLOADING"; job.canContinue = false;
     job.detail = `Creating an Instagram ${label} upload container.`; await persist(job); await assertCurrent(access);
-    const created = await providerCall(`${instagramGraph(job)}/${access.accountId}/media`, {
+    const containerSettings = new URLSearchParams(job.kind === "story" ? { media_type: "STORIES", upload_type: "resumable" } : { media_type: "REELS", upload_type: "resumable", caption: job.caption, ...(job.location ? { location_id: job.location.id } : {}),
+      ...(job.userTags?.length ? { user_tags: JSON.stringify(job.userTags.map(username => ({ username }))) } : {}),
+      ...(job.audio ? { audio_configuration: JSON.stringify({ audio_id: job.audio.audio_id, audio_volume: job.audio.audio_volume, video_volume: job.audio.video_volume }) } : {}) });
+    const createContainer = () => providerCall(`${instagramGraph(job)}/${access.accountId}/media`, {
       method: "POST", headers: { Authorization: `Bearer ${access.accessToken}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(job.kind === "story" ? { media_type: "STORIES", upload_type: "resumable" } : { media_type: "REELS", upload_type: "resumable", caption: job.caption, ...(job.location ? { location_id: job.location.id } : {}),
-        ...(job.userTags?.length ? { user_tags: JSON.stringify(job.userTags.map(username => ({ username }))) } : {}),
-        ...(job.audio ? { audio_configuration: JSON.stringify({ audio_id: job.audio.audio_id, audio_volume: job.audio.audio_volume, video_volume: job.audio.video_volume }) } : {}) }),
+      body: containerSettings,
     });
+    let created: ProviderResult;
+    try { created = await createContainer(); }
+    catch (error) {
+      if (!(error instanceof ReviewPublishingError) || !error.peopleTagsRejected || error.ambiguous || !job.automaticTags || job.kind
+          || !job.userTags?.length || job.omittedUserTags || job.phase !== "initiating" || job.containerId || job.bytesUploaded !== 0
+          || await getChannelUploadSession(job.id)) throw error;
+      // A definitive tag-only rejection created no container. Optional automatic
+      // tags may be omitted once; ambiguous responses never enter this branch.
+      job.omittedUserTags = [...job.userTags]; job.userTags = undefined; job.phase = "created";
+      job.detail = "Meta rejected the optional automatic people tags. They were recorded and skipped before video transfer; continuing the approved Reel without those tags.";
+      await persist(job);
+      await assertCurrent(access); await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
+      job.phase = "initiating"; await persist(job); await assertCurrent(access);
+      containerSettings.delete("user_tags"); created = await createContainer();
+    }
     const containerId = videoId(created.json.id, "instagram");
     if (typeof created.json.uri !== "string") throw problem("Instagram did not return a safe video upload destination. Check the account before taking another action.", 502, true);
     const session = validateReviewUploadUrl(created.json.uri, "instagram");
@@ -998,7 +1031,8 @@ async function instagram(job: StoredJob, access: ChannelPublishAccess) {
   job.remoteId = videoId(published.json.id, "instagram");
   // Persist the actual ID before the optional permalink lookup, so a failed lookup cannot repeat publish.
   job.phase = "complete"; job.status = "COMPLETE"; job.percent = 100; job.bytesUploaded = job.totalBytes; job.canContinue = false;
-  job.detail = `Instagram published the ${label}. Its media ID is saved.`; await persist(job); await saveChannelUploadSession(job.id, null);
+  job.detail = `Instagram published the ${label}. Its media ID is saved.${job.omittedUserTags?.length ? " Meta-ineligible optional people tags were skipped." : ""}`;
+  await persist(job); await saveChannelUploadSession(job.id, null);
   if (job.kind === "story") return; // Stories are temporary; never fabricate a Reel permalink.
   try {
     await assertCurrent(access);

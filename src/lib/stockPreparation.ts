@@ -4,6 +4,7 @@ import { selectAutomaticFootage } from "./automaticFootage";
 import type { DraftScene } from "./creationDraftTypes";
 import { selectedFootage } from "./stockCatalog";
 import { withWritingSession } from "./writingModel";
+import { newsStockQueryIssue } from "./newsVisualPolicy";
 
 export type StockPreparation = { version: 1; scenes: DraftScene[] };
 type Checkpoint = (input: GenerationInput, scenes: DraftScene[], stage: string) => Promise<unknown>;
@@ -30,6 +31,10 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     // The saved script/editorial verdict survives an interrupted shot-list call.
     await checkpoint(input, scenes, "Narration saved — planning the matching visual sequence");
     if (!scenes.length) scenes = await createStockStoryboard(input as GenerationInput & { script: string });
+    if (input.research) {
+      const unsafe = scenes.findIndex(scene => newsStockQueryIssue(scene.query, input.research));
+      if (unsafe >= 0) throw new Error(`News section ${unsafe + 1}: ${newsStockQueryIssue(scenes[unsafe].query, input.research)}. The saved narration is retained; create a new visual plan instead of rendering this legacy shot.`);
+    }
     await save(scenes, "Shot plan saved — checking exact footage");
   });
   // Older approved jobs contain exact asset IDs but not the newer scene cache.
@@ -41,7 +46,7 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     scenes[index].footageReason = "Exact previously selected asset retained; no replacement search.";
     await save(scenes, `Restored selected footage ${index + 1}/${scenes.length}`);
   }
-  if (selectFootage) await selectAutomaticFootage(scenes, input.duration, input.aspect, save);
+  if (selectFootage) await selectAutomaticFootage(scenes, input.duration, input.aspect, save, input.research);
   if (selectFootage && scenes.some(scene => !scene.footage)) throw new Error("The footage plan is incomplete. No backend search fallback was allowed.");
   input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query, assetId: scene.footage?.id })), stockPreparation: { version: 1, scenes } };
   await checkpoint(input, scenes, selectFootage ? "Exact footage saved — ready for rendering" : "Visual sequence saved");

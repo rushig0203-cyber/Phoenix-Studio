@@ -1,5 +1,29 @@
 # Phoenix Studio
 
+### News visuals and automatic Instagram tags — update in preparation
+
+News shot planning now receives the report context rather than translating each
+claim literally into a stock query. News-specific matching rejects weak word
+overlap, unrelated leisure footage and stock reenactments/stand-ins for reported
+people. Saved news plans and exact assets are rechecked; children's animation and
+ordinary stock reels keep their existing paths. Stock is still illustrative, not
+verified footage of the incident. Arbitrary internet images are not scraped.
+
+The manual tagging field is being replaced with a checked six-profile
+travel/nature pool. Phoenix selects up to three relevant accounts from each
+video's saved visual observations, not a fixed list on every Reel. News reports
+do not receive unrelated scenic-profile tags. Public
+visibility does not guarantee API tagging eligibility or improved reach.
+
+The final Post action approves the selected optional tags. If Meta definitively
+rejects them before accepting a container, automatic-tag requests can try once
+without those tags; the skipped usernames remain in the upload history. Other
+errors and uncertain uploads never trigger this fallback. Existing failures are
+not retried during an update. This change uses no model, new service or dependency.
+The 187 focused posting/tag tests, 49 news/shared-planning tests and scoped posting
+lint pass. Full remote build and activation are pending; see
+`IMPLEMENTATION_PROGRESS.md`.
+
 ### Jobs under Create only — October 11, verified live
 
 The separate Jobs navigation screen is removed. Create keeps the existing compact

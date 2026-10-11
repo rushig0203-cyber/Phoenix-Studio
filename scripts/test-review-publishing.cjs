@@ -21,12 +21,12 @@ const originalChannelExports = {};
 for (const key of ["getChannelPublishAccess", "assertChannelPublishAccessCurrent", "createChannelPublishAccessMonitor", "getChannelUploadSession", "saveChannelUploadSession", "getInstagramLocationAppSecretProof"]) originalChannelExports[key] = channels[key];
 const sessions = new Map();
 let accessCalls = 0, assertionCalls = 0, channelChanged = false, permissionDenied = false;
-let instagramAccount = "123456789012345", instagramLogin = "facebook";
+let instagramAccount = "123456789012345", instagramLogin = "facebook", instagramName = "Fixture channel";
 let appSecretProof = null, proofCalls = 0, sessionReads = 0;
 channels.getChannelPublishAccess = async (platform, expectedRevision) => {
   accessCalls++;
   if (permissionDenied || expectedRevision !== "fixture-revision") throw new Error("Untrusted credential error fixture-secret-token");
-  return { platform, accountId: platform === "instagram" ? instagramAccount : "fixture-owning-channel", name: "Fixture channel",
+  return { platform, accountId: platform === "instagram" ? instagramAccount : "fixture-owning-channel", name: platform === "instagram" ? instagramName : "Fixture channel",
     connectionRevision: "fixture-revision", accessToken: "fixture-secret-token", loginType: platform === "instagram" ? instagramLogin : "youtube" };
 };
 channels.assertChannelPublishAccessCurrent = async () => { assertionCalls++; if (channelChanged) throw new Error("Changed private account fixture-secret-token"); };
@@ -39,6 +39,7 @@ channels.saveChannelUploadSession = async (id, value) => { if (value === null) s
 channels.getInstagramLocationAppSecretProof = async access => { proofCalls++; await channels.assertChannelPublishAccessCurrent(access); return appSecretProof; };
 const publishing = require(path.join(project, "src/lib/reviewPublishing.ts"));
 const files = require(path.join(project, "src/lib/reviewFiles.ts"));
+const instagramTags = require(path.join(project, "src/lib/instagramTags.ts"));
 const scheduled = [];
 const originalLoad = Module._load;
 Module._load = function(name, parent, main) {
@@ -86,7 +87,7 @@ async function consumeStream(options, expectedOffset = 0) {
 }
 beforeEach(() => {
   channelChanged = false; permissionDenied = false; accessCalls = 0; assertionCalls = 0; scheduled.length = 0;
-  instagramAccount = "123456789012345"; instagramLogin = "facebook";
+  instagramAccount = "123456789012345"; instagramLogin = "facebook"; instagramName = "Fixture channel";
   appSecretProof = null; proofCalls = 0; sessionReads = 0;
   fs.rmSync(businessPath(), { force: true });
   fs.rmSync(path.join(process.env.PHOENIX_PUBLISH_STORAGE, 'instagram-posting-defaults.json'), { force: true });
@@ -1058,7 +1059,7 @@ test('Meta tag rejections retain safe numeric diagnostics, never unchecked provi
   let calls = 0;
   global.fetch = async () => {
     calls++;
-    return Response.json({ error: { code: 100, error_subcode: 2207026,
+    return Response.json({ error: { code: 100, error_subcode: 2207018,
       message: 'Invalid user_tags fixture-secret-token https://private.example/?access_token=private',
       error_user_msg: 'Private account explanation never echoed' } }, { status: 400 });
   };
@@ -1066,7 +1067,7 @@ test('Meta tag rejections retain safe numeric diagnostics, never unchecked provi
   const status = (await publishing.listReviewPublishJobs(id))[0];
   assert.equal(calls, 1); assert.equal(status.status, 'FAILED'); assert.equal(status.bytesUploaded, 0);
   assert.match(status.detail, /rejected the requested people tags/);
-  assert.match(status.detail, /Platform code 100, subcode 2207026/);
+  assert.match(status.detail, /Platform code 100, subcode 2207018/);
   assert.ok(!status.detail.includes('fixture-secret-token')); assert.ok(!status.detail.includes('private.example'));
   assert.ok(!status.detail.includes('Private account')); assert.deepEqual(status.userTags, ['public_account']);
 });
@@ -1104,6 +1105,277 @@ test('ambiguous tagged container creation cannot be repeated by continue, duplic
   const duplicate = await publishing.prepareReviewPublication(id, settings('instagram', { userTags: ['other_account'] }));
   assert.equal(duplicate.dispatch, false); assert.deepEqual(duplicate.job.userTags, ['public_account']);
   await publishing.runReviewPublication(id, job.id); assert.equal(creations, 1);
+});
+
+async function automaticTagFixture({ story = false } = {}) {
+  const value = story ? await confirmedStoryFixture() : await fixture('instagram', 100);
+  value.file.title = 'Forest'; await files.saveReviewFile(value.file);
+  const candidates = instagramTags.automaticInstagramUserTags(value.file);
+  assert.ok(candidates.length, 'The fixture topic must have relevant candidates');
+  return { ...value, candidates };
+}
+
+test('automatic tags are server-selected, exclude the destination, and never inherit remembered manual usernames', async () => {
+  const { id, file, candidates } = await automaticTagFixture();
+  instagramName = `@${candidates[0]}`;
+  seedPostingDefaults({ userTags: ['unrelated.old.account'] });
+  const prepared = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+  const expected = instagramTags.automaticInstagramUserTags(file, instagramName);
+  assert.ok(!expected.includes(candidates[0]));
+  assert.deepEqual(prepared.job.userTags || [], expected); assert.equal(prepared.job.automaticTags, true);
+  assert.deepEqual(readStored(id, 'instagram').userTags || [], expected);
+  assert.deepEqual(instagramTags.automaticInstagramUserTags(file), candidates);
+  assert.equal(prepared.job.omittedUserTags, undefined); assert.equal(scheduled.length, 0);
+  const before = { accessCalls, proofCalls, sessionReads };
+  const status = (await publishing.listReviewPublishJobs(id))[0];
+  assert.deepEqual(status.userTags || [], expected);
+  assert.deepEqual({ accessCalls, proofCalls, sessionReads }, before, 'Local status does not contact providers or decrypt credentials');
+});
+
+test('automatic tagging rejects mixed or invalid policies before credentials and cannot mutate an existing manual approval', async () => {
+  const { id } = await automaticTagFixture();
+  for (const automaticTags of [false, null, 'true', 1, {}, []]) {
+    await assert.rejects(publishing.prepareReviewPublication(id, settings('instagram', { automaticTags })), /Automatic people tags/);
+  }
+  for (const body of [settings('instagram', { automaticTags: true, userTags: [] }), settings('youtube', { automaticTags: true }),
+    { action: 'create-story', confirm: true, connectionRevision: 'fixture-revision', automaticTags: true },
+    { action: 'continue', confirm: true, jobId: crypto.randomUUID(), automaticTags: true }]) {
+    await assert.rejects(publishing.prepareReviewPublication(id, body), /Automatic people tags/);
+  }
+  assert.equal(accessCalls, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  const original = await publishing.prepareReviewPublication(id, settings('instagram', { userTags: ['explicit.account'] }));
+  const saved = readStored(id, 'instagram'), before = accessCalls;
+  const duplicate = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+  assert.equal(duplicate.dispatch, false); assert.equal(duplicate.job.id, original.job.id);
+  assert.deepEqual(readStored(id, 'instagram'), saved); assert.equal(accessCalls, before);
+});
+
+test('a definitive automatic tag rejection retries once without tags, preserves other approved choices, and never tags its Story', async () => {
+  for (const error of [{ code: 110, error_subcode: 2207018 }, { code: 100, message: 'Invalid user_tags fixture-secret-token' }]) {
+    const { id, candidates } = await automaticTagFixture({ story: true });
+    global.fetch = async target => Response.json(new URL(target).pathname.endsWith('/587784541076604') ? audioTrack() : locationPage());
+    const prepared = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true, companionStory: true,
+      location: { id: '987654321' }, audio: audioConfig() }));
+    const approved = readStored(id, 'instagram');
+    for (const key of ['automaticTags', 'omittedUserTags', 'userTags']) assert.equal(readStory(id)[key], undefined);
+    const counts = installStoryProvider(), provider = global.fetch; let reelCreations = 0;
+    global.fetch = async (target, options) => {
+      const url = new URL(target);
+      if (url.pathname.endsWith('/587784541076604')) return Response.json(audioTrack());
+      if (url.pathname.endsWith('/987654321')) return Response.json(locationPage());
+      if (url.pathname.endsWith('/media')) {
+        const body = new URLSearchParams(options.body);
+        if (body.get('media_type') === 'REELS') {
+          reelCreations++; assert.equal(body.get('caption'), approved.caption);
+          assert.equal(body.get('location_id'), approved.location.id);
+          assert.deepEqual(JSON.parse(body.get('audio_configuration')), audioConfig());
+          if (reelCreations === 1) {
+            assert.deepEqual(JSON.parse(body.get('user_tags')), candidates.map(username => ({ username })));
+            assert.equal(counts.streams.length, 0); assert.equal(counts.publishes.length, 0);
+            return Response.json({ error }, { status: 400 });
+          }
+          assert.equal(body.has('user_tags'), false);
+          const durable = readStored(id, 'instagram'); assert.equal(durable.phase, 'initiating');
+          assert.deepEqual(durable.omittedUserTags, candidates); assert.equal(durable.userTags, undefined);
+        } else assert.equal(body.has('user_tags'), false);
+      }
+      return provider(target, options);
+    };
+    await publishing.runReviewPublication(id, prepared.job.id);
+    const status = (await publishing.listReviewPublishJobs(id))[0], stored = readStored(id, 'instagram');
+    assert.equal(status.status, 'COMPLETE'); assert.equal(status.companionStory.status, 'COMPLETE');
+    assert.equal(status.userTags, undefined); assert.equal(status.automaticTags, true); assert.deepEqual(status.omittedUserTags, candidates);
+    assert.match(status.detail, /optional people tags were skipped/); assert.ok(!status.detail.includes('fixture-secret-token'));
+    for (const key of ['caption', 'location', 'audio', 'instagramGraphVersion', 'fingerprint', 'connectionRevision', 'accountId', 'renderTarget', 'privacy']) {
+      assert.deepEqual(stored[key], approved[key], `Tag fallback preserves ${key}`);
+    }
+    assert.equal(reelCreations, 2); assert.equal(counts.streams.length, 2); assert.equal(counts.publishes.length, 2);
+    assert.deepEqual(counts.creations, ['REELS', 'STORIES']);
+    const before = { reelCreations, streams: counts.streams.length, publishes: counts.publishes.length };
+    assert.equal((await publishing.prepareReviewPublication(id, { action: 'continue', confirm: true, jobId: prepared.job.id })).dispatch, false);
+    await publishing.runReviewPublication(id, prepared.job.id);
+    assert.deepEqual({ reelCreations, streams: counts.streams.length, publishes: counts.publishes.length }, before);
+  }
+});
+
+test('automatic tags are not dropped for unrelated, quota, permission, server or ambiguous creation failures', async () => {
+  for (const response of [
+    { status: 400, error: { code: 110, error_subcode: 2207000 } },
+    { status: 400, error: { code: 100, message: 'Private provider explanation fixture-secret-token' } },
+    { status: 400, error: { code: 100, error_subcode: 2207026, message: 'Invalid user_tags fixture-secret-token' } },
+    { status: 400, error: { code: 190, message: 'Invalid user_tags' } },
+    { status: 403, error: { code: 110, error_subcode: 2207018 } },
+    { status: 429, error: { code: 110, error_subcode: 2207018 } },
+    { status: 500, error: { code: 110, error_subcode: 2207018 } },
+    { status: 400, error: { code: '110', error_subcode: 2207018, message: 'user_tags' } },
+    { status: 400, error: { code: 100, message: `${'x'.repeat(4096)} user_tags` } },
+    { network: true },
+  ]) {
+    const { id, candidates } = await automaticTagFixture();
+    const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+    let creations = 0;
+    global.fetch = async () => {
+      creations++; if (response.network) throw new Error('Accepted but response lost fixture-secret-token');
+      return Response.json({ error: response.error }, { status: response.status });
+    };
+    await publishing.runReviewPublication(id, job.id);
+    const [status] = await publishing.listReviewPublishJobs(id);
+    assert.equal(creations, 1); assert.equal(status.omittedUserTags, undefined); assert.deepEqual(status.userTags, candidates);
+    assert.equal(status.status, response.network || response.status >= 500 ? 'NEEDS_CHECK' : 'FAILED');
+    assert.ok(!status.detail.includes('fixture-secret-token'));
+    if (response.network || response.status >= 500) {
+      await assert.rejects(publishing.prepareReviewPublication(id, { action: 'continue', confirm: true, jobId: job.id }), /will not repeat/);
+      await publishing.runReviewPublication(id, job.id); assert.equal(creations, 1);
+    }
+  }
+});
+
+test('legacy manually approved tags remain unchanged even for the exact Meta tag-rejection code', async () => {
+  const { id } = await fixture('instagram', 100);
+  const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { userTags: ['explicit.account'] }));
+  let creations = 0;
+  global.fetch = async () => { creations++; return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 }); };
+  await publishing.runReviewPublication(id, job.id);
+  const [status] = await publishing.listReviewPublishJobs(id);
+  assert.equal(creations, 1); assert.equal(status.status, 'FAILED'); assert.match(status.detail, /requested people tags/);
+  assert.deepEqual(status.userTags, ['explicit.account']); assert.equal(status.automaticTags, undefined); assert.equal(status.omittedUserTags, undefined);
+});
+
+test('automatic tag fallback checks private session, zero transferred bytes, current destination and unchanged media before retry', async () => {
+  for (const change of ['session', 'bytes', 'connection', 'media']) {
+    const { id, candidates } = await automaticTagFixture();
+    const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+    if (change === 'bytes') alterStored(id, saved => { saved.bytesUploaded = 1; }, 'instagram');
+    let creations = 0;
+    global.fetch = async () => {
+      creations++;
+      if (change === 'session') sessions.set(job.id, instagramLocation);
+      if (change === 'connection') channelChanged = true;
+      if (change === 'media') fs.appendFileSync(files.outputPath(id, 'instagram'), 'changed');
+      return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 });
+    };
+    await publishing.runReviewPublication(id, job.id); channelChanged = false;
+    const [status] = await publishing.listReviewPublishJobs(id);
+    assert.equal(creations, 1); assert.equal(status.status, 'FAILED');
+    if (['session', 'bytes'].includes(change)) { assert.deepEqual(status.userTags, candidates); assert.equal(status.omittedUserTags, undefined); }
+    else { assert.deepEqual(status.omittedUserTags, candidates); assert.equal(status.userTags, undefined); }
+    if (change === 'connection') assert.match(status.detail, /connection changed/i);
+    if (change === 'media') assert.match(status.detail, /video changed/i);
+  }
+});
+
+test('an accepted container prevents tag fallback on video transfer or publication errors', async () => {
+  for (const failedStage of ['transfer', 'publish']) {
+    const { id, candidates } = await automaticTagFixture();
+    const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+    const counts = installStoryProvider(), provider = global.fetch; let creations = 0;
+    global.fetch = async (target, options) => {
+      const url = new URL(target); if (url.pathname.endsWith('/media')) creations++;
+      if ((failedStage === 'transfer' && url.hostname === 'rupload.facebook.com') || (failedStage === 'publish' && url.pathname.endsWith('/media_publish'))) {
+        if (failedStage === 'transfer') await consumeStream(options);
+        return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 });
+      }
+      return provider(target, options);
+    };
+    await publishing.runReviewPublication(id, job.id);
+    const [status] = await publishing.listReviewPublishJobs(id);
+    assert.equal(creations, 1); assert.notEqual(status.status, 'COMPLETE'); assert.deepEqual(status.userTags, candidates);
+    assert.equal(status.omittedUserTags, undefined); assert.equal(readStored(id, 'instagram').containerId, '987654321012345');
+    assert.ok(counts.publishes.length <= 1);
+  }
+});
+
+test('an untagged fallback rejection is not looped and an explicit continuation preserves omission', async () => {
+  const { id, candidates } = await automaticTagFixture();
+  const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+  let creations = 0;
+  global.fetch = async (target, options) => {
+    creations++; assert.ok(new URL(target).pathname.endsWith('/media'));
+    assert.equal(new URLSearchParams(options.body).has('user_tags'), creations === 1);
+    return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 });
+  };
+  await publishing.runReviewPublication(id, job.id);
+  const [failed] = await publishing.listReviewPublishJobs(id);
+  assert.equal(creations, 2); assert.equal(failed.status, 'FAILED'); assert.equal(failed.canContinue, true);
+  assert.equal(failed.userTags, undefined); assert.deepEqual(failed.omittedUserTags, candidates);
+  await publishing.runReviewPublication(id, job.id); assert.equal(creations, 2, 'Restart cannot requeue the failed request');
+  assert.equal((await publishing.prepareReviewPublication(id, { action: 'continue', confirm: true, jobId: job.id })).dispatch, true);
+  const counts = installStoryProvider(), provider = global.fetch;
+  global.fetch = async (target, options) => {
+    if (new URL(target).pathname.endsWith('/media')) { creations++; assert.equal(new URLSearchParams(options.body).has('user_tags'), false); }
+    return provider(target, options);
+  };
+  await publishing.runReviewPublication(id, job.id);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'COMPLETE');
+  assert.equal(creations, 3); assert.equal(counts.publishes.length, 1);
+});
+
+test('an ambiguous fallback container response cannot be retried or duplicated', async () => {
+  const { id, candidates } = await automaticTagFixture();
+  const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+  let creations = 0;
+  global.fetch = async (target, options) => {
+    creations++;
+    if (creations === 1) return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 });
+    assert.equal(new URLSearchParams(options.body).has('user_tags'), false); throw new Error('Accepted but response lost fixture-secret-token');
+  };
+  await publishing.runReviewPublication(id, job.id);
+  const [status] = await publishing.listReviewPublishJobs(id);
+  assert.equal(status.status, 'NEEDS_CHECK'); assert.equal(status.canContinue, false); assert.deepEqual(status.omittedUserTags, candidates);
+  assert.equal(readStored(id, 'instagram').phase, 'session_unknown'); assert.equal(creations, 2);
+  await assert.rejects(publishing.prepareReviewPublication(id, { action: 'continue', confirm: true, jobId: job.id }), /will not repeat/);
+  assert.equal((await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }))).dispatch, false);
+  await publishing.runReviewPublication(id, job.id); assert.equal(creations, 2);
+});
+
+test('a legacy rejected Reel is revised only by explicit Post, retaining its identity and archiving the old approved tags', async () => {
+  const { id, job } = await rejectedReelFixture();
+  const file = await files.getReviewFile(id); file.title = 'Forest'; await files.saveReviewFile(file);
+  const original = readStored(id, 'instagram');
+  const revised = await publishing.prepareReviewPublication(id, { action: 'revise', jobId: job.id, confirm: true,
+    caption: original.caption, automaticTags: true });
+  assert.equal(revised.dispatch, true); assert.equal(revised.job.id, job.id); assert.equal(revised.job.automaticTags, true);
+  assert.deepEqual(revised.job.userTags, instagramTags.automaticInstagramUserTags(file));
+  assert.equal(revised.job.omittedUserTags, undefined); assert.deepEqual(revisionHistory(id), [original]);
+  const stored = readStored(id, 'instagram');
+  for (const key of ['caption', 'fingerprint', 'connectionRevision', 'accountId', 'renderTarget', 'privacy']) assert.deepEqual(stored[key], original[key]);
+  assert.equal(scheduled.length, 0, 'Preparation does not itself post a video');
+});
+
+test('explicit automatic revision clears a previous omission but archives its complete audit record', async () => {
+  const { id, candidates } = await automaticTagFixture();
+  const { job } = await publishing.prepareReviewPublication(id, settings('instagram', { automaticTags: true }));
+  let calls = 0;
+  global.fetch = async () => { calls++; return Response.json({ error: { code: 110, error_subcode: 2207018 } }, { status: 400 }); };
+  await publishing.runReviewPublication(id, job.id); assert.equal(calls, 2);
+  const original = readStored(id, 'instagram'); assert.deepEqual(original.omittedUserTags, candidates);
+  global.fetch = async () => assert.fail('Revising a local approval does not publish');
+  const revised = await publishing.prepareReviewPublication(id, { action: 'revise', jobId: job.id, confirm: true,
+    caption: original.caption, automaticTags: true });
+  assert.equal(revised.dispatch, true); assert.equal(revised.job.id, job.id);
+  assert.equal(revised.job.omittedUserTags, undefined); assert.deepEqual(revised.job.userTags, candidates);
+  assert.deepEqual(revisionHistory(id), [original]);
+});
+
+test('invalid stored automatic policies, omissions and Story inheritance fail before credentials or providers', async () => {
+  for (const change of [
+    { automaticTags: false }, { automaticTags: 'true' }, { omittedUserTags: ['old.account'] },
+    { automaticTags: true, omittedUserTags: [] }, { automaticTags: true, omittedUserTags: ['@NASA'] },
+    { automaticTags: true, omittedUserTags: ['nasa'], userTags: ['other.account'] },
+  ]) {
+    const { id } = await fixture('instagram', 100);
+    await publishing.prepareReviewPublication(id, settings('instagram'));
+    alterStored(id, saved => Object.assign(saved, change), 'instagram'); accessCalls = 0;
+    await assert.rejects(publishing.listReviewPublishJobs(id), /local inspection/); assert.equal(accessCalls, 0);
+  }
+  const youtube = await fixture('youtube', 100);
+  await publishing.prepareReviewPublication(youtube.id, settings());
+  alterStored(youtube.id, saved => { saved.automaticTags = true; });
+  await assert.rejects(publishing.listReviewPublishJobs(youtube.id), /local inspection/);
+  const story = await confirmedStoryFixture();
+  await publishing.prepareReviewPublication(story.id, settings('instagram', { companionStory: true }));
+  const saved = readStory(story.id); saved.automaticTags = true; fs.writeFileSync(storyPath(story.id), JSON.stringify(saved));
+  accessCalls = 0; await assert.rejects(publishing.listReviewPublishJobs(story.id), /local inspection/); assert.equal(accessCalls, 0);
 });
 
 test('noncanonical stored people tags and tags injected into a YouTube or Story job fail before provider or credential access', async () => {

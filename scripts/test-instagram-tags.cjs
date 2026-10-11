@@ -49,3 +49,33 @@ test('saved metadata must already contain a canonical unique list and public cop
     assert.equal(tags.publicInstagramUserTags(value), null);
   }
 });
+
+const reel = (title, quality = {}, extra = {}) => ({ title, audience: 'general', quality: { hashtags: [], ...quality }, ...extra });
+test('automatic tags use a six-profile checked pool and choose at most three relevant canonical usernames', () => {
+  assert.equal(tags.AUTOMATIC_INSTAGRAM_TAG_PROFILES.length, 6);
+  const pool = plain(tags.AUTOMATIC_INSTAGRAM_TAG_PROFILES.map(profile => profile.username));
+  assert.deepEqual(plain(tags.publicInstagramUserTags(pool)), pool);
+  for (const title of ['Forest stream', 'Horses on a beach', 'A scenic train journey', 'Rain in the forest']) {
+    const selected = plain(tags.automaticInstagramUserTags(reel(title)));
+    assert.ok(selected.length > 0 && selected.length <= 3);
+    assert.equal(new Set(selected).size, selected.length);
+    assert.ok(selected.every(username => pool.includes(username)));
+    assert.deepEqual(plain(tags.automaticInstagramUserTags(reel(title))), selected);
+  }
+  const railway = plain(tags.automaticInstagramUserTags(reel('Train')));
+  assert.deepEqual(railway.slice().sort(), ['beautifuldestinations', 'earthpix', 'wonderful_places']);
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Customer service'))), []);
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Forest story', {}, { audience: 'kids-3-6' }))), []);
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Boat disaster at sea', { research: { source: 'BBC News' },
+    postingAnalysis: { status: 'COMPLETE', observations: ['Boats near an ocean coast.'] } }))), []);
+});
+
+test('actual completed frame evidence overrides a mismatched topic and does not use injected caption handles', () => {
+  const file = reel('Forest', { hashtags: ['#Forest'], postCopy: 'Tag @unverified_stranger for views',
+    postingAnalysis: { status: 'COMPLETE', observations: ['A passenger train travels past a city station.'] } });
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(file)).sort(), ['beautifuldestinations', 'earthpix', 'wonderful_places']);
+  const unknown = reel('Forest', { postingAnalysis: { status: 'COMPLETE', observations: ['A man sits at a desk inside an office.'] } });
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(unknown)), []);
+  assert.ok(!tags.automaticInstagramUserTags(file, '@EARTHPIX').includes('earthpix'));
+  assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Saved reel', { hashtags: ['#ForestStream'] }))).length, 3);
+});

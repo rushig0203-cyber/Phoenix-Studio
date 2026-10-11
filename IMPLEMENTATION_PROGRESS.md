@@ -1,5 +1,43 @@
 # Quality-first implementation — September 16, 2026
 
+## October 12 news visuals and automatic Instagram tags — verification in progress
+
+- The October 11 boat-disaster output used stock, not the children's 2D renderer.
+  Its literal event queries and loose word overlap admitted a waterfall swimmer
+  and a tourist river boat. Article context now reaches shot planning; news-only
+  checks require relevant neutral filmed context rather than fake victims,
+  reenactments or unidentified stock actors presented as reported people.
+  Cached plans and exact selected assets are checked too, without silently
+  replacing approved footage. Ordinary stock and children's paths are unchanged.
+- No arbitrary web-image scraper, provider, dependency or heavy local model is
+  added. Catalogue metadata is a bounded relevance check, not event verification
+  or full frame recognition. Generic stock remains illustrative, with the existing
+  report citation and disclosure. Suitable footage availability can still limit
+  a news video; unrelated filler is not a fallback.
+
+- Replacing the manual username control with topical automatic selection from
+  six profiles checked directly on Instagram: `discoverearth`, `nature`,
+  `earthofficial`, `wonderful_places`, `beautifuldestinations`, and `earthpix`.
+  Up to three relevant profiles are selected; completed visual observations take
+  priority over the requested topic. Unrelated and children's content gets none.
+  News reports also get none from this scenic-profile pool. This is not an
+  endorsement, feature invitation or promise of reach, and public
+  visibility does not prove API tagging eligibility.
+- The existing final Post action will approve automatic optional tags and a
+  single untagged fallback only after a definitive pre-container tag rejection.
+  No fallback for ambiguous, permission, rate-limit, format or network failures.
+  Previously rejected requests use the existing guarded correction/archive path
+  only on an explicit Post click. Opening/checking a panel never publishes.
+- Local publisher regressions pass 101/101, UI regressions 80/80 and automatic
+  tag checks 6/6; scoped posting lint passes. News/shared preparation/storyboard
+  regressions pass 49/49, including the actual bad matches, named-identity and
+  unknown-theme safeguards, bounded repair and saved-plan checks. Full remote
+  compilation and activation are pending. The currently served
+  bundle remains `.next-build-gh-38148657650-1`; source changes alone are not a
+  live update. No owner upload, retry, credential change or paid service is part
+  of development/testing. Existing captions, locations, music and Story approval
+  are retained, and ambiguous-request/duplicate guards stay in place.
+
 ## October 11 single Jobs location — verified installed and live
 
 - Removed the separate Jobs section/sidebar link; the compact list stays below
