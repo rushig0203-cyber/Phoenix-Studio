@@ -81,7 +81,7 @@ index c4d12e1..ef6374c 100644
      video_script_prompt: str = Field(default="", max_length=2000)
      custom_system_prompt: str = Field(default="", max_length=8000)
 diff --git a/app/services/task.py b/app/services/task.py
-index a310390..f49eb63 100644
+index a310390..794f201 100644
 --- a/app/services/task.py
 +++ b/app/services/task.py
 @@ -13,13 +13,14 @@ from loguru import logger
@@ -147,7 +147,7 @@ index a310390..f49eb63 100644
  
          _progress += 50 / params.video_count / 2
          sm.state.update_task(task_id, progress=_progress)
-@@ -1410,13 +1418,24 @@ def _run_pipeline(
+@@ -1410,13 +1418,33 @@ def _run_pipeline(
      sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
  
      # 5. Get video materials
@@ -161,8 +161,17 @@ index a310390..f49eb63 100644
 +    storyboard_timeline, public_storyboard = None, None
 +    if getattr(params, "phoenix_storyboard", None):
 +        try:
++            measured_audio_duration = voice.get_audio_duration(audio_file)
++            if not subtitle_path and params.subtitle_enabled and config.app.get("subtitle_provider", "edge").strip().lower() == "edge":
++                # Reuse only the already-returned, real Edge boundaries. A cue
++                # may span several punctuation-split narration fragments.
++                subtitle_path = phoenix_storyboard.save_edge_captions(
++                    utils.split_string_by_punctuations(voice._format_text(video_script)),
++                    getattr(sub_maker, "cues", None), measured_audio_duration,
++                    path.join(utils.task_dir(task_id), "subtitle.srt"),
++                )
 +            storyboard_timeline, public_storyboard = phoenix_storyboard.prepare_timeline(
-+                task_id, params, subtitle_path, voice.get_audio_duration(audio_file),
++                task_id, params, subtitle_path, measured_audio_duration,
 +                lambda percent, stage: sm.state.update_task(task_id, progress=percent, phoenix_stage=stage),
 +            )
 +            downloaded_videos = list(dict.fromkeys(shot["path"] for shot in storyboard_timeline))
@@ -179,7 +188,7 @@ index a310390..f49eb63 100644
      if not downloaded_videos:
          return _mark_task_failed(
              task_id,
-@@ -1449,6 +1468,7 @@ def _run_pipeline(
+@@ -1449,6 +1477,7 @@ def _run_pipeline(
              audio_file,
              subtitle_path,
              audio_duration,
@@ -187,7 +196,7 @@ index a310390..f49eb63 100644
          )
      )
  
-@@ -1466,7 +1486,8 @@ def _run_pipeline(
+@@ -1466,7 +1495,8 @@ def _run_pipeline(
      # 7. 先完成视频生成任务，再按需提交跨平台发布。第三方上传可能耗时
      # 数分钟，不应阻塞视频结果返回，也不能反向影响已经生成的成片。
      cross_post_enabled = (
@@ -197,7 +206,7 @@ index a310390..f49eb63 100644
          and upload_post.upload_post_service.auto_upload
      )
      platforms = (
-@@ -1493,7 +1514,11 @@ def _run_pipeline(
+@@ -1493,7 +1523,11 @@ def _run_pipeline(
          "cross_post_error": None,
          "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
          "warnings": generation_warnings or None,
@@ -413,13 +422,14 @@ index 2176fa1..c6c0773 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..17eff29
+index 0000000..b533525
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,495 @@
+@@ -0,0 +1,600 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
 +import hashlib
++from html import unescape
 +import json
 +import math
 +import os
@@ -583,8 +593,112 @@ index 0000000..17eff29
 +    return re.findall(r"\w+", text.casefold().replace("’", "'"), re.UNICODE)
 +
 +
++def edge_caption_cues(script_lines, observed_cues, audio_duration):
++    """Merge script fragments only at complete, observed Edge cue boundaries.
++
++    A word cue can span punctuation (for example ``October 10, 2026``).
++    Matching one punctuation-split fragment at a time then never catches up.
++    We may merge those fragments, but must never divide a cue or guess timing.
++    """
++    message = "Timed narration captions do not exactly match the script and audio. No guessed stock timeline or transcription fallback was used."
++    if (not isinstance(script_lines, (list, tuple)) or not script_lines
++            or any(not isinstance(line, str) or not line.strip() or "\n" in line or "\r" in line for line in script_lines)
++            or not isinstance(observed_cues, (list, tuple)) or not observed_cues
++            or isinstance(audio_duration, bool) or not isinstance(audio_duration, (int, float))
++            or not math.isfinite(audio_duration) or audio_duration <= 0):
++        raise ValueError(message)
++
++    def normalize(text):
++        return re.sub(r"[_\W]+", "", unescape(text).casefold())
++
++    fragments = [normalize(line) for line in script_lines]
++    if not all(fragments):
++        raise ValueError(message)
++    expected = "".join(fragments)
++    observed, previous_end, validated = [], 0, []
++    for cue in observed_cues:
++        try:
++            text = cue.content
++            if not isinstance(text, str):
++                raise ValueError(message)
++            start = float(cue.start.total_seconds())
++            end = float(cue.end.total_seconds())
++        except (AttributeError, TypeError, ValueError, OverflowError) as exc:
++            raise ValueError(message) from exc
++        if (not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start
++                or start + 0.000001 < previous_end or end > audio_duration + 0.3):
++            raise ValueError(message)
++        previous_end = end
++        start_ms, end_ms = round(start * 1000), round(end * 1000)
++        if end_ms <= start_ms:
++            raise ValueError(message)
++        normalized = normalize(text)
++        if normalized:
++            observed.append(normalized)
++            validated.append((start_ms / 1000, end_ms / 1000, normalized))
++    if "".join(observed) != expected:
++        raise ValueError(message)
++
++    boundaries, position = [], 0
++    for fragment in fragments:
++        position += len(fragment)
++        boundaries.append(position)
++    result, consumed, next_line, first_line, start = [], 0, 0, 0, None
++    for cue_start, cue_end, text in validated:
++        if start is None:
++            start = cue_start
++        consumed += len(text)
++        while next_line < len(boundaries) and boundaries[next_line] < consumed:
++            next_line += 1
++        if next_line < len(boundaries) and boundaries[next_line] == consumed:
++            result.append((start, cue_end, " ".join(line.strip() for line in script_lines[first_line:next_line + 1])))
++            next_line += 1
++            first_line, start = next_line, None
++    if first_line != len(script_lines) or not result:
++        raise ValueError(message)
++    return result
++
++
++def save_edge_captions(script_lines, observed_cues, audio_duration, filename):
++    captions = edge_caption_cues(script_lines, observed_cues, audio_duration)
++    if not isinstance(filename, (str, os.PathLike)) or not str(filename).strip():
++        raise ValueError("A valid timed narration caption destination is required.")
++    destination = Path(filename)
++    if destination.suffix.lower() != ".srt" or not destination.parent.is_dir():
++        raise ValueError("A valid timed narration caption destination is required.")
++
++    def timestamp(seconds):
++        milliseconds = round(seconds * 1000)
++        hours, milliseconds = divmod(milliseconds, 3600000)
++        minutes, milliseconds = divmod(milliseconds, 60000)
++        seconds, milliseconds = divmod(milliseconds, 1000)
++        return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
++
++    text = "\n\n".join(f"{index}\n{timestamp(start)} --> {timestamp(end)}\n{content}"
++                       for index, (start, end, content) in enumerate(captions, 1)) + "\n"
++    temporary = None
++    try:
++        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent,
++                                         prefix=".phoenix-captions-", suffix=".srt", delete=False) as staged:
++            temporary = Path(staged.name)
++            staged.write(text)
++        if subtitle_cues(temporary) != captions:
++            raise ValueError("Timed narration caption validation failed. No guessed stock timeline was created.")
++        temporary.replace(destination)
++    finally:
++        if temporary is not None:
++            temporary.unlink(missing_ok=True)
++    return str(destination)
++
++
 +def subtitle_cues(filename):
-+    text = Path(filename).read_text(encoding="utf-8-sig")
++    if (not isinstance(filename, (str, os.PathLike)) or not str(filename).strip()
++            or not Path(filename).is_file()):
++        raise ValueError("Timed narration captions are missing or unreadable; cannot align stock footage. No transcription fallback or guessed timeline was used.")
++    try:
++        text = Path(filename).read_text(encoding="utf-8-sig")
++    except OSError as exc:
++        raise ValueError("Timed narration captions are unreadable; cannot align stock footage. No guessed timeline was created.") from exc
 +    pattern = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})[^\n]*\n(.*?)(?=\n\s*\n|\Z)", re.S)
 +    cues = []
 +    for match in pattern.finditer(text):
@@ -969,20 +1083,120 @@ index 0000000..37cf817
 +    return result
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
-index 0000000..adab7c1
+index 0000000..6387e51
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,404 @@
+@@ -0,0 +1,504 @@
 +import json
 +import os
 +import shutil
 +import subprocess
 +import tempfile
 +import unittest
++from datetime import timedelta
 +from pathlib import Path
++from types import SimpleNamespace
 +from unittest.mock import patch
 +
 +from app.services import phoenix_storyboard as storyboard
++
++
++class TestEdgeCaptionBoundaries(unittest.TestCase):
++    @staticmethod
++    def cue(text, start, end):
++        return SimpleNamespace(content=text, start=timedelta(seconds=start), end=timedelta(seconds=end))
++
++    def test_date_cue_crosses_comma_fragments_without_dividing_its_timing(self):
++        lines = ["Report published on October 10", "2026", "People leave hospital"]
++        cues = [self.cue("ReportpublishedonOctober", 0, 1), self.cue("10, 2026", 1.1, 2), self.cue("People leave hospital", 2.3, 4)]
++        result = storyboard.edge_caption_cues(lines, cues, 4)
++        self.assertEqual(result, [(0, 2, "Report published on October 10 2026"), (2.3, 4, "People leave hospital")])
++        self.assertEqual([word for _, _, text in result for word in storyboard.words(text)], storyboard.words(" ".join(lines)))
++
++    def test_one_complete_cue_can_cover_multiple_script_fragments(self):
++        lines = ["Open curtains", "Pour water", "Leave home"]
++        result = storyboard.edge_caption_cues(lines, [self.cue("Open curtains, pour water. Leave home!", 1.2, 3.4)], 4)
++        self.assertEqual(result, [(1.2, 3.4, "Open curtains Pour water Leave home")])
++
++    def test_cue_crossing_into_unfinished_fragment_waits_for_real_end(self):
++        result = storyboard.edge_caption_cues(["Open curtains", "Pour water"], [self.cue("Open curtains Pour", 0, 1), self.cue("water", 1.3, 2)], 2)
++        self.assertEqual(result, [(0, 2, "Open curtains Pour water")])
++
++    def test_existing_line_aligned_cues_keep_their_actual_timestamps(self):
++        result = storyboard.edge_caption_cues(["Open curtains", "Pour water"], [self.cue("Open curtains", .3, 1.1), self.cue("Pour water", 1.2, 2)], 2)
++        self.assertEqual(result, [(.3, 1.1, "Open curtains"), (1.2, 2, "Pour water")])
++
++    def test_legitimate_spacing_punctuation_case_and_entities_are_tolerated(self):
++        result = storyboard.edge_caption_cues(["We're home", "Keep the door open"], [self.cue("WE&#39;REhome", 0, 1), self.cue("Keep  thedoor, open!", 1, 2)], 2)
++        self.assertEqual(result, [(0, 1, "We're home"), (1, 2, "Keep the door open")])
++
++    def test_real_pause_gap_is_preserved_not_filled_with_guessed_words(self):
++        result = storyboard.edge_caption_cues(["Open curtains", "Pour water"], [self.cue("Open curtains", 0, 1), self.cue("Pour water", 3, 4)], 5)
++        self.assertEqual(result, [(0, 1, "Open curtains"), (3, 4, "Pour water")])
++
++    def test_omitted_changed_extra_or_reordered_words_fail_full_equality(self):
++        for content in ("Open", "Close curtains", "Open curtains now", "curtains Open"):
++            with self.subTest(content=content), self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(["Open curtains"], [self.cue(content, 0, 1)], 1)
++
++    def test_overlapping_and_backwards_cue_timing_is_rejected(self):
++        for second in (self.cue("curtains", .5, 1.5), self.cue("curtains", .1, .2)):
++            with self.subTest(second=second), self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(["Open curtains"], [self.cue("Open", 0, 1), second], 2)
++
++    def test_invalid_negative_empty_or_out_of_audio_timing_is_rejected(self):
++        for cue in (self.cue("Open", -1, 1), self.cue("Open", 1, 1), self.cue("Open", 0, 2), self.cue("Open", 0, .00001)):
++            with self.subTest(cue=cue), self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(["Open"], [cue], 1)
++
++    def test_nonfinite_timing_and_duration_are_rejected(self):
++        for value in (float("nan"), float("inf"), -float("inf")):
++            timing = SimpleNamespace(content="Open", start=SimpleNamespace(total_seconds=lambda: value), end=timedelta(seconds=1))
++            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(["Open"], [timing], 1)
++            with self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(["Open"], [self.cue("Open", 0, 1)], value)
++
++    def test_missing_or_malformed_cues_are_actionable(self):
++        invalid = (None, [], "Open", [SimpleNamespace(content="Open")], [SimpleNamespace(content=7, start=timedelta(), end=timedelta(seconds=1))])
++        for cues in invalid:
++            with self.subTest(cues=cues), self.assertRaisesRegex(ValueError, "No guessed stock timeline"):
++                storyboard.edge_caption_cues(["Open"], cues, 1)
++
++    def test_empty_or_malformed_script_fragments_are_rejected(self):
++        for lines in ([], [""], [7], ["Open\ncurtains"], ["..."]):
++            with self.subTest(lines=lines), self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.edge_caption_cues(lines, [self.cue("Open curtains", 0, 1)], 1)
++
++    def test_missing_captions_do_not_attempt_to_read_current_directory(self):
++        with tempfile.TemporaryDirectory() as directory:
++            for filename in ("", Path(directory), Path(directory) / "missing.srt", None):
++                with self.subTest(filename=filename), self.assertRaisesRegex(ValueError, "captions are missing"):
++                    storyboard.subtitle_cues(filename)
++
++    def test_complete_real_cues_save_validated_srt_and_clean_temporary_file(self):
++        with tempfile.TemporaryDirectory() as directory:
++            destination = Path(directory) / "captions.srt"
++            lines = ["Open curtains", "Pour water"]
++            result = storyboard.save_edge_captions(lines, [self.cue("Open curtains, pour water.", .2, 1.5)], 2, destination)
++            self.assertEqual(result, str(destination))
++            self.assertEqual(storyboard.subtitle_cues(destination), [(.2, 1.5, "Open curtains Pour water")])
++            self.assertEqual(list(Path(directory).iterdir()), [destination])
++
++    def test_invalid_caption_destination_is_actionable_without_reading_directory(self):
++        with tempfile.TemporaryDirectory() as directory:
++            for destination in (None, "", Path(directory), Path(directory) / "captions.txt"):
++                with self.subTest(destination=destination), self.assertRaisesRegex(ValueError, "caption destination"):
++                    storyboard.save_edge_captions(["Open"], [self.cue("Open", 0, 1)], 1, destination)
++
++    def test_failed_full_validation_never_overwrites_saved_captions(self):
++        with tempfile.TemporaryDirectory() as directory:
++            destination = Path(directory) / "captions.srt"
++            destination.write_text("previous captions", encoding="utf-8")
++            with self.assertRaisesRegex(ValueError, "exactly match"):
++                storyboard.save_edge_captions(["Open curtains"], [self.cue("Close curtains", 0, 1)], 1, destination)
++            self.assertEqual(destination.read_text(encoding="utf-8"), "previous captions")
++            self.assertEqual(list(Path(directory).iterdir()), [destination])
 +
 +
 +class TestPhoenixStoryboard(unittest.TestCase):

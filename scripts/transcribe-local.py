@@ -353,7 +353,11 @@ def transcribe(input_path: Path, output_path: Path, model_dir: Path, duration_li
             offset, stop = max(0, start - CONTEXT_SECONDS), min(duration, end + CONTEXT_SECONDS)
             status(f"window-{index + 1}-of-{window_count}")
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix=f"audio-{index:06d}-", dir=checkpoint.parent) as temporary:
+            # The durable checkpoint path includes the job ID and a 64-character
+            # identity. A WAV below it exceeds legacy Windows FFmpeg MAX_PATH in
+            # the normal Studio directory. Keep only the disposable decode in
+            # system temp; checkpoints and their source identity stay unchanged.
+            with tempfile.TemporaryDirectory(prefix=f"phoenix-audio-{index:06d}-") as temporary:
                 audio_path = Path(temporary) / "window.wav"
                 if extract_window(input_path, audio_path, offset, stop):
                     segments, info = model.transcribe(str(audio_path), **TRANSCRIPTION_OPTIONS)

@@ -1,5 +1,42 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 failed-job investigation — correction in progress
+
+- The live dashboard's six attention items were inspected without retrying or
+  deleting owner jobs. Three new episode/source jobs failed during audio-window
+  extraction; a news render failed with `Permission denied: '.'`; two news
+  preparation requests could not find enough relevant evacuation footage.
+- The nested transcription WAV path was 267 characters in the canonical Windows
+  project. Disposable WAVs now use short system temporary directories while
+  durable checkpoint identities, resume files and lazy-model lifetime stay
+  unchanged. The isolated Python suite passes 19/19, including the long-path
+  success/extraction-failure/inference-failure and checkpoint-preservation cases.
+  The Windows release workflow now also runs this model-free suite.
+- An untouched matching Story is stored as QUEUED after its parent Reel failed,
+  although the public API correctly reports it as needing a check. Raw-status
+  installation guards mistook it for active uploading. Both guards now use a
+  conservative read-only classifier: matching identities/fingerprints, untouched
+  failed parent, no leases or saved provider sessions, unchanged record/vault
+  hashes. Ordinary queues remain blocked. Thirty-six isolated Story cases cover
+  both guards; the serial launch/restart suites pass 11/11. Exact-byte .NET hashes
+  avoid a missing Get-FileHash command in child PowerShell launch environments.
+  No owner upload was cancelled, retried, detached, or published.
+- Renderer logs confirm Edge caption matching produced no usable subtitles;
+  its empty filename became `Path('')` and opened the current directory. The
+  shipped integration patch now rejects missing/unreadable caption files clearly
+  and can recover complete observed Edge cues crossing narration-fragment
+  boundaries. Recovery requires exact whole-script equality and real ordered
+  timestamps; it never guesses timings or starts Whisper. The exact failed-job
+  cue stream was not retained, so its particular boundary is not asserted.
+  Seventeen stdlib-only shipped-patch regressions pass, with no provider/model
+  imports. Packaged activation and rollback now refresh only identity-verified
+  Phoenix-owned renderers to load the applied patch, without a local build or
+  stopping shared renderers/model servers. This is separately regression-tested.
+- Music source `7cb93d4` passed Windows run `38079857717`, and its hash-verified
+  bundle `.next-build-gh-38079857717-1` was staged. Activation stopped before any
+  service or selection changed because of that saved Story. This is not a live
+  music-update completion claim; the earlier verified runtime remains selected.
+
 ## October 11 automatic Instagram music — source preparation
 
 - Removed the manual music search/radio/track/volume panel from new Reel final

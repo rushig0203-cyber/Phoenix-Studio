@@ -1,4 +1,4 @@
-param([switch]$NoPause, [switch]$Rebuild, [switch]$NoBrowser)
+param([switch]$NoPause, [switch]$Rebuild, [switch]$NoBrowser, [switch]$RefreshOwnedRenderer)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'desktop-session.ps1')
 $phoenixRoot = Get-PhoenixCanonicalRoot (Join-Path $PSScriptRoot '..')
@@ -32,6 +32,11 @@ try {
         # Only registered Phoenix dependencies are stopped to free build memory.
         # Shared or independently started model/renderer servers remain untouched.
         $known += @(Read-PhoenixOwnedServices (Join-Path $phoenixRoot 'storage\private\service-ownership.json'))
+    } elseif ($RefreshOwnedRenderer) {
+        # A packaged update may change caption code imported by the renderer.
+        # Refresh only identity-verified registered renderers, without a build
+        # or stopping shared renderers and unrelated/registered model servers.
+        $known += @(Read-PhoenixOwnedServices (Join-Path $phoenixRoot 'storage\private\service-ownership.json') | Where-Object { $_.role -eq 'stock-renderer' })
     }
     $known = @(Add-PhoenixOwnedDescendants @($known | Where-Object { $_ }) @(Get-CimInstance Win32_Process))
     if ($known.Count) { Stop-PhoenixOwnedSession $known; $phoenixStopped = $true }

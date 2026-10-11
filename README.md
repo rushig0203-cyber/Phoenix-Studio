@@ -1,5 +1,20 @@
 # Phoenix Studio
 
+### Failed-job corrections — October 11
+
+Source transcription keeps resumable checkpoints in the job folder but creates
+disposable audio windows in short system-temp paths, avoiding the legacy Windows
+FFmpeg path limit. Stock narration can recover complete real Edge caption cues
+that span punctuation-split script fragments; full narration and valid timing
+must match. Missing captions report a specific error, not a directory-permission
+failure, and never trigger an unrequested transcription model.
+
+A stopped, untouched Story waiting on a failed Reel is not active uploading.
+Installation checks validate that dependency, file identities, leases and saved
+provider sessions without cancelling/retrying either request. Ordinary queued
+uploads and ambiguous states still block activation. Suitable-footage shortages
+remain explicit failures, not unrelated filler or fabricated completion.
+
 ### Automatic Instagram music — October 11 source update
 
 New footage Reel posting reviews no longer expose a manual music picker, search
@@ -19,8 +34,11 @@ choice and approval. No new model, paid service, music download or owner posting
 is involved. Instagram attaches selected catalog music at publishing; the local
 preview/download and companion Story keep the original MP4 audio.
 
-This source update still needs its exact-source Windows build and guarded live
-activation; the following RAM-release checkpoint remains the current runtime.
+The music update passed its exact-source Windows build and was staged, but an
+untouched Story waiting on a failed Reel blocked safe activation. Failed-job
+corrections are being verified together before a new guarded activation. The
+following RAM-release checkpoint remains the current runtime; staged source is
+not a claim that the music update is already live.
 
 Latest verified local RAM update: `.next-build-gh-38077285545-1`, production
 source `9f87212`. The off-laptop Windows build passed 692 regressions, lint,

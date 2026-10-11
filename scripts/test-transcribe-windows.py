@@ -192,6 +192,52 @@ class WindowTests(unittest.TestCase):
             self.assertEqual(harness.output.read_bytes(), before)
             self.assertIn("PHOENIX_STATUS:reusing-window-3-of-3", harness.statuses.getvalue())
 
+    def test_long_checkpoint_paths_use_short_audio_paths_and_preserve_resume(self):
+        for failure in [None, "fail_extract", "fail_inference"]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as root:
+                # Like the canonical Studio source folder, this keeps Python's
+                # checkpoint filename usable while a nested window.wav exceeds
+                # the legacy FFmpeg limit. No real decoder or model is invoked.
+                source_root = Path(root) / ("source-" + "x" * max(1, 150 - len(root) - 8))
+                source_root.mkdir()
+                short_temp = Path(root) / "short-temp"
+                short_temp.mkdir()
+                harness = TranscriptionHarness(source_root, 612)
+                previous_nested_wav = (harness.output.parent / f"{harness.output.name}.windows"
+                                       / ("0" * 64) / "audio-000000-00000000" / "window.wav")
+                self.assertGreaterEqual(len(str(previous_nested_wav)), 260)
+                original_extract = harness.extract
+
+                def legacy_ffmpeg_extract(source, destination, start, end):
+                    self.assertLess(len(str(destination)), 260, "legacy FFmpeg cannot open this WAV path")
+                    self.assertEqual(destination.parent.parent, short_temp)
+                    return original_extract(source, destination, start, end)
+
+                harness.extract = legacy_ffmpeg_extract
+                with patch.object(transcriber.tempfile, "tempdir", str(short_temp)):
+                    if failure:
+                        setattr(harness, failure, 2)
+                        with self.assertRaisesRegex(RuntimeError, "fake .* failure"):
+                            harness.run()
+                        self.assertFalse(harness.output.exists())
+                        self.assertEqual(len(harness.checkpoints()), 1)
+                        before = {path: path.read_bytes() for path in harness.checkpoints()}
+                        self.assertEqual(list(short_temp.iterdir()), [])
+                        setattr(harness, failure, None)
+                    else:
+                        before = {}
+                    harness.run()
+                    self.assertEqual(len(harness.checkpoints()), 3)
+                    for path, saved in before.items():
+                        self.assertEqual(path.read_bytes(), saved)
+                    self.assertEqual(list(short_temp.iterdir()), [])
+                    self.assertTrue(all(not path.parent.exists() for path, _, _ in harness.extractions))
+                    complete = harness.output.read_bytes()
+                    calls = len(harness.extractions)
+                    harness.run()
+                    self.assertEqual(harness.output.read_bytes(), complete)
+                    self.assertEqual(len(harness.extractions), calls)
+
     def test_interrupted_window_is_cleaned_and_resume_only_decodes_missing_windows(self):
         for failure in ["fail_extract", "fail_inference"]:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as root:

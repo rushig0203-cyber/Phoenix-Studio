@@ -6,6 +6,7 @@ $phoenixMutex = $null
 $phoenixOwnsMutex = $false
 . (Join-Path $PSScriptRoot 'startup-health.ps1')
 . (Join-Path $PSScriptRoot 'desktop-session.ps1')
+. (Join-Path $PSScriptRoot 'publication-idle.ps1')
 $phoenixRoot = Get-PhoenixCanonicalRoot (Join-Path $PSScriptRoot '..')
 $phoenixStorage = Join-Path $phoenixRoot 'storage'
 $phoenixOwnershipFile = Join-Path $phoenixStorage 'private\service-ownership.json'
@@ -67,6 +68,7 @@ function Assert-PhoenixReleaseIdle([string]$Root, $Health) {
         if ($uploads.Count -ne 1 -or $uploads[0].status -isnot [string] -or $uploads[0].status -notin @('QUEUED', 'UPLOADING', 'PROCESSING', 'COMPLETE', 'FAILED', 'NEEDS_CHECK')) {
             throw 'Cannot safely verify saved upload state for activation. Check its posting status; no process was stopped.'
         }
+        if ($uploads[0].status -eq 'QUEUED' -and (Test-PhoenixStoppedDependentStory $Root $file.FullName)) { continue }
         if ($uploads[0].status -in @('QUEUED', 'UPLOADING', 'PROCESSING')) {
             throw 'An approved channel upload is queued, active or awaiting confirmation. Check its posting status before activating the installed update; no process was stopped.'
         }

@@ -1,6 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Directory)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'desktop-session.ps1')
+. (Join-Path $PSScriptRoot 'publication-idle.ps1')
 $phoenixRoot = Get-PhoenixCanonicalRoot (Join-Path $PSScriptRoot '..')
 $phoenixMutex = New-Object Threading.Mutex($false, (Get-PhoenixLifecycleMutexName $phoenixRoot))
 $phoenixOwnsMutex = $false
@@ -28,6 +29,7 @@ function Assert-PhoenixInstallIdle {
         if ($file.Name -in @('instagram-posting-defaults.json','instagram-story-business.json')) { continue }
         $records = @(Read-PhoenixInstallState $file.FullName)
         if ($records.Count -ne 1 -or $records[0].status -isnot [string] -or $records[0].status -notin @('QUEUED','UPLOADING','PROCESSING','COMPLETE','FAILED','NEEDS_CHECK')) { throw 'Cannot safely verify saved upload state; no release was changed.' }
+        if ($records[0].status -eq 'QUEUED' -and (Test-PhoenixStoppedDependentStory $phoenixRoot $file.FullName)) { continue }
         if ($records[0].status -in @('QUEUED','UPLOADING','PROCESSING')) { throw 'An approved upload is queued or active; no release was changed.' }
     }
 }
@@ -52,7 +54,7 @@ try {
     & node (Join-Path $PSScriptRoot 'install-phoenix-build.cjs') select $Directory
     if ($LASTEXITCODE -ne 0) { throw 'Verified selection failed.' }
     $phoenixSelectionChanged = $true
-    & (Join-Path $PSScriptRoot 'restart-phoenix.ps1') -NoPause -NoBrowser
+    & (Join-Path $PSScriptRoot 'restart-phoenix.ps1') -NoPause -NoBrowser -RefreshOwnedRenderer
     # A startup warning is not success: require current selection and live health.
     if (-not (Test-PhoenixInstalledRelease $Directory)) { throw 'Candidate did not become a healthy live release.' }
     Write-Output "Verified live Phoenix release: $Directory"
@@ -61,7 +63,7 @@ try {
     if ($phoenixSelectionChanged -and $phoenixPrevious) {
         & node (Join-Path $PSScriptRoot 'install-phoenix-build.cjs') select $phoenixPrevious
         if ($LASTEXITCODE -eq 0) {
-            & (Join-Path $PSScriptRoot 'restart-phoenix.ps1') -NoPause -NoBrowser
+            & (Join-Path $PSScriptRoot 'restart-phoenix.ps1') -NoPause -NoBrowser -RefreshOwnedRenderer
             if (Test-PhoenixInstalledRelease $phoenixPrevious) { Write-Output 'Previous verified release restored; videos and jobs preserved.' }
         }
     }

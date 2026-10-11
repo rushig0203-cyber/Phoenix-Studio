@@ -6,7 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const project = path.resolve(__dirname, '..');
 
-function fixture(env = {}) {
+function fixture(env = {}, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-restart-fixture-'));
   const scripts = path.join(root, 'scripts'); fs.mkdirSync(scripts);
   fs.mkdirSync(path.join(root, 'storage')); fs.mkdirSync(path.join(root, '.next-verified'));
@@ -40,13 +40,18 @@ function fixture(env = {}) {
         [pscustomobject]@{ProcessId=41;CommandLine=$websiteCommand},
         [pscustomobject]@{ProcessId=42;CommandLine=($global:fixtureRoot+'\run-worker.js')},
         [pscustomobject]@{ProcessId=43;CommandLine='Registered renderer'},
-        [pscustomobject]@{ProcessId=44;CommandLine='Unregistered shared Ollama'}
+        [pscustomobject]@{ProcessId=44;CommandLine='Unregistered shared Ollama'},
+        [pscustomobject]@{ProcessId=45;CommandLine='Registered Ollama'}
       )
       if ($Filter) { $match=[regex]::Match($Filter, 'ProcessId = (\d+)'); return $snapshot | Where-Object {$_.ProcessId -eq [int]$match.Groups[1].Value} }
       return $snapshot
     }
     function Get-PhoenixProcessIdentity($Process, [string]$Role) { return [pscustomobject]@{pid=$Process.ProcessId;role=$Role} }
-    function Read-PhoenixOwnedServices([string]$Filename) { Record-Event 'read-ownership'; return [pscustomobject]@{pid=43;role='stock-renderer'} }
+    function Read-PhoenixOwnedServices([string]$Filename) {
+      Record-Event 'read-ownership'
+      [pscustomobject]@{pid=43;role='stock-renderer'}
+      if ($env:TEST_REGISTERED_MODEL -eq '1') { [pscustomobject]@{pid=45;role='ollama'} }
+    }
     function Add-PhoenixOwnedDescendants([object[]]$Known, [object[]]$Snapshot) { return $Known }
     function Stop-PhoenixOwnedSession([object[]]$Known) { Record-Event ('stop:'+($Known.pid -join ',')) }
     function node { param([Parameter(ValueFromRemainingArguments=$true)]$Arguments)
@@ -61,7 +66,8 @@ function fixture(env = {}) {
     $global:LASTEXITCODE=0
   `);
   try {
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, 'restart-phoenix.ps1'), '-Rebuild', '-NoBrowser', '-NoPause'], { cwd: root, windowsHide: true, encoding: 'utf8', timeout: 15000, env: { ...process.env, TEST_BUSY: '0', TEST_UNKNOWN_WEBSITE: '0', TEST_BUILD_THROW: '0', TEST_BUILD_EXIT: '0', ...env } });
+    const mode = options.refreshRenderer ? ['-RefreshOwnedRenderer'] : options.noBuild ? [] : ['-Rebuild'];
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, 'restart-phoenix.ps1'), ...mode, '-NoBrowser', '-NoPause'], { cwd: root, windowsHide: true, encoding: 'utf8', timeout: 15000, env: { ...process.env, TEST_BUSY: '0', TEST_UNKNOWN_WEBSITE: '0', TEST_BUILD_THROW: '0', TEST_BUILD_EXIT: '0', TEST_REGISTERED_MODEL: '0', ...env } });
     const eventsFile = path.join(root, 'events.txt');
     return { ...result, events: fs.existsSync(eventsFile) ? fs.readFileSync(eventsFile, 'utf8').split(/\r?\n/).filter(Boolean) : [] };
   } finally {
@@ -102,6 +108,32 @@ test('a thrown build invocation restores startup while the lifecycle mutex remai
   assert.equal(result.status, 1, result.stderr);
   assert.ok(result.events.includes('start:held=True'), result.events.join(','));
   assert.ok(result.events.indexOf('start:held=True') < result.events.indexOf('release'));
+});
+
+test('packaged renderer refresh stops only the registered renderer without building or stopping model services', { skip: process.platform !== 'win32' }, () => {
+  const result = fixture({ TEST_REGISTERED_MODEL: '1' }, { refreshRenderer: true });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.events.find(event => event.startsWith('stop:')), 'stop:42,41,43');
+  assert.ok(!result.events.includes('build'), result.events.join(','));
+  assert.ok(result.events.indexOf('acquire') < result.events.indexOf('stop:42,41,43'));
+  assert.ok(result.events.indexOf('start:held=True') < result.events.indexOf('release'));
+  const busy = fixture({ TEST_BUSY: '1', TEST_REGISTERED_MODEL: '1' }, { refreshRenderer: true });
+  assert.equal(busy.status, 1);
+  assert.ok(!busy.events.some(event => /^(stop|build|start|read-ownership)/.test(event)), busy.events.join(','));
+  const ordinary = fixture({ TEST_REGISTERED_MODEL: '1' }, { noBuild: true });
+  assert.equal(ordinary.status, 0, ordinary.stderr || ordinary.stdout);
+  assert.equal(ordinary.events.find(event => event.startsWith('stop:')), 'stop:42,41');
+  assert.ok(!ordinary.events.includes('build') && !ordinary.events.includes('read-ownership'));
+});
+
+test('packaged activation and rollback both request the scoped renderer refresh without rebuilding', () => {
+  const source = fs.readFileSync(path.join(project, 'scripts/activate-packaged-build.ps1'), 'utf8');
+  const calls = source.split(/\r?\n/).filter(line => line.includes("& (Join-Path $PSScriptRoot 'restart-phoenix.ps1')"));
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.match(call, /-NoPause -NoBrowser -RefreshOwnedRenderer/);
+    assert.doesNotMatch(call, /-Rebuild/);
+  }
 });
 
 test('update installer and restart scripts parse and derive the current canonical project root', { skip: process.platform !== 'win32' }, () => {
