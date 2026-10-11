@@ -1,6 +1,38 @@
 # Quality-first implementation — September 16, 2026
 
-## October 11 failed-job investigation — correction in progress
+## October 11 failed-job and music update — verified installed and live
+
+- Committed/pushed production source `968fc2685c5a90466e2d8cbe16652ea155ab9244`.
+  Public standard Windows run `38120224719` passed 719/719 Node regressions,
+  19/19 transcription and 17/17 shipped-caption Python checks, production lint,
+  real FFmpeg/adaptive and licensed public-Pexels render fixtures, TypeScript and
+  production compilation. Both Vercel Git contexts are green. No local compile
+  or owner-file transfer was used.
+- Downloaded draft release `409495347` was bound to that source and verified
+  asset/manifest/file hashes, Windows x64 Node 24.19.0 and installed dependencies.
+  Guarded activation selected `.next-build-gh-38120224719-1`; independent live
+  health/selection readback and BUILD_ID `A_aap7EaE9hGyBe5WoWEh` matched. The owned
+  renderer refreshed from PID 10436 to 18428; applied integration reverse-check
+  passed. Worker/manager are healthy and the heavy-work slot is idle.
+- All 29 current review/job/publication/credential metadata checksums remained
+  unchanged across activation. Existing owner failures were not retried, hidden,
+  deleted or converted to success. No video was published, new model started,
+  credential exposed or paid service added. Previous verified bundles remain
+  recoverable for rollback.
+- Live Butterflies automatic-music GET inspected 45 valid records across three
+  account catalog reads: no verified preferred/mood match, so the supported
+  result is saved MP4 audio (`local-music-replaced`), not an invented Meta song.
+  Browser reload showed the preserved six stopped failures and 16 library files;
+  console warnings/errors were empty. Both currently unposted library files
+  already have saved failed publication choices, so new automatic-review UI is
+  regression-tested, not falsely claimed as a newly submitted owner upload.
+  Existing Instagram code 110/subcode 2207018 remains a pre-container rejection;
+  its specific tag/caption cause is unproven and approved choices stay intact.
+- This update removes local compilation pressure; it does not create extra
+  physical RAM. Free memory still fluctuates and local rendering retains its
+  admission guard. Suitable-footage shortages remain explicit stopped failures.
+
+## October 11 failed-job investigation — correction details
 
 - The live dashboard's six attention items were inspected without retrying or
   deleting owner jobs. Three new episode/source jobs failed during audio-window

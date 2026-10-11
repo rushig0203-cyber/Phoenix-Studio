@@ -1,6 +1,14 @@
 # Phoenix Studio
 
-### Failed-job corrections — October 11
+### Failed-job corrections — October 11, verified live
+
+Current local release: `.next-build-gh-38120224719-1`, production source
+`968fc26`, BUILD_ID `A_aap7EaE9hGyBe5WoWEh`. The off-laptop Windows run passed
+719 Node regressions, 36 model-free Python regressions, lint, real FFmpeg/Pexels
+render checks, TypeScript and production compilation. Independent selection/live
+readback matched, and the manager, worker and refreshed owned renderer are ready.
+All 29 saved metadata/credential-file checksums stayed unchanged across activation.
+No owner job was retried or video published.
 
 Source transcription keeps resumable checkpoints in the job folder but creates
 disposable audio windows in short system-temp paths, avoiding the legacy Windows
@@ -34,13 +42,15 @@ choice and approval. No new model, paid service, music download or owner posting
 is involved. Instagram attaches selected catalog music at publishing; the local
 preview/download and companion Story keep the original MP4 audio.
 
-The music update passed its exact-source Windows build and was staged, but an
-untouched Story waiting on a failed Reel blocked safe activation. Failed-job
-corrections are being verified together before a new guarded activation. The
-following RAM-release checkpoint remains the current runtime; staged source is
-not a claim that the music update is already live.
+Automatic music is included in the current release. A read-only live lookup for
+Butterflies inspected 45 valid account-catalog records but found no verified
+preferred/mood match: this is a saved-MP4-audio fallback, not a claim that Meta
+selected a song. Existing approved requests keep their original choices. The
+browser still truthfully displays the six stopped failures and an existing
+Instagram container rejection (code 110/subcode 2207018, before video transfer);
+activation does not retry it or silently change approved usernames/caption.
 
-Latest verified local RAM update: `.next-build-gh-38077285545-1`, production
+Previous verified local RAM checkpoint: `.next-build-gh-38077285545-1`, production
 source `9f87212`. The off-laptop Windows build passed 692 regressions, lint,
 real FFmpeg/Pexels render checks and full TypeScript. Selected/served bundle and
 worker/manager health matched after activation; saved videos/jobs were preserved.
