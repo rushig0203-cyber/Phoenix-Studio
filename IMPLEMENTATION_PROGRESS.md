@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 11 compact job list — source update, not yet activated
+## October 11 compact job list — verified installed and live
 
 - Preparation and render/source/edit histories use the existing shared queue
   order and eight-row paging in one compact list. Removed the separate nested
@@ -14,8 +14,27 @@
   React rerenders. Draft actions keep version/409 and single-request protections.
 - Focused real-handler/UI/monitor regressions pass 46/46; changed-component lint
   passes. Added chronological cross-phase ordering, dates/disclosure, active
-  deletion, queued-cancellation wording and duplicate-action tests. Full remote
-  build and guarded activation are still pending; owner jobs/media are untouched.
+  deletion, queued-cancellation wording and duplicate-action tests.
+- Public standard Windows run `38146723974` passed 761/761 Node plus 19/19
+  transcription and 17/17 timed-caption Python checks, changed-interface lint,
+  real FFmpeg/adaptive and licensed public-Pexels fixtures, full TypeScript and
+  production compilation. Both Vercel Git checks are green for production source
+  `2a155724e1609260d02ca747849e10e6e7e95983`.
+- Draft release `409716594` archive/manifest/file hashes, source and installed
+  dependency versions were checked before guarded activation selected
+  `.next-build-gh-38146723974-1`. Independent live/selection checks and BUILD_ID
+  `P4En3h5JqWNGEJ__P-Bgq` match; website, manager, worker and owned renderer are
+  healthy/ready, the integration reverse-check passes and heavy work is idle.
+- All 29 pre-install metadata/credential hashes and 87 output sizes/timestamps
+  remain unchanged. The six previously displayed failures were already archived
+  at 14:03 UTC before this update's baseline; no archive was removed or restored
+  by installation. Live APIs show 25 completed jobs and no active/visible failed
+  jobs. Browser inspection verified compact closed rows, local dates, Delete and
+  name-click output details; console warning/error scan is empty. Recover branches
+  use isolated mocked failed-job/version-conflict tests, not owner job retries.
+- Ponytail kept this UI-only; no failed owner job was retried, video posted,
+  source/media deleted, local build/model started or paid service added. Deleted
+  history restoration is not implemented or claimed; RAM guards stay intact.
 
 ## October 11 backend cleanup — verified installed and live
 

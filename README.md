@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Compact job list — October 11, source update awaiting activation
+### Compact job list — October 11, verified live
 
 Preparation and rendering now share one small chronological list rather than
 separate large boxes. Each row shows the name, creation date/time, Delete and
@@ -11,9 +11,19 @@ Recover is the existing explicit failed-job retry, not restoration of deleted
 history; failed edits open their saved editor. Delete removes history and retains
 videos; deleting a queued entry cancels that pending job. Active work cannot be
 deleted, and rapid Delete/Recover clicks cannot submit conflicting queue actions.
-The focused UI/monitor regression run passes 46/46 and lint passes. No owner job
-was retried, deleted or posted. The following release remains live until the
-new production bundle is independently verified and activated.
+The focused UI/monitor regression run passes 46/46 and lint passes. Public Windows
+run `38146723974` passed 761 Node and 36 model-free Python checks, render fixtures,
+lint, full TypeScript and production compilation. Both Vercel Git checks are green.
+
+Current release: `.next-build-gh-38146723974-1`, production source `2a15572`,
+BUILD_ID `P4En3h5JqWNGEJ__P-Bgq`. Verified archive/source/dependency/file hashes
+preceded guarded activation; independent selected/live checks match. Website,
+manager, worker and renderer are healthy. All 29 pre-install metadata/credential
+checksums and 87 output sizes/timestamps stayed unchanged. Browser inspection
+confirmed closed compact rows and name-click details, with no console warnings
+or errors. Recover is tested with isolated failed-job fixtures, not owner retries.
+This Ponytail-guided change is presentation-only, not a Windows RAM fix. No owner
+job was retried, deleted or posted, no local build/model or paid service was added.
 
 ### Backend cleanup — October 11, verified live
 
@@ -23,7 +33,7 @@ credentials, uploader, queue recovery and disabled legacy-route guards are kept.
 Idle generation checks no longer rewrite unchanged job history; real updates and
 legacy migration still persist. Startup uses one shared website identity check.
 
-Current release: `.next-build-gh-38144600674-1`, production source `975f8e0`,
+Backend cleanup release: `.next-build-gh-38144600674-1`, production source `975f8e0`,
 BUILD_ID `oOJNWSsu_U8UCZoCu9v1E`. Free public Windows verification passed 741 Node
 and 36 model-free Python checks, lint, real FFmpeg/Pexels fixtures, TypeScript and
 production compilation. The selected and served bundle match; website, manager,
