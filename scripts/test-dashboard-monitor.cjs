@@ -375,6 +375,12 @@ test('legacy Jobs and storyboards bookmarks show only the inline list under Crea
     global.window.location.hash = '#library'; await h.event('hashchange');
   }
   assert.deepEqual(h.scrolls, [{ id: 'jobs', block: 'start' }, { id: 'jobs', block: 'start' }]);
+  global.window.location.hash = '#create'; await h.event('hashchange');
+  for (const hash of ['#storyboards', '#jobs', '#storyboards']) {
+    global.window.location.hash = hash; await h.event('hashchange');
+    assert.equal(nodes(h.tree, node => node.props?.['aria-label'] === 'Jobs and progress').length, 1);
+  }
+  assert.equal(h.scrolls.length, 5, 'Anchor navigation still scrolls when Create is already selected');
 });
 
 test('a playing review preview and its selected queue tab are not replaced by another job completing', async t => {

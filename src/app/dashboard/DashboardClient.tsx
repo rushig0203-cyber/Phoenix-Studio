@@ -97,7 +97,8 @@ export default function DashboardClient() {
   useEffect(() => {
     const sync = () => {
       setSection(studioSection(window.location.hash));
-      if (!["#jobs", "#storyboards"].includes(window.location.hash)) window.scrollTo(0, 0);
+      if (["#jobs", "#storyboards"].includes(window.location.hash)) document.getElementById("jobs")?.scrollIntoView({ block: "start" });
+      else window.scrollTo(0, 0);
     };
     sync(); window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
