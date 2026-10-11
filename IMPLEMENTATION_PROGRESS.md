@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 11 backend cleanup — source and focused checks ready
+## October 11 backend cleanup — verified installed and live
 
 - Removed seven modules with no tracked callers, dynamic imports or test/config
   consumers: obsolete cloud storage/quota and publishing/scheduler stubs, unused
@@ -8,15 +8,32 @@
   review uploader, local media storage and explicit 410 legacy-route guards stay.
   Removed unused libSQL client/adapter and redundant bcrypt type dependencies;
   lock regeneration pruned 23 entries, adding none and changing no package version.
+  Local package pruning removed 15 installed packages; clean remote installation
+  succeeded. Source deletions remain recoverable in Git, dependencies via npm.
 - Idle generation claims no longer rewrite an unchanged job store. Locking,
   atomic replacement, interrupted-render recovery and heavy-work admission remain.
   Legacy queuedAt migration still persists once; read-only listings do not write.
   Startup reuses the existing identity-checked website probe instead of a duplicate.
 - The serial queue, model-wait, resource, worker, startup, Desktop and release
   regression run passes 55/55, including exact-byte/mtime idle preservation,
-  legacy migration and real mutation checks. Full Windows compilation/installation
-  is still pending; the previous verified bundle remains live. No owner files,
-  saved jobs, credentials or approved posting choices were removed or retried.
+  legacy migration and real mutation checks. Public standard Windows run
+  `38144600674` passed 741/741 Node and 36/36 model-free Python checks, lint,
+  real FFmpeg/adaptive and public licensed-Pexels fixtures, full TypeScript and
+  production compilation. Both Vercel Git checks are green for source
+  `975f8e0b5b06f8bcd14b5b134f7c33179942ae54`.
+- Draft release `409698482` and its downloaded manifest/archive/file hashes were
+  verified against that exact source and installed dependency versions. Guarded
+  activation selected `.next-build-gh-38144600674-1`; independent live/selection
+  readback and BUILD_ID `oOJNWSsu_U8UCZoCu9v1E` matched. Website, worker, manager
+  and owned renderer are ready; integration reverse-check passes.
+- All 29 saved review/job/publication/credential checksums remained identical;
+  all 87 indexed output files retained their sizes and modification timestamps.
+  Live APIs still expose 17 review files, 4 generation jobs and 25 source jobs;
+  the reloaded browser retains six stopped failures and no active jobs. Instagram
+  remains connected/publish-ready; YouTube remains disconnected, not fabricated
+  as fixed. Live idle job-store modification time stays unchanged across polls.
+  No failed owner job was retried, deleted or posted, and no local compile/model
+  startup or paid service was added. Previous verified bundles remain recoverable.
 - This cleanup removes dead maintenance surface and avoidable disk writes; it
   does not claim additional physical RAM or that all existing failures are fixed.
 

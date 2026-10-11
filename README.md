@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Backend cleanup — October 11
+### Backend cleanup — October 11, verified live
 
 Removed unused cloud-storage/publishing stubs, superseded credential helpers and
 unused libSQL/bcrypt-type dependencies. Working local storage, protected channel
@@ -8,14 +8,22 @@ credentials, uploader, queue recovery and disabled legacy-route guards are kept.
 Idle generation checks no longer rewrite unchanged job history; real updates and
 legacy migration still persist. Startup uses one shared website identity check.
 
-Focused serial regressions pass 55/55. Full Windows release verification and
-activation are pending; the verified release below remains live. No videos, saved
-jobs or credentials were deleted, and no failed owner job was retried. Removing
-unused modules is maintenance cleanup, not a claim to solve Windows-wide RAM use.
+Current release: `.next-build-gh-38144600674-1`, production source `975f8e0`,
+BUILD_ID `oOJNWSsu_U8UCZoCu9v1E`. Free public Windows verification passed 741 Node
+and 36 model-free Python checks, lint, real FFmpeg/Pexels fixtures, TypeScript and
+production compilation. The selected and served bundle match; website, manager,
+worker and renderer are ready. Both Vercel Git checks are green.
+
+All 29 saved metadata/credential checksums and 87 output-file sizes/timestamps
+are unchanged. No videos, saved jobs or credentials were deleted, and no failed
+owner job was retried or published. Fifteen unused installed packages were pruned;
+source deletions are recoverable in Git. This Ponytail-guided cleanup reduces dead
+maintenance paths and unnecessary disk writes, not Windows-wide RAM use. Instagram
+remains connected; YouTube remains disconnected. No paid service was added.
 
 ### Failed-job corrections — October 11, verified live
 
-Current local release: `.next-build-gh-38120224719-1`, production source
+Previous failed-job correction release: `.next-build-gh-38120224719-1`, source
 `968fc26`, BUILD_ID `A_aap7EaE9hGyBe5WoWEh`. The off-laptop Windows run passed
 719 Node regressions, 36 model-free Python regressions, lint, real FFmpeg/Pexels
 render checks, TypeScript and production compilation. Independent selection/live
