@@ -1,5 +1,18 @@
 # Phoenix Studio
 
+### Backend cleanup — October 11
+
+Removed unused cloud-storage/publishing stubs, superseded credential helpers and
+unused libSQL/bcrypt-type dependencies. Working local storage, protected channel
+credentials, uploader, queue recovery and disabled legacy-route guards are kept.
+Idle generation checks no longer rewrite unchanged job history; real updates and
+legacy migration still persist. Startup uses one shared website identity check.
+
+Focused serial regressions pass 55/55. Full Windows release verification and
+activation are pending; the verified release below remains live. No videos, saved
+jobs or credentials were deleted, and no failed owner job was retried. Removing
+unused modules is maintenance cleanup, not a claim to solve Windows-wide RAM use.
+
 ### Failed-job corrections — October 11, verified live
 
 Current local release: `.next-build-gh-38120224719-1`, production source

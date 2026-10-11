@@ -1,5 +1,25 @@
 # Quality-first implementation — September 16, 2026
 
+## October 11 backend cleanup — source and focused checks ready
+
+- Removed seven modules with no tracked callers, dynamic imports or test/config
+  consumers: obsolete cloud storage/quota and publishing/scheduler stubs, unused
+  limiter, and superseded secret/OAuth helpers. The active channel vault, OAuth,
+  review uploader, local media storage and explicit 410 legacy-route guards stay.
+  Removed unused libSQL client/adapter and redundant bcrypt type dependencies;
+  lock regeneration pruned 23 entries, adding none and changing no package version.
+- Idle generation claims no longer rewrite an unchanged job store. Locking,
+  atomic replacement, interrupted-render recovery and heavy-work admission remain.
+  Legacy queuedAt migration still persists once; read-only listings do not write.
+  Startup reuses the existing identity-checked website probe instead of a duplicate.
+- The serial queue, model-wait, resource, worker, startup, Desktop and release
+  regression run passes 55/55, including exact-byte/mtime idle preservation,
+  legacy migration and real mutation checks. Full Windows compilation/installation
+  is still pending; the previous verified bundle remains live. No owner files,
+  saved jobs, credentials or approved posting choices were removed or retried.
+- This cleanup removes dead maintenance surface and avoidable disk writes; it
+  does not claim additional physical RAM or that all existing failures are fixed.
+
 ## October 11 failed-job and music update — verified installed and live
 
 - Committed/pushed production source `968fc2685c5a90466e2d8cbe16652ea155ab9244`.

@@ -13,11 +13,6 @@ $phoenixOwnershipFile = Join-Path $phoenixStorage 'private\service-ownership.jso
 $phoenixDesktopSession = Join-Path $phoenixStorage 'private\desktop-session.json'
 $script:phoenixOwnedServices = @()
 
-function Test-PhoenixHttp([string]$Url) {
-    try { $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3; return $response.StatusCode -eq 200 -and $response.Content.Contains('Phoenix Studio') }
-    catch { return $false }
-}
-
 function Test-PhoenixPort([int]$Port) {
     return @((Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)).Count -gt 0
 }
@@ -168,7 +163,7 @@ try {
                 $workerId = 0
                 try { $workerId = (Get-Content -LiteralPath $heartbeatFile -Raw | ConvertFrom-Json).pid } catch { }
                 $existingWorker = @($script:phoenixOwnedServices | Where-Object { $_.role -eq 'worker' -and $_.pid -eq $workerId }) | Select-Object -First 1
-                $allReady = (Test-PhoenixHttp $phoenixUrl) -and $existingWorker -and (Test-PhoenixWorkerHeartbeat $heartbeatFile $workerId) -and (Test-PhoenixServiceHttp ($phoenixConfig.backendUrl + '/openapi.json') 'renderer')
+                $allReady = (Test-PhoenixServiceHttp $phoenixUrl 'website') -and $existingWorker -and (Test-PhoenixWorkerHeartbeat $heartbeatFile $workerId) -and (Test-PhoenixServiceHttp ($phoenixConfig.backendUrl + '/openapi.json') 'renderer')
                 if ($phoenixNeedsOllama) { $allReady = $allReady -and (Test-PhoenixServiceHttp 'http://127.0.0.1:11434/api/tags' 'ollama') }
                 $currentBuildMatches = $false
                 try {
@@ -237,7 +232,7 @@ try {
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        if (Test-PhoenixHttp $phoenixUrl) { $ready = $true; break }
+        if (Test-PhoenixServiceHttp $phoenixUrl 'website') { $ready = $true; break }
         Start-Sleep -Milliseconds 750
     }
     if (-not $ready) { throw "Phoenix did not become ready on port 3000. Check the newest website log in $phoenixStorage. An existing port owner was not stopped." }

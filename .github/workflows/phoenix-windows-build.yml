@@ -79,6 +79,8 @@ jobs:
           scripts/test-cloudflare-vision.cjs
           scripts/test-draft-planning-admission.cjs
           scripts/test-worker-workflows.cjs
+          scripts/test-queue-history.cjs
+          scripts/test-model-queue-waits.cjs
           scripts/test-render-resources.cjs
           scripts/test-local-model-resources.cjs
           scripts/test-dashboard-monitor.cjs
@@ -92,6 +94,7 @@ jobs:
           scripts/test-posting-snapshot-order.cjs
           scripts/test-groq-writer.cjs
           scripts/test-startup.cjs
+          scripts/test-desktop-session.cjs
           scripts/test-automatic-stock-reel.cjs
           scripts/test-automatic-stock-pool.cjs
           scripts/test-stock-catalog-paging.cjs
@@ -111,6 +114,7 @@ jobs:
         run: >-
           npx --no-install eslint
           src/lib/reelMusic.ts src/lib/postingEvidence.ts
+          src/lib/generation.ts
           src/lib/videoPostingAnalysis.ts src/lib/postingCopyPolicy.ts
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx

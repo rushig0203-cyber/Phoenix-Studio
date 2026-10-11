@@ -14,7 +14,7 @@ import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, checkStockScript } from "./stockBrief";
-import { createStockStoryboard, readStockShots, type StockBeat } from "./stockStoryboard";
+import { readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { getCreativeGuidance } from "./qualityManager";
 import type { CreativeGuidance } from "./managerTypes";
@@ -205,7 +205,7 @@ async function readJobsUnlocked(): Promise<LocalGenerationJob[]> {
   await ensureJobsFile();
   const parsed = JSON.parse(await fs.readFile(jobsPath, "utf8"));
   if (!Array.isArray(parsed)) throw new Error("Local AI job store must contain a JSON array.");
-  return parsed.map((job) => ({ ...job, queuedAt: job.queuedAt || job.createdAt }));
+  return parsed;
 }
 
 async function writeJobsUnlocked(jobs: LocalGenerationJob[]) {
@@ -229,8 +229,10 @@ async function writeJobsUnlocked(jobs: LocalGenerationJob[]) {
 async function mutateJobs<T>(mutation: (jobs: LocalGenerationJob[]) => Promise<T> | T) {
   return withFileLock(jobsLockPath, async () => {
     const jobs = await readJobsUnlocked();
+    const before = JSON.stringify(jobs);
+    for (const job of jobs) job.queuedAt ||= job.createdAt;
     const result = await mutation(jobs);
-    await writeJobsUnlocked(jobs);
+    if (JSON.stringify(jobs) !== before) await writeJobsUnlocked(jobs);
     return result;
   });
 }
@@ -281,7 +283,8 @@ function withTiming(job: LocalGenerationJob): LocalGenerationJob {
 }
 
 export async function listGenerationJobs(): Promise<LocalGenerationJob[]> {
-  return (await readJobsUnlocked()).filter((job) => !job.archivedAt).map(withTiming);
+  return (await readJobsUnlocked()).filter((job) => !job.archivedAt)
+    .map((job) => withTiming({ ...job, queuedAt: job.queuedAt || job.createdAt }));
 }
 
 /** Keep a tombstone so stale retries and duplicate submissions cannot restore removed jobs. */

@@ -23,6 +23,10 @@ test('Windows startup scripts parse and service checks require identity and read
     if (-not (Test-PhoenixNeedsOllama 'ollama')) { throw 'Local writer no longer requests Ollama' }
     function Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing, $TimeoutSec) return [pscustomobject]@{StatusCode=200; Content=$script:fakeContent} }
     $script:fakeContent = '{}'
+    if (Test-PhoenixServiceHttp 'http://localhost' 'website') { throw 'Unrelated website accepted' }
+    $script:fakeContent = '<title>Phoenix Studio</title>'
+    if (-not (Test-PhoenixServiceHttp 'http://localhost' 'website')) { throw 'Phoenix website rejected' }
+    $script:fakeContent = '{}'
     if (Test-PhoenixServiceHttp 'http://localhost' 'renderer') { throw 'Unrelated HTTP service accepted' }
     $script:fakeContent = '{"models":[]}'
     if (-not (Test-PhoenixServiceHttp 'http://localhost' 'ollama')) { throw 'Ollama inventory rejected' }
@@ -43,6 +47,8 @@ test('normal start and developer start include local dependency startup', () => 
   assert.match(pkg.scripts.dev, /run-worker.js/);
   const launcher = fs.readFileSync(path.join(project, 'scripts/start-phoenix.ps1'), 'utf8');
   assert.match(launcher, /Test-PhoenixWorkerHeartbeat/); assert.match(launcher, /launch-config.cjs/);
+  assert.doesNotMatch(launcher, /Test-PhoenixHttp/);
+  assert.equal((launcher.match(/Test-PhoenixServiceHttp \$phoenixUrl 'website'/g) || []).length, 2);
   assert.match(launcher, /PYTHONIOENCODING = 'utf-8'/); assert.match(launcher, /WindowStyle Hidden/);
   assert.match(launcher, /PHOENIX_RENDER_THREADS = '1'/);
   assert.match(launcher, /PHOENIX_TRANSCRIBE_THREADS = '1'/);

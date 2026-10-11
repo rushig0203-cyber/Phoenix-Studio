@@ -105,6 +105,51 @@ beforeEach(() => {
   write(reviewPath, []);
 });
 
+function jobStoreSnapshot() {
+  return {
+    hash: crypto.createHash('sha256').update(fs.readFileSync(aiPath)).digest('hex'),
+    mtime: fs.statSync(aiPath, { bigint: true }).mtimeNs,
+  };
+}
+
+test('idle generation claims preserve exact job bytes and disk modification time', async () => {
+  for (const saved of [[], [job('COMPLETED')], [job('FAILED')], [{ ...job('QUEUED'), nextAttemptAt: new Date(Date.now() + 60_000).toISOString() }]]) {
+    write(aiPath, saved);
+    fs.utimesSync(aiPath, new Date('2020-01-01'), new Date('2020-01-01'));
+    const before = jobStoreSnapshot();
+    await ai.pollGenerationJobs();
+    assert.deepEqual(jobStoreSnapshot(), before);
+    assert.equal(await ai.processNextGenerationJob(), null);
+    assert.deepEqual(jobStoreSnapshot(), before);
+  }
+});
+
+test('an idle legacy job persists queuedAt migration once, without rewriting later polls', async () => {
+  const legacy = job('COMPLETED');
+  delete legacy.queuedAt;
+  write(aiPath, [legacy]);
+  assert.equal((await ai.listGenerationJobs())[0].queuedAt, legacy.createdAt);
+  assert.equal(read(aiPath)[0].queuedAt, undefined, 'Listing alone stays read-only');
+  await ai.pollGenerationJobs();
+  assert.equal(read(aiPath)[0].queuedAt, legacy.createdAt);
+  const migrated = jobStoreSnapshot();
+  await ai.pollGenerationJobs();
+  assert.deepEqual(jobStoreSnapshot(), migrated);
+});
+
+test('real generation mutations persist, but repeat removal does not rewrite the tombstone', async () => {
+  const queued = job('QUEUED');
+  write(aiPath, [queued]);
+  const before = jobStoreSnapshot();
+  await ai.removeGenerationJob(queued.id);
+  assert.notEqual(jobStoreSnapshot().hash, before.hash);
+  assert.equal(read(aiPath)[0].status, 'CANCELLED');
+  assert.ok(read(aiPath)[0].archivedAt);
+  const removed = jobStoreSnapshot();
+  await ai.removeGenerationJob(queued.id);
+  assert.deepEqual(jobStoreSnapshot(), removed);
+});
+
 test("cancelled AI job is hidden, persists, never starts, and cannot be restored by retry or duplicate request", async () => {
   const queued = job("QUEUED");
   write(aiPath, [queued]);
