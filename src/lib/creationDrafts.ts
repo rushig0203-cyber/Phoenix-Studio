@@ -177,6 +177,12 @@ export async function changeDraftStatus(id: string, version: number, action: "re
     if (action === "finish" || action === "retry") draft.input.reviewMode = "final";
     if (action === "retry" && draft.input.kidsStoryAttempt?.repairAttempted) draft.input.kidsStoryAttempt.repairAttempted = false;
     if (action === "retry" && draft.input.creativeBriefAttempt?.repairAttempted) draft.input.creativeBriefAttempt.repairAttempted = false;
+    if (action === "retry" && isStockDraft(draft) && draft.input.scriptOrigin === "local-model" && !draft.input.scriptApproved && draft.input.editorialCheckpoint?.phase === "final-review") {
+      const rejected = draft.input.editorialCheckpoint;
+      // An unchanged repair may have older passing findings; invalidate both caches, not their history.
+      draft.input.editorialAttempts = [...(draft.input.editorialAttempts || []), ...(["initial-review", "final-review"] as const).map(phase => ({ at: new Date().toISOString(), fingerprint: rejected.fingerprint, script: rejected.script, phase, findings: [], error: "Explicit retry invalidated failed final review; fresh check required." }))].slice(-20);
+      draft.input.editorialCheckpoint = undefined;
+    }
     draft.status = action === "archive" ? "ARCHIVED" : "QUEUED";
     draft.stage = action === "archive" ? "Draft archived; saved media retained" : "Queued to resume planning";
     draft.version++; draft.updatedAt = new Date().toISOString(); draft.error = undefined;

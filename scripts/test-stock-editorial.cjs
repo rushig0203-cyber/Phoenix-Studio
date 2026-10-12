@@ -122,6 +122,93 @@ test('oversized generated rewrite receives one length correction and a full re-r
   assert.equal(bounded(), 4, 'no endless length repairs or silent truncation');
 });
 
+test('a complete concise generated script with all semantic checks passing gets a shorter plan, not filler or another model call', async () => {
+  const input = { ...brief, duration: 75, scriptOrigin: 'local-model', creationType: 'general' };
+  const count = responses([verdict()]);
+  const stages = [], completed = [];
+  const result = await editor.editStockNarration(input, async stage => stages.push(stage), async()=>{}, async(checkpoint, saved)=>{
+    assert.equal(checkpoint, undefined); completed.push(saved);
+  });
+  const words = script.match(/\b[\p{L}\p{N}'-]+\b/gu).length;
+  const duration = Math.floor(words / 2.2);
+  assert.equal(count(), 1); assert.equal(result.script, script); assert.equal(input.duration, 75);
+  assert.equal(completed.length, 1); assert.equal(completed[0].duration, duration);
+  assert.ok(duration >= 20 && duration < 75);
+  assert.equal(result.editorial.fingerprint, editor.editorialFingerprint({ ...input, duration }));
+  assert.ok(result.editorial.findings.every(item=>item.passed));
+  assert.ok(stages.some(stage=>stage.includes('instead of padding')));
+  assert.ok(result.editorial.checks.some(check=>check.includes('final speech duration is measured')));
+});
+
+test('concise adaptation cannot override a failed meaning check, incomplete ending, owner approval or children duration', async () => {
+  const bad = verdict({ topicAnswer: { passed:false, evidence:'', reason:'The actual opening promise has not been answered.' } });
+  let calls = responses([bad, {script}, {script}, bad]);
+  await assert.rejects(editor.editStockNarration({ ...brief, duration:75, scriptOrigin:'local-model' }), /opening promise/);
+  assert.equal(calls(), 4);
+  for (const change of [{scriptApproved:true}, {creationType:'children-story'}, {creationType:'children-song'}, {scriptOrigin:'owner'}, {script:script.slice(0,-1)}]) {
+    calls = responses([verdict(), {script:change.script||script}, {script:change.script||script}, verdict()]);
+    await assert.rejects(editor.editStockNarration({ ...brief, duration:75, scriptOrigin:'local-model', ...change }), /words|complete ending/);
+    assert.equal(calls(),4);
+  }
+});
+
+test('concise adaptation keeps enough narration for the independent natural-speed stock duration floor', async () => {
+  const short = script.split(/\s+/).slice(0,50).join(' ') + '.';
+  const count = responses([verdict(), {script:short}, {script:short}, verdict()]);
+  await assert.rejects(editor.editStockNarration({ ...brief, duration:75, script:short, scriptOrigin:'local-model' }), /words/);
+  assert.equal(count(),4);
+});
+
+test('concise duration is persisted by generation before later visual planning and cached approval needs no writer', async () => {
+  const input = { ...brief, duration:75, scriptOrigin:'local-model', creationType:'general', language:'English', aspect:'9:16' };
+  const count = responses([verdict()]); const saved = [];
+  const result = await createStockScript(input, async()=>saved.push(JSON.parse(JSON.stringify(input))));
+  assert.equal(result,script); assert.equal(count(),1);
+  assert.equal(input.requestedDuration,75); assert.ok(input.duration < 75 && input.duration >=20);
+  const checkpoint = saved.find(item=>item.editorial);
+  assert.ok(checkpoint); assert.equal(checkpoint.duration,input.duration); assert.equal(checkpoint.requestedDuration,75);
+  assert.equal(checkpoint.editorialCheckpoint,undefined);
+  assert.equal((await createStockScript(input)),script); assert.equal(count(),1);
+});
+
+test('shared preparation sizes the exact footage to the accepted concise narration, not the old request', async t => {
+  const storyboard = require('../src/lib/stockStoryboard.ts');
+  const catalog = require('../src/lib/stockCatalog.ts');
+  const { prepareStockCreation } = require('../src/lib/stockPreparation.ts');
+  const input = { ...brief, duration:75, scriptOrigin:'local-model', creationType:'general', language:'English', aspect:'9:16' };
+  const count = responses([verdict()]); const snapshots = [];
+  t.mock.method(storyboard,'createStockStoryboard',async saved => {
+    assert.ok(saved.duration < 75); assert.equal(saved.requestedDuration,75);
+    const words = saved.script.split(/\s+/), middle = Math.ceil(words.length/2);
+    return [words.slice(0,middle),words.slice(middle)].map(part=>({narration:part.join(' '),query:'organizing drawer'}));
+  });
+  t.mock.method(catalog,'searchFootage',async()=>[101,102].map(id=>({id,duration:30,width:720,height:1280,sourcePage:`https://www.pexels.com/video/organizing-drawer-${id}/`,creator:'Fixture',previewUrl:'https://images.pexels.com/fixture.jpeg',downloadUrl:`https://videos.pexels.com/${id}.mp4`})));
+  const result = await prepareStockCreation(input,[],async saved=>snapshots.push(structuredClone(saved)));
+  assert.equal(count(),1); assert.equal(result.input.script,script);
+  assert.equal(result.input.requestedDuration,75); assert.equal(result.input.duration,Math.floor(script.match(/\b[\p{L}\p{N}'-]+\b/gu).length/2.2));
+  assert.deepEqual(result.input.storyboard.map(beat=>beat.assetId),[101,102]);
+  assert.ok(snapshots.some(saved=>saved.editorial && saved.duration===result.input.duration));
+  assert.equal(result.scenes.map(scene=>scene.narration).join(' '),script);
+});
+
+test('generation re-entry saves its displayed duration together with the concise request before further work', async () => {
+  const source = fs.readFileSync(path.join(project,'src/lib/generation.ts'),'utf8');
+  const start = source.slice(source.indexOf('async function startStockJob('),source.indexOf('async function retryOrFail('));
+  assert.ok(start.includes('prepareStockCreation'));
+  const code = require('typescript').transpileModule(start,{compilerOptions:{target:require('typescript').ScriptTarget.ES2022}}).outputText;
+  const updates = [], saved = {duration:45,requestedDuration:75,script};
+  const context = {
+    existingReadyOutput:async()=>false,generatorReachable:async()=>true,requireStockStoryboardRenderer:async()=>{},
+    updateJob:async(id,update)=>updates.push({id,...update}),
+    prepareStockCreation:async(_input,_scenes,checkpoint)=>{await checkpoint(saved,[],'Narration accepted');throw new Error('Fixture stops before rendering');},
+  };
+  require('node:vm').runInNewContext(code,context);
+  await assert.rejects(context.startStockJob({id:'fixture'},{duration:75}),/Fixture stops/);
+  const checkpoint = updates.find(update=>update.requestJson);
+  assert.equal(checkpoint.duration,45); assert.equal(checkpoint.requestedDuration,75);
+  assert.equal(JSON.parse(checkpoint.requestJson).duration,45);
+});
+
 test('provider, configuration and quota errors are never retried as review corrections', async () => {
   const writer = require('../src/lib/writingModel.ts');
   const { WritingWaitError, WritingConfigurationError } = require('../src/lib/groqWriter.ts');

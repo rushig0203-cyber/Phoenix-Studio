@@ -124,6 +124,62 @@ test('failed automatic selection retains earlier scenes and retry resumes withou
   assert.equal((await generation.listGenerationJobs()).length, 1);
 });
 
+test('explicit recovery invalidates passing initial and rejected final stock reviews before adapting concise narration', async () => {
+  const editor = require('../src/lib/stockEditorial.ts');
+  const savedScript = 'Start with one small task you can finish before moving to the next. Suppose a kitchen drawer holds loose spoons beside cups and folded towels. Choose that drawer rather than promising to organize the whole room. Place the spoons in a tray and leave the towels together on the other side. Move only the objects needed for this task, so the work does not expand into every cupboard. When the drawer closes without catching, check what still needs a home. Write that as a separate task for another day. You now have a clear result and a sensible stopping point.';
+  const [draft] = await drafts.createCreationDrafts([{ ...input(), topic: 'Organize one kitchen drawer', duration: 75, script: savedScript, scriptOrigin: 'local-model' }]);
+  assert.match(require('../src/lib/stockBrief.ts').stockNarrationError(savedScript, 75), /words/);
+  const criteria = ['topicAnswer', 'directOpening', 'consistentFacts', 'causalOrder', 'specificTakeaway', 'filmableActions'];
+  const verdict = passed => Object.fromEntries(criteria.map(criterion => [criterion, { passed: passed || criterion !== 'causalOrder', evidence: passed || criterion !== 'causalOrder' ? 'E1' : '', reason: passed || criterion !== 'causalOrder' ? 'The narration gives one useful action and a complete payoff.' : 'The prerequisite for this action is missing.' }]));
+  const fingerprint = editor.editorialFingerprint(draft.input);
+  const failedFindings = criteria.map(criterion => ({ criterion, passed: criterion !== 'causalOrder', severity: ['directOpening', 'filmableActions'].includes(criterion) ? 'warning' : 'blocker', evidence: criterion !== 'causalOrder' ? 'Start with one small task' : '', reason: criterion !== 'causalOrder' ? 'The narration gives one useful action and a complete payoff.' : 'The prerequisite for this action is missing.' }));
+  const initialAttempt = { at: draft.createdAt, fingerprint, script: savedScript, phase: 'initial-review', findings: failedFindings.map(finding => ({ ...finding, passed: true, evidence: 'Start with one small task', reason: 'The narration gives one useful action and a complete payoff.' })) };
+  const attempt = { at: draft.createdAt, fingerprint, script: savedScript, phase: 'final-review', findings: failedFindings };
+  const rejected = { ...draft, status: 'FAILED', error: 'The prerequisite for this action is missing.', input: { ...draft.input, editorialAttempts: [initialAttempt, attempt], editorialCheckpoint: { version: 1, fingerprint, script: savedScript, phase: 'final-review', revised: true } } };
+  write([rejected]);
+  await assert.rejects(editor.editStockNarration(rejected.input), /prerequisite/);
+  const response = await api.PATCH(new Request('http://localhost/api/creation-drafts', { method: 'PATCH', headers: { origin: 'http://localhost' }, body: JSON.stringify({ id: draft.id, version: draft.version, action: 'retry' }) }));
+  assert.equal(response.status, 200);
+  const recovered = read()[0];
+  assert.equal(recovered.status, 'QUEUED'); assert.equal(recovered.input.script, savedScript);
+  assert.equal(recovered.input.editorialCheckpoint, undefined);
+  assert.deepEqual(recovered.input.editorialAttempts.slice(0, 2), [initialAttempt, attempt]);
+  assert.equal(recovered.input.editorialAttempts.length, 4);
+  assert.deepEqual(recovered.input.editorialAttempts.slice(2).map(attempt => attempt.phase), ['initial-review', 'final-review']);
+  assert.ok(recovered.input.editorialAttempts.slice(2).every(attempt => /Explicit retry invalidated/.test(attempt.error)));
+  let calls = 0, completed;
+  global.fetch = async (_url, init) => {
+    calls++;
+    if (calls === 2) { assert.match(JSON.parse(init.body).prompt, /Rewrite this narration/); return Response.json({ response: JSON.stringify({ script: savedScript }) }); }
+    if (calls === 3) { assert.match(JSON.parse(init.body).prompt, /Correct only the length/); return Response.json({ response: JSON.stringify({ script: savedScript }) }); }
+    return Response.json({ response: JSON.stringify(verdict(calls === 4)) });
+  };
+  const result = await editor.editStockNarration(recovered.input, async () => {}, async () => {}, async (_checkpoint, result) => { if (result) completed = result; });
+  assert.equal(result.script, savedScript); assert.equal(calls, 4, 'Old passing initial evidence must not bypass a later final blocker or the fresh final check');
+  assert.ok(completed.duration >= 20 && completed.duration < 75);
+  assert.equal(result.editorial.findings.find(finding => finding.criterion === 'causalOrder').passed, true);
+  assert.equal((await generation.listGenerationJobs()).length, 0, 'Recovery alone never starts a render');
+});
+
+test('recovery preserves owner scripts, earlier editorial phases, waiting and active checkpoints', async () => {
+  const [draft] = await drafts.createCreationDrafts([input()]);
+  const checkpoint = { version: 1, fingerprint: 'fixture', script, phase: 'final-review', revised: true };
+  const attempt = { at: draft.createdAt, fingerprint: 'fixture', script, phase: 'final-review', findings: [], error: 'Fixture rejection' };
+  for (const extra of [{ scriptOrigin: 'owner' }, { scriptOrigin: 'local-model', scriptApproved: true }, { scriptOrigin: 'local-model', creationType: 'children-story' }, { scriptOrigin: 'local-model', editorialCheckpoint: { ...checkpoint, phase: 'rewrite', issues: ['Needs correction'] } }, { scriptOrigin: 'local-model', editorialCheckpoint: { ...checkpoint, phase: 'length-correction' } }]) {
+    write([{ ...draft, status: 'FAILED', input: { ...draft.input, editorialCheckpoint: checkpoint, editorialAttempts: [attempt], ...extra } }]);
+    const result = await drafts.changeDraftStatus(draft.id, draft.version, 'retry');
+    assert.equal(result.input.script, script);
+    assert.deepEqual(result.input.editorialCheckpoint, extra.editorialCheckpoint || checkpoint);
+    assert.deepEqual(result.input.editorialAttempts, [attempt]);
+  }
+  for (const status of ['QUEUED', 'PLANNING']) {
+    const waiting = { ...draft, status, nextAttemptAt: new Date(Date.now() + 60_000).toISOString(), input: { ...draft.input, scriptOrigin: 'local-model', editorialCheckpoint: checkpoint, editorialAttempts: [attempt] } };
+    write([waiting]);
+    await assert.rejects(drafts.changeDraftStatus(draft.id, draft.version, 'retry'), /Only failed|Wait for/);
+    assert.deepEqual(read()[0], waiting);
+  }
+});
+
 test('metadata selection rejects too-short, repeated, and clearly off-topic clips and prefers continuity', () => {
   const { rankFootage } = require(path.join(project, 'src/lib/automaticFootage.ts'));
   const choice = id => ({ ...catalog.footageChoice(fixture(id)), sourcePage: `https://www.pexels.com/video/opening-bedroom-curtains-${id}/` });

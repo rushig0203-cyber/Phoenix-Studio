@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as pause } from "node:timers/promises";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import { WRITING_CLOUDFLARE_MODEL, type WritingSettings } from "./writingSettings";
@@ -50,6 +51,12 @@ function nextUtcReset(now = Date.now()) {
   const date = new Date(now);
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
 }
+function interruptedNetwork(error: unknown) {
+  if (!(error instanceof TypeError)) return false;
+  const code = (error.cause as NodeJS.ErrnoException | undefined)?.code;
+  return code ? ["EAI_AGAIN", "ENOTFOUND", "ENETUNREACH", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_SOCKET"].includes(code)
+    : error.message === "fetch failed";
+}
 async function errorCode(response: Response): Promise<string | number | undefined> {
   try {
     const data = await boundedJson(response) as { errors?: Array<{ code?: string | number }>; error?: { code?: string | number } };
@@ -82,7 +89,7 @@ export async function probeCloudflareWriter(settings: WritingSettings): Promise<
 }
 
 /** Text-only Workers AI adapter. Cloudflare JSON mode is a formatting aid; Phoenix validates every stage itself. */
-export async function generateCloudflareText(settings: WritingSettings, body: LocalGenerateBody, options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Response> {
+export async function generateCloudflareText(settings: WritingSettings, body: LocalGenerateBody, options: { timeoutMs?: number; signal?: AbortSignal; beforeRequest?: () => void } = {}): Promise<Response> {
   assertSettings(settings); options.signal?.throwIfAborted();
   const extras = body as Record<string, unknown>;
   if (typeof body.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 40_000 || body.images || body.tools || body.messages
@@ -105,12 +112,41 @@ export async function generateCloudflareText(settings: WritingSettings, body: Lo
       try { cooldown = JSON.parse(await fs.readFile(privatePath("cloudflare-writer-cooldown.json"), "utf8")); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Cloudflare retry state could not be read. Check local storage; no request was sent."); }
       if (cooldown?.identity === keyId && Number.isFinite(cooldown.until) && cooldown.until > Date.now()) throw new WritingWaitError("Waiting for Cloudflare Workers AI quota or capacity. Saved work is retained; no local or paid fallback is used.", Math.min(86_400_000, cooldown.until - Date.now()));
-      let response: Response;
-      try {
-        response = await fetch(accountPath(settings, `run/${settings.model}`), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
-          body: JSON.stringify(payload), redirect: "error", cache: "no-store",
-          signal: AbortSignal.any([AbortSignal.timeout(Math.max(1000, Math.min(240_000, options.timeoutMs ?? 90_000))), ...(options.signal ? [options.signal] : [])]) });
-      } catch { options.signal?.throwIfAborted(); throw new Error("Cloudflare writing was interrupted or timed out. Saved work is retained; no local or paid fallback was started."); }
+      const timeout = Math.max(1000, Math.min(240_000, options.timeoutMs ?? 90_000));
+      const deadline = Date.now() + timeout;
+      const signal = AbortSignal.any([AbortSignal.timeout(timeout), ...(options.signal ? [options.signal] : [])]);
+      let response: Response | undefined, backoff = 0;
+      const stopped = () => new Error("Cloudflare writing was interrupted or timed out during bounded recovery. Saved work is retained; retry explicitly when ready. No local or paid fallback was started.");
+      // Retry only this interrupted stage, within its original time budget;
+      // quota waits and invalid content keep their separate existing policies.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        options.signal?.throwIfAborted();
+        if (signal.aborted || backoff >= deadline - Date.now()) throw stopped();
+        if (backoff) {
+          try { await pause(backoff, undefined, { signal }); }
+          catch { options.signal?.throwIfAborted(); throw stopped(); }
+        }
+        options.signal?.throwIfAborted();
+        if (signal.aborted || Date.now() >= deadline) throw stopped();
+        options.beforeRequest?.();
+        try {
+          response = await fetch(accountPath(settings, `run/${settings.model}`), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
+            body: JSON.stringify(payload), redirect: "error", cache: "no-store", signal });
+        } catch (error) {
+          options.signal?.throwIfAborted();
+          if (signal.aborted || !interruptedNetwork(error)) throw stopped();
+          if (attempt === 2) throw new Error("Cloudflare writing had a network interruption after 3 attempts. Saved work is retained; retry explicitly when ready. No local or paid fallback was started.");
+          backoff = 1000 * 2 ** attempt;
+          continue;
+        }
+        if (response.status !== 408 && (response.status < 500 || response.status > 599)) break;
+        const status = response.status;
+        backoff = response.headers.has("retry-after") ? retryDelay(response.headers) : 1000 * 2 ** attempt;
+        await response.body?.cancel().catch(() => undefined);
+        if (attempt === 2) throw new Error(`Cloudflare Workers AI returned HTTP ${status} after 3 attempts. Saved work is retained; retry explicitly when ready. No local or paid fallback was used.`);
+        response = undefined;
+      }
+      if (!response) throw stopped();
       if (response.status === 429) {
         const code = await errorCode(response);
         const retryAfter = retryDelay(response.headers);

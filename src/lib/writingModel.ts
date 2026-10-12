@@ -45,12 +45,15 @@ export async function generateWritingModel(body: LocalGenerateBody, options: { t
   const session = context.getStore();
   if (!session) return withWritingSession(() => generateWritingModel(body, options), { signal: options.signal });
   if (session.closed) throw new Error("The writing session is closed.");
-  const current = readWritingSettings();
-  if (current.provider !== session.settings.provider || current.model !== session.settings.model || current.apiKey !== session.settings.apiKey || current.accountId !== session.settings.accountId || current.freePlanConfirmed !== session.settings.freePlanConfirmed) throw new WritingConfigurationError("Writing settings changed during this job. Retry to use the newly selected provider; no mixed-provider plan was created.");
+  const checkSettings = () => {
+    const current = readWritingSettings();
+    if (current.provider !== session.settings.provider || current.model !== session.settings.model || current.apiKey !== session.settings.apiKey || current.accountId !== session.settings.accountId || current.freePlanConfirmed !== session.settings.freePlanConfirmed) throw new WritingConfigurationError("Writing settings changed during this job. Retry to use the newly selected provider; no mixed-provider plan was created.");
+  };
+  checkSettings();
   const signals = [session.signal, options.signal].filter((signal): signal is AbortSignal => !!signal);
   const signal = signals.length ? AbortSignal.any(signals) : undefined;
   signal?.throwIfAborted();
   return session.settings.provider === "groq" ? generateGroqText(session.settings, body, { ...options, signal })
-    : session.settings.provider === "cloudflare" ? generateCloudflareText(session.settings, body, { ...options, signal })
+    : session.settings.provider === "cloudflare" ? generateCloudflareText(session.settings, body, { ...options, signal, beforeRequest: checkSettings })
       : generateLocalModel({ ...body, model: session.settings.model }, { ...options, signal });
 }

@@ -1,5 +1,20 @@
 # Phoenix Studio
 
+### Failed preparation recovery — October 12, source tested; installation pending
+
+The three current Needs attention drafts exposed two length-check failures and a
+temporary Cloudflare HTTP 500. Complete concise generated narration can now use
+a shorter plan only after all six semantic checks and every local guard pass;
+owner scripts and children's duration rules are unchanged. The independent
+natural-speed output-duration check still applies. Recover preserves narration
+and history but invalidates both old review phases before a fresh check.
+Cloudflare temporary HTTP/network errors receive at most three sends within the
+original deadline; quota/authentication/billing errors keep their existing policy.
+
+The 94 focused mock regressions pass. No owner job was retried, rendered or posted,
+and no dependency, paid service or local model was added. The verified release
+below remains live until the remote Windows build and guarded activation succeed.
+
 ### Shorter narration and tighter pacing — October 12, verified live
 
 New automatic reels use a versioned compact recipe; saved v2/manual jobs are not

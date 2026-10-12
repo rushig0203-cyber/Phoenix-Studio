@@ -1,5 +1,39 @@
 # Quality-first implementation — September 16, 2026
 
+## October 12 Needs attention preparation recovery — source tested; activation pending
+
+- Read-only saved queue/API checks identify exactly three unarchived FAILED
+  creation drafts: two complete-length failures after generated narration became
+  concise and one Cloudflare HTTP 500. Archived source/render failures are not new
+  attention items. None of these owner jobs was retried, deleted, rendered or posted.
+- A complete generated stock script may fit a shorter plan only when all six
+  semantic checks and every other local guard pass. Minimum natural-speed
+  narration headroom and the independent exported-video probe remain mandatory;
+  no filler, slow-motion padding, truncation or fabricated approval is used.
+  Owner-approved text and children's duration rules are unchanged. The accepted
+  duration, original requested duration, script, verdict and cleared checkpoint
+  persist together before footage planning; generation display is updated too.
+- Explicit Recover of an unapproved generated terminal stock review invalidates
+  both initial and final cached findings while retaining the bounded history and
+  actual narration. The exact legacy initial-pass/final-rejection regression
+  requires fresh review before acceptance, even after an unchanged rewrite.
+- Cloudflare text recovers only temporary HTTP 408/5xx and allowlisted interrupted
+  transport errors, with three sends maximum and one original deadline/signal.
+  Backoff is abortable, Retry-After cannot extend the deadline, and provider/key
+  identity is checked before every send. Quota waits, authentication, billing,
+  invalid content and permanent errors keep their existing handling; exhaustion
+  stops clearly instead of becoming an infinite retry queue. No paid/local fallback.
+- All 94 focused serial mock tests pass, including actual shared preparation with
+  shorter exact assets, recovery cache invalidation and elapsed-deadline exhaustion.
+  Read-only independent review found no remaining blocker in the changed paths.
+  Full remote Windows regression/build and guarded idle activation remain pending;
+  installed production is still `.next-build-gh-38210238076-1`. The startup log
+  confirms the earlier service stop was the normal app-window-close lifecycle,
+  not a renderer crash. The existing verified website/manager/worker was restored
+  without building, starting an owner render or loading a local AI model.
+- No paid service, dependency, secret/token scope or runtime data is added to Git.
+  This fix does not claim to resolve Meta's separate location-access restriction.
+
 ## October 12 concise narration, compact pacing and approved-only news rendering — verified installed and live
 
 - New automatic footage requests save `adaptive-v3`: shorter varied cuts and a

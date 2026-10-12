@@ -10,7 +10,7 @@ export type EditorialFinding = { criterion: string; passed: boolean; severity: "
 export type EditorialAttempt = { at: string; fingerprint: string; script: string; findings: EditorialFinding[]; error?: string; phase?: "initial-review" | "final-review" };
 export type EditorialReview = { version: number; fingerprint: string; revised: boolean; checks: string[]; limitations: string; findings?: EditorialFinding[]; warnings?: string[] };
 export type EditorialCheckpoint = { version: 1; fingerprint: string; script: string; phase: "initial-review" | "rewrite" | "length-correction" | "final-review"; revised: boolean; issues?: string[]; reviewCorrection?: string };
-type Brief = { topic: string; duration: number; script: string; creationType?: string; editorial?: EditorialReview; editorialAttempts?: EditorialAttempt[]; editorialCheckpoint?: EditorialCheckpoint; feedbackRevision?: string; briefInstructions?: string; guidanceRules?: string[]; research?: NewsResearch };
+type Brief = { topic: string; duration: number; script: string; scriptOrigin?: "owner" | "local-model"; scriptApproved?: boolean; creationType?: string; editorial?: EditorialReview; editorialAttempts?: EditorialAttempt[]; editorialCheckpoint?: EditorialCheckpoint; feedbackRevision?: string; briefInstructions?: string; guidanceRules?: string[]; research?: NewsResearch };
 const criteria = ["topicAnswer", "directOpening", "consistentFacts", "causalOrder", "specificTakeaway", "filmableActions"] as const;
 export const editorialFingerprint = (input: Brief) => createHash("sha256").update(JSON.stringify([EDITORIAL_VERSION, CREATIVE_DIRECTION_VERSION, writingModelIdentity(), input.feedbackRevision || "", input.briefInstructions || "", input.guidanceRules || [], input.creationType, input.topic, input.duration, input.script, input.research, ...(input.creationType === "children-story" ? [] : [STOCK_TOPIC_DIRECTION_VERSION])])).digest("hex");
 const fingerprint = editorialFingerprint;
@@ -103,6 +103,19 @@ function localFindings(input: Brief, retained: EditorialFinding[]) {
   return findings;
 }
 
+function conciseReviewedDuration(input: Brief, findings: EditorialFinding[]) {
+  if (input.scriptOrigin !== "local-model" || input.scriptApproved || ["children-story", "children-song"].includes(input.creationType || "")
+      || !findings.some(item => item.criterion === "completeLength" && !item.passed)
+      || findings.some(item => !item.passed && item.criterion !== "completeLength")
+      || !criteria.every(criterion => findings.some(item => item.criterion === criterion && item.passed))) return input.duration;
+  const words = input.script.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
+  // Keep headroom for the calibrated natural stock voice; the actual export
+  // still has to pass its independent minimum-duration probe.
+  if (words < Math.ceil(20 * 3.05)) return input.duration;
+  const duration = Math.floor(words / 2.2);
+  return duration >= 20 && duration < input.duration && !stockNarrationError(input.script, duration) ? duration : input.duration;
+}
+
 function savedFindings(input: Brief, phase: "initial-review" | "final-review" = "initial-review"): EditorialFinding[] | undefined {
   if (!Array.isArray(input.editorialAttempts)) return;
   const saved = [...input.editorialAttempts].reverse().find(attempt => attempt && attempt.fingerprint === fingerprint(input) && attempt.script === input.script
@@ -130,10 +143,11 @@ function retainedCheckpoint(input: Brief) {
 }
 
 /** One bounded rewrite followed by re-review. Never used to rewrite owner narration. */
-export async function editStockNarration(input: Brief, onStage: (stage: string) => Promise<unknown> = async () => {}, onAttempt: (attempt: EditorialAttempt) => Promise<unknown> = async () => {}, onCheckpoint: (checkpoint: EditorialCheckpoint | undefined, completed?: { script: string; editorial: EditorialReview }) => Promise<unknown> = async () => {}) {
+export async function editStockNarration(input: Brief, onStage: (stage: string) => Promise<unknown> = async () => {}, onAttempt: (attempt: EditorialAttempt) => Promise<unknown> = async () => {}, onCheckpoint: (checkpoint: EditorialCheckpoint | undefined, completed?: { script: string; editorial: EditorialReview; duration: number }) => Promise<unknown> = async () => {}) {
   if (input.editorial?.version === EDITORIAL_VERSION && input.editorial.fingerprint === fingerprint(input)) return { script: input.script, editorial: input.editorial };
   return withWritingSession(async () => {
   let script = input.script;
+  let duration = input.duration;
   let checkpoint = retainedCheckpoint(input);
   const save = async (phase: EditorialCheckpoint["phase"], issues?: string[], reviewCorrection?: string) => {
     const next: EditorialCheckpoint = { version: 1, fingerprint: fingerprint({ ...input, script }), script, phase, revised: phase !== "initial-review", issues, reviewCorrection };
@@ -156,9 +170,17 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
     return findings;
   };
   let findings: EditorialFinding[] = [], issues: string[] = [];
+  const fitReviewedLength = async () => {
+    const fitted = conciseReviewedDuration({ ...input, script, duration }, findings);
+    if (fitted === duration) return;
+    duration = fitted;
+    findings = localFindings({ ...input, script, duration }, findings.filter(item => criteria.some(criterion => criterion === item.criterion)));
+    await onStage(`Complete concise narration retained — planning about ${duration} seconds instead of padding to ${input.duration}`);
+  };
   let revised = checkpoint?.revised || false;
   if (!checkpoint || checkpoint.phase === "initial-review") {
     findings = checkpoint?.reviewCorrection ? await inspect("initial-review") : savedFindings(input) || await inspect("initial-review");
+    await fitReviewedLength();
     issues = findings.filter(item => !item.passed).map(item => item.reason);
     revised = issues.length > 0;
     if (revised) await save("rewrite", issues);
@@ -190,17 +212,18 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
     findings = checkpoint?.phase === "final-review" && !checkpoint.reviewCorrection
       ? savedFindings({ ...input, script }, "final-review") || await inspect("final-review")
       : await inspect("final-review");
+    await fitReviewedLength();
     issues = findings.filter(item => !item.passed && item.severity === "blocker").map(item => item.reason);
   }
   // Meaning checks above, rather than literal keyword repetition, allow synonyms.
   if (issues.length) throw new Error(`Narration needs another editorial attempt: ${issues.slice(0, 3).join(" ")} No incoherent replacement was rendered.`);
-  const editorial: EditorialReview = { version: EDITORIAL_VERSION, fingerprint: fingerprint({ ...input, script }), revised, findings,
+  const editorial: EditorialReview = { version: EDITORIAL_VERSION, fingerprint: fingerprint({ ...input, script, duration }), revised, findings,
     warnings: findings.filter(item => !item.passed && item.severity === "warning").map(item => item.reason),
-    checks: ["Model-assisted editor checked topic meaning, opening, consistency, action order, takeaway and filmability", "Complete narration retained — ending not truncated to meet duration"],
+    checks: ["Model-assisted editor checked topic meaning, opening, consistency, action order, takeaway and filmability", "Complete narration retained — ending not truncated to meet duration", ...(duration !== input.duration ? [`Concise generated narration fitted to a ${duration}-second plan instead of the requested ${input.duration}; final speech duration is measured during rendering`] : [])],
     limitations: "Model-assisted text review, not independent fact checking, visual recognition or a prediction of views." };
   // Clear the resumable phase in the same durable write as its approved verdict.
   // Otherwise a crash between these writes can lose the revised/approved state.
-  await onCheckpoint(undefined, { script, editorial });
+  await onCheckpoint(undefined, { script, editorial, duration });
   return { script, editorial };
   });
 }

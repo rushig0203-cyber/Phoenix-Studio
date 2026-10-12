@@ -725,7 +725,14 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
         if (input.visualTermsOrigin === "local-model") input.visualTerms = undefined;
         input.script = checkpoint.script; input.scriptOrigin = "local-model";
       }
-      if (completed) { input.script = completed.script; input.editorial = completed.editorial; }
+      if (completed) {
+        if (completed.duration !== input.duration) {
+          input.requestedDuration ??= input.duration;
+          input.duration = completed.duration;
+          input.storyboard = undefined; input.stockPreparation = undefined;
+        }
+        input.script = completed.script; input.editorial = completed.editorial;
+      }
       input.editorialCheckpoint = checkpoint;
       await onStage(checkpoint ? "Editorial progress saved — next writing stage can resume" : "Editorial checks complete");
     });
@@ -1035,7 +1042,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
   await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research));
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
-  const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, requestJson: JSON.stringify(saved) }));
+  const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, duration: saved.duration, requestedDuration: saved.requestedDuration ?? saved.duration, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
   const storyboard = plan.input.storyboard!;
   const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
