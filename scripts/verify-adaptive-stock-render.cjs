@@ -57,11 +57,14 @@ async function main() {
   assert.equal(picture.width, 720); assert.equal(picture.height, 1280);
   assert.ok(media.streams.some(stream => stream.codec_type === 'audio'));
   assert.deepEqual(file.quality.captions, []);
-  assert.ok(file.quality.checks.some(check => /1\.25× playback/.test(check)), 'Measured still shots receive bounded acceleration');
+  assert.ok(!file.quality.checks.some(check => /1\.25× playback/.test(check)), 'New v3 recipes never reuse the old automatic acceleration rule');
   assert.ok(file.quality.checks.some(check => /1× playback/.test(check)), 'Meaningful movement keeps native speed');
   const checks = file.quality.checks.join(' ');
   assert.match(checks, /adaptive cadence/); assert.match(checks, /no fixed 45-second target/);
   const assembly = path.join(temp, 'storage', 'Phoenix Studio Review Files', 'work', `source-${job.id}`, 'stock-assembly-v2');
+  assert.equal(job.stockSource.options.shotCadence, 'adaptive-v3');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(assembly, 'motion-1.json'), 'utf8')).windows.every(window => window.motion === 0), true, 'Static picture is measured, not guessed');
+  assert.match(file.quality.checks.join(' '), /bounded 1\.35× acceleration/);
   assert.equal(fs.existsSync(path.join(assembly, 'shot-1.mp4')), false, 'Completed per-shot scratch is cleaned automatically');
   assert.equal(fs.existsSync(path.join(assembly, 'editable-master.mp4')), true, 'Editable master survives scratch cleanup');
   assert.equal(fs.existsSync(path.join(assembly, 'original-assembly.mp4')), true, 'Original assembly survives scratch cleanup');

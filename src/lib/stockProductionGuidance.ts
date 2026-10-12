@@ -45,7 +45,7 @@ export function stockProductionGuidanceFromFeedback(records: readonly CreativeFe
     ...(weak("audio") ? ["Keep a continuous restrained original music bed beneath usable ambience; the saved varied arrangement is a listening-review draft, not a professional-song guarantee."] : []),
     ...(shorterPostingCaption ? [STOCK_CAPTION_FEEDBACK_RULE] : []),
   ];
-  const revision = `stock-v1-${crypto.createHash("sha256").update("adaptive-v2:").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
+  const revision = `stock-v1-${crypto.createHash("sha256").update("adaptive-v3:").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
   return { revision, feedbackCount: relevant.length, policyVersion: 1, rules, historyLimit: freshness ? 20 : 10, shorterPostingCaption,
     priorities: (["story", "visuals", "audio", "captions"] as FeedbackDimension[]).filter(weak), requests: FEEDBACK_REQUESTS.filter(requested) };
 }

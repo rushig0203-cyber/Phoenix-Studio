@@ -1,6 +1,34 @@
 # Quality-first implementation — September 16, 2026
 
-## October 12 news visuals and automatic Instagram tags — verification in progress
+## October 12 concise narration, compact pacing and approved-only news rendering — verification pending
+
+- New automatic footage requests save `adaptive-v3`: shorter varied cuts and a
+  roughly 1.6-second opening. Only positive measured low/moderate movement permits
+  bounded 1.35x/1.15x acceleration; static, unknown and already-active footage stays
+  at native speed. Saved v2 and manual recipes are unchanged, including UUID reuse.
+- Generated stock narration uses a smaller word budget, natural-speed speech and
+  one useful ending rather than a long details/credits outro. Owner scripts retain
+  their previous validation. Natural stock exports may finish at 20 seconds or
+  more instead of being padded to the children's duration policy; children retain
+  their minimum lengths. Full ordered narration, including its ending, must be
+  present in caption artifacts. This does not prove every burned-in glyph is visible.
+- The news renderer now advertises `context-only-no-supplement-v1`: every approved
+  asset is mandatory, and measured narration shortfall fails its exact section
+  rather than introducing weaker-matched stock. Admission/submission verify the
+  capability and completion verifies the policy and approved source pages. Normal
+  non-news supplementation is unchanged. Four stdlib-only shipped renderer tests
+  pass; Node/lint/real-render/production checks are being run remotely, not on the
+  low-memory laptop. No owner jobs are rendered, retried, removed or posted.
+- Read-only Meta checks confirm the current connection can publish but lacks
+  `instagram_manage_insights`; average-watch-time GET returned HTTP 400/code 10.
+  No watch-time numbers were returned or inferred, and no credentials/scopes changed.
+  Instagram reference browsing was throttled; no claim of reviewing unseen reels.
+- The previous verified website remains installed below; this follow-up is not
+  yet an activated bundle. Exact-event footage search has not been added. Suitable
+  reusable event footage would need date/place/event evidence and retained licence
+  provenance, not arbitrary public internet clips.
+
+## October 12 news visuals and automatic Instagram tags — verified installed and live
 
 - The October 11 boat-disaster output used stock, not the children's 2D renderer.
   Its literal event queries and loose word overlap admitted a waterfall swimmer
@@ -31,10 +59,18 @@
 - Local publisher regressions pass 101/101, UI regressions 80/80 and automatic
   tag checks 6/6; scoped posting lint passes. News/shared preparation/storyboard
   regressions pass 49/49, including the actual bad matches, named-identity and
-  unknown-theme safeguards, bounded repair and saved-plan checks. Full remote
-  compilation and activation are pending. The currently served
-  bundle remains `.next-build-gh-38148657650-1`; source changes alone are not a
-  live update. No owner upload, retry, credential change or paid service is part
+  unknown-theme safeguards, bounded repair and saved-plan checks. Public Windows
+  run `38167431217` passed 828 Node and 36 Python checks, lint, real synthetic and
+  licensed public-Pexels fixtures, full TypeScript and production compilation.
+  Both Vercel Git checks are green for source `423b3e7`. Verified draft release
+  `409872330` preceded guarded activation of `.next-build-gh-38167431217-1`,
+  BUILD_ID `q4nFJYjkNyRO_85lIZ2_O`; selected/live builds and healthy manager/worker
+  matched, with the renderer ready. All 33 saved metadata/credential hashes and
+  671 media sizes/timestamps remained unchanged. Browser verification shows the
+  automatic tags and single final Post action without a manual tag field or extra
+  Instagram checkbox; warning/error scan was empty. Screenshot:
+  `C:\Users\rishi\Documents\Codex\2026-09-04\r\artifacts\phoenix-news-tags-20261012.jpg`.
+  No owner upload, retry, credential change or paid service is part
   of development/testing. Existing captions, locations, music and Story approval
   are retained, and ambiguous-request/duplicate guards stay in place.
 

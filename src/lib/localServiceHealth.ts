@@ -1,5 +1,6 @@
 import { readWritingSettings } from "./writingSettings";
 import { supportsNativeStockPlayback } from "./stockPlayback";
+import { supportsNewsStockVisualPolicy } from "./newsVisualPolicy";
 
 export type LocalServiceState = { state: "ready" | "offline" | "blocked" | "configured"; detail: string };
 export type LocalServices = { checkedAt: string; writerProvider: "ollama" | "groq" | "cloudflare"; writer: LocalServiceState; ollama: LocalServiceState; renderer: LocalServiceState };
@@ -31,7 +32,7 @@ export async function probeLocalServices(): Promise<LocalServices> {
         const api = await response.json();
         const properties = api?.components?.schemas?.TaskVideoRequest?.properties;
         return properties?.phoenix_artifacts_version && properties?.phoenix_storyboard && supportsNativeStockPlayback(properties)
-          ? { state: "ready", detail: "Compatible local renderer is responding." }
+          ? { state: "ready", detail: supportsNewsStockVisualPolicy(properties) ? "Compatible local renderer is responding, including the approved-only news footage policy." : "Stock renderer is responding; news videos need the current news integration patch and a restart before they can be accepted." }
           : { state: "blocked", detail: "The renderer needs the current Phoenix integration patch and a restart." };
       } catch { return { state: "offline", detail: "MoneyPrinterTurbo is unavailable. Open the Phoenix shortcut to start it; saved jobs are retained." }; }
     })(),

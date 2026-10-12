@@ -14,7 +14,8 @@ const settings = require('../src/lib/writingSettings.ts');
 mock.method(settings, 'readWritingSettings', () => ({ provider: 'ollama', model: process.env.OLLAMA_MODEL || 'fixture:local', freePlanConfirmed: false }));
 const editor = require(path.join(project, 'src/lib/stockEditorial.ts'));
 const { createStockScript } = require(path.join(project, 'src/lib/generation.ts'));
-const script = 'Replace a vague task with a small action you can actually finish. Suppose your list says organize the kitchen, but you keep walking past it because the job feels too big. Choose just one drawer and name what you will do there. Write put the loose spoons into the tray instead of organize everything. Open that drawer and move those spoons, leaving the other cupboards for another time. Now you can tell whether the action is finished by looking at the empty space beside the tray. If another object needs a home, write that as a separate action instead of silently expanding this one. A small next step does not solve the whole kitchen. It gives you a clear place to begin and a visible stopping point for today.';
+const legacyScript = 'Replace a vague task with a small action you can actually finish. Suppose your list says organize the kitchen, but you keep walking past it because the job feels too big. Choose just one drawer and name what you will do there. Write put the loose spoons into the tray instead of organize everything. Open that drawer and move those spoons, leaving the other cupboards for another time. Now you can tell whether the action is finished by looking at the empty space beside the tray. If another object needs a home, write that as a separate action instead of silently expanding this one. A small next step does not solve the whole kitchen. It gives you a clear place to begin and a visible stopping point for today.';
+const script = legacyScript.replace('If another object needs a home, write that as a separate action instead of silently expanding this one. A small next step does not solve the whole kitchen. ', '');
 const brief = { topic: 'Turn a vague task into a next action', duration: 45, script, feedbackRevision: 'review-one' };
 const criteria = ['topicAnswer', 'directOpening', 'consistentFacts', 'causalOrder', 'specificTakeaway', 'filmableActions'];
 const verdict = (changes = {}) => Object.fromEntries(criteria.map(criterion => [criterion, { passed: true, evidence: 'Choose just one drawer', reason: 'The example identifies one specific action and preserves the same setting.', ...changes[criterion] }]));
@@ -213,7 +214,7 @@ test('business writing retains feasible visuals and the reviewer evaluates the p
   const input = { topic: 'Repair updates with a clear next action', duration: 45, creationType: 'business' };
   assert.equal(await createStockScript(input), script);
   assert.equal(prompts.length, 3);
-  assert.equal(input.editorial.version, 5);
+  assert.equal(input.editorial.version, 6);
   assert.ok(input.editorial.findings.every(finding => script.includes(finding.evidence)));
   assert.notEqual(editor.editorialFingerprint(brief), editor.editorialFingerprint({ ...brief, creationType: 'business' }));
 });
@@ -249,8 +250,8 @@ test('generation checkpoints retain rejected model narration and history on fail
 
 test('owner narration never enters automatic rewriting', async () => {
   global.fetch = async () => { throw new Error('Owner text must not be sent for rewriting'); };
-  const input = { ...brief, scriptOrigin: 'owner', creationType: 'general' };
-  assert.equal(await createStockScript(input), script);
+  const input = { ...brief, script: legacyScript, scriptOrigin: 'owner', creationType: 'general' };
+  assert.equal(await createStockScript(input), legacyScript);
   assert.equal(input.editorialAttempts, undefined);
 });
 test('automatic dog narration rejects camera inventories and first-person directions, preserving explicit filmmaking',()=>{
@@ -273,7 +274,7 @@ test('local camera guard blocks generated narration even when the model review p
   assert.equal(count(),3,'One rewrite and re-review, without accepting the repeated camera script');
 });
 test('explicit owner camera narration is retained without automatic editorial requests',async()=>{
-  const ownerScript=script.replace('Replace a vague task with a small action you can actually finish.','The video opens with a close-up of a dog exploring the park.');
+  const ownerScript=legacyScript.replace('Replace a vague task with a small action you can actually finish.','The video opens with a close-up of a dog exploring the park.');
   global.fetch=async()=>assert.fail('Owner text must not be sent to a provider');
   const input={...brief,topic:'A dog exploring the park',creationType:'general',script:ownerScript,scriptOrigin:'owner'};
   assert.equal(await createStockScript(input),ownerScript);assert.equal(input.editorialAttempts,undefined);
@@ -391,4 +392,26 @@ test('a completed final review survives an interrupted final checkpoint write', 
   const count=responses([]);
   const resumed=await editor.editStockNarration(input);
   assert.equal(resumed.editorial.revised,true);assert.equal(count(),0,'validated final evidence is retained, not requested again');
+});
+
+test('generated narration uses a concise word budget without changing the owner budget', () => {
+  const briefPolicy = require('../src/lib/stockBrief.ts');
+  assert.deepEqual(briefPolicy.stockScriptWordRange(20), { min: 38, max: 50 });
+  assert.deepEqual(briefPolicy.stockScriptWordRange(45), { min: 86, max: 113 });
+  assert.deepEqual(briefPolicy.stockScriptWordRange(45, true), { min: 106, max: 140 });
+  assert.equal(briefPolicy.stockScriptTargetWords(45), 99);
+  assert.equal(briefPolicy.stockNarrationError(script, 45), null);
+  assert.match(briefPolicy.stockNarrationError(legacyScript, 45), /words/);
+  assert.equal(briefPolicy.stockNarrationError(legacyScript, 45, true), null);
+  assert.equal(editor.stockVoiceRate(script, 45), 1, 'Shorter narration is not slowed to pad the requested seconds');
+});
+
+test('timed caption validation detects a missing or reordered ending without guessing timings', () => {
+  const { validateTimedCaptions } = require('../src/lib/timedCaptions.ts');
+  const complete = [{ start: 0, end: 1.2, text: "Don't add filler." }, { start: 1.2, end: 2, text: 'Keep the ending.' }];
+  assert.equal(validateTimedCaptions(complete, 2.2, 'Don’t add filler. Keep the ending.'), complete);
+  assert.throws(() => validateTimedCaptions(complete.slice(0, 1), 2.2, "Don't add filler. Keep the ending."), /complete narration.*ending/);
+  assert.throws(() => validateTimedCaptions([{ ...complete[0], text: 'Keep the ending.' }, { ...complete[1], text: "Don't add filler." }], 2.2, "Don't add filler. Keep the ending."), /complete narration/);
+  assert.equal(validateTimedCaptions(complete.slice(0, 1), 2.2).length, 1, 'Other workflows keep the original timing-only contract');
+  assert.throws(() => validateTimedCaptions(complete, 1.4, "Don't add filler. Keep the ending."), /outside the video/);
 });

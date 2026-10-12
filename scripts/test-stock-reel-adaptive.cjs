@@ -7,6 +7,70 @@ const reel = require('../src/lib/stockReel.ts');
 
 const automatic = (duration = 12, extra = {}) => ({ duration, trimMode: 'auto', ...extra });
 const adaptive = (shots, maximum = 40) => reel.planStockIntervals(shots, maximum, 'cinematic', undefined, 'adaptive-v2');
+const compact = (shots, maximum = 40, rhythm) => reel.planStockIntervals(shots, maximum, 'cinematic', undefined, 'adaptive-v3', rhythm);
+
+test('v3 shorter cuts improve new reel pacing without accelerating unmeasured footage or changing saved v2 timing', () => {
+  const shots = Array.from({ length: 8 }, () => automatic(20));
+  const before = JSON.stringify(shots), saved = adaptive(shots), fresh = compact(shots);
+  assert.deepEqual(saved.map(shot => shot.frames), [48, 62, 74, 69, 79, 64, 62, 74], 'Saved v2 budgets are frozen');
+  assert.ok(fresh.at(-1).outputEnd < saved.at(-1).outputEnd * .85, 'Typical unmeasured eight-shot reels are at least 15% tighter through cuts alone');
+  assert.equal(fresh[0].frames, 38, 'New opening uses its whole-frame 1.6-second target');
+  assert.ok(fresh.slice(1).every(shot => shot.frames <= Math.floor(2.8 * reel.STOCK_REEL_FPS)));
+  assert.ok(fresh.every(shot => shot.speed === 1 && Math.abs((shot.start + shot.end) / 2 - 10) < 1e-7));
+  assert.equal(JSON.stringify(shots), before);
+});
+
+test('v3 speed-ups are modest and measurement-dependent, while static, unknown and active motion remain native', () => {
+  const scores = [.5, 3.99, 4, 11.99, 12, 80, 0, undefined];
+  const shots = scores.map(motion => automatic(20, motion === undefined ? {} : { motionWindows: [{ start: 3, end: 15, motion }] }));
+  const plan = compact(shots);
+  assert.deepEqual(plan.map(shot => shot.speed), [1.35, 1.35, 1.15, 1.15, 1, 1, 1, 1]);
+  plan.forEach((shot, index) => {
+    assert.ok(Number.isSafeInteger(shot.frames) && shot.frames > 0);
+    assert.ok(shot.start >= (scores[index] === undefined ? 0 : 3) && shot.end <= (scores[index] === undefined ? 20 : 15));
+    assert.ok(Math.abs(shot.end - shot.start - shot.frames / reel.STOCK_REEL_FPS * shot.speed) < 1e-7);
+    assert.equal(shot.outputStart, index ? plan[index - 1].outputEnd : 0);
+  });
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd < 20);
+});
+
+test('v3 preserves sparse genuine footage and drops speed-up rather than padding, repeating or slowing short windows', () => {
+  const four = compact(Array.from({ length: 4 }, () => automatic(12)));
+  assert.equal(four.at(-1).outputEnd, 12, 'Four real sources remain viable without requiring extra stock or a fixed forty-second target');
+  const durations = [1.9, 3.4, 3.4, 3.4];
+  const short = compact(durations.map(duration => automatic(duration, { motionWindows: [{ start: 0, end: duration, motion: 2 }] })));
+  assert.equal(short.at(-1).outputEnd, 12);
+  assert.ok(short.every((shot, index) => shot.speed === 1 && shot.start >= 0 && shot.end <= durations[index] + 1e-7));
+  assert.throws(() => compact(Array.from({ length: 4 }, () => automatic(2.9))), /Not enough meaningful source footage/);
+});
+
+test('v3 whole-frame cap, nearby rhythm and measured-window choice retain all renderer invariants', () => {
+  const shots = Array.from({ length: 10 }, () => automatic(20, { motionWindows: [
+    { start: 1, end: 8, motion: 2 }, { start: 10, end: 19, motion: 80 },
+  ] }));
+  const plain = compact(shots, 18), snapped = compact(shots, 18, { bpm: 90 });
+  assert.equal(plain.at(-1).outputEnd, 18);
+  assert.equal(snapped.at(-1).outputEnd, 18);
+  assert.equal(snapped.reduce((sum, shot) => sum + shot.frames, 0), 18 * reel.STOCK_REEL_FPS);
+  let plainBoundary = 0, snappedBoundary = 0;
+  snapped.forEach((shot, index) => {
+    assert.ok(shot.start >= 10 && shot.end <= 19 && shot.speed === 1, 'Highest measured motion window supplies the real source cut');
+    assert.ok(shot.frames <= Math.floor((index === 0 ? 2 : 3.4) * reel.STOCK_REEL_FPS));
+    plainBoundary += plain[index].frames; snappedBoundary += shot.frames;
+    assert.ok(Math.abs(snappedBoundary - plainBoundary) <= 4, 'Rhythm cannot move a cut far from its natural boundary');
+  });
+});
+
+test('v3 rejects owner trims, forged timing bounds and malformed measurements instead of rewriting them', () => {
+  const shots = Array.from({ length: 5 }, () => automatic());
+  for (const [maximum, pacing, minimum] of [[17.99, 'cinematic'], [40.01, 'cinematic'], [40, 'selected'], [40, 'cinematic', 12]]) {
+    assert.throws(() => reel.planStockIntervals(shots, maximum, pacing, minimum, 'adaptive-v3'), /Adaptive cadence/);
+  }
+  assert.throws(() => compact([automatic(), automatic(), automatic(), { duration: 12, start: 1, end: 5, trimMode: 'manual' }]), /Adaptive cadence/);
+  assert.throws(() => compact(shots.map(shot => ({ ...shot, motionWindows: [{ start: 0, end: 13, motion: 2 }] }))), /motion window/);
+  const owner = [{ duration: 12, start: 1, end: 7, trimMode: 'manual' }];
+  assert.deepEqual(reel.planStockIntervals(owner, 40, 'cinematic'), [{ start: 1, end: 7, outputStart: 0, outputEnd: 6, frames: 144 }]);
+});
 
 test('adaptive picks the highest measured motion window and keeps output frame boundaries exact', () => {
   const shots = Array.from({ length: 5 }, () => automatic(20, { motionWindows: [

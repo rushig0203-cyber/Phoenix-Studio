@@ -27,7 +27,7 @@ index 8c90c58..a3df813 100644
  
      raise HttpException(
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..ef6374c 100644
+index c4d12e1..ebc895e 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -58,17 +58,18 @@ index c4d12e1..ef6374c 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +101,9 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,10 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
 +    phoenix_storyboard: Optional[List[PhoenixStoryBeat]] = Field(default=None, min_length=1, max_length=18)
 +    phoenix_playback_policy: Literal["native-speed-v1"] = "native-speed-v1"
 +    phoenix_artifacts_version: Optional[Literal[1]] = None
++    phoenix_news_visual_policy: Optional[Literal["context-only-no-supplement-v1"]] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +140,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +141,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -422,10 +423,10 @@ index 2176fa1..c6c0773 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..b533525
+index 0000000..403c476
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,600 @@
+@@ -0,0 +1,609 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
 +import hashlib
@@ -891,6 +892,11 @@ index 0000000..b533525
 +    if params.video_source not in ("pexels", "pixabay") or params.video_count != 1:
 +        raise ValueError("Phoenix storyboard accepts one stock-only Pexels/Pixabay export.")
 +    beats = align_beats([beat.model_dump() for beat in params.phoenix_storyboard], params.video_script, subtitle_cues(subtitle_path), audio_duration)
++    news_context_only = params.phoenix_news_visual_policy == "context-only-no-supplement-v1"
++    if news_context_only:
++        for index, beat in enumerate(beats):
++            if not beat.get("assetId"):
++                raise ValueError(f"News section {index + 1} requires an approved contextual asset before rendering. No supplemental stock search was allowed.")
 +    search = material.search_videos_pexels if params.video_source == "pexels" else material.search_videos_pixabay
 +    directory = config.app.get("material_directory", "").strip()
 +    if directory == "task":
@@ -908,6 +914,8 @@ index 0000000..b533525
 +        def candidates():
 +            if approved_id:
 +                yield approved_pexels_asset(approved_id, beat["query"]), True
++            if news_context_only:
++                return
 +            # The generator reaches search only if the chosen native-speed
 +            # footage did not cover this section. Never broaden its query.
 +            extra = material._search_videos_with_cache(provider=params.video_source, search_videos=search, search_term=beat["query"], minimum_duration=1, video_aspect=params.video_aspect)
@@ -943,6 +951,8 @@ index 0000000..b533525
 +            # resampling. This truncates footage; it never retimes or holds it.
 +            available_frames = max(0, math.floor(available * _OUTPUT_FPS + 1e-6) - 1)
 +            remaining_frames = end_frame - start_frame
++            if news_context_only and available_frames < remaining_frames:
++                raise ValueError(f"News section {index + 1} ({beat['query']}) has only {available_frames / _OUTPUT_FPS:.2f}s of approved native-speed footage for {remaining_frames / _OUTPUT_FPS:.2f}s of narration. No supplemental stock, slowing, repetition or frozen frames were used.")
 +            frames = min(available_frames, remaining_frames)
 +            # A brief source deficit must not become a flash of another clip.
 +            # Reserve up to two seconds for the final shot, or half of a
@@ -1083,10 +1093,10 @@ index 0000000..37cf817
 +    return result
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
-index 0000000..6387e51
+index 0000000..7d396aa
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,504 @@
+@@ -0,0 +1,540 @@
 +import json
 +import os
 +import shutil
@@ -1200,6 +1210,42 @@ index 0000000..6387e51
 +
 +
 +class TestPhoenixStoryboard(unittest.TestCase):
++    def test_news_shortfall_never_searches_unverified_swimming_river_stock(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        narration = "A boat capsized near the coast."
++        params = VideoParams(video_subject="News", video_script=narration, phoenix_news_visual_policy="context-only-no-supplement-v1", phoenix_storyboard=[{"narration": narration, "query": "boat sea horizon", "assetId": 123}])
++        approved = MaterialInfo(url="approved", duration=9, source_info={"asset_id": "123"})
++        unrelated = MaterialInfo(url="unrelated", duration=4, source_info={"asset_id": "456", "source_page": "https://www.pexels.com/video/tourists-swimming-near-boat-in-a-river-456/"})
++        self.assertTrue(storyboard._supplement_metadata_matches(unrelated, "boat sea horizon"), "ordinary stock checks alone do not enforce news context")
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 10.2, narration)]), patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 9)) as download, patch("app.services.material._search_videos_with_cache", return_value=[unrelated]) as search, patch("app.services.task_artifacts.patch_script_data") as persist:
++            with self.assertRaisesRegex(ValueError, "News section 1.*No supplemental stock"):
++                storyboard.prepare_timeline("unused-news-test", params, "unused.srt", 10.2, lambda *_: None)
++            self.assertEqual(download.call_count, 1)
++            search.assert_not_called()
++            persist.assert_not_called()
++
++    def test_news_requires_every_approved_asset_before_fetching_any_footage(self):
++        from app.models.schema import VideoParams
++        params = VideoParams(video_subject="News", video_script="The report describes a boat. The cause is under investigation.", phoenix_news_visual_policy="context-only-no-supplement-v1", phoenix_storyboard=[{"narration": "The report describes a boat.", "query": "boat sea horizon", "assetId": 123}, {"narration": "The cause is under investigation.", "query": "harbor boats"}])
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 5, "The report describes a boat."), (5, 10, "The cause is under investigation.")]), patch.object(storyboard, "approved_pexels_asset") as selected, patch("app.services.material._search_videos_with_cache") as search:
++            with self.assertRaisesRegex(ValueError, "News section 2 requires an approved contextual asset"):
++                storyboard.prepare_timeline("unused-news-test", params, "unused.srt", 10, lambda *_: None)
++            selected.assert_not_called()
++            search.assert_not_called()
++
++    def test_news_with_sufficient_approved_footage_keeps_one_native_speed_asset(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        narration = "The report describes a boat."
++        params = VideoParams(video_subject="News", video_script=narration, phoenix_news_visual_policy="context-only-no-supplement-v1", phoenix_storyboard=[{"narration": narration, "query": "boat sea horizon", "assetId": 123}])
++        approved = MaterialInfo(url="approved", duration=12, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues", return_value=[(0, 10.2, narration)]), patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 12)), patch("app.services.material._search_videos_with_cache") as search, patch("app.services.task_artifacts.patch_script_data", return_value=True):
++            timeline, public = storyboard.prepare_timeline("unused-news-test", params, "unused.srt", 10.2, lambda *_: None)
++            self.assertEqual([shot["assetId"] for shot in public], [123])
++            self.assertEqual([shot["playbackRate"] for shot in public], [1])
++            self.assertEqual([(shot["start"], shot["end"]) for shot in timeline], [(0, 10.2)])
++            self.assertNotIn("supplementalReason", public[0])
++            search.assert_not_called()
++
 +    def test_small_measured_shortfall_adds_distinct_same_query_footage_at_native_speed(self):
 +        from app.models.schema import VideoParams, MaterialInfo
 +        params = VideoParams(video_subject="Repair", video_script="The replacement part is delayed.", phoenix_storyboard=[{"narration": "The replacement part is delayed.", "query": "repair part", "assetId": 123}])

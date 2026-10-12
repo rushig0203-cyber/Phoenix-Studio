@@ -19,20 +19,25 @@ export function stockVisualBrief(topic: string, script: string, supplied?: strin
   return terms.length ? terms : [visualWords(topic).slice(0, 4).join(" ") || topic.trim()];
 }
 
-export function stockScriptWordRange(duration: number) {
-  return { min: Math.max(100, Math.round(duration * 2.35)), max: Math.max(120, Math.min(650, Math.round(duration * 3.1))) };
+export function stockScriptWordRange(duration: number, ownerScript = false) {
+  if (ownerScript) return { min: Math.max(100, Math.round(duration * 2.35)), max: Math.max(120, Math.min(650, Math.round(duration * 3.1))) };
+  return { min: Math.max(30, Math.round(duration * 1.9)), max: Math.max(40, Math.min(650, Math.round(duration * 2.5))) };
 }
 
-export function stockNarrationError(script: string, duration: number) {
+export function stockScriptTargetWords(duration: number) {
+  return Math.max(40, Math.min(600, Math.round(duration * 2.2)));
+}
+
+export function stockNarrationError(script: string, duration: number, ownerScript = false) {
   const words = script.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-  const range = stockScriptWordRange(duration);
+  const range = stockScriptWordRange(duration, ownerScript);
   return words < range.min || words > range.max || !/[.!?]["'”’)]*$/.test(script.trim())
     ? `Your narration has ${words} words. Use ${range.min}–${range.max} words and a complete ending for ${duration} seconds, or change the duration. Phoenix will not replace your words.` : null;
 }
 
-export function checkStockScript(topic: string, script: string, duration: number) {
+export function checkStockScript(topic: string, script: string, duration: number, ownerScript = false) {
   const words = script.trim().split(/\s+/).filter(Boolean);
-  const range = stockScriptWordRange(duration);
+  const range = stockScriptWordRange(duration, ownerScript);
   const topicMatch = visualWords(topic).some(word => script.toLowerCase().includes(word));
   const complete = /[.!?]["'”’)]*$/.test(script.trim());
   const length = words.length >= range.min && words.length <= range.max;

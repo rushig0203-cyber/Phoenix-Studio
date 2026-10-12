@@ -46,11 +46,11 @@ test('new automatic soundtrack uses compact adaptive timing without changing man
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_SOURCES, 10);
   for (const [topic, mood] of [['Sunrise over mountains', 'warm'], ['birds in a garden', 'warm'], ['Sun City videos', 'journey'], ['ocean waves', 'journey'], ['misty mountains', 'reflective'], ['moonlit lake', 'reflective']]) {
-    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
+    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
   }
   const first = automatic.automaticStockReelOptions('sunrise'); first.mood = 'journey';
   assert.equal(automatic.automaticStockReelOptions('sunrise').mood, 'warm', 'A caller cannot mutate later defaults');
-  assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.mood, 'reflective', 'Legacy constant remains unchanged');
+  assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.mood, 'reflective', 'Baseline mood remains unchanged');
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.continuity, 'visual-v1');
   assert.equal(editing.DEFAULT_STOCK_REEL_OPTIONS.audio, 'auto', 'Manual/legacy defaults still preserve source-only sound when usable');
   assert.match(automatic.automaticStockReelMessage(8), /one continuous original instrumental across all shots/);
@@ -104,8 +104,8 @@ test('authoritative slow-motion changes are skipped and selection gathers enough
   });
   assert.equal(sources.length, 8); assert.equal(sources[0].id, anchor.id);
   assert.deepEqual(calls, [2, 3, 4, 5, 6, 7, 8, 9]); assert.equal(sources.some(item => item.id === 2), false);
-  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
-  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
+  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20, 'New defaults stop gathering at a compact viable preview, not padding to the former duration');
   assert.ok(plan.every(item => item.speed === 1), 'Unanalysed windows remain at native playback speed');
 });
 
@@ -460,7 +460,7 @@ test('narrow companion queries replace existing searches without extra calls or 
   });
   assert.deepEqual(calls, [['pexels', 'ocean underwater'], ['pixabay', 'ocean underwater']]);
   assert.equal(sources[0].id, selected.id); assert.ok(resolutions.length <= 16); assert.ok(sources.length <= 10);
-  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
@@ -497,8 +497,8 @@ test('automatic composition resolves authoritative companions until its adaptive
   assert.deepEqual(searched, [['pexels', 'Sun City'], ['pixabay', 'Sun City']]);
   assert.deepEqual(calls, Array.from({ length: 10 }, (_, index) => ['pexels', index + 2]));
   assert.deepEqual(identities(sources), ['pexels:1', ...Array.from({ length: 7 }, (_, at) => `pexels:${at + 5}`)]);
-  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
-  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20);
 });
 
 test('one catalog can provide a compact reel while too few related shots remain an error', async () => {
@@ -518,11 +518,11 @@ test('five related sources are enough when the catalog is sparse and the adaptiv
     async resolve(provider, id) { return video(id, 'Sun City skyline', { provider }); },
   });
   assert.equal(sources.length, 5, 'A sparse but viable catalog does not force eight source clips');
-  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
-test('adaptive source windows use native actual duration or only a modest measured speed-up', () => {
+test('saved v2 source windows retain native actual duration or their original modest measured speed-up', () => {
   const plan = editing.planStockIntervals([
     { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 1 }] },
     { duration: 8, trimMode: 'auto', motionWindows: [{ start: 0, end: 8, motion: 40 }] },
@@ -608,7 +608,7 @@ test('diverse composition keeps the selected anchor and permits relevant reused 
   assert.deepEqual(calls.slice(0, 5), [5, 6, 7, 8, 9].map(id => ['pexels', id]));
   assert.ok(sources.some(item => used.has(item.provider + ':' + item.id) && item.id !== anchor.id), 'Sparse unused choices still allow matching reused footage');
   assert.equal(new Set(identities(sources)).size, sources.length);
-  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
@@ -627,7 +627,7 @@ test('authoritative low-resolution companion changes are skipped without abandon
   });
   assert.equal(sources[0].id, anchor.id); assert.ok(sources.every(item => Math.min(item.width, item.height) >= 720));
   assert.equal(sources.some(item => item.id === 2), false); assert.equal(new Set(identities(sources)).size, sources.length);
-  assert.ok(calls.length <= 16); const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, 'adaptive-v2');
+  assert.ok(calls.length <= 16); const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
   assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 32);
 });
 
@@ -729,14 +729,14 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
   assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v2', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [
     ...[1, 2, 3, 4].map(id => ['pexels', String(id), 0, 40, 'auto']), ...[5, 6, 7, 8].map(id => ['pixabay', String(id), 0, 40, 'auto']),
   ]);
   const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 40, 'cinematic', undefined, h.queued[0].input.options.shotCadence);
-  assert.ok(plan.at(-1).outputEnd >= 20 && plan.at(-1).outputEnd <= 32);
+  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20);
   assert.ok(plan.every(interval => interval.speed === 1), 'Unmeasured catalog previews do not authorize speed changes');
 });
 
@@ -790,6 +790,21 @@ test('idempotent retry retains saved ambience and actual source count before pre
   assert.match(data.message, /existing reel uses 2 related videos/);
   assert.equal(data.job.stockSource.options.audio, 'ambience-music');
   assert.doesNotMatch(data.message, /continuous original instrumental/);
+  assert.deepEqual(h.calls, [['existing', automaticPayload.requestId]]); assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
+});
+
+test('a saved v2 UUID returns its exact timing and guidance without applying new v3 defaults', async () => {
+  const shots = Array.from({ length: 8 }, (_, index) => ({ provider: 'pexels', mediaId: String(index + 1), duration: 20, trimMode: 'auto' }));
+  const options = { ...automatic.automaticStockReelOptions('Sun City'), shotCadence: 'adaptive-v2' };
+  const intervals = editing.planStockIntervals(shots, 40, options.pacing, undefined, options.shotCadence);
+  const job = { id: 'saved-v2', status: 'QUEUED', stockSource: { shots, options },
+    managerGuidance: { revision: 'stock-v1-012345abcdef', feedbackCount: 1, rules: ['Saved owner preferences.'] }, intervals };
+  const before = JSON.stringify(job), h = harness({ existing: job, ffmpeg: false, guidanceError: 'Do not read new guidance for a saved recipe' });
+  const response = await h.api.POST(request({ ...automaticPayload, query: 'Different topic', id: 99 }));
+  const result = await response.json();
+  assert.equal(response.status, 200); assert.equal(result.existing, true); assert.deepEqual(result.job, job);
+  assert.equal(JSON.stringify(job), before); assert.deepEqual(result.job.intervals.map(shot => shot.frames), [48, 62, 74, 69, 79, 64, 62, 74]);
+  assert.equal(result.job.stockSource.options.shotCadence, 'adaptive-v2');
   assert.deepEqual(h.calls, [['existing', automaticPayload.requestId]]); assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
 });
 

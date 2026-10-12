@@ -1,5 +1,25 @@
 import type { NewsResearch } from "./newsResearch";
 import { visualWords } from "./stockBrief";
+import type { StockBeat, StockShot } from "./stockStoryboard";
+
+export const NEWS_STOCK_VISUAL_POLICY = "context-only-no-supplement-v1";
+
+export function supportsNewsStockVisualPolicy(properties: unknown): boolean {
+  type Field = { const?: unknown; enum?: unknown; type?: unknown; anyOf?: Field[] };
+  const field = (properties as { phoenix_news_visual_policy?: Field } | undefined)?.phoenix_news_visual_policy;
+  if (!field || typeof field !== "object" || (field.anyOf !== undefined && !Array.isArray(field.anyOf))) return false;
+  const variants = field.anyOf ?? [field];
+  const exact = (variant: Field) => Boolean(variant && typeof variant === "object" && (variant.const === NEWS_STOCK_VISUAL_POLICY || (Array.isArray(variant.enum) && variant.enum.length === 1 && variant.enum[0] === NEWS_STOCK_VISUAL_POLICY)));
+  return variants.some(exact) && variants.every(variant => exact(variant) || variant?.type === "null");
+}
+
+export function assertNewsStockRender(policy: unknown, approved: StockBeat[] | undefined, shots: StockShot[]) {
+  if (policy !== NEWS_STOCK_VISUAL_POLICY || !approved?.length || shots.length !== approved.length || shots.some((shot, index) => {
+    const beat = approved[index];
+    const sourceId = shot.sourcePage?.match(/\/(?:[^/]*-)?(\d+)\/?$/)?.[1];
+    return !beat.assetId || sourceId !== String(beat.assetId) || shot.supplementalReason || shot.query !== beat.query || shot.narration !== beat.narration;
+  })) throw new Error("News render does not prove the approved contextual footage was retained without supplemental stock. The rendered files are retained, but no review-ready video was accepted. Create a new news plan with the updated renderer.");
+}
 
 const contextSubject = /\b(?:sea|ocean|coast(?:s|al|line)?|shore(?:s|line)?|beach(?:es)?|waves?|horizon|ports?|harbou?rs?|docks?|boats?|ships?|rivers?|lakes?|roads?|streets?|city|cities|towns?|buildings?|parliament|government|courthouses?|hospitals?|corridors?|hallways?|laboratory|laboratories|borders?|fences?|airports?|aircraft|airplanes?|runways?|trains?|railways?|stations?|farms?|fields?|factory|factories|industry|industrial|schools?|classrooms?|forests?|mountains?|newspapers?|flags?|maps?|sky|clouds?|sun)\b/i;
 const eventOrIdentity = /\b(?:bodies|corpse\w*|dead|death\w*|dying|drown\w*|capsiz\w*|sink\w*|sinking|wreck\w*|execut\w*|kill\w*|murder\w*|victim\w*|casualt\w*|injur\w*|wound\w*|bleed\w*|assault\w*|attack\w*|bomb\w*|explosi\w*|shoot\w*|gunfire|fighting|battle\w*|rescu\w*|survivor\w*|refugee\w*|migrant\w*|president\w*|minister\w*|politician\w*|leader\w*|official\w*|meeting\w*|protest\w*|riot\w*|arrest\w*|prisoner\w*|hostage\w*|patient\w*|doctor\w*|surgeon\w*|nurse\w*|soldier\w*|police|crowd\w*|people|person\w*|man|men|woman|women|child\w*|baby|babies|actor\w*|reenact\w*)\b/i;

@@ -53,6 +53,8 @@ jobs:
         run: python scripts/test-transcribe-windows.py
       - name: Verify renderer timed-caption alignment without provider or model imports
         run: python scripts/test-renderer-timed-captions.py
+      - name: Verify news renderer refuses unapproved supplemental stock without models or providers
+        run: python -B scripts/test-renderer-news-policy.py
       - name: Run release regressions one file at a time
         run: >-
           node --max-old-space-size=192 --test --test-concurrency=1
@@ -82,6 +84,10 @@ jobs:
           scripts/test-creation-drafts.cjs
           scripts/test-news-research.cjs
           scripts/test-news-visuals.cjs
+          scripts/test-service-health.cjs
+          scripts/test-stock-editorial.cjs
+          scripts/test-stock-playback.cjs
+          scripts/test-review-workflows.cjs
           scripts/test-worker-workflows.cjs
           scripts/test-queue-history.cjs
           scripts/test-model-queue-waits.cjs
@@ -122,7 +128,9 @@ jobs:
           npx --no-install eslint
           src/lib/reelMusic.ts src/lib/postingEvidence.ts
           src/lib/generation.ts
+          src/app/api/generations/route.ts
           src/lib/stockStoryboard.ts src/lib/stockPreparation.ts src/lib/automaticFootage.ts src/lib/newsVisualPolicy.ts
+          src/lib/stockBrief.ts src/lib/stockEditorial.ts src/lib/newsResearch.ts src/lib/timedCaptions.ts
           src/lib/videoPostingAnalysis.ts src/lib/postingCopyPolicy.ts
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts src/lib/instagramTags.ts
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx

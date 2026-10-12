@@ -126,7 +126,7 @@ async function main() {
   stats = greenery.indices.map(index => stats[index]); motion = greenery.windows;
   assert.ok(shots.length >= 4 && omittedAtRender.includes('3699513'), 'The grey bare-tree source must not survive green-context sampling.');
   const provisional = planning.planStockIntervals(bounds.map((part, index) => ({ ...part, motionWindows: motion[index] })), 40, 'cinematic', undefined,
-    'adaptive-v2', { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
+    options.shotCadence, { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
   const appearance = shots.map((shot, index) => {
     const cache = JSON.parse(fs.readFileSync(path.join(assembly, `appearance-${index + 1}.json`), 'utf8'));
     const identity = crypto.createHash('sha256').update(JSON.stringify({ version: 1, filename: shot.sourceFile, bytes: stats[index].size,

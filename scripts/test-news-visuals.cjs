@@ -19,6 +19,57 @@ const choice = (id, slug) => ({ id, duration: 120, width: 720, height: 1280, cre
 const narration = 'Authorities reported that a boat capsized near Djibouti.';
 const input = { topic: research.title, script: narration, duration: 18, research };
 
+test('news renderer capability is the exact policy, never mere field presence or a permissive schema', () => {
+  const literal = policy.NEWS_STOCK_VISUAL_POLICY;
+  for (const field of [{ const: literal }, { enum: [literal] }, { anyOf: [{ const: literal, type: 'string' }, { type: 'null' }] }]) {
+    assert.equal(policy.supportsNewsStockVisualPolicy({ phoenix_news_visual_policy: field }), true);
+  }
+  for (const field of [undefined, {}, null, { type: 'string' }, { enum: [literal, 'supplement'] }, { anyOf: [{ const: literal }, { type: 'string' }] }, { anyOf: [null] }, { anyOf: 'wrong', const: literal }]) {
+    assert.equal(policy.supportsNewsStockVisualPolicy({ phoenix_news_visual_policy: field }), false);
+  }
+});
+
+test('news completion refuses legacy submission, changed assets and supplemental shots', () => {
+  const approved = [{ narration, query: 'sea horizon', assetId: 42 }];
+  const shot = { narration, query: 'sea horizon', sourcePage: 'https://www.pexels.com/video/ocean-horizon-42/', start: 0, end: 18, timing: 'subtitle-boundary', playbackRate: 1 };
+  policy.assertNewsStockRender(policy.NEWS_STOCK_VISUAL_POLICY, approved, [shot]);
+  policy.assertNewsStockRender(policy.NEWS_STOCK_VISUAL_POLICY, approved, [{ ...shot, sourcePage: 'https://www.pexels.com/video/42/' }]);
+  for (const shots of [[], [shot, shot], [{ ...shot, sourcePage: 'https://www.pexels.com/video/other-142/' }], [{ ...shot, supplementalReason: 'Extra stock' }], [{ ...shot, query: 'river boat' }], [{ ...shot, narration: 'A different section.' }]]) {
+    assert.throws(() => policy.assertNewsStockRender(policy.NEWS_STOCK_VISUAL_POLICY, approved, shots), /no review-ready video/);
+  }
+  assert.throws(() => policy.assertNewsStockRender(undefined, approved, [shot]), /no review-ready video/);
+  assert.throws(() => policy.assertNewsStockRender(policy.NEWS_STOCK_VISUAL_POLICY, [{ narration, query: 'sea horizon' }], [shot]), /no review-ready video/);
+});
+
+test('central stock submission rejects legacy news renderers before writing or rendering', async () => {
+  const generation = require('../src/lib/generation.ts');
+  const originalFetch = global.fetch, base = process.env.MPT_BASE_URL;
+  process.env.MPT_BASE_URL = 'http://127.0.0.1:8080';
+  const properties = { phoenix_storyboard: {}, phoenix_artifacts_version: {}, phoenix_playback_policy: { const: 'native-speed-v1' } };
+  global.fetch = async (url, init) => {
+    assert.equal(new URL(url).pathname, '/openapi.json');
+    assert.ok(!init.method || init.method === 'GET');
+    return Response.json({ components: { schemas: { TaskVideoRequest: { properties }, PhoenixStoryBeat: { properties: { assetId: {} } } } } });
+  };
+  try {
+    await generation.requireStockStoryboardRenderer(true, false);
+    await assert.rejects(generation.requireStockStoryboardRenderer(true, true), /news footage/);
+    properties.phoenix_news_visual_policy = { anyOf: [{ const: policy.NEWS_STOCK_VISUAL_POLICY }, { type: 'null' }] };
+    await generation.requireStockStoryboardRenderer(true, true);
+  } finally { global.fetch = originalFetch; if (base === undefined) delete process.env.MPT_BASE_URL; else process.env.MPT_BASE_URL = base; }
+});
+
+test('concise stock narration can finish naturally without lowering children duration requirements', () => {
+  const { validatePublishingOutput } = require('../src/lib/generation.ts');
+  const short = { publishingFormat: 'youtube-short', creationType: 'general', duration: 75, aspect: '9:16', targetPlatform: 'YouTube' };
+  const media = { duration: 24, width: 720, height: 1280, hasAudio: true };
+  assert.equal(validatePublishingOutput(short, media, true).format, 'youtube-short');
+  assert.throws(() => validatePublishingOutput(short, { ...media, duration: 18 }, true), /requires 20/);
+  assert.throws(() => validatePublishingOutput(short, media), /requires 60/);
+  assert.throws(() => validatePublishingOutput(short, { ...media, duration: 120 }, true), /requires 20/);
+  assert.throws(() => validatePublishingOutput(short, { ...media, width: 1280, height: 720 }, true), /requires 9:16/);
+});
+
 test('news queries require relevant neutral filmed context, never literal victims or reenactments', () => {
   for (const query of ['bodies in the water', 'boat capsizing at sea', 'migrant rescue boat', 'cartoon harbor boats', 'beautiful water', 'portrait smiling', 'forest mountain aerial', 'sea forest', 'sea horizon swimming']) {
     assert.ok(policy.newsStockQueryIssue(query, research), query);

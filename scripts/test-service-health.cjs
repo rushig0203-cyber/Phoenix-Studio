@@ -14,6 +14,14 @@ test('health checks actual local model inventory and compatible renderer protoco
     : Response.json({ components: { schemas: { TaskVideoRequest: { properties: { phoenix_storyboard: {}, phoenix_artifacts_version: {}, phoenix_playback_policy: { const: 'native-speed-v1' } } } } } });
   const state = await probeLocalServices();
   assert.equal(state.ollama.state, 'ready'); assert.equal(state.renderer.state, 'ready');
+  assert.match(state.renderer.detail, /news videos need/);
+});
+
+test('news compatibility is advertised only for an exact nullable policy contract', async () => {
+  process.env.MPT_BASE_URL = 'http://127.0.0.1:8080';
+  global.fetch = async url => String(url).endsWith('/api/tags') ? Response.json({ models: [] })
+    : Response.json({ components: { schemas: { TaskVideoRequest: { properties: { phoenix_storyboard: {}, phoenix_artifacts_version: {}, phoenix_playback_policy: { const: 'native-speed-v1' }, phoenix_news_visual_policy: { anyOf: [{ const: 'context-only-no-supplement-v1' }, { type: 'null' }] } } } } } });
+  assert.match((await probeLocalServices()).renderer.detail, /including the approved-only news/);
 });
 test('missing models and incompatible backends are blocked, not silently ready', async () => {
   global.fetch = async url => String(url).endsWith('/api/tags') ? Response.json({ models: [] }) : Response.json({ components: {} });

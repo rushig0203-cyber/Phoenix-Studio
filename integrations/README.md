@@ -26,6 +26,17 @@ It also adds `phoenix_storyboard` to video requests: exact narration coverage, c
 
 The `PhoenixStoryBeat.assetId` field keeps the selected Pexels asset first in its section. Its metadata is resolved server-side; no arbitrary client media URL is accepted. An approved download failure stops the section rather than replacing that asset. When a valid source falls short of the measured narration, distinct supplemental footage can be searched with the same literal query. Unknown catalog descriptions, conflicting subjects/actions, reused assets and assets reserved for later approved sections are rejected. The renderer retains all used source records and never claims these catalog checks are frame analysis. Missing relevant coverage is an explicit failure, not unrelated filler. The draft approval and free singing setup are documented in [FREE-CREATION.md](FREE-CREATION.md).
 
+News requests additionally require the nullable exact literal
+`phoenix_news_visual_policy: "context-only-no-supplement-v1"` in the schema.
+Every section must have an approved asset before any footage fetch; only that
+asset can supply its picture. Measured speech exceeding usable frames fails the
+section, without supplemental search, slowdown, freeze or a footage loop. Ordinary
+requests omit the field and retain their existing supplement behavior. Phoenix
+checks the capability before accepting/submitting news and validates approved
+source pages on completion. `python -B scripts/test-renderer-news-policy.py` in
+Phoenix checks the shipped logic with stdlib-only mocked I/O; no model/provider
+imports or owner renders are required.
+
 New stock requests require `phoenix_playback_policy: "native-speed-v1"`, advertised
 by the backend schema and checked before submission. Footage timestamps are reset,
 not stretched: no slowdown, speedup, EOF freeze or source loop fills narration.

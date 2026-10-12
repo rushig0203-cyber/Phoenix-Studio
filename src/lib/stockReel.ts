@@ -9,7 +9,7 @@ export type StockReelOptions = {
   /** New automatic recipes only. Missing on older/manual jobs: no minimum. */
   minDuration?: number;
   /** Persisted only on new automatic recipes; missing retains saved timing. */
-  shotCadence?: "brisk-v1" | "adaptive-v2";
+  shotCadence?: "brisk-v1" | "adaptive-v2" | "adaptive-v3";
   /** Optional visual boundary matching for new automatic reels. */
   continuity?: "visual-v1";
   /** Grounded catalogue greenery cue, never a user-entered visual claim. */
@@ -84,7 +84,8 @@ export function suggestStockTrim(duration: number, singleShot = false) {
 /**
  * Omitted pacing retains the legacy cap recipe for saved jobs. New cinematic
  * edits shorten only explicitly automatic windows; owner trims never move.
- * All intervals play at native speed, and short sequences are never padded.
+ * Legacy intervals play at native speed; adaptive cuts allow bounded measured
+ * speed-ups. Short sequences are never padded, slowed, frozen or repeated.
  * The opt-in automatic minimum uses whole source frames and may expand real
  * windows up to eight seconds after additional related sources are exhausted.
  * The separately saved brisk cadence keeps a three-second opening and caps
@@ -93,7 +94,7 @@ export function suggestStockTrim(duration: number, singleShot = false) {
 export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"], rhythm?: { bpm: number }): StockInterval[] {
   if (!shots.length || shots.length > MAX_STOCK_SHOTS || !Number.isFinite(maximum) || maximum <= 0 || maximum > 105) throw new Error("Choose one to twelve shots and a reel length up to 105 seconds.");
   if (pacing !== undefined && pacing !== "cinematic" && pacing !== "selected") throw new Error("Choose cinematic pacing or keep the selected moments.");
-  if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2") throw new Error("Choose the supported automatic shot cadence.");
+  if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2" && shotCadence !== "adaptive-v3") throw new Error("Choose the supported automatic shot cadence.");
   const selected = shots.map(shot => {
     if (!Number.isFinite(shot.duration) || shot.duration <= 0) throw new Error("A selected shot has no readable duration.");
     const start = shot.start ?? 0, end = shot.end ?? shot.duration;
@@ -101,7 +102,9 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     if (shot.trimMode !== undefined && shot.trimMode !== "manual" && shot.trimMode !== "auto") throw new Error("A shot has an invalid trim mode.");
     return { start, end: Math.min(end, shot.duration), automatic: shot.trimMode === "auto" };
   });
-  if (shotCadence === "adaptive-v2") {
+  if (shotCadence === "adaptive-v2" || shotCadence === "adaptive-v3") {
+    // Saved v2 jobs retain their exact timing. Only new v3 recipes shorten cuts.
+    const compact = shotCadence === "adaptive-v3";
     if (pacing !== "cinematic" || minDuration !== undefined || maximum < 18 || maximum > 40 || shots.length < 4 || shots.length > 10 || selected.some(shot => !shot.automatic)) {
       throw new Error("Adaptive cadence requires four to ten automatic cinematic shots, no minimum, and an 18–40-second cap.");
     }
@@ -121,8 +124,16 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
       const best = candidates.reduce<typeof candidates[number] | undefined>((winner, window) => !winner || window.motion > winner.motion ? window : winner, undefined);
       return best ?? { start: shot.start, end: shot.end, motion: undefined };
     });
-    let speeds = windows.map(window => window.motion !== undefined && window.motion < 4 ? 1.25 : 1);
-    const ceilings = selected.map((_shot, index) => Math.floor((index === 0 ? 2.25 : 3.5) * STOCK_REEL_FPS + 1e-7));
+    let speeds = windows.map(window => {
+      if (!compact) return window.motion !== undefined && window.motion < 4 ? 1.25 : 1;
+      // Do not guess speed from catalog text or accelerate a static/unknown
+      // scene. Quieter measured movement gets a modest fast-forward; already
+      // active footage keeps native playback. Frame delta is not action recognition.
+      if (window.motion === undefined || window.motion === 0 || window.motion >= 12) return 1;
+      return window.motion < 4 ? 1.35 : 1.15;
+    });
+    const openingCeiling = compact ? 2 : 2.25, laterCeiling = compact ? 3.4 : 3.5;
+    const ceilings = selected.map((_shot, index) => Math.floor((index === 0 ? openingCeiling : laterCeiling) * STOCK_REEL_FPS + 1e-7));
     const capacitiesAtSpeed = () => windows.map((window, index) => Math.min(ceilings[index], Math.floor(((window.end - window.start) / speeds[index]) * STOCK_REEL_FPS + 1e-7)));
     let capacities = capacitiesAtSpeed();
     if (capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS && speeds.some(speed => speed > 1)) {
@@ -136,6 +147,14 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     }
     const cap = Math.floor(Math.min(maximum, 32) * STOCK_REEL_FPS + 1e-7);
     const naturalSeconds = windows.map((window, index) => {
+      if (compact) {
+        if (index === 0) return 1.6;
+        if (window.motion === undefined) return [2.2, 2.6, 2.4, 2.8, 2.3][(index - 1) % 5];
+        if (window.motion < 4) return 1.9 + window.motion / 4 * .3;
+        if (window.motion < 12) return 2.2 + (window.motion - 4) / 8 * .2;
+        if (window.motion < 20) return 2.4 - (window.motion - 12) / 8 * .15;
+        return 2.25 - Math.min(1, (window.motion - 20) / 235) * .35;
+      }
       if (index === 0) return 2;
       if (window.motion === undefined) return [2.6, 3.1, 2.9, 3.3, 2.7][(index - 1) % 5];
       if (window.motion < 4) return 2.7 + window.motion / 4 * .7;

@@ -13,7 +13,7 @@ import { tryWithLocalRenderSlot, retainExternalRender, finishExternalRender, rec
 import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
-import { stockVisualBrief, stockNarrationError, checkStockScript } from "./stockBrief";
+import { stockVisualBrief, stockNarrationError, stockScriptTargetWords, checkStockScript } from "./stockBrief";
 import { readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { getCreativeGuidance } from "./qualityManager";
@@ -21,6 +21,7 @@ import type { CreativeGuidance } from "./managerTypes";
 import { generateWritingModel, withWritingSession, isWritingWaitError } from "./writingModel";
 import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
+import { NEWS_STOCK_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender } from "./newsVisualPolicy";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
 import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
@@ -41,6 +42,7 @@ export type { PublishingFormat } from "./publishingFormats";
 
 export type GenerationInput = {
   research?: NewsResearch;
+  newsVisualPolicy?: typeof NEWS_STOCK_VISUAL_POLICY;
   reviewMode?: "final" | "storyboard";
   scriptLocked?: boolean;
   scriptApproved?: boolean;
@@ -374,7 +376,7 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
-export async function requireStockStoryboardRenderer(approvedFootage = false) {
+export async function requireStockStoryboardRenderer(approvedFootage = false, news = false) {
   const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
   const api = response.ok ? await response.json() : null;
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
@@ -383,6 +385,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false) {
   if (approvedFootage && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.assetId) throw new Error("Restart the local renderer with the approved-footage update before rendering. Phoenix will not ignore your selected clips.");
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
   if (!supportsNativeStockPlayback(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for original-speed footage. Phoenix will not slow down or freeze clips to fill narration; existing exports are retained.");
+  if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for news footage. Phoenix will not let a longer narration silently add unrelated supplemental stock; existing exports are retained.");
 }
 
 export async function generatorReachable() {
@@ -571,7 +574,7 @@ function publishingFormatFor(input: GenerationInput) {
   return inferPublishingFormat(input);
 }
 
-function validatePublishingOutput(input: GenerationInput, media: ProbeResult) {
+export function validatePublishingOutput(input: GenerationInput, media: ProbeResult, stock = false) {
   const format = publishingFormatFor(input);
   const profile = publishingProfile(format);
   const isVertical = media.height > media.width;
@@ -579,8 +582,9 @@ function validatePublishingOutput(input: GenerationInput, media: ProbeResult) {
   if (!correctAspect) {
     throw new Error(`Rendered video is ${media.width}x${media.height}, but ${profile.label} requires ${profile.aspect}.`);
   }
-  if (media.duration < profile.minDuration - 1 || media.duration > profile.maxDuration + 1) {
-    throw new Error(`Rendered video is ${media.duration.toFixed(1)} seconds, but ${profile.label} requires ${profile.minDuration}–${profile.maxDuration} seconds.`);
+  const minimum = stock ? Math.min(20, profile.minDuration) : profile.minDuration;
+  if (media.duration < minimum - 1 || media.duration > profile.maxDuration + 1) {
+    throw new Error(`Rendered video is ${media.duration.toFixed(1)} seconds, but ${profile.label} requires ${minimum}–${profile.maxDuration} seconds.`);
   }
   return { format, profile };
 }
@@ -675,12 +679,12 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   const researchContext = newsWritingContext(input.research);
   if (input.script?.trim() && (input.scriptOrigin !== "local-model" || input.scriptApproved)) {
     const script = cleanScript(input.script);
-    const error = stockNarrationError(script, input.duration);
+    const error = stockNarrationError(script, input.duration, input.scriptOrigin !== "local-model");
     if (error) throw new Error(error);
     return script;
   }
   return withWritingSession(async () => {
-  const targetWords = Math.max(125, Math.min(600, Math.round(input.duration * 2.78)));
+  const targetWords = stockScriptTargetWords(input.duration);
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
   const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
@@ -811,7 +815,7 @@ async function existingReadyOutput(job: LocalGenerationJob, input: GenerationInp
   }
 }
 
-export async function retainStockArtifacts(id: string, destination: string, media: ProbeResult, raw: unknown) {
+export async function retainStockArtifacts(id: string, destination: string, media: ProbeResult, raw: unknown, expectedScript?: string) {
   const data = raw as { version?: unknown; clean_video?: unknown; caption_file?: unknown; narration_file?: unknown; music_present?: unknown; music_file?: unknown; caption_count?: unknown } | undefined;
   if (!data || data.version !== 1 || typeof data.clean_video !== "string" || typeof data.caption_file !== "string" || typeof data.narration_file !== "string" || typeof data.music_present !== "boolean" || (data.music_present && typeof data.music_file !== "string")) throw new Error("The local renderer did not return required clean-video, caption and audio artifacts. Retry after updating the renderer; no falsely complete review was created.");
   const directory = path.join(root, "work", `stock-${id}`);
@@ -821,7 +825,7 @@ export async function retainStockArtifacts(id: string, destination: string, medi
   const master = await probeVideo(clean);
   if (!master.hasAudio || master.width !== media.width || master.height !== media.height || Math.abs(master.duration - media.duration) > .2) throw new Error("Clean stock master does not match the finished video's duration, dimensions or audio.");
   await downloadLocalOutput(data.caption_file, captions, 2 * 1024 * 1024);
-  const cues = validateTimedCaptions(parseSrt(await fs.readFile(captions, "utf8")), media.duration);
+  const cues = validateTimedCaptions(parseSrt(await fs.readFile(captions, "utf8")), media.duration, expectedScript);
   if (data.caption_count !== cues.length) throw new Error("Saved captions do not match the renderer's reported caption artifact.");
   await downloadLocalOutput(data.narration_file, narration, 64 * 1024 * 1024);
   const requireAudio = async (filename: string) => {
@@ -843,8 +847,10 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   await updateJob(job.id, { progress: 92, stage: "Saving and validating the local stock render" });
   await downloadLocalOutput(videoUrl, destination);
   const media = await probeVideo(destination);
-  const { format } = validatePublishingOutput(input, media);
-  const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts) : undefined;
+  const { format } = validatePublishingOutput(input, media, true);
+  const actualShots = input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined;
+  if (input.research) assertNewsStockRender(input.newsVisualPolicy, input.storyboard, actualShots || []);
+  const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts, input.script) : undefined;
   const review = makeReviewFile({
     id: job.id,
     title: input.topic.slice(0, 120),
@@ -861,10 +867,10 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       managerGuidance: input.managerGuidance,
       checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
-      storyboard: input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined,
+      storyboard: actualShots,
       warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
     },
-    processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration).score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration).reason, status: "COMPLETED" },
+    processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model").score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model").reason, status: "COMPLETED" },
     delivery: {
       publishingFormat: format,
       platform: target,
@@ -1027,12 +1033,12 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
-  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)));
+  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research));
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
   const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
   const storyboard = plan.input.storyboard!;
-  const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
+  const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
   await updateJob(job.id, { progress: 12, stage: "Submitting the script to the local stock-video renderer", requestJson: JSON.stringify(prepared) });
   let response: Response;
   await retainExternalRender(job.id);
@@ -1047,6 +1053,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       phoenix_storyboard: storyboard,
       phoenix_artifacts_version: 1,
       phoenix_playback_policy: STOCK_PLAYBACK_POLICY,
+      phoenix_news_visual_policy: prepared.newsVisualPolicy,
       video_language: prepared.language,
       video_aspect: prepared.aspect,
       voice_name: prepared.voice === "local-windows-voice" ? "en-US-JennyNeural-Female" : prepared.voice,

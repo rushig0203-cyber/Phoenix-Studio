@@ -1,6 +1,20 @@
 # Phoenix Studio
 
-### News visuals and automatic Instagram tags — update in preparation
+### Shorter narration and tighter pacing — follow-up being verified
+
+New automatic reels use a versioned compact recipe; saved v2/manual jobs are not
+retimed. Generated narration is more concise, never slowed merely to fill time,
+and news provenance stays in posting copy rather than a long spoken credits outro.
+Caption artifacts must cover the complete narration, including its ending. News
+renders require approved footage only: insufficient measured coverage fails that
+section instead of silently searching weaker supplemental matches. Verification
+and installation of this follow-up are still pending; no paid service is added.
+
+The Instagram connection works for publishing, but actual watch-time insights are
+blocked by the missing `instagram_manage_insights` permission. No retention figures
+are guessed from view counts. See `IMPLEMENTATION_PROGRESS.md` for verified state.
+
+### News visuals and automatic Instagram tags — October 12, verified live
 
 News shot planning now receives the report context rather than translating each
 claim literally into a stock query. News-specific matching rejects weak word
@@ -9,7 +23,7 @@ people. Saved news plans and exact assets are rechecked; children's animation an
 ordinary stock reels keep their existing paths. Stock is still illustrative, not
 verified footage of the incident. Arbitrary internet images are not scraped.
 
-The manual tagging field is being replaced with a checked six-profile
+The manual tagging field is replaced with a checked six-profile
 travel/nature pool. Phoenix selects up to three relevant accounts from each
 video's saved visual observations, not a fixed list on every Reel. News reports
 do not receive unrelated scenic-profile tags. Public
@@ -21,8 +35,13 @@ without those tags; the skipped usernames remain in the upload history. Other
 errors and uncertain uploads never trigger this fallback. Existing failures are
 not retried during an update. This change uses no model, new service or dependency.
 The 187 focused posting/tag tests, 49 news/shared-planning tests and scoped posting
-lint pass. Full remote build and activation are pending; see
-`IMPLEMENTATION_PROGRESS.md`.
+lint pass. Windows run `38167431217` passed 828 Node and 36 Python checks, lint,
+real render fixtures, full TypeScript and production compilation. Both Vercel Git
+checks are green for `423b3e7`. Installed `.next-build-gh-38167431217-1`, BUILD_ID
+`q4nFJYjkNyRO_85lIZ2_O`, matches selected/live health; manager, worker and renderer
+are healthy/ready. All 33 saved metadata/credential hashes and 671 media
+sizes/timestamps stayed unchanged; no owner video was posted or retried.
+Actual-event footage search has not been added; stock remains illustrative.
 
 ### Jobs under Create only — October 11, verified live
 

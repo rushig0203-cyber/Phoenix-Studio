@@ -5,7 +5,7 @@ import { planStockIntervals, stockPortraitScore, type StockReelOptions } from ".
 export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
 export const AUTOMATIC_STOCK_REEL_OPTIONS: StockReelOptions = {
-  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, shotCadence: "adaptive-v2", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
+  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, shotCadence: "adaptive-v3", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
 };
 
 /** Lightweight topic cue, not a claim to have understood the video's emotion. */
@@ -337,8 +337,8 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
       // bounds determine the final duration after download.
       if (sources.length >= 8) {
         try {
-          const preview = planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, "adaptive-v2");
-          if (preview.at(-1)!.outputEnd >= 20) break;
+          const preview = planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+          if (preview.at(-1)!.outputEnd >= 18) break;
         } catch { /* Resolve more related sources when the real windows are short. */ }
       }
     } catch { /* Skip missing, animated or changed catalog entries; never add unrelated filler. */ }

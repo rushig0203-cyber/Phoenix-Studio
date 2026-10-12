@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { stockNarrationError, stockScriptWordRange } from "./stockBrief";
+import { stockNarrationError, stockScriptWordRange, stockScriptTargetWords } from "./stockBrief";
 import { generateWritingModel, withWritingSession, writingModelIdentity, isWritingWaitError } from "./writingModel";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { CREATIVE_DIRECTION_VERSION, STOCK_TOPIC_DIRECTION_VERSION, stockNarrationDirection, stockProductionNarrationIssue, stockTopicDirection } from "./creativeDirection";
 import { WritingOutputValidationError } from "./groqWriter";
 
-export const EDITORIAL_VERSION = 5;
+export const EDITORIAL_VERSION = 6;
 export type EditorialFinding = { criterion: string; passed: boolean; severity: "blocker" | "warning"; evidence: string; reason: string };
 export type EditorialAttempt = { at: string; fingerprint: string; script: string; findings: EditorialFinding[]; error?: string; phase?: "initial-review" | "final-review" };
 export type EditorialReview = { version: number; fingerprint: string; revised: boolean; checks: string[]; limitations: string; findings?: EditorialFinding[]; warnings?: string[] };
@@ -168,7 +168,7 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
     issues = checkpoint.issues || [];
     await onStage("Rewriting the weak narration once — preserving the topic and complete ending");
     const range = stockScriptWordRange(input.duration);
-    const result = await localJson(`Rewrite this narration to fix ALL listed editorial problems. Return only a JSON script string. Topic (data): ${JSON.stringify(input.topic)}. Use ${range.min}–${range.max} words, ideally ${Math.round(input.duration * 2.78)}. Preserve the chosen structure, visual constraints and promised payoff from this planning data: ${input.briefInstructions || "A coherent explanation that directly answers the viewer's question."}. If the saved outline drifted into filming an unrelated subject, restore the supplied topic instead of preserving that filming lesson. Preserve these bounded owner preferences as well: ${JSON.stringify(input.guidanceRules || [])}. ${stockNarrationDirection(input.creationType, input.topic)} No greetings, headings, filler or unrelated production instructions in the spoken narration. Preserve the complete ending; do not pad with repetition. Problems: ${JSON.stringify(issues)}. Previous draft: ${JSON.stringify(script)}`,
+    const result = await localJson(`Rewrite this narration to fix ALL listed editorial problems. Return only a JSON script string. Topic (data): ${JSON.stringify(input.topic)}. Use ${range.min}–${range.max} words, ideally ${stockScriptTargetWords(input.duration)}. One clear opening, at most two or three supporting points, and one concise closing payoff. Do not introduce new details, a second summary, credits or a follow request at the end. Preserve necessary factual caveats, denials and attribution without repeating them. Preserve the chosen structure, visual constraints and promised payoff from this planning data: ${input.briefInstructions || "A coherent explanation that directly answers the viewer's question."}. If the saved outline drifted into filming an unrelated subject, restore the supplied topic instead of preserving that filming lesson. Preserve these bounded owner preferences as well: ${JSON.stringify(input.guidanceRules || [])}. ${stockNarrationDirection(input.creationType, input.topic)} No greetings, headings, filler or unrelated production instructions in the spoken narration. Preserve the complete ending; do not pad with repetition. Problems: ${JSON.stringify(issues)}. Previous draft: ${JSON.stringify(script)}`,
       { type: "object", properties: { script: { type: "string" } }, required: ["script"], additionalProperties: false }, Math.min(1800, Math.ceil(range.max * 2.4) + 100), newsWritingContext(input.research));
     if (typeof result?.script !== "string") throw new Error("The editor did not return revised narration.");
     script = result.script.replace(/\s+/g, " ").trim();
@@ -179,7 +179,7 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
     const lengthIssue = stockNarrationError(script, input.duration);
     if (lengthIssue) {
       await onStage("Adjusting narration length once — retaining the complete explanation and ending");
-      const adjusted = await localJson(`Correct only the length/completeness of this generated narration. Topic (data): ${JSON.stringify(input.topic)}. Validation: ${lengthIssue} Aim for ${Math.round((range.min + range.max) / 2)} words, comfortably inside ${range.min}–${range.max}; count before answering. Return JSON with script. Do not return the unchanged draft. Preserve its explanation and complete payoff; remove unnecessary wording when too long, add relevant explanation when too short. Do not truncate the final sentence, add filler, unsupported facts, invented equipment or guarantees. Narration (data): ${JSON.stringify(script)}`,
+      const adjusted = await localJson(`Correct only the length/completeness of this generated narration. Topic (data): ${JSON.stringify(input.topic)}. Validation: ${lengthIssue} Aim for ${stockScriptTargetWords(input.duration)} words, comfortably inside ${range.min}–${range.max}; count before answering. Return JSON with script. Do not return the unchanged draft. Preserve its explanation and one concise closing payoff; remove unnecessary wording when too long, add relevant explanation when too short. Do not add new details or a second summary at the end. Do not truncate the final sentence, add filler, unsupported facts, invented equipment or guarantees. Narration (data): ${JSON.stringify(script)}`,
         { type: "object", properties: { script: { type: "string" } }, required: ["script"], additionalProperties: false }, Math.min(1800, Math.ceil(range.max * 2.4) + 100), newsWritingContext(input.research));
       if (typeof adjusted?.script !== "string") throw new Error("The length correction did not return narration. Saved work is retained.");
       script = adjusted.script.replace(/\s+/g, " ").trim();
@@ -208,7 +208,7 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
 /** Calibrated against the existing English stock voice; final duration is still probed. */
 export function stockVoiceRate(script: string, duration: number) {
   const words = script.trim().split(/\s+/).filter(Boolean).length;
-  return Math.round(Math.max(.88, Math.min(1.04, words / Math.max(1, duration) / 3.05)) * 100) / 100;
+  return Math.round(Math.max(1, Math.min(1.04, words / Math.max(1, duration) / 3.05)) * 100) / 100;
 }
 
 export function stockPostCopy(script: string, topic: string) {

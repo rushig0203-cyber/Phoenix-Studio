@@ -87,7 +87,7 @@ export function validateDraftScenes(draft: CreationDraft, scenes: DraftScene[], 
   const script = scenes.map(s => s.narration.trim()).join(" ");
   if (script.length > 20000) throw new Error("The draft is too long.");
   if (isStockDraft(draft)) {
-    const error = stockNarrationError(script, draft.input.duration);
+    const error = stockNarrationError(script, draft.input.duration, draft.input.scriptOrigin !== "local-model");
     if (error) throw new Error(error);
     if (scenes.some(s => s.query.trim().length < 2 || s.query.length > 80)) throw new Error("Each stock section needs a short visual search.");
     if (approval) {

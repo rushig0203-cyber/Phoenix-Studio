@@ -16,12 +16,17 @@ export function captionSrt(cues: TimedCaption[]) {
   return cues.map((cue, index) => `${index + 1}\n${stamp(cue.start)} --> ${stamp(cue.end)}\n${cue.text}\n`).join("\n");
 }
 
-export function validateTimedCaptions(cues: TimedCaption[], duration: number) {
+export function validateTimedCaptions(cues: TimedCaption[], duration: number, expectedScript?: string) {
   let end = 0;
   if (!cues.length) throw new Error("The renderer did not produce real timed captions.");
   for (const cue of cues) {
     if (!Number.isFinite(cue.start) || !Number.isFinite(cue.end) || !cue.text.trim() || cue.start < end - .02 || cue.end <= cue.start || cue.end > duration + .15) throw new Error("Rendered caption timings are missing, overlapping or outside the video.");
     end = cue.end;
+  }
+  if (expectedScript !== undefined) {
+    const normalize = (value: string) => value.replace(/<[^>]*>/g, "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const expected = normalize(expectedScript);
+    if (!expected || normalize(cues.map(cue => cue.text).join(" ")) !== expected) throw new Error("Rendered captions do not cover the complete narration in order, including its ending.");
   }
   return cues;
 }
