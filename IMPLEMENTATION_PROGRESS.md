@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 12 Needs attention preparation recovery — source tested; activation pending
+## October 12 Needs attention preparation recovery — verified installed and live
 
 - Read-only saved queue/API checks identify exactly three unarchived FAILED
   creation drafts: two complete-length failures after generated narration became
@@ -25,12 +25,29 @@
   stops clearly instead of becoming an infinite retry queue. No paid/local fallback.
 - All 94 focused serial mock tests pass, including actual shared preparation with
   shorter exact assets, recovery cache invalidation and elapsed-deadline exhaustion.
-  Read-only independent review found no remaining blocker in the changed paths.
-  Full remote Windows regression/build and guarded idle activation remain pending;
-  installed production is still `.next-build-gh-38210238076-1`. The startup log
-  confirms the earlier service stop was the normal app-window-close lifecycle,
-  not a renderer crash. The existing verified website/manager/worker was restored
-  without building, starting an owner render or loading a local AI model.
+  Independent read-only review found no remaining blocker in the changed paths.
+  Public standard Windows run `38259757138` passed 903/903 Node and 43/43 Python
+  checks, scoped lint, real synthetic and public licensed-Pexels render fixtures,
+  full TypeScript and production compilation. Remote building preserved local
+  RAM guards and did not upload owner files, private settings, credentials or models.
+- Verified archive/source/platform/runtime/dependency/file hashes preceded guarded
+  idle activation of `.next-build-gh-38259757138-1`, BUILD_ID
+  `MrZG0wC3R5458sFHOEoPE`, from source
+  `28ca5bc4a817655d3205d4faa8eea8cfb2b40597`. Independent health confirms selected/live
+  builds match, worker/manager healthy, renderer ready and heavy work idle. The
+  website is left running; the canonical launcher/Update shortcut selection is
+  unchanged. The earlier service stop was normal app-window-close lifecycle.
+- All 420 saved metadata/credential hashes (including publication records) and
+  4,031 media sizes/timestamps are unchanged. Browser/API/saved queue agree on three
+  failed preparations with enabled Recover controls; none was retried, rendered or
+  posted by this update. Warning/error scan is empty. Browser proof:
+  `C:\Users\rishi\Documents\Codex\2026-09-04\r\artifacts\phoenix-attention-live-20261012.png`.
+- Vercel `phoenix-studio-06` is READY for exact source `28ca5bc`. The separate
+  `phoenix-studio` deployment failed before compilation with `git_info_fail` and
+  empty build events. Authenticated inspection confirms this is a Git-source
+  metadata/integration failure, not a demonstrated compiler or paid-plan problem;
+  its precise underlying cause is unavailable. No Vercel settings, credentials or
+  deployments were mutated to hide it, and both projects are not claimed green.
 - No paid service, dependency, secret/token scope or runtime data is added to Git.
   This fix does not claim to resolve Meta's separate location-access restriction.
 

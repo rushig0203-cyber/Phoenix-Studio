@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Failed preparation recovery — October 12, source tested; installation pending
+### Failed preparation recovery — October 12, verified live
 
 The three current Needs attention drafts exposed two length-check failures and a
 temporary Cloudflare HTTP 500. Complete concise generated narration can now use
@@ -11,11 +11,20 @@ and history but invalidates both old review phases before a fresh check.
 Cloudflare temporary HTTP/network errors receive at most three sends within the
 original deadline; quota/authentication/billing errors keep their existing policy.
 
-The 94 focused mock regressions pass. No owner job was retried, rendered or posted,
-and no dependency, paid service or local model was added. The verified release
-below remains live until the remote Windows build and guarded activation succeed.
+The 94 focused mock regressions and full 903 Node/43 Python checks pass, along with
+lint, real isolated render fixtures, TypeScript and production compilation. Source
+`28ca5bc` is installed as `.next-build-gh-38259757138-1`, BUILD_ID
+`MrZG0wC3R5458sFHOEoPE`; selected/live builds match and manager/worker/renderer
+are healthy/ready. All 420 saved metadata/credential hashes and 4,031 media
+sizes/timestamps are unchanged. The browser shows all three retained failures with
+Recover controls and no console warning/error; no owner job was retried, rendered
+or posted. No dependency, paid service or local model was added.
 
-### Shorter narration and tighter pacing — October 12, verified live
+Vercel `phoenix-studio-06` is READY for the same source. The other project,
+`phoenix-studio`, failed before compilation with `git_info_fail` and no build
+events; this separate Git integration error has not been repaired or hidden.
+
+### Shorter narration and tighter pacing — October 12, previous verified release
 
 New automatic reels use a versioned compact recipe; saved v2/manual jobs are not
 retimed. Generated narration is more concise, never slowed merely to fill time,
