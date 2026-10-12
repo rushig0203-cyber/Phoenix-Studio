@@ -231,7 +231,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
               />
             </label>
             </details>
-            <p className="text-xs text-[#657153]">No category to choose. Describe the subject and audience; Phoenix picks the workflow. For children's animation or songs, say so in your idea.</p>
+            <p className="text-xs text-[#657153]">No category to choose. Describe the subject and audience; Phoenix picks the workflow. For children&apos;s animation or songs, say so in your idea.</p>
           </>
         ) : (
           <p className="rounded-xl border border-dashed border-[#bfcaa6] p-3 text-sm text-[#687657]">

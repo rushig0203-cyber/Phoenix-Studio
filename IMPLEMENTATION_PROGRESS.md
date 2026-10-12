@@ -39,6 +39,12 @@
   UI checks. All use isolated fixtures/mocks, not owner renders/provider inference.
   Full remote Windows verification and guarded activation remain pending; current
   installed release is `.next-build-gh-38259757138-1`. No saved owner work retried.
+- First remote run `38301292766` passed 946 Node/43 Python checks, then stopped
+  before packaging on three JSX text-escaping errors. Those are fixed; local
+  scoped lint passes. A production-route fixture now verifies feedback POST →
+  saved selected review → status GET → matching caption guidance → reversible
+  re-rating, with all network disabled. The 31 connected manager/UI/navigation
+  checks pass; no owner feedback was changed.
 
 ## October 12 Needs attention preparation recovery — verified installed and live
 

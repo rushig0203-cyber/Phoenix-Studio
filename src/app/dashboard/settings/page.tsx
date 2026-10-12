@@ -17,7 +17,7 @@ export default function SettingsPage() {
     </details>
     <section className="rounded-xl border border-[#c4cfb5] bg-[#fffdf7] p-4">
       <h2 className="text-sm font-semibold">Automatic captions and content quality</h2>
-      <p className="mt-2 text-sm text-[#59634d]">Posting copy uses each video's evidence. Speech subtitles are separate; silent footage does not need invented dialogue.</p>
+      <p className="mt-2 text-sm text-[#59634d]">Posting copy uses each video&apos;s evidence. Speech subtitles are separate; silent footage does not need invented dialogue.</p>
       <p className="mt-2 text-sm text-[#59634d]">Saved reviews guide new matching videos. Existing exports are unchanged; use Edit video for a specific finished file.</p>
       <Link href="/dashboard/manager" className="mt-3 inline-block text-sm font-semibold underline">Review the latest video</Link>
     </section>

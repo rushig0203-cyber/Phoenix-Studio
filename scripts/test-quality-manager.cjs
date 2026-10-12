@@ -167,3 +167,29 @@ test('newest ready video is selected first independently of review-index inserti
   assert.equal(state.assessments[0].reviewId,latest.id);assert.equal(state.assessments[0].createdAt,latest.createdAt);
   assert.ok(!state.assessments.some(item=>item.reviewId===hidden.id));
 });
+
+test('real local feedback and status routes persist the selected review and reverse caption guidance on re-rating',async()=>{
+  require('tsconfig-paths').register({baseUrl:project,paths:{'@/*':['src/*']}});
+  const feedbackRoute=require(path.join(project,'src/app/api/manager/feedback/route.ts'));
+  const statusRoute=require(path.join(project,'src/app/api/manager/status/route.ts'));
+  const {prefersShortStockPostingCaption}=require('../src/lib/stockProductionGuidance');
+  assert.equal(path.resolve(reviews.reviewRoot()),path.join(root,'storage','Phoenix Studio Review Files'),'Never write to the owner store');
+  const selected={...file,id:crypto.randomUUID(),title:'One clear kitchen task',audience:'general',outputs:{youtube:{filename:'fixture.mp4',duration:38,width:720,height:1280}},delivery:{...file.delivery,creationType:'general',requestedDuration:38,actualDuration:38}};
+  await reviews.saveReviewFile(selected);
+  const originalFetch=global.fetch; global.fetch=async()=>assert.fail('Feedback must not contact a provider');
+  try {
+    const payload={reviewId:selected.id,decision:'revise',ratings:{story:4,visuals:4,audio:4,captions:1},requests:[],note:'Private review record, not a prompt'};
+    const post=value=>feedbackRoute.POST(new Request('http://localhost/api/manager/feedback',{method:'POST',headers:{origin:'http://localhost','Content-Type':'application/json'},body:JSON.stringify(value)}));
+    const first=await post(payload); assert.equal(first.status,200);assert.equal((await first.json()).reviewId,selected.id);
+    const response=await statusRoute.GET(new Request('http://localhost/api/manager/status'));assert.equal(response.status,200);
+    const state=await response.json(), assessment=state.assessments.find(item=>item.reviewId===selected.id);
+    assert.equal(assessment.decision,'REVISE');assert.equal(assessment.feedback.note,payload.note);
+    const guidance=await manager.getCreativeGuidance('general');assert.equal(prefersShortStockPostingCaption(guidance),true);
+    assert.doesNotMatch(JSON.stringify(guidance),/Private review record/);
+    const revised=await post({...payload,decision:'keep',ratings:{story:4,visuals:4,audio:4,captions:4}});assert.equal(revised.status,200);
+    assert.equal((await manager.readCreativeFeedback()).filter(item=>item.reviewId===selected.id).length,1);
+    assert.equal(prefersShortStockPostingCaption(await manager.getCreativeGuidance('general')),false);
+    const refreshed=await (await statusRoute.GET(new Request('http://localhost/api/manager/status'))).json();
+    assert.equal(refreshed.assessments.find(item=>item.reviewId===selected.id).decision,'OWNER_APPROVED');
+  } finally {global.fetch=originalFetch;}
+});
