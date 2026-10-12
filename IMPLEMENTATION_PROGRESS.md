@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 12 concise narration, compact pacing and approved-only news rendering — verification pending
+## October 12 concise narration, compact pacing and approved-only news rendering — verified installed and live
 
 - New automatic footage requests save `adaptive-v3`: shorter varied cuts and a
   roughly 1.6-second opening. Only positive measured low/moderate movement permits
@@ -23,19 +23,36 @@
   rather than introducing weaker-matched stock. Admission/submission verify the
   capability and completion verifies the policy and approved source pages. Normal
   non-news supplementation is unchanged. Four stdlib-only shipped renderer tests
-  pass; Node/lint/real-render/production checks are being run remotely, not on the
-  low-memory laptop. No owner jobs are rendered, retried, removed or posted.
+  pass. No owner jobs were rendered, retried, removed or posted; only a bounded
+  read-only frame decode was used to inspect the existing subtitle failure.
 - The first remote Node pass exposed three stale test fixtures, not owner jobs:
   cross-realm saved-job comparison, narration evidence removed by the concise
   fixture, and a missing news-policy mock. They are corrected; 156 focused Node
-  checks pass serially with the unchanged RAM guard. The complete corrected remote
-  release run, real render fixtures and activation remain pending.
+  checks pass serially with the unchanged RAM guard. The corrected public standard
+  Windows run `38210238076` passed 887/887 Node tests and 43/43 Python checks, scoped
+  lint, real synthetic/native-speed/retry and licensed public-Pexels render fixtures,
+  full TypeScript and production compilation. The separate real MoviePy late-caption
+  fixture passed too; neither verification used owner renders or model calls.
 - Read-only Meta checks confirm the current connection can publish but lacks
   `instagram_manage_insights`; average-watch-time GET returned HTTP 400/code 10.
   No watch-time numbers were returned or inferred, and no credentials/scopes changed.
   Instagram reference browsing was throttled; no claim of reviewing unseen reels.
-- The previous verified website remains installed below; this follow-up is not
-  yet an activated bundle. Exact-event footage search has not been added. Suitable
+- A signed-in read-only Instagram browser check could open Content Insights and
+  one Reel's detail panel, but it exposed views/interactions rather than average
+  watch time. No duration was misreported as retention and no private analytics
+  figures are published in this repository. The temporary tab was closed.
+- Verified archive/source/runtime/dependency/file hashes preceded guarded activation
+  of `.next-build-gh-38210238076-1`, BUILD_ID `iMkpnJpfUcwZnclFXf95k`, from source
+  `632c06e52b9b83000827e81c0c35073672553d97`. Independent selected/live health matches;
+  manager and worker are healthy, the renderer advertises approved-only news support,
+  and heavy work is idle. Both Vercel Git checks are green for this production source.
+- All 33 saved metadata/credential hashes and 671 media sizes/timestamps remained
+  unchanged. The reloaded browser shows 20 Library videos (6 generated/14 posted),
+  29 completed jobs in the single Create list and no console warnings/errors. Proof:
+  `C:\Users\rishi\Documents\Codex\2026-09-04\r\artifacts\phoenix-pacing-live-20261012.png`.
+  The website is left running. No paid service/dependency, token scope, owner retry,
+  posting or owner-video regeneration was added by this update.
+- Exact-event footage search has not been added. Suitable
   reusable event footage would need date/place/event evidence and retained licence
   provenance, not arbitrary public internet clips.
 

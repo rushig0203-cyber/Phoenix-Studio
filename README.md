@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Shorter narration and tighter pacing — follow-up being verified
+### Shorter narration and tighter pacing — October 12, verified live
 
 New automatic reels use a versioned compact recipe; saved v2/manual jobs are not
 retimed. Generated narration is more concise, never slowed merely to fill time,
@@ -9,14 +9,24 @@ Caption artifacts must cover the complete narration, including its ending.
 Subtitle placement also follows the decoded picture size rather than an old
 nominal aspect preset, with a real late-caption frame regression.
 News renders require approved footage only: insufficient measured coverage fails that
-section instead of silently searching weaker supplemental matches. Verification
-and installation of this follow-up are still pending; no paid service is added.
+section instead of silently searching weaker supplemental matches. This update
+adds no paid service, dependency or heavy model.
+
+Current production source: `632c06e`; installed `.next-build-gh-38210238076-1`,
+BUILD_ID `iMkpnJpfUcwZnclFXf95k`. Windows run `38210238076` passed 887 Node and
+43 Python checks, lint, real synthetic/public-footage render fixtures, full
+TypeScript and production compilation; the separate real late-caption frame
+fixture passed too. Both Vercel Git checks are green. Selected/live builds match;
+manager/worker/renderer are healthy/ready, including approved-only news support.
+All 33 saved metadata/credential hashes and 671 media sizes/timestamps are unchanged.
+The browser reload shows the saved Library and single Create Jobs list with no
+console warnings/errors. Older owner videos were not regenerated or posted.
 
 The Instagram connection works for publishing, but actual watch-time insights are
 blocked by the missing `instagram_manage_insights` permission. No retention figures
 are guessed from view counts. See `IMPLEMENTATION_PROGRESS.md` for verified state.
 
-### News visuals and automatic Instagram tags — October 12, verified live
+### News visuals and automatic Instagram tags — October 12, previous verified release
 
 News shot planning now receives the report context rather than translating each
 claim literally into a stock query. News-specific matching rejects weak word
