@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 13 quality feedback, compact settings and automatic creation — source tested; activation pending
+## October 13 quality feedback, compact settings and automatic creation — verified installed and live
 
 - Traced save/upsert → bounded matching guidance → creative brief/editor, 2D
   word/caption groups and automatic stock policy snapshots. Re-rating counts a
@@ -37,14 +37,36 @@
 - Focused serial checks pass: 84 navigation/admission/footage/news regressions,
   87 manager/editorial/guidance/visual-copy regressions and the updated six manager
   UI checks. All use isolated fixtures/mocks, not owner renders/provider inference.
-  Full remote Windows verification and guarded activation remain pending; current
-  installed release is `.next-build-gh-38259757138-1`. No saved owner work retried.
+  No saved owner work was retried by these isolated checks.
 - First remote run `38301292766` passed 946 Node/43 Python checks, then stopped
   before packaging on three JSX text-escaping errors. Those are fixed; local
   scoped lint passes. A production-route fixture now verifies feedback POST →
   saved selected review → status GET → matching caption guidance → reversible
   re-rating, with all network disabled. The 31 connected manager/UI/navigation
   checks pass; no owner feedback was changed.
+- Corrected public Windows run `38302224720` passed 947/947 Node and 43/43 Python
+  checks, scoped lint, real synthetic/public licensed-Pexels render fixtures,
+  full TypeScript and production compilation. Verified archive/source/platform/
+  runtime/dependency/file hashes preceded guarded idle activation of
+  `.next-build-gh-38302224720-1`, BUILD_ID `0JuDyRt302RHeQXrJmqSf`, from source
+  `623b2d89e998a4c05b43f7e67b7dcbf7148f53bf`. Independent selected/live health
+  matches; manager/worker healthy, renderer ready, heavy work idle. Both Vercel
+  checks are green for the production source; no paid/larger runner used.
+- All 453 saved metadata/credential hashes and 4,075 media sizes/timestamps match
+  the pre-install snapshot, including after browser verification. Five actual
+  owner reviews (four general, one business) are retained. API and browser now
+  select Coffee being prepared carefully first, not mountain. Review pagination,
+  open typing, missing manual platform/length controls, compact publishing colors
+  and local More topics rotation were verified without Save/Create/Recover/Post.
+  Temporary typed test text was cleared; normal local suggestion cursor rotation
+  occurred. Browser warning/error scan is empty; YouTube remains not connected.
+- Proofs in `C:\Users\rishi\Documents\Codex\2026-09-04\r\artifacts`:
+  `phoenix-quality-manager-live-20261013.png`,
+  `phoenix-footage-topics-live-20261013.png`, `phoenix-settings-live-20261013.png`.
+  No owner video was rerendered or posted, no failed request was retried, and no
+  caption/provider inference was used during verification. Actual provider quota,
+  licence-compatible footage availability and finished owner renders remain
+  external/live verification limits; no performance guarantee is claimed.
 
 ## October 12 Needs attention preparation recovery — verified installed and live
 

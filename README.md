@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Compact creation and connected quality feedback — October 13, source tested
+### Compact creation and connected quality feedback — October 13, verified live
 
 Saved/re-rated structured reviews already guide matching narration and children's
 writing; caption preferences now also reach generated posting copy and its visual
@@ -19,10 +19,20 @@ cyber-infrastructure and energy news context is allowed without stock actors
 reenacting reported people. The failed provider shot list itself was not saved,
 so the exact rejected words cannot be reconstructed.
 
-Focused isolated regressions pass; full remote build and activation are pending.
-No owner retry, render or post, paid service, new dependency or local model added.
+Public Windows run `38302224720` passed 947 Node and 43 Python checks, scoped lint,
+real isolated render fixtures, TypeScript and production compilation. Source
+`623b2d8` is installed as `.next-build-gh-38302224720-1`, BUILD_ID
+`0JuDyRt302RHeQXrJmqSf`; selected/live builds match and manager/worker/renderer
+are healthy/ready. Both Vercel checks are green for that production source.
+All 453 saved metadata/credential hashes and 4,075 media sizes/timestamps match
+the pre-install snapshot. Browser verification confirms newest-first pagination,
+typing stays open, platform/length controls are removed, and More topics rotates
+without queuing a video. Warning/error scan is empty. Five owner reviews remain;
+four existing failures are retained for explicit Recover. No owner retry, render
+or post, paid service, new dependency or local model was added. YouTube is still
+not connected; one vertical export can serve both platforms once authorized.
 
-### Failed preparation recovery — October 12, verified live
+### Failed preparation recovery — October 12, previous verified release
 
 The three current Needs attention drafts exposed two length-check failures and a
 temporary Cloudflare HTTP 500. Complete concise generated narration can now use
