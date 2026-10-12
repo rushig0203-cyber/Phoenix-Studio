@@ -32,6 +32,8 @@ export type CreativeGuidance = {
 export type QualityAssessment = {
   reviewId: string;
   title: string;
+  createdAt?: string;
+  creationType?: string;
   decision: "BLOCKED" | "REVISE" | "AWAITING_REVIEW" | "OWNER_APPROVED";
   blockers: string[];
   checks: string[];

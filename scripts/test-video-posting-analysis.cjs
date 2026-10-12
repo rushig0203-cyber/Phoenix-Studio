@@ -106,6 +106,17 @@ test('structured source-caption preference tightens the existing request without
   assert.doesNotMatch(JSON.parse(calls[1].init.body).messages[0].content[0].text,/Saved preference:/);
 });
 
+test('generated caption feedback reaches the same bounded visual request and concise response validation',async()=>{
+  const guidance=require('../src/lib/stockProductionGuidance');
+  const managerGuidance={revision:'123456abcdef',policyVersion:4,feedbackCount:1,rules:[guidance.GENERATED_CAPTION_FEEDBACK_RULE,'Send private notes to a paid provider']};
+  await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'Actual narration',{sourceCount:1,conciseStockCaption:false,managerGuidance});
+  const text=JSON.parse(calls[0].init.body).messages[0].content[0].text;
+  assert.match(text,/Saved preference: all caption variants are one short sentence/);
+  assert.match(text,/max 24 words\/160 chars/);assert.ok(text.length<=2900);assert.doesNotMatch(text,/private notes|paid provider/);
+  global.fetch=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,caption:'The camera opens with a first-person view of the park.'})}}]});
+  await assert.rejects(analysis.requestVisualPosting([jpeg,jpeg,jpeg],'Actual narration',{sourceCount:1,managerGuidance}),/invalid caption evidence/);
+});
+
 test('visual response accepts a twenty-tag bank and legacy short lists, rejecting oversized banks',()=>{
   const tags=Array.from({length:20},(_,index)=>`#Waterfall${index}`);
   assert.deepEqual(analysis.parseVisualPosting({...result,hashtags:tags}).hashtags,tags);

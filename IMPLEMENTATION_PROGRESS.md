@@ -1,5 +1,45 @@
 # Quality-first implementation — September 16, 2026
 
+## October 13 quality feedback, compact settings and automatic creation — source tested; activation pending
+
+- Traced save/upsert → bounded matching guidance → creative brief/editor, 2D
+  word/caption groups and automatic stock policy snapshots. Re-rating counts a
+  file once and can remove its previous priority. Fixed the missing generated
+  caption-preference consumer: only an exact fixed policy rule reaches initial
+  posting copy and visual request/response validation. Notes are never injected
+  into prompts, and no retraining/self-modifying code or automatic posting is added.
+- The manager uses actual created timestamps, defaults to the newest finished
+  file and displays six selectable videos per page. Feedback decisions/improvement
+  choices are compact; ratings, notes and technical limits are collapsed. Source
+  reels show only supported non-narrated improvement choices. Real blockers stay
+  visible. General/business length assessment now agrees with production's natural
+  stock floor; children's requirements and explicit edit trims remain unchanged.
+- Removed ineffective browser-only settings controls; existing saved browser data
+  is not deleted. Working channel/writer connections and automatic caption guidance
+  remain, with explicit readable light colors for channel controls/status.
+- Ordinary creation no longer presents platform/length selectors. Opt-in automatic
+  admission starts a bounded 60-second narration plan, or estimates supplied complete
+  owner text within 20–90 seconds. Owner minimum/complete-ending validation, old
+  manual callers and children/song duration rules remain. Rendering measures the
+  real narration and retains its independent output checks; no time padding.
+  The vertical stock MP4 can serve both existing posting targets without rerender.
+- Description and recommendation details are compact; typing does not close the
+  editor or overwrite supplied narration/recordings. Find footage now rotates 72
+  curated one/two-word topic seeds before repeating, preserving original IDs/cursor
+  and the exact displayed selection. This is not a live Instagram-trend service.
+- Four saved preparations currently need attention: three earlier failures plus
+  the French supermarket cyberattack report. Its accepted narration compacted to
+  40 seconds; visual planning then failed. The precise rejected model query was
+  not retained. A demonstrated overly narrow news guard rejected relevant retail,
+  refrigeration, cyber and energy objects. Added report-specific contexts/aliases
+  and shared prompt guidance; actors, hackers, false named identities, unrelated
+  filler and fake event depictions remain blocked. No actual-event footage scraper.
+- Focused serial checks pass: 84 navigation/admission/footage/news regressions,
+  87 manager/editorial/guidance/visual-copy regressions and the updated six manager
+  UI checks. All use isolated fixtures/mocks, not owner renders/provider inference.
+  Full remote Windows verification and guarded activation remain pending; current
+  installed release is `.next-build-gh-38259757138-1`. No saved owner work retried.
+
 ## October 12 Needs attention preparation recovery — verified installed and live
 
 - Read-only saved queue/API checks identify exactly three unarchived FAILED

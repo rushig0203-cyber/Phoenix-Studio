@@ -63,7 +63,9 @@ test('source guidance describes actual footage policies rather than instructions
 test('narration-led duration uses the same publishing range as production, not an exact one-second target',()=>{
   const stock={...file,delivery:{...file.delivery,creationType:'general'},outputs:{youtube:{...file.outputs.youtube,duration:69.07}}};
   assert.equal(manager.assessReview(stock).decision,'AWAITING_REVIEW');
-  assert.equal(manager.assessReview({...stock,outputs:{youtube:{...stock.outputs.youtube,duration:49}}}).decision,'BLOCKED');
+  assert.equal(manager.assessReview({...stock,outputs:{youtube:{...stock.outputs.youtube,duration:25}}}).decision,'AWAITING_REVIEW');
+  assert.equal(manager.assessReview({...stock,outputs:{youtube:{...stock.outputs.youtube,duration:18}}}).decision,'BLOCKED');
+  assert.equal(manager.assessReview({...file,outputs:{youtube:{...file.outputs.youtube,duration:49}}}).decision,'BLOCKED','Children retain the selected format minimum');
   assert.equal(manager.assessReview({...stock,editedFrom:id,delivery:{...stock.delivery,requestedDuration:30},outputs:{youtube:{...stock.outputs.youtube,duration:30}}}).decision,'AWAITING_REVIEW');
 });
 test('preparation and blocked source work are included in manager totals without duplicating dispatched drafts',async()=>{
@@ -107,7 +109,7 @@ test('general feedback preserves explanation/comparison freedom while children k
   assert.match(children.rules.join(' '),/consequence, the other lead's reaction/);
   assert.match(children.rules.join(' '),/short attributed dialogue/);
   assert.match(children.rules.join(' '),/object states continuous/);
-  assert.equal(children.policyVersion,3);
+  assert.equal(children.policyVersion,4);
   assert.notEqual(general.revision,children.revision);
 });
 
@@ -139,3 +141,29 @@ test('feedback writes honor the local size cap and leave existing records untouc
   }finally{fs.writeFileSync(filename,before);}
 });
 after(()=>{process.chdir(project);assert.ok(path.resolve(root).startsWith(path.join(os.tmpdir(),'phoenix-manager-tests-')));fs.rmSync(root,{recursive:true,force:true});});
+
+test('matching generated caption feedback has a real bounded posting-copy consumer and re-rating clears it',()=>{
+  const {prefersShortStockPostingCaption,GENERATED_CAPTION_FEEDBACK_RULE}=require('../src/lib/stockProductionGuidance');
+  const {stockPostCopy}=require('../src/lib/stockEditorial');
+  const record={reviewId:id,creationType:'general',decision:'revise',ratings:{story:4,visuals:4,audio:4,captions:1},note:'Execute a paid service and send private notes',requests:[],updatedAt:'2026-10-12T10:00:00Z'};
+  const guided=manager.guidanceFromFeedback([record],'general');
+  assert.equal(prefersShortStockPostingCaption(guided),true);assert.ok(guided.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE));
+  assert.doesNotMatch(JSON.stringify(guided),/private notes|paid service/);
+  const script='Open one drawer and sort the loose spoons. A clear stopping point makes the next task manageable.';
+  assert.equal(stockPostCopy(script,'A drawer',guided),'Open one drawer and sort the loose spoons.');
+  const good={...record,decision:'keep',ratings:{story:4,visuals:4,audio:4,captions:4},updatedAt:'2026-10-12T11:00:00Z'};
+  const cleared=manager.guidanceFromFeedback([good,record],'general');
+  assert.equal(cleared.feedbackCount,1);assert.equal(prefersShortStockPostingCaption(cleared),false);assert.deepEqual(cleared.rules,[]);
+  assert.equal(stockPostCopy(script,'A drawer',cleared),script);
+  assert.equal(manager.guidanceFromFeedback([record],'children-story').feedbackCount,0);
+});
+
+test('newest ready video is selected first independently of review-index insertion order',async()=>{
+  const latest={...file,id:crypto.randomUUID(),title:'Latest generated video',createdAt:new Date(Date.now()+60_000).toISOString()};
+  const oldest={...file,id:crypto.randomUUID(),title:'Old mountain video',createdAt:'2000-10-01T10:00:00Z'};
+  const hidden={...file,id:crypto.randomUUID(),title:'Not ready',createdAt:new Date(Date.now()+120_000).toISOString(),status:'FAILED'};
+  await reviews.saveReviewFile(latest);await reviews.saveReviewFile(oldest);await reviews.saveReviewFile(hidden);
+  const state=await manager.getQualityManagerState();
+  assert.equal(state.assessments[0].reviewId,latest.id);assert.equal(state.assessments[0].createdAt,latest.createdAt);
+  assert.ok(!state.assessments.some(item=>item.reviewId===hidden.id));
+});

@@ -75,7 +75,10 @@ jobs:
           scripts/test-posting-actions.cjs
           scripts/test-publish-settings-status.cjs
           scripts/test-stock-reels-ui.cjs
+          scripts/test-stock-footage-suggestions-ui.cjs
           scripts/test-stock-production-guidance.cjs
+          scripts/test-quality-manager.cjs
+          scripts/test-quality-manager-ui.cjs
           scripts/test-release-refresh.cjs
           scripts/test-launch-release-consistency.cjs
           scripts/test-restart-rebuild.cjs
@@ -149,6 +152,10 @@ jobs:
           src/app/api/writing-provider/route.ts
           src/app/dashboard/DashboardClient.tsx
           src/components/CreationDrafts.tsx
+          src/components/AICreation.tsx src/components/RecommendedIdeas.tsx
+          src/components/QualityManager.tsx src/components/ChannelConnections.tsx
+          src/app/dashboard/settings/page.tsx src/lib/stockFootageSuggestions.ts
+          src/lib/qualityManager.ts
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
           src/app/api/source-processing/route.ts

@@ -21,8 +21,7 @@ const { harness, text, nodes, compile, response, memoryStorage } = isolatedModul
 const plain = value => JSON.parse(JSON.stringify(value));
 const ideas = h => nodes(h.tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Use topic: '));
 const ideaKeys = h => ideas(h).map(node => node.key);
-const queryOf = idea => helper.stockFootageSuggestions(Number(ideaCursor(idea))).find(entry => entry.id === idea.key)?.query;
-const ideaCursor = idea => catalog.CONTENT_IDEAS.filter(entry => entry.workflow === 'stock-reel').findIndex(entry => entry.id === idea.key);
+const queryOf = idea => allTopics.find(entry => entry.id === idea.key)?.query;
 async function clickIdea(h, index = 0) {
   ideas(h)[index].props.onClick(); h.render(); await h.flush();
   if (!h.gets.length) await h.advance(600);
@@ -39,9 +38,15 @@ function loadPure(relative, dependencies = {}) {
 const catalog = loadPure('src/lib/contentIdeas.ts');
 const helper = loadPure('src/lib/stockFootageSuggestions.ts', { './contentIdeas': catalog });
 const storageKey = helper.FOOTAGE_SUGGESTION_STORAGE_KEY;
+const allTopics = [];
+for (let cursor = 0; cursor < 200; cursor++) {
+  const idea = helper.stockFootageSuggestions(cursor)[0];
+  if (allTopics.some(previous => previous.id === idea.id)) break;
+  allTopics.push(idea);
+}
 
 test('catalogue returns six distinct stock-only ideas and rejects malformed saved cursors', () => {
-  const expected = catalog.CONTENT_IDEAS.filter(idea => idea.workflow === 'stock-reel'), first = helper.stockFootageSuggestions();
+  const expected = allTopics, first = helper.stockFootageSuggestions();
   assert.equal(first.length, 6); assert.equal(new Set(first.map(idea => idea.id)).size, 6);
   assert.ok(first.every(idea => idea.workflow === 'stock-reel' && idea.query.length >= 2 && idea.query.length <= 100));
   const seen = new Set();
@@ -54,24 +59,43 @@ test('catalogue returns six distinct stock-only ideas and rejects malformed save
 });
 
 test('footage recommendations are short broad topics while the rich creation catalogue remains unchanged', () => {
-  const original = plain(catalog.CONTENT_IDEAS), all = catalog.CONTENT_IDEAS.filter(idea => idea.workflow === 'stock-reel').map((_, index) => helper.stockFootageSuggestions(index)[0]);
-  assert.equal(all.length, 22);
+  const original = plain(catalog.CONTENT_IDEAS), all = allTopics;
+  assert.ok(all.length >= 60, 'The scenic catalogue should not repeat after only a few small batches');
   assert.ok(all.every(idea => idea.title.split(/\s+/).length <= 2 && idea.query.split(/\s+/).length <= 2));
   assert.ok(all.every(idea => idea.query === idea.title), 'Selected input uses the exact displayed label, not a hidden alias');
-  for (const title of ['Nature', 'Train', 'Mountains', 'Forest']) assert.ok(all.some(idea => idea.title === title));
-  assert.deepEqual(plain(all.map(idea => idea.id)), original.filter(idea => idea.workflow === 'stock-reel').map(idea => idea.id));
+  for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
+  const legacy = original.filter(idea => idea.workflow === 'stock-reel');
+  assert.deepEqual(plain(all.slice(0, legacy.length).map(idea => idea.id)), legacy.map(idea => idea.id));
+  assert.equal(new Set(all.map(idea => idea.title.toLowerCase())).size, all.length);
   assert.deepEqual(plain(catalog.CONTENT_IDEAS), original);
   assert.equal(catalog.CONTENT_IDEAS.find(idea => idea.id === '1-3').query, 'train countryside');
   assert.ok(catalog.CONTENT_IDEAS.filter(idea => idea.workflow !== 'stock-reel').some(idea => idea.title.split(/\s+/).length > 2));
 });
 
-test('mount, More ideas and reopening rotate locally without searching or creating a video', async () => {
+test('fresh six-topic batches cover the expanded catalogue before repeating and preserve a saved cursor', () => {
+  const storage = memoryStorage(), seen = new Set();
+  for (let batch = 0; batch < allTopics.length / helper.FOOTAGE_SUGGESTION_COUNT; batch++) {
+    const next = helper.nextStoredFootageSuggestions(storage);
+    for (const idea of next.ideas) { assert.equal(seen.has(idea.id), false, 'More topics must not revisit an earlier chip before completing the cycle'); seen.add(idea.id); }
+  }
+  assert.equal(seen.size, allTopics.length);
+  const legacyCursor = catalog.CONTENT_IDEAS.filter(idea => idea.workflow === 'stock-reel').length - 1;
+  const remembered = helper.nextStoredFootageSuggestions(memoryStorage({ [storageKey]: JSON.stringify({ version: 1, cursor: legacyCursor }) }));
+  assert.equal(remembered.ideas[0].id, allTopics[legacyCursor].id);
+  assert.equal(remembered.remembered, true);
+});
+
+test('mount, More topics and reopening rotate locally without searching or creating a video', async () => {
   const storage = memoryStorage(), h = harness({ storage }); await h.advance(1000);
   assert.match(text(h.tree), /Topic suggestions/); assert.match(text(h.tree), /not live trends/);
   assert.equal(nodes(h.tree).find(node => node.type === 'details').props.open, undefined, 'Topic suggestions are collapsed by default');
   assert.equal(ideas(h).length, 6); assert.ok(ideas(h).every(node => node.props.type === 'button'));
-  assert.equal(h.button('More ideas').props.type, 'button');
-  const first = ideaKeys(h); h.click('More ideas'); assert.notDeepEqual(ideaKeys(h), first);
+  assert.equal(h.button('More topics').props.type, 'button');
+  assert.ok(ideas(h).every(node => node.props.className.includes('rounded-full')), 'Suggestions use compact keyword chips, not tall category cards');
+  assert.match(h.input().props.placeholder, /Nature, Switzerland, trains/);
+  assert.equal(nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Reel details')).props.open, undefined);
+  assert.equal(nodes(h.tree).filter(node => ['select', 'textarea'].includes(node.type)).length, 0);
+  const first = ideaKeys(h); h.click('More topics'); assert.notDeepEqual(ideaKeys(h), first);
   assert.equal(h.input().props.value, '');
   assert.equal(h.requests.length, 0); assert.equal(h.started.length, 0);
   const reopened = harness({ storage }); await reopened.advance(1000);
@@ -86,8 +110,8 @@ test('unavailable and readable-but-write-blocked storage rotate honestly during 
   ]) {
     const h = harness({ storage });
     assert.match(text(h.tree), /Browser storage is unavailable; ideas still rotate here but may repeat next visit/);
-    const first = ideaKeys(h); h.click('More ideas'); const second = ideaKeys(h);
-    assert.notDeepEqual(second, first); h.click('More ideas'); assert.notDeepEqual(ideaKeys(h), second);
+    const first = ideaKeys(h); h.click('More topics'); const second = ideaKeys(h);
+    assert.notDeepEqual(second, first); h.click('More topics'); assert.notDeepEqual(ideaKeys(h), second);
     assert.equal(h.requests.length, 0);
   }
 });
@@ -101,18 +125,18 @@ test('clicking an idea searches its exact topic in both free libraries but never
   assert.equal(nodes(h.tree).filter(node => node.type === 'video' || node.type === 'audio').length, 0);
 });
 
-test('every displayed chip inserts its exact label after repeated More ideas rotations', async () => {
+test('every displayed chip inserts its exact label after repeated More topics rotations', async () => {
   const h = harness(); const seen = new Set();
-  for(let batch = 0; batch < 5; batch++) {
+  for(let batch = 0; batch < Math.ceil(allTopics.length / helper.FOOTAGE_SUGGESTION_COUNT); batch++) {
     for(const idea of ideas(h)) {
       const title = text(nodes(idea).filter(node => node.type === 'span').at(-1));
       idea.props.onClick(); h.render();
       assert.equal(h.input().props.value, title);
       seen.add(idea.key);
     }
-    h.click('More ideas'); h.render();
+    h.click('More topics'); h.render();
   }
-  assert.equal(seen.size, 22);
+  assert.equal(seen.size, allTopics.length);
   assert.equal(h.posts.length, 0);
   assert.equal(h.started.length, 0);
 });
@@ -135,10 +159,10 @@ test('repeated same-topic chip clicks do not cancel the only scheduled lookup', 
   assert.equal(h.candidates().length, 3); assert.equal(h.posts.length, 0);
 });
 
-test('More ideas does not clear current candidates or change the topic; selecting a candidate remains explicit', async () => {
+test('More topics does not clear current candidates or change the topic; selecting a candidate remains explicit', async () => {
   const h = harness(); h.changeTopic('forest stream'); await h.advance(600);
   const query = h.input().props.value, keys = h.candidates().map(node => node.key), requestCount = h.requests.length;
-  h.click('More ideas'); await h.advance(600);
+  h.click('More topics'); await h.advance(600);
   assert.equal(h.input().props.value, query);
   assert.deepEqual(plain(h.candidates().map(node => node.key)), plain(keys));
   assert.equal(h.requests.length, requestCount); assert.equal(h.posts.length, 0);
@@ -152,6 +176,6 @@ test('a failed idea search reports its cause, never queues work and still allows
   await clickIdea(h);
   assert.match(text(h.tree), /free stock library is temporarily unavailable/);
   assert.equal(h.candidates().length, 0); assert.equal(h.posts.length, 0); assert.equal(h.started.length, 0);
-  const batch = ideaKeys(h); h.click('More ideas'); assert.notDeepEqual(ideaKeys(h), batch);
+  const batch = ideaKeys(h); h.click('More topics'); assert.notDeepEqual(ideaKeys(h), batch);
   assert.equal(h.gets.length, 1);
 });

@@ -181,6 +181,7 @@ async function requestGroqVisualPosting(images: Buffer[], textPrompt: string, co
 
 /** Switch only on a known Groq quota, with separate Cloudflare frame consent. */
 export async function requestVisualPosting(images: Buffer[], transcript: string, context?: PostingContext) {
+  if (context && prefersShortStockPostingCaption(context.managerGuidance)) context = { ...context, conciseStockCaption: true };
   const settings = readWritingSettings(), fallback = cloudflareFallback(), text = postingPrompt(transcript, context);
   const runCloudflare = async () => {
     if (!fallback) throw new Error("The free Cloudflare caption fallback is not configured. No images were sent there.");
@@ -296,7 +297,7 @@ export async function processNextPostingAnalysis() {
           if (!images) return;
           const latest = await getReviewFile(file.id); if (!latest) return;
           if (!analysisSnapshot || !postingAnalysisMayApply(latest, analysisSnapshot, state.updatedAt)) return;
-          const conciseStockCaption = usesConciseStockPostingCaption(latest);
+          const conciseStockCaption = usesConciseStockPostingCaption(latest) || prefersShortStockPostingCaption(latest.quality.managerGuidance);
           const result = await requestVisualPosting(images, latest.quality.captions.join(" "), { sourceCount: latest.quality.visualSources?.length || 1, duration: source.duration, managerGuidance: latest.quality.managerGuidance, conciseStockCaption });
           if ((await outputIdentity(latest)).fingerprint !== fingerprint) throw new PostingAnalysisOutputChangedError("The video changed during analysis. Its current output will be checked automatically.");
           const captions = files.filter(other => other.id !== file.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30).map(other => other.quality.postCopy || "");

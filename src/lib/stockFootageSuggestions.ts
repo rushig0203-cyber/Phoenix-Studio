@@ -2,8 +2,7 @@ import { CONTENT_IDEAS, type ContentIdea } from "./contentIdeas";
 
 export const FOOTAGE_SUGGESTION_STORAGE_KEY = "phoenix-footage-suggestions-v1";
 export const FOOTAGE_SUGGESTION_COUNT = 6;
-// Keep stable IDs/cursor order, but footage chips are simple visual topics, not
-// scripted premises. The richer general/business creation catalogue is intact.
+// Keep the existing IDs/cursor order; append visual keywords rather than scripted premises.
 const topics: Record<string, readonly [string, string]> = {
   "0-0": ["Nature", "nature"], "0-1": ["Ocean", "ocean"], "0-2": ["Birds", "birds"],
   "0-3": ["Forest", "forest"], "0-4": ["Butterflies", "butterflies"],
@@ -12,12 +11,18 @@ const topics: Record<string, readonly [string, string]> = {
   "3-0": ["Cats", "cat"], "3-1": ["Dogs", "dog"], "3-2": ["Horses", "horses"], "3-3": ["Gardens", "garden"],
   "8-0": ["Parks", "park"], "8-1": ["Cycling", "cycling"], "8-2": ["Climbing", "climbing"], "8-3": ["Skating", "skateboard"],
 };
-const ideas = CONTENT_IDEAS.filter(idea => idea.workflow === "stock-reel").map(idea => {
+const extraTopics: Array<{ category: string; titles: string[] }> = [
+  { category: "Places & travel", titles: ["Switzerland", "Norway", "Iceland", "Italy", "Japan", "Canada", "Scotland", "Austria", "New Zealand", "Alps", "Dolomites", "Fjords", "Glaciers", "Lighthouse", "Coastal road", "Countryside"] },
+  { category: "Nature & wildlife", titles: ["Waterfall", "Lake", "River", "Beach", "Sunset", "Sunrise", "Aurora", "Desert", "Dunes", "Cliffs", "Island", "Meadow", "Snow", "Rainforest", "Tulips", "Lavender", "Autumn", "Spring"] },
+  { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish"] },
+  { category: "Movement & outdoors", titles: ["Steam train", "Railway", "Tram", "Sailing", "Kayaking", "Skiing", "Surfing", "Hiking"] },
+];
+const ideas: ContentIdea[] = [...CONTENT_IDEAS.filter(idea => idea.workflow === "stock-reel").map(idea => {
   const title = topics[idea.id]?.[0] || idea.query.split(/\s+/).slice(0, 2).join(" ");
   // The selected chip must insert what it displays, not a hidden singular or
   // alternate keyword. Providers still receive the same broad topic.
   return { ...idea, title, query: title };
-});
+}), ...extraTopics.flatMap(({ category, titles }) => titles.map(title => ({ id: `footage-${title.toLowerCase().replace(/\s+/g, "-")}`, category, title, query: title, workflow: "stock-reel" as const })))];
 function validCursor(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < ideas.length;
 }

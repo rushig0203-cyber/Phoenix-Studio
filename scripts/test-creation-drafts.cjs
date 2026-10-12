@@ -234,6 +234,40 @@ test('generation API always finishes automatically, including older plan-only su
   } finally { kids.kidsRendererAvailable = original; }
 });
 
+test('automatic creation estimates owner narration length and retains the same vertical file for both posting targets', async () => {
+  const route = require('../src/app/api/generations/route.ts');
+  const reachable=generation.generatorReachable, requireRenderer=generation.requireStockStoryboardRenderer;
+  generation.generatorReachable=async()=>true; generation.requireStockStoryboardRenderer=async()=>{};
+  try {
+    const ownerScript=Array(10).fill('Open the kitchen drawer and place loose spoons in a tray.').join(' ');
+    const response=await route.POST(new Request('http://localhost/api/generations',{method:'POST',headers:{origin:'http://localhost'},body:JSON.stringify({...input(),requestId:crypto.randomUUID(),autoDuration:true,duration:75,publishingFormat:'instagram-reel',script:ownerScript})}));
+    assert.equal(response.status,201);const body=await response.json(), saved=read().find(item=>item.id===body.draftIds[0]).input;
+    const words=ownerScript.match(/\b[\p{L}\p{N}'-]+\b/gu).length;
+    assert.equal(saved.duration,Math.floor(words/2.7));assert.ok(saved.duration<60);
+    assert.equal(saved.aspect,'9:16'); assert.equal(saved.publishingFormat,'youtube-short');
+    assert.equal(saved.script,ownerScript); assert.equal(saved.reviewMode,'final');
+    const generated=await route.POST(new Request('http://localhost/api/generations',{method:'POST',headers:{origin:'http://localhost'},body:JSON.stringify({...input(),requestId:crypto.randomUUID(),autoDuration:true,script:undefined,duration:90})}));
+    assert.equal(generated.status,201);const generatedBody=await generated.json();
+    assert.equal(read().find(item=>item.id===generatedBody.draftIds[0]).input.duration,60);
+    assert.equal((await generation.listGenerationJobs()).length,0,'Admission never renders or posts by itself');
+  } finally { generation.generatorReachable=reachable;generation.requireStockStoryboardRenderer=requireRenderer; }
+});
+
+test('automatic length never loosens children, manual caller or complete-owner-text guards', async () => {
+  const route=require('../src/app/api/generations/route.ts');
+  for(const extra of [
+    {autoDuration:true,creationType:'children-story',duration:45,publishingFormat:'youtube-short'},
+    {autoDuration:false,duration:45,publishingFormat:'youtube-short'},
+    {autoDuration:true,script:'Too little narration.'},
+    {autoDuration:true,script:script.replace(/\.$/,'')},
+    {autoDuration:true,script:Array(40).fill('Open the curtains and look outside before starting the day.').join(' ')},
+  ]) {
+    const response=await route.POST(new Request('http://localhost/api/generations',{method:'POST',headers:{origin:'http://localhost'},body:JSON.stringify({...input(),...extra})}));
+    assert.equal(response.status,400);
+  }
+  assert.equal(read().length,0);assert.equal((await generation.listGenerationJobs()).length,0);
+});
+
 test('worker migration resumes legacy approval gates once, retaining scenes and final-mode failures', async () => {
   const draft = await ready();
   const failed = { ...draft, id: crypto.randomUUID(), status: 'FAILED', input: { ...draft.input, reviewMode: 'final' }, error: 'Provider unavailable' };

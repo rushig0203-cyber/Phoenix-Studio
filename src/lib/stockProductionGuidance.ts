@@ -8,6 +8,7 @@ import { reviewRoot } from "./reviewFiles";
 export const STOCK_FEEDBACK_MAX_BYTES = 512 * 1024;
 export const STOCK_FEEDBACK_MAX_RECORDS = 200;
 export const STOCK_CAPTION_FEEDBACK_RULE = "Use one short, directly grounded sentence for the posting caption; no scene inventory, filler, invented location or engagement guarantee.";
+export const GENERATED_CAPTION_FEEDBACK_RULE = "Posting copy only, not narration: use one short, directly grounded sentence; no scene inventory, filler, invented location or engagement guarantee.";
 const rating = z.number().int().min(1).max(5);
 const feedbackSchema = z.object({
   reviewId: z.string().uuid(), creationType: z.literal("source"), decision: z.enum(["keep", "revise"]),
@@ -84,8 +85,9 @@ export async function getStockProductionGuidance(filename = path.join(reviewRoot
   catch { throw new Error("Saved source-video ratings or improvement choices are invalid. Preserve the feedback and repair it before continuing content planning."); }
 }
 
-/** Only a recognized immutable stock-policy rule may influence posting copy. */
-export function prefersShortStockPostingCaption(guidance?: { revision: string; rules: string[] }) {
-  return !!guidance && /^stock-v1-[a-f0-9]{12}$/.test(guidance.revision)
-    && Array.isArray(guidance.rules) && guidance.rules.length <= 8 && guidance.rules.includes(STOCK_CAPTION_FEEDBACK_RULE);
+/** Recognize a fixed saved preference, never forward arbitrary rules or notes. */
+export function prefersShortStockPostingCaption(guidance?: { revision: string; rules: string[]; policyVersion?: number }) {
+  if (!guidance || !Array.isArray(guidance.rules)) return false;
+  return /^stock-v1-[a-f0-9]{12}$/.test(guidance.revision) && guidance.rules.length <= 8 && guidance.rules.includes(STOCK_CAPTION_FEEDBACK_RULE)
+    || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision) && guidance.rules.length <= 10 && guidance.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE);
 }

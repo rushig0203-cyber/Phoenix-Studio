@@ -1,5 +1,27 @@
 # Phoenix Studio
 
+### Compact creation and connected quality feedback — October 13, source tested
+
+Saved/re-rated structured reviews already guide matching narration and children's
+writing; caption preferences now also reach generated posting copy and its visual
+analysis checks. Free-text notes remain private review records, not commands or
+model retraining. The manager selects the newest finished video first, shows six
+choices per page, and keeps real blockers visible while optional details collapse.
+Accepted short stock videos no longer fail a mismatched manager duration check.
+
+Publishing settings now expose working connections instead of browser-only font,
+tone and audio controls that had no rendering consumer. Ordinary creation uses
+one vertical output for both platforms and fits its length to complete narration;
+older manual callers, children's minimums and owner-text checks are retained.
+Footage suggestions rotate 72 short search topics with exact-label selection;
+availability and live trends are not claimed. Relevant retail/refrigeration,
+cyber-infrastructure and energy news context is allowed without stock actors
+reenacting reported people. The failed provider shot list itself was not saved,
+so the exact rejected words cannot be reconstructed.
+
+Focused isolated regressions pass; full remote build and activation are pending.
+No owner retry, render or post, paid service, new dependency or local model added.
+
 ### Failed preparation recovery — October 12, verified live
 
 The three current Needs attention drafts exposed two length-check failures and a

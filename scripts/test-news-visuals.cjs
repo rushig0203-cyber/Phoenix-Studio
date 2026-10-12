@@ -18,6 +18,11 @@ const research = {
 const choice = (id, slug) => ({ id, duration: 120, width: 720, height: 1280, creator: 'Fixture', sourcePage: `https://www.pexels.com/video/${slug}-${id}/` });
 const narration = 'Authorities reported that a boat capsized near Djibouti.';
 const input = { topic: research.title, script: narration, duration: 18, research };
+const retailResearch = { ...research, id: 'b'.repeat(32),
+  title: 'Fridges in French supermarkets hit by cyber attack',
+  summary: 'An overnight hack affected supermarket refrigeration and spoiled fresh and frozen food.',
+  text: 'The report concerns supermarket refrigerators and freezers affected by a cyber attack. It does not identify generic stock as footage of the incident.',
+};
 
 test('news renderer capability is the exact policy, never mere field presence or a permissive schema', () => {
   const literal = policy.NEWS_STOCK_VISUAL_POLICY;
@@ -109,6 +114,55 @@ test('a report cannot silently use unrelated infrastructure when its theme is un
   assert.ok(policy.newsStockQueryIssue('town airport runway', unknown));
   assert.equal(policy.newsStockQueryIssue('town streets', unknown), undefined);
   assert.ok(policy.newsStockQueryIssue('portrait smiling', unknown));
+});
+
+test('retail cyber news accepts relevant refrigerators and infrastructure without actors or unrelated context', () => {
+  for (const query of ['supermarket refrigerator aisle', 'freezer shelves', 'grocery store shelves', 'server racks', 'network cables']) {
+    assert.equal(policy.newsStockQueryIssue(query, retailResearch), undefined, query);
+  }
+  for (const query of ['hacker typing computer', 'staff checking supermarket fridge', 'manager removing freezer products', 'customer inspecting refrigerator', 'French supermarket refrigerator aisle', 'government building exterior', 'forest mountain aerial', 'supermarket airport runway', 'computer cyber attack simulation']) {
+    assert.ok(policy.newsStockQueryIssue(query, retailResearch), query);
+  }
+  const energy = { ...research, title: 'Power plants shut down after electricity grid fault', summary: 'The report concerns energy infrastructure and substations.', text: 'The electricity grid affected power stations.' };
+  for (const query of ['power station exterior', 'electricity substation', 'power grid pylons']) assert.equal(policy.newsStockQueryIssue(query, energy), undefined, query);
+  for (const query of ['supermarket freezer aisle', 'server racks', 'forest mountains', 'worker repairing power station']) assert.ok(policy.newsStockQueryIssue(query, energy), query);
+});
+
+test('retail catalogue checks recognize refrigerator and aisle variants but reject reenactments and wrong settings', () => {
+  const options = [choice(401, 'supermarket-fridge-aisles'), choice(402, 'worker-checking-supermarket-fridge-aisles'), choice(403, 'hacker-in-supermarket-fridge-aisles'), choice(404, 'kitchen-freezer-shelves'), choice(405, 'animated-supermarket-refrigerator-aisle'), choice(406, '')];
+  assert.deepEqual(footage.rankFootage(options, 'supermarket refrigerator aisle', 15, '9:16', new Set(), undefined, retailResearch).map(result => result.choice.id), [401]);
+  assert.equal(policy.newsFootageMetadataIssue('grocery store freezer shelves', 'grocery store freezer shelf', retailResearch), undefined);
+  assert.equal(policy.newsFootageMetadataIssue('server racks network cables', 'server rack network cable', retailResearch), undefined);
+  assert.ok(policy.newsFootageMetadataIssue('hacker using server rack network cables', 'server rack network cable', retailResearch));
+});
+
+test('the French supermarket report plans neutral objects once and repairs actor reenactment only once', async () => {
+  const originalFetch = global.fetch;
+  const script = 'A cyber attack affected supermarket refrigeration. Generic stock illustrates the equipment, not the reported incident.';
+  let calls = 0, repair = false;
+  global.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body); calls++;
+    assert.match(body.prompt, /supermarket refrigerator aisles\/freezer shelves/);
+    assert.match(body.prompt, /not staff, customers, managers or hackers/);
+    return Response.json({ response: JSON.stringify({ queries: repair && calls === 1 ? ['staff checking supermarket fridge', 'server racks'] : repair && calls === 2 ? ['supermarket refrigerator aisle'] : ['supermarket refrigerator aisle', 'server racks'] }) });
+  };
+  try {
+    const current = { topic: retailResearch.title, script, duration: 40, research: retailResearch, creativeBrief: { structure: 'explanation' } };
+    assert.equal((await storyboard.createStockStoryboard(current)).map(beat => beat.narration).join(' '), script);
+    assert.equal(calls, 1, 'A valid refrigerator shot no longer consumes a repair request');
+    calls = 0; repair = true;
+    const repaired = await storyboard.createStockStoryboard(current);
+    assert.equal(repaired[0].query, 'supermarket refrigerator aisle'); assert.equal(repaired.map(beat => beat.narration).join(' '), script); assert.equal(calls, 2);
+  } finally { global.fetch = originalFetch; }
+});
+
+test('ordinary educational narration does not inherit the stricter news actor policy', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => Response.json({ response: JSON.stringify({ queries: ['technician checking network cables'] }) });
+  try {
+    const script = 'A technician checks the network cables.';
+    assert.deepEqual(await storyboard.createStockStoryboard({ topic: 'How computer networks connect offices', script, duration: 20 }), [{ narration: script, query: 'technician checking network cables' }]);
+  } finally { global.fetch = originalFetch; }
 });
 
 test('fresh unsafe news queries get one bounded neutral repair without rewriting narration', async () => {

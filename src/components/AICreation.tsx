@@ -9,7 +9,6 @@ import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
 import {
-  PUBLISHING_PROFILES,
   publishingProfile,
   type PublishingFormat,
 } from "@/lib/publishingFormats";
@@ -39,6 +38,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [uploadingSong, setUploadingSong] = useState(false);
   const [recommendationNotice, setRecommendationNotice] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [ideaOpen, setIdeaOpen] = useState(!initialTopic?.trim());
   const [selectedNews, setSelectedNews] = useState<NewsIdea | null>(null);
   const submitInFlight = useRef(false);
   const requestId = useRef(crypto.randomUUID());
@@ -77,6 +77,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setDuration(next.duration);
     setBatchCount(next.batchCount);
     setSuggestionsOpen(false);
+    setIdeaOpen(false);
     // Choosing inspiration must not discard owner writing or switch a saved
     // recording to a generator. These fields remain under the owner's control.
     setRecommendationNotice(`${next.kind} selected. Nothing has been queued.${narration.trim() || visualBrief.trim() || lyrics.trim() || songAudio ? " Your writing and any song recording are kept; check that they match this idea before creating." : ""}`);
@@ -86,14 +87,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setSelectedNews(idea); setTopic(idea.title); setKind("General video");
     setAutoIdea(false); setBatchCount(1); setPublishingFormat("youtube-short"); setDuration(60);
     setSuggestionsOpen(false);
+    setIdeaOpen(false);
     setRecommendationNotice("News report selected. Phoenix will read the report and attribute its claims; footage is illustrative. Review the final video and verify developments before posting.");
-  }
-
-  function changePublishingFormat(value: PublishingFormat) {
-    setPublishingFormat(value);
-    setDuration(publishingProfile(value).defaultDuration);
-    if (value === "youtube-full") setBatchCount(1);
-    else if (kind === "Children's short story") setBatchCount(10);
   }
 
   async function create(event: React.FormEvent) {
@@ -125,6 +120,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           topic,
           autoIdea: children && autoIdea,
           duration,
+          autoDuration: !children,
           publishingFormat,
           batchCount,
           visualSource: children ? "local-ai" : "stock",
@@ -143,7 +139,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
       requestId.current = crypto.randomUUID();
       onStarted(data?.count === 10
         ? "Ten videos queued. Phoenix will plan and render them one at a time. Review only the finished videos in Review Files."
-        : "Video queued. Phoenix will plan and render it automatically. Watch Creation preparation and Live jobs; review the finished video in Review Files.");
+        : "Video queued. Follow its progress below; review the finished video in Library.");
       onClose();
     } catch {
       setError("Phoenix could not reach a required service. Check Studio health for the selected writer and local renderer; your saved jobs are retained.");
@@ -220,11 +216,13 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             </details>
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}
-            <label className="block text-sm font-semibold">
-              Describe the video you want
+            <details className="rounded-xl border p-3" open={ideaOpen} onToggle={event => setIdeaOpen(event.currentTarget.open)}>
+              <summary className="cursor-pointer text-sm font-semibold">{topic.trim() ? "Edit your idea" : "Describe your video"}{topic.trim() ? <span className="mt-1 block line-clamp-2 text-xs font-normal text-[#59634d]">{topic}</span> : null}</summary>
+              <label className="mt-2 block text-sm font-semibold">Your idea
               <textarea
                 value={topic}
                 onChange={(event) => changeTopic(event.target.value)}
+                onInvalid={() => setIdeaOpen(true)}
                 rows={3}
                 placeholder="Explain an interesting topic, show a craft, or tell an animated bedtime story for children…"
                 className="mt-1 w-full rounded-xl border p-2 font-normal"
@@ -232,6 +230,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
                 required
               />
             </label>
+            </details>
             <p className="text-xs text-[#657153]">No category to choose. Describe the subject and audience; Phoenix picks the workflow. For children's animation or songs, say so in your idea.</p>
           </>
         ) : (
@@ -240,35 +239,12 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-semibold">
-            Publishing format
-            <select
-              value={publishingFormat}
-              onChange={(event) => changePublishingFormat(event.target.value as PublishingFormat)}
-              className="mt-1 w-full rounded-xl border p-2 font-normal"
-            >
-              {Object.entries(PUBLISHING_PROFILES)
-                .filter(([value]) => kind === "Children's song" || value !== "youtube-full")
-                .map(([value, profile]) => (
-                <option key={value} value={value}>{profile.label} · {profile.aspect}</option>
-                ))}
-            </select>
-          </label>
-          <label className="block text-sm font-semibold">
-            Length per video
-            <select value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="mt-1 w-full rounded-xl border p-2 font-normal">
-              {publishingProfile(publishingFormat).durationOptions.map((seconds) => (
-                <option key={seconds} value={seconds}>{seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` : `${seconds} seconds`}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <p className="text-xs text-[#59634d]">{children ? "Phoenix chooses the format and preserves children's story and song length requirements." : "One vertical video for Instagram and YouTube. Phoenix fits its length to the complete narration—not padded seconds."}</p>
 
         {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
           <summary className="cursor-pointer font-semibold">Narration & visual brief (optional)</summary>
           <label className="block text-sm font-semibold">Your narration (optional)<textarea rows={5} maxLength={20000} value={narration} onChange={event => setNarration(event.target.value)} placeholder="Leave blank for your selected writer, or write the exact narration you want." className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
-          <p className="text-xs text-[#647451]">For {duration} seconds, use {Math.max(100, Math.round(duration * 2.35))}–{Math.min(650, Math.max(120, Math.round(duration * 3.1)))} words. Your supplied narration will not be silently replaced with a generic script.</p>
+          <p className="text-xs text-[#647451]">Phoenix estimates the length from your complete narration. Your words are kept, not rewritten or stretched to fill time.</p>
           <label className="block text-sm font-semibold">Visual search brief (optional, one scene per line)<textarea rows={4} maxLength={650} value={visualBrief} onChange={event => setVisualBrief(event.target.value)} placeholder={kind === "Business video" ? "customer speaking to shop assistant\nshop assistant listening\ncustomer collecting purchase" : "person opening bedroom curtains\npouring water into glass\nwriting a morning plan"} className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
           <p className="text-xs text-[#647451]">Up to 8 short, concrete searches in story order. Use a consistent setting and subject. Leave blank for automatic shot planning. Selection checks catalog metadata, not the actual frames; judge visual relevance in the final review.</p>
         </details> : null}
@@ -294,7 +270,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         ) : null}
 
         <div className="rounded-xl bg-[#f3f0e5] p-3 text-xs leading-5 text-[#5f654d]">
-          {publishingProfile(publishingFormat).shortLabel} uses {publishingProfile(publishingFormat).aspect}. Content is checked for originality and prepared for manual review; attention or earnings are never guaranteed.
+          Review the finished video before posting. Attention or earnings are never guaranteed.
         </div>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}

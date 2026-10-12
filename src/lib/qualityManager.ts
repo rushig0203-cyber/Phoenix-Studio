@@ -7,7 +7,7 @@ import { getReviewFile, readReviewFiles, reviewRoot, type ReviewFile } from "./r
 import type { CreativeFeedback, CreativeGuidance, FeedbackDimension, QualityAssessment, QualityManagerState } from "./managerTypes";
 import { FEEDBACK_REQUESTS, type FeedbackRequest } from "./managerTypes";
 import { publishingProfile, inferPublishingFormat } from "./publishingFormats";
-import { STOCK_FEEDBACK_MAX_BYTES, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
+import { GENERATED_CAPTION_FEEDBACK_RULE, STOCK_FEEDBACK_MAX_BYTES, STOCK_FEEDBACK_MAX_RECORDS, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
 
 const feedbackPath = () => path.join(reviewRoot(), "manager-feedback.json");
 const rating = z.number().int().min(1).max(5);
@@ -52,8 +52,13 @@ export function guidanceFromFeedback(records: CreativeFeedback[], creationType?:
       requests: stock.requests, priorities: stock.priorities,
       maxCaptionWords: stock.shorterPostingCaption ? 7 : 10, wordsPerSecond: 1.95 };
   }
-  const relevant = records.filter(record => !creationType || record.creationType === creationType);
-  const policyVersion = 3;
+  const latest = new Map<string, CreativeFeedback>();
+  for (const record of records.filter(record => !creationType || record.creationType === creationType)) {
+    const previous = latest.get(record.reviewId);
+    if (!previous || (Date.parse(record.updatedAt || "") || 0) >= (Date.parse(previous.updatedAt || "") || 0)) latest.set(record.reviewId, record);
+  }
+  const relevant = [...latest.values()].sort((a, b) => (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0) || a.reviewId.localeCompare(b.reviewId)).slice(0, STOCK_FEEDBACK_MAX_RECORDS);
+  const policyVersion = 4;
   const requests = FEEDBACK_REQUESTS.filter(request => relevant.some(record => record.requests?.includes(request)));
   const requestDimensions: Record<FeedbackRequest, FeedbackDimension> = { "clearer-explanation": "story", "less-repetition": "story", "stronger-ending": "story", "matching-visuals": "visuals", "natural-sentences": "audio" };
   const weakness = (dimension: FeedbackDimension) => relevant.reduce((sum, record) => sum + (record.ratings[dimension] <= 2 ? 1 : 0), 0);
@@ -62,7 +67,7 @@ export function guidanceFromFeedback(records: CreativeFeedback[], creationType?:
     story: creationType?.startsWith("children") ? "Use one clear problem, a visible attempt, its consequence, the other lead's reaction and a changed attempt that resolves the opening. Give each named lead a different approach and short attributed dialogue; show the payoff with the central object. Avoid filler and repeated moral speeches." : "Answer the actual viewer question using the structure it needs: explanation, comparison, demonstration, worked example or story. Start with a concrete problem or observation. Each beat adds a useful detail and explains its cause or condition; the ending delivers the opening's promise with an answer or usable next step. Do not force a fictional character or moral onto an explanation.",
     visuals: creationType?.startsWith("children") ? "Use only the two named animal leads and supported props: flowers, stars, ball, kite, drum, bridge, toys, letter, umbrella or bus. Describe one actor's visible action and the listener's reaction. Keep object states continuous and show a pass or changed attempt before its result; use wide, prop-detail and reaction views when helpful." : "Match each shot to its own narration and retain a coherent visual treatment. Preserve a setting and subject for a continuing action; explanations and comparisons may show different relevant examples. Stock actors and locations are illustrative, not proof of the same person's identity, a named place or an exact before/after result.",
     audio: "Use a calmer word budget and short spoken sentences. Listen for rushed or robotic narration; the local voice is speech, not singing.",
-    captions: "Use shorter caption groups, preserve the spoken words and leave time to read. Human synchronization review is still required.",
+    captions: GENERATED_CAPTION_FEEDBACK_RULE,
   };
   const specificRules: Record<FeedbackRequest, string> = {
     "clearer-explanation": "Replace vague advice with a concrete example, explain why it works, and state any necessary conditions. Do not invent facts or statistics to sound specific.",
@@ -74,7 +79,7 @@ export function guidanceFromFeedback(records: CreativeFeedback[], creationType?:
   // Notes are review records, never executable prompts. Hash only the bounded
   // production choices; ordering and an edited note do not invalidate all jobs.
   const revision = crypto.createHash("sha256").update(JSON.stringify([policyVersion, creationType || "all", relevant.map(record => [record.reviewId,record.ratings,record.decision,FEEDBACK_REQUESTS.filter(request => record.requests?.includes(request))]).sort((a,b) => String(a[0]).localeCompare(String(b[0])))])).digest("hex").slice(0,12);
-  return { feedbackCount: relevant.length, revision, policyVersion, requests, priorities, rules: [...priorities.map(dimension => rules[dimension]), ...requests.map(request => specificRules[request])], maxCaptionWords: priorities.includes("captions") ? 7 : 10, wordsPerSecond: priorities.includes("audio") || priorities.includes("story") ? 1.7 : 1.95 };
+  return { feedbackCount: relevant.length, revision, policyVersion, requests, priorities, rules: [...priorities.map(dimension => rules[dimension]), ...(creationType?.startsWith("children") && priorities.includes("captions") ? ["Use shorter subtitle groups, preserve the spoken words and leave time to read. Human synchronization review is still required."] : []), ...requests.map(request => specificRules[request])], maxCaptionWords: priorities.includes("captions") ? 7 : 10, wordsPerSecond: priorities.includes("audio") || priorities.includes("story") ? 1.7 : 1.95 };
 }
 export async function getCreativeGuidance(creationType?: string) { return guidanceFromFeedback(await readCreativeFeedback(), creationType); }
 
@@ -86,9 +91,10 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
   else checks.push("Saved export metadata includes duration and picture dimensions; watch the file to verify playback.");
   if (file.delivery) {
     const profile = publishingProfile(inferPublishingFormat({ ...file.delivery, duration: file.delivery.requestedDuration, targetPlatform: file.delivery.platform === "instagram" ? "Instagram" : "YouTube" }));
+    const minimum = ["general", "business"].includes(file.delivery.creationType) ? Math.min(20, profile.minDuration) : profile.minDuration;
     const outside = outputs.some(output => output && (file.editedFrom
       ? Math.abs(output.duration - file.delivery!.requestedDuration) > .25
-      : output.duration < profile.minDuration - 1 || output.duration > profile.maxDuration + 1));
+      : output.duration < minimum - 1 || output.duration > profile.maxDuration + 1));
     if (outside) blockers.push("Finished length is outside the selected publishing range or explicit edit trim. Check the export.");
     else checks.push("Finished duration fits the selected publishing range or explicit edit trim; narration may finish before the approximate target.");
   }
@@ -107,7 +113,7 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
   if (weak?.length) checks.push(`Your review requests improvement in: ${weak.join(", ")}.`);
   if (!file.quality.postCopy || !file.quality.hashtags.length) checks.push("Posting copy or hashtags need completion.");
   const decision = blockers.length ? "BLOCKED" : feedback?.decision === "revise" || weak?.length ? "REVISE" : feedback?.decision === "keep" ? "OWNER_APPROVED" : "AWAITING_REVIEW";
-  return { reviewId: file.id, title: file.title, decision, blockers, checks, feedback };
+  return { reviewId: file.id, title: file.title, createdAt: file.createdAt, creationType: file.delivery?.creationType || "source", decision, blockers, checks, feedback };
 }
 
 export async function getQualityManagerState(): Promise<QualityManagerState> {
@@ -120,9 +126,9 @@ export async function getQualityManagerState(): Promise<QualityManagerState> {
   ]);
   const jobs = [...ai,...source,...edits,...drafts.filter(draft => !["ARCHIVED", "APPROVED"].includes(draft.status))].filter(job => !job.archivedAt);
   const map = new Map(feedback.map(item => [item.reviewId,item]));
-  const assessments = files.filter(file => file.status === "READY").map(file => assessReview(file,map.get(file.id))).reverse();
+  const assessments = files.filter(file => file.status === "READY").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).map(file => assessReview(file,map.get(file.id)));
   return { mode:"local-feedback", checkedAt:new Date().toISOString(), queued:jobs.filter(job=>job.status==="QUEUED").length, running:jobs.filter(job=>["RUNNING","PROCESSING","PLANNING","APPROVING"].includes(job.status)).length, failed:jobs.filter(job=>["FAILED","BLOCKED"].includes(job.status)).length, reviewReady:assessments.length, guidance:guidanceFromFeedback(feedback), assessments,
-    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Lumina uses structured reviews for matching children's briefs and business/general writing, including the configured Groq writer. New automatic stock reels snapshot bounded source-review rules: weak visuals or repeated points prefer a larger recent-footage history, and weak caption ratings request shorter grounded posting copy. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code, automatic posting or performance prediction.",paidServices:false} };
+    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Structured reviews guide matching children's briefs and business/general writing with the configured writer. Caption feedback requests shorter grounded posting copy, and 2D renders use shorter subtitle groups. New automatic stock reels snapshot bounded source-review rules: weak visuals or repeated points prefer a larger recent-footage history. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code, automatic posting or performance prediction.",paidServices:false} };
 }
 
 export function assertLocalManagerRequest(request: Request, mutation=false) {

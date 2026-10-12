@@ -45,7 +45,7 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   assert.match(info, /Updates every three seconds[\s\S]*Active includes preparation and rendering/);
 });
 
-test('creation embeds six mixed recommendations with suitability labels and no automatic generation', () => {
+test('creation embeds six compact mixed recommendations with suitability tooltips and no automatic generation', () => {
   const { creationRecommendations } = require('../src/lib/creationRecommendations');
   const first = creationRecommendations(), next = creationRecommendations(first.memory);
   assert.equal(first.ideas.length, 6);
@@ -62,6 +62,26 @@ test('creation embeds six mixed recommendations with suitability labels and no a
   assert.match(creation, /Narration &amp; visual brief \(optional\)/);
   assert.doesNotMatch(creation, /aria-label="Recommended ideas"|Creation type|<details open/);
   assert.doesNotMatch(creation, /href="#ideas"/);
+  assert.doesNotMatch(creation, /Publishing format|Length per video/);
+  assert.match(creation, /One vertical video for Instagram and YouTube/);
+  const source = require('node:fs').readFileSync(path.join(__dirname,'../src/components/AICreation.tsx'),'utf8');
+  assert.match(source,/autoDuration: !children/);
+  assert.match(source,/open=\{ideaOpen\}/);
+  assert.doesNotMatch(source,/open=\{!topic\.trim\(\)\}/,'Typing the first letter must not close the prompt');
+});
+
+test('publishing settings exposes working connections and automatic caption guidance, not unused browser-only controls', () => {
+  const html = renderToStaticMarkup(React.createElement(require('../src/app/dashboard/settings/page').default));
+  assert.match(html,/Publishing settings/); assert.match(html,/Writer connection/);
+  assert.match(html,/Automatic captions and content quality/); assert.match(html,/Review the latest video/);
+  assert.doesNotMatch(html,/Save all changes|Caption defaults|Writing style|Voice ducking|\$0 · Ollama/);
+  assert.doesNotMatch(html,/Save writer/,'Writer setup fetches and renders only when opened');
+  const fs=require('node:fs');
+  const source=fs.readFileSync(path.join(__dirname,'../src/app/dashboard/settings/page.tsx'),'utf8');
+  assert.doesNotMatch(source,/phoenix-studio-settings|localStorage/,'Unused old browser values are preserved, not misrepresented as render settings');
+  const connections=fs.readFileSync(path.join(__dirname,'../src/components/ChannelConnections.tsx'),'utf8');
+  assert.match(connections,/text-\[#1e2719\]/); assert.match(connections,/text-\[#26331f\]/);
+  assert.doesNotMatch(connections,/bg-\[#18191d\] p-5 text-white|text-emerald-300/);
 });
 
 test('prompt-first routing is conservative and completion navigation ignores historical results', () => {

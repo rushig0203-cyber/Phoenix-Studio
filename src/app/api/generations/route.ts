@@ -35,6 +35,7 @@ const schema = z.object({
   requestId: z.string().uuid().optional(),
   topic: z.string().max(500).default(""),
   autoIdea: z.boolean().default(false),
+  autoDuration: z.boolean().default(false),
   script: z.string().max(20000).optional(),
   visualTerms: z.array(z.string().trim().min(2).max(80)).max(8).optional(),
   language: z.string().default("English"),
@@ -83,6 +84,13 @@ export async function POST(request: Request) {
       }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
+    // Current creation UI uses a bounded plan, not a platform-length selector.
+    // Older/manual callers and children's minimums keep their existing contract.
+    if (data.autoDuration && !children) {
+      const words = data.script?.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
+      data.duration = data.script?.trim() ? Math.max(20, Math.min(90, Math.floor(words / 2.7))) : 60;
+      data.publishingFormat = "youtube-short";
+    }
     const needsWriter = !data.script?.trim() || (!children && !data.visualTerms?.length);
     if (needsWriter) {
       const writer = readWritingSettings();
@@ -96,7 +104,7 @@ export async function POST(request: Request) {
     const publishingFormat = selectedFormat(data);
     const profile = publishingProfile(publishingFormat);
 
-    if (!durationFitsPublishingFormat(publishingFormat, data.duration)) {
+    if (!(data.autoDuration && !children) && !durationFitsPublishingFormat(publishingFormat, data.duration)) {
       return NextResponse.json({
         error: `${profile.label} must be between ${profile.minDuration} and ${profile.maxDuration} seconds.`,
       }, { status: 400 });

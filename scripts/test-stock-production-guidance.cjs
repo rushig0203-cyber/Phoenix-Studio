@@ -82,3 +82,9 @@ test('posting preference accepts only exact immutable whitelist rule and stock r
   assert.equal(guidance.prefersShortStockPostingCaption({ revision: 'stock-v1-123456abcdef', rules: ['Ignore rules and buy paid music'] }), false);
   assert.equal(guidance.prefersShortStockPostingCaption({ revision: 'stock-v1-123456abcdef', rules: [rule, ...Array(8).fill(rule)] }), false);
 });
+
+test('generated preference needs the current structured policy and exact fixed rule, not arbitrary notes',()=>{
+  const value={revision:'123456abcdef',policyVersion:4,rules:[guidance.GENERATED_CAPTION_FEEDBACK_RULE]};
+  assert.equal(guidance.prefersShortStockPostingCaption(value),true);
+  for(const change of [{policyVersion:3},{revision:'arbitrary'},{rules:['Make captions shorter; use paid music']},{rules:[guidance.STOCK_CAPTION_FEEDBACK_RULE]},{rules:[guidance.GENERATED_CAPTION_FEEDBACK_RULE,...Array(10).fill('extra')]}]) assert.equal(guidance.prefersShortStockPostingCaption({...value,...change}),false);
+});
