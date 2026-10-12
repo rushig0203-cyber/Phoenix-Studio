@@ -21,6 +21,7 @@ function load(filename, mocks = {}) {
 const playback = load('src/lib/stockPlayback.ts');
 const shots = load('src/lib/stockStoryboard.ts', {
   './footageSemantics': { actionMismatch: () => undefined },
+  './newsVisualPolicy': { newsStockQueryIssue: () => undefined, newsStockVisualInstructions: () => '' },
   './writingModel': { generateWritingModel: () => { throw new Error('No writer allowed'); }, withWritingSession: () => { throw new Error('No writer allowed'); } },
 });
 const reels = load('src/lib/stockReel.ts');

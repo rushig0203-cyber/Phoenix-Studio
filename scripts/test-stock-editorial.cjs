@@ -158,7 +158,7 @@ test('a meaning failure triggers exactly one rewrite then blocks if still unreso
 });
 
 test('subjective visual advice remains a visible warning after the bounded rewrite', async () => {
-  const warning = verdict({ filmableActions: { passed: false, evidence: 'A small next step', reason: 'This line may need an explanatory graphic rather than illustrative stock.' } });
+  const warning = verdict({ filmableActions: { passed: false, evidence: 'It gives you a clear place to begin', reason: 'This line may need an explanatory graphic rather than illustrative stock.' } });
   const count = responses([warning, { script }, warning]);
   const result = await editor.editStockNarration(brief);
   assert.equal(count(), 3); assert.equal(result.editorial.warnings.length, 1);

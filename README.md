@@ -5,8 +5,10 @@
 New automatic reels use a versioned compact recipe; saved v2/manual jobs are not
 retimed. Generated narration is more concise, never slowed merely to fill time,
 and news provenance stays in posting copy rather than a long spoken credits outro.
-Caption artifacts must cover the complete narration, including its ending. News
-renders require approved footage only: insufficient measured coverage fails that
+Caption artifacts must cover the complete narration, including its ending.
+Subtitle placement also follows the decoded picture size rather than an old
+nominal aspect preset, with a real late-caption frame regression.
+News renders require approved footage only: insufficient measured coverage fails that
 section instead of silently searching weaker supplemental matches. Verification
 and installation of this follow-up are still pending; no paid service is added.
 

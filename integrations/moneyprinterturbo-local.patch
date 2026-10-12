@@ -220,7 +220,7 @@ index a310390..794f201 100644
          task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs
      )
 diff --git a/app/services/video.py b/app/services/video.py
-index 0a33dae..09f407a 100644
+index 0a33dae..7d345b4 100644
 --- a/app/services/video.py
 +++ b/app/services/video.py
 @@ -356,7 +356,7 @@ def concat_video_clips_with_ffmpeg(
@@ -254,7 +254,30 @@ index 0a33dae..09f407a 100644
              )
  
              # Store clip duration before closing
-@@ -1352,10 +1358,14 @@ def generate_video(
+@@ -1050,6 +1056,14 @@ def subtitle_font_supports_text(font_path: str, text: str) -> bool:
+     return _subtitle_font_supports_sample(font_path, sample)
+ 
+ 
++def _subtitle_canvas_size(video_clip):
++    # Resumed stock masters can differ from the current aspect preset.
++    width, height = map(int, video_clip.size)
++    if width <= 0 or height <= 0:
++        raise ValueError("Subtitle canvas requires valid source video dimensions.")
++    return width, height
++
++
+ def generate_video(
+     video_path: str,
+     audio_path: str,
+@@ -1264,6 +1278,7 @@ def generate_video(
+         source_video_clip = clip_stack.enter_context(
+             _open_video_clip_quietly(video_path)
+         )
++        video_width, video_height = _subtitle_canvas_size(source_video_clip)
+         voice_source_clip = clip_stack.enter_context(AudioFileClip(audio_path))
+         video_clip = source_video_clip
+         audio_clip = voice_source_clip.with_effects(
+@@ -1352,10 +1367,14 @@ def generate_video(
              audio_fps=output_audio_fps,
              audio_bitrate=audio_bitrate,
              temp_audiofile_path=_get_temp_audio_dir(output_dir),
@@ -270,7 +293,7 @@ index 0a33dae..09f407a 100644
          return bgm_mix_succeeded
  
  
-@@ -1385,7 +1395,13 @@ def render_image_zoom_video(image_path: str, clip_duration: int = 5) -> str:
+@@ -1385,7 +1404,13 @@ def render_image_zoom_video(image_path: str, clip_duration: int = 5) -> str:
          try:
              # Output the video to a file.
              video_file = f"{image_path}.mp4"
@@ -392,10 +415,63 @@ index cbde408..2c2842a 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/test/services/test_video.py b/test/services/test_video.py
-index 2176fa1..c6c0773 100644
+index 2176fa1..2fc193a 100644
 --- a/test/services/test_video.py
 +++ b/test/services/test_video.py
-@@ -762,9 +762,9 @@ class TestVideoService(unittest.TestCase):
+@@ -31,6 +31,7 @@ class _FakeMoviePyClip:
+     def __init__(self, *, duration=5, fps=44100):
+         self.duration = duration
+         self.fps = fps
++        self.size = (720, 1280)
+         self.close_calls = 0
+         self.with_audio_result = self
+ 
+@@ -195,6 +196,44 @@ class TestVideoService(unittest.TestCase):
+         self.assertEqual(bgm_source.close_calls, 1)
+         self.assertEqual(final_video.close_calls, 1)
+ 
++    def test_late_subtitle_uses_actual_source_canvas_not_nominal_aspect_size(self):
++        params = vd.VideoParams(
++            video_subject="subtitle canvas fixture", video_aspect="9:16",
++            subtitle_enabled=True, subtitle_position="bottom",
++            font_name="BeVietnamPro-Bold.ttf", font_size=42,
++            text_fore_color="#FFFFFF", text_background_color=True,
++            bgm_type="", bgm_volume=0,
++        )
++        source_color = [17, 34, 51]
++        source = ImageClip(vd.np.full((1280, 720, 3), source_color, dtype=vd.np.uint8)).with_duration(3)
++        subtitle_source = _FakeMoviePyClip(duration=3)
++        subtitle_source.subtitles = [((2.2, 2.8), "Keep the complete ending.")]
++        captured = {}
++
++        def inspect_frame(final_clip, **_kwargs):
++            captured["size"] = final_clip.size
++            captured["before"] = final_clip.get_frame(1).copy()
++            captured["ending"] = final_clip.get_frame(2.5).copy()
++
++        try:
++            with tempfile.TemporaryDirectory(prefix="phoenix-subtitle-canvas-") as temporary:
++                subtitle = Path(temporary) / "captions.srt"
++                subtitle.write_text("1\n00:00:02,200 --> 00:00:02,800\nKeep the complete ending.\n", encoding="utf-8")
++                with (
++                    patch.object(vd.VideoAspect, "to_resolution", return_value=(1080, 1920)),
++                    patch.object(vd, "_open_video_clip_quietly", return_value=source),
++                    patch.object(vd, "AudioFileClip", return_value=_FakeMoviePyClip(duration=3)),
++                    patch.object(vd, "SubtitlesClip", return_value=subtitle_source),
++                    patch.object(vd, "_write_videofile_with_codec_fallback", side_effect=inspect_frame),
++                    patch.object(vd, "_get_configured_video_codec", return_value="libx264"),
++                ):
++                    vd.generate_video("source.mp4", "narration.mp3", str(subtitle), str(Path(temporary) / "final.mp4"), params)
++            self.assertEqual(tuple(captured["size"]), (720, 1280))
++            self.assertTrue(vd.np.all(captured["before"] == source_color))
++            self.assertTrue(vd.np.any(captured["ending"][-256:] != source_color), "The late subtitle must visibly occupy the actual video canvas")
++        finally:
++            source.close()
++
+     def test_generate_video_keeps_output_and_reports_failed_bgm_mix(self):
+         """BGM 打开失败时仍应只写一次无 BGM 视频，并返回 False。"""
+         params = vd.VideoParams(
+@@ -762,9 +801,9 @@ class TestVideoService(unittest.TestCase):
          class _FakeVideoClip:
              def __init__(self, duration, records_source_range=False):
                  self.duration = duration
@@ -408,7 +484,7 @@ index 2176fa1..c6c0773 100644
                  self.records_source_range = records_source_range
  
              def subclipped(self, start_time, end_time):
-@@ -863,9 +863,9 @@ class TestVideoService(unittest.TestCase):
+@@ -863,9 +902,9 @@ class TestVideoService(unittest.TestCase):
          class _FakeVideoClip:
              def __init__(self, duration):
                  self.duration = duration

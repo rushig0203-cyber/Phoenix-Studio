@@ -12,6 +12,12 @@
   more instead of being padded to the children's duration policy; children retain
   their minimum lengths. Full ordered narration, including its ending, must be
   present in caption artifacts. This does not prove every burned-in glyph is visible.
+- An actual old news frame at 65.2 seconds has no visible caption despite a saved
+  cue covering 58.423–66.378 seconds. A reproduced renderer bug placed captions
+  using nominal aspect dimensions rather than the decoded source canvas. Placement
+  now uses the actual picture size; three shipped stdlib checks and a real MoviePy
+  late-caption frame fixture pass. The historical cause is inferred, not proven
+  from the old running process; the old owner video has not been regenerated.
 - The news renderer now advertises `context-only-no-supplement-v1`: every approved
   asset is mandatory, and measured narration shortfall fails its exact section
   rather than introducing weaker-matched stock. Admission/submission verify the
@@ -19,6 +25,11 @@
   non-news supplementation is unchanged. Four stdlib-only shipped renderer tests
   pass; Node/lint/real-render/production checks are being run remotely, not on the
   low-memory laptop. No owner jobs are rendered, retried, removed or posted.
+- The first remote Node pass exposed three stale test fixtures, not owner jobs:
+  cross-realm saved-job comparison, narration evidence removed by the concise
+  fixture, and a missing news-policy mock. They are corrected; 156 focused Node
+  checks pass serially with the unchanged RAM guard. The complete corrected remote
+  release run, real render fixtures and activation remain pending.
 - Read-only Meta checks confirm the current connection can publish but lacks
   `instagram_manage_insights`; average-watch-time GET returned HTTP 400/code 10.
   No watch-time numbers were returned or inferred, and no credentials/scopes changed.

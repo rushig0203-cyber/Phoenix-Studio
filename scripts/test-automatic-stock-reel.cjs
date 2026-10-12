@@ -802,7 +802,7 @@ test('a saved v2 UUID returns its exact timing and guidance without applying new
   const before = JSON.stringify(job), h = harness({ existing: job, ffmpeg: false, guidanceError: 'Do not read new guidance for a saved recipe' });
   const response = await h.api.POST(request({ ...automaticPayload, query: 'Different topic', id: 99 }));
   const result = await response.json();
-  assert.equal(response.status, 200); assert.equal(result.existing, true); assert.deepEqual(result.job, job);
+  assert.equal(response.status, 200); assert.equal(result.existing, true); assert.deepEqual(result.job, JSON.parse(before));
   assert.equal(JSON.stringify(job), before); assert.deepEqual(result.job.intervals.map(shot => shot.frames), [48, 62, 74, 69, 79, 64, 62, 74]);
   assert.equal(result.job.stockSource.options.shotCadence, 'adaptive-v2');
   assert.deepEqual(h.calls, [['existing', automaticPayload.requestId]]); assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
