@@ -1,6 +1,30 @@
 # Quality-first implementation — September 16, 2026
 
-## October 13 unavailable generated stock searches — verification in progress
+## October 13 fresh detailed suggestions — verification in progress
+
+- New owner request: clearer creation premises and less repeated suggestions,
+  while retaining the successful country direction for real footage.
+- Creation bank grows 65→97 cards. Existing IDs/topic keys stay stable, 74 visible
+  premises contain a concrete angle/finish, and the exact complete visible title
+  reaches the existing manager topic input. Owner narration/recordings/visual
+  briefs remain untouched. History grows 96→256 bounded IDs so all current cards
+  can be explored before old subjects are forgotten.
+- Footage retains its old 72-ID/cursor order and appends 24 individually plausible
+  country profiles with six visible subjects each: 216 short, exact-label searches,
+  36 full batches per finite cycle. No coast/beach claim for landlocked countries;
+  these are search hints, not verified filming places or live trend analysis.
+- The concrete creation repeat bug is readable old history with failed writes:
+  stale ordering overrode the in-memory next batch on every click. A component
+  storage-working guard will follow the existing footage pattern instead of
+  repeatedly reloading that stale record. No cross-browser guarantee is claimed
+  if browser history storage is unavailable.
+- All 52 connected pure/UI/navigation regressions pass, including readable but
+  write-blocked full history, multiple More clicks, healthy remount, denied
+  storage methods/property and exact complete visible premise selection. There
+  is no owner storage mutation, provider/model call or job submission. Scoped
+  production lint passes; full remote build and activation are pending.
+
+## October 13 unavailable generated stock searches — verified installed and live
 
 - New failed preparation `761aec2f` accepted 47-second customer-follow-up
   narration, then failed its first minimum-12-second query "Generic email sent".
@@ -25,7 +49,14 @@
   Scoped production lint passes. Final caller review also marks manual scene saves
   as owner visual briefs, so generated-origin history cannot authorize replacing
   the owner's later search edits. Its isolated route regression is included in
-  remote verification. Remote full build/installation are pending.
+  remote verification. Run `38339280637` passed 961 Node/43 Python checks, lint,
+  synthetic/public licensed-Pexels render fixtures, TypeScript and compilation.
+  Source `a3a66f758ad4865554e119fe3f1bc2d5b61f9510` is installed as
+  `.next-build-gh-38339280637-1`, BUILD_ID `5M5An5TBDBLnbF4_xaLJ-`; selected/live
+  match, manager/worker healthy, renderer ready, heavy slot idle. Both Vercel
+  checks are green. All 462 metadata/credential hashes and 4,085 media inventories
+  match before/after. Canonical startup restored the stopped website during
+  browser verification; failed request status/update timestamp stayed exact.
   No owner retry/render/post/deletion, local model, paid service or dependency.
 
 ## October 13 quality feedback, compact settings and automatic creation — verified installed and live

@@ -17,12 +17,44 @@ const extraTopics: Array<{ category: string; titles: string[] }> = [
   { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish"] },
   { category: "Movement & outdoors", titles: ["Steam train", "Railway", "Tram", "Sailing", "Kayaking", "Skiing", "Surfing", "Hiking"] },
 ];
+// Country + one visible subject stays searchable; landlocked places do not
+// receive invented coast/beach suggestions. These are not filming-location claims.
+const countryTopics: Array<[string, string[]]> = [
+  ["Switzerland", ["lakes", "mountains", "trains", "valleys", "villages", "waterfalls"]],
+  ["Norway", ["fjords", "coast", "waterfalls", "mountains", "villages", "trains"]],
+  ["Iceland", ["waterfalls", "glaciers", "coast", "volcanoes", "lagoons", "aurora"]],
+  ["Italy", ["coast", "mountains", "villages", "lakes", "canals", "countryside"]],
+  ["Japan", ["gardens", "trains", "forests", "mountains", "coast", "blossoms"]],
+  ["Canada", ["lakes", "forests", "mountains", "coast", "trains", "snow"]],
+  ["Scotland", ["lakes", "castles", "coast", "highlands", "villages", "trains"]],
+  ["Austria", ["mountains", "lakes", "villages", "trains", "valleys", "forests"]],
+  ["France", ["villages", "coast", "vineyards", "mountains", "lavender", "trains"]],
+  ["Germany", ["castles", "forests", "lakes", "trains", "villages", "rivers"]],
+  ["Portugal", ["coast", "cliffs", "villages", "trams", "vineyards", "waves"]],
+  ["Spain", ["coast", "villages", "mountains", "fields", "cities", "trains"]],
+  ["Greece", ["islands", "coast", "villages", "boats", "cliffs", "sunset"]],
+  ["Croatia", ["coast", "islands", "waterfalls", "villages", "boats", "forests"]],
+  ["Slovenia", ["lakes", "mountains", "forests", "rivers", "villages", "waterfalls"]],
+  ["Finland", ["lakes", "forests", "snow", "aurora", "cabins", "coast"]],
+  ["Sweden", ["lakes", "forests", "islands", "villages", "trains", "snow"]],
+  ["Netherlands", ["canals", "windmills", "tulips", "cycling", "villages", "coast"]],
+  ["Ireland", ["cliffs", "coast", "castles", "countryside", "villages", "rivers"]],
+  ["Nepal", ["mountains", "valleys", "villages", "rivers", "forests", "trails"]],
+  ["Indonesia", ["islands", "waterfalls", "forests", "volcanoes", "beaches", "terraces"]],
+  ["Thailand", ["islands", "beaches", "forests", "waterfalls", "boats", "villages"]],
+  ["Australia", ["coast", "beaches", "desert", "forests", "reefs", "wildlife"]],
+  ["Chile", ["mountains", "glaciers", "desert", "lakes", "coast", "forests"]],
+];
 const ideas: ContentIdea[] = [...CONTENT_IDEAS.filter(idea => idea.workflow === "stock-reel").map(idea => {
   const title = topics[idea.id]?.[0] || idea.query.split(/\s+/).slice(0, 2).join(" ");
   // The selected chip must insert what it displays, not a hidden singular or
   // alternate keyword. Providers still receive the same broad topic.
   return { ...idea, title, query: title };
-}), ...extraTopics.flatMap(({ category, titles }) => titles.map(title => ({ id: `footage-${title.toLowerCase().replace(/\s+/g, "-")}`, category, title, query: title, workflow: "stock-reel" as const })))];
+}), ...extraTopics.flatMap(({ category, titles }) => titles.map(title => ({ id: `footage-${title.toLowerCase().replace(/\s+/g, "-")}`, category, title, query: title, workflow: "stock-reel" as const }))),
+...countryTopics.flatMap(([country, subjects]) => subjects.map(subject => {
+  const title = `${country} ${subject}`;
+  return { id: `footage-${country.toLowerCase()}-${subject}`, category: "Places & travel", title, query: title, workflow: "stock-reel" as const };
+}))];
 function validCursor(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < ideas.length;
 }

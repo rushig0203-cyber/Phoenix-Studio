@@ -1,6 +1,21 @@
 # Phoenix Studio
 
-### Unavailable generated stock searches — October 13, verification in progress
+### Fresh detailed suggestions — October 13, verification in progress
+
+Creation now has 97 curated starting points, with visible angles and endings
+included in the exact chosen topic sent to the manager. Its bounded ID-only
+history covers the expanded bank. Find footage retains its original 72 topics
+and appends 144 country/subject combinations, for 216 short searches (36 six-topic
+batches before cycling). These are finite editorial/search hints, not live trends,
+verified filming locations or a guarantee of matching licensed footage.
+
+Readable but write-blocked recommendation storage must not reload the same stale
+history on every More ideas click; in-session fallback remains usable. No model,
+provider request, new service or automatic video creation is added. All 52
+connected recommendation/storage/footage/navigation checks and scoped lint pass;
+remote full build and activation are pending.
+
+### Unavailable generated stock searches — October 13, verified live
 
 The customer-follow-up failure had suitable-length catalogue results, but their
 visible laptop/typing titles did not match the generated completed-outcome query
@@ -12,11 +27,15 @@ approved/exact-ID plans stay unchanged. Catalogue titles are metadata, not proof
 of screen content or reported events; unrelated or insufficient footage still
 fails safely. No provider/model/dependency or paid fallback was added.
 
-The 70 focused mock/isolated checks and scoped lint pass. A final ownership check
-also marks manually saved searches as an owner brief, preventing automatic query
-correction from overwriting them. Remote full verification
-and installation are pending; this source change is not yet the running release.
-No saved owner job has been retried, rendered, posted or removed.
+The 70 focused mock/isolated checks and scoped lint pass. Manual saves also mark
+searches as owner briefs so correction cannot overwrite them. Remote run
+`38339280637` passed 961 Node/43 Python checks, lint, isolated real render fixtures,
+TypeScript and compilation. Source `a3a66f7` is installed as
+`.next-build-gh-38339280637-1`; selected/live match, manager/worker are healthy and
+renderer is ready. Both Vercel checks are green. All 462 saved metadata/credential
+hashes and 4,085 media sizes/timestamps match before and after activation. The
+website was also restored when browser verification found it stopped. No saved
+owner job has been retried, rendered, posted or removed.
 
 ### Compact creation and connected quality feedback — October 13, verified live
 

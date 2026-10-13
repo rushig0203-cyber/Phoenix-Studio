@@ -11,6 +11,10 @@ const { publishingProfile } = require('../src/lib/publishingFormats');
 test('one mixed catalogue covers all eight subject groups and only supported creation types', () => {
   const pool = recommendationPool();
   assert.ok(pool.length > 60);
+  assert.ok(pool.length >= 97, 'A larger finite bank adds genuinely different visual subjects');
+  assert.ok(RECOMMENDATION_HISTORY_LIMIT >= pool.length, 'History must cover the full bank, not forget old topics before new ones are explored');
+  assert.ok(pool.filter(idea => idea.title.includes(' — ')).length >= 70, 'Rich visible premises contain an angle/ending rather than only a headline');
+  assert.ok(pool.every(idea => idea.title.length <= 400));
   assert.equal(new Set(pool.map(idea => idea.id)).size, pool.length);
   assert.deepEqual(new Set(pool.map(idea => idea.category)), new Set(RECOMMENDATION_GROUPS));
   for (const idea of pool) {

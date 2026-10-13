@@ -39,7 +39,7 @@ const catalog = loadPure('src/lib/contentIdeas.ts');
 const helper = loadPure('src/lib/stockFootageSuggestions.ts', { './contentIdeas': catalog });
 const storageKey = helper.FOOTAGE_SUGGESTION_STORAGE_KEY;
 const allTopics = [];
-for (let cursor = 0; cursor < 200; cursor++) {
+for (let cursor = 0; cursor < 512; cursor++) {
   const idea = helper.stockFootageSuggestions(cursor)[0];
   if (allTopics.some(previous => previous.id === idea.id)) break;
   allTopics.push(idea);
@@ -61,9 +61,12 @@ test('catalogue returns six distinct stock-only ideas and rejects malformed save
 test('footage recommendations are short broad topics while the rich creation catalogue remains unchanged', () => {
   const original = plain(catalog.CONTENT_IDEAS), all = allTopics;
   assert.ok(all.length >= 60, 'The scenic catalogue should not repeat after only a few small batches');
+  assert.equal(all.length, 216, 'Country/scenery subjects retain the original 72-topic bank and add 144 distinct combinations');
   assert.ok(all.every(idea => idea.title.split(/\s+/).length <= 2 && idea.query.split(/\s+/).length <= 2));
   assert.ok(all.every(idea => idea.query === idea.title), 'Selected input uses the exact displayed label, not a hidden alias');
   for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
+  for (const title of ['Switzerland lakes', 'Norway fjords', 'Japan trains', 'Chile glaciers', 'Netherlands tulips']) assert.ok(all.some(idea => idea.title === title));
+  for (const title of ['Switzerland coast', 'Nepal beaches', 'Austria coast']) assert.equal(all.some(idea => idea.title === title), false);
   const legacy = original.filter(idea => idea.workflow === 'stock-reel');
   assert.deepEqual(plain(all.slice(0, legacy.length).map(idea => idea.id)), legacy.map(idea => idea.id));
   assert.equal(new Set(all.map(idea => idea.title.toLowerCase())).size, all.length);

@@ -76,6 +76,8 @@ jobs:
           scripts/test-publish-settings-status.cjs
           scripts/test-stock-reels-ui.cjs
           scripts/test-stock-footage-suggestions-ui.cjs
+          scripts/test-recommended-ideas-ui.cjs
+          scripts/test-recommendation-memory.cjs
           scripts/test-stock-production-guidance.cjs
           scripts/test-quality-manager.cjs
           scripts/test-quality-manager-ui.cjs
@@ -155,7 +157,7 @@ jobs:
           src/components/CreationDrafts.tsx
           src/components/AICreation.tsx src/components/RecommendedIdeas.tsx
           src/components/QualityManager.tsx src/components/ChannelConnections.tsx
-          src/app/dashboard/settings/page.tsx src/lib/stockFootageSuggestions.ts
+          src/app/dashboard/settings/page.tsx src/lib/stockFootageSuggestions.ts src/lib/creationRecommendations.ts
           src/lib/qualityManager.ts
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
