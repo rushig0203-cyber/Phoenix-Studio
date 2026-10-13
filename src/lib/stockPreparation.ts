@@ -1,5 +1,5 @@
 import { createStockScript, type GenerationInput } from "./generation";
-import { createStockStoryboard } from "./stockStoryboard";
+import { createStockStoryboard, repairUnavailableStockQueries } from "./stockStoryboard";
 import { selectAutomaticFootage } from "./automaticFootage";
 import type { DraftScene } from "./creationDraftTypes";
 import { selectedFootage } from "./stockCatalog";
@@ -46,7 +46,11 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     scenes[index].footageReason = "Exact previously selected asset retained; no replacement search.";
     await save(scenes, `Restored selected footage ${index + 1}/${scenes.length}`);
   }
-  if (selectFootage) await selectAutomaticFootage(scenes, input.duration, input.aspect, save, input.research);
+  if (selectFootage) {
+    const canRepairQueries = input.scriptOrigin === "local-model" && !input.scriptApproved && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
+    await selectAutomaticFootage(scenes, input.duration, input.aspect, save, input.research,
+      canRepairQueries ? (current, failedIndex, titles) => repairUnavailableStockQueries(input, current, failedIndex, titles) : undefined);
+  }
   if (selectFootage && scenes.some(scene => !scene.footage)) throw new Error("The footage plan is incomplete. No backend search fallback was allowed.");
   input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query, assetId: scene.footage?.id })), stockPreparation: { version: 1, scenes } };
   await checkpoint(input, scenes, selectFootage ? "Exact footage saved — ready for rendering" : "Visual sequence saved");

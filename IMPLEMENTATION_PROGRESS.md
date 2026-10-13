@@ -1,5 +1,30 @@
 # Quality-first implementation — September 16, 2026
 
+## October 13 unavailable generated stock searches — verification in progress
+
+- New failed preparation `761aec2f` accepted 47-second customer-follow-up
+  narration, then failed its first minimum-12-second query "Generic email sent".
+  Read-only live catalogue diagnostics returned 13–25-second laptop/typing assets,
+  but no descriptive title token matched that generated query. Healthy manager,
+  worker and renderer; no owner render had started. Expansion repeated the same
+  query across orientations/pages, and Recover retained it.
+- Shared selection can now invoke one bounded all-unselected query correction
+  after exhausting normal searches. Generated/unapproved only; owner narration,
+  visual terms, approved scripts and exact-ID plans are excluded. Chosen clips
+  before or after the failure stay exact. Corrected queries persist before a
+  replacement search; narration, ordering, duration and native-footage safeguards
+  are unchanged. Failed correction/save/provider errors propagate with no filler.
+- The structured writer helper validates query count/shape, same-section
+  subject/actions and existing news restrictions. Case/whitespace-only changes
+  are rejected. Titles are bounded untrusted metadata, never evidence that a
+  delivered email, improved relationship or reported event was filmed. Initial
+  planning now asks for searchable visible actions instead of completed outcomes.
+- 70 focused isolated tests pass, including the exact five-section cached plan,
+  resumed corrected plan, selected-asset preservation, owner exclusions, malformed
+  repair, quota error, one-repair bound, news and failed-checkpoint safeguards.
+  Scoped production lint passes. Remote full build/installation are pending.
+  No owner retry/render/post/deletion, local model, paid service or dependency.
+
 ## October 13 quality feedback, compact settings and automatic creation — verified installed and live
 
 - Traced save/upsert → bounded matching guidance → creative brief/editor, 2D

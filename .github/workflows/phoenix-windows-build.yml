@@ -86,6 +86,7 @@ jobs:
           scripts/test-cloudflare-vision.cjs
           scripts/test-draft-planning-admission.cjs
           scripts/test-stock-storyboard.cjs
+          scripts/test-unavailable-stock-queries.cjs
           scripts/test-creation-drafts.cjs
           scripts/test-news-research.cjs
           scripts/test-news-visuals.cjs

@@ -7,6 +7,7 @@ import { newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms } from "
 
 const generic = new Set(["person", "people", "woman", "women", "man", "men", "video", "young", "adult", "close", "shot"]);
 const tokens = (value: string) => visualWords(value).filter(word => !generic.has(word)).map(word => word.replace(/(?:ing|es|s)$/, ""));
+const footageTitle = (choice: FootageChoice) => new URL(choice.sourcePage).pathname.replace(/[-_/\d]+/g, " ").trim();
 
 /** Metadata heuristics, not visual recognition. Never silently use an unrelated search. */
 export function rankFootage(choices: FootageChoice[], query: string, minimumSeconds: number, aspect: "9:16" | "16:9", used: Set<number>, previous?: FootageChoice, research?: NewsResearch) {
@@ -14,7 +15,7 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
   const target = aspect === "9:16" ? 9 / 16 : 16 / 9;
   return choices.flatMap((choice, index) => {
     if (used.has(choice.id) || choice.duration < minimumSeconds || Math.min(choice.width, choice.height) < 480) return [];
-    const title = new URL(choice.sourcePage).pathname.replace(/[-_/\d]+/g, " ");
+    const title = footageTitle(choice);
     const description = research ? newsVisualTerms(title) : tokens(title);
     if (research && newsFootageMetadataIssue(title, query, research)) return [];
     // A shared noun is insufficient: "bread" cannot justify footage of a
@@ -31,8 +32,10 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
   }).sort((a, b) => b.score - a.score);
 }
 
-export async function selectAutomaticFootage(scenes: DraftScene[], duration: number, aspect: "9:16" | "16:9", onScene: (scenes: DraftScene[], stage: string) => Promise<unknown>, research?: NewsResearch) {
+export async function selectAutomaticFootage(scenes: DraftScene[], duration: number, aspect: "9:16" | "16:9", onScene: (scenes: DraftScene[], stage: string) => Promise<unknown>, research?: NewsResearch,
+  repairQueries?: (scenes: DraftScene[], failedIndex: number, catalogTitles: string[]) => Promise<string[]>) {
   const selected = scenes.map(scene => ({ ...scene }));
+  let repairAttempted = false;
   const words = selected.reduce((sum, scene) => sum + scene.narration.split(/\s+/).length, 0);
   // Retain all saved choices on restart, including choices later in the plan.
   const used = new Set(selected.flatMap(scene => scene.footage ? [scene.footage.id] : []));
@@ -45,14 +48,36 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       continue;
     }
     await onScene(selected, `Selecting footage ${index + 1}/${selected.length}: ${scene.query}`);
-    const choices = await searchFootage(scene.query, aspect);
-    let best = rankFootage(choices, scene.query, minimum, aspect, used, selected[index - 1]?.footage, research)[0];
-    // Keep the same subject/query and quality checks, but don't fail after only
-    // eight portrait results. Landscape clips can still be used by the renderer.
-    for (let page = 1; !best && page <= 2; page++) {
-      await onScene(selected, `Searching more footage ${index + 1}/${selected.length} · catalogue page ${page}`);
-      const expanded = await searchFootage(scene.query, aspect, true, page, 30);
-      best = rankFootage(expanded, scene.query, minimum, aspect, used, selected[index - 1]?.footage, research)[0];
+    const catalogTitles = new Set<string>();
+    const search = async () => {
+      const rank = (choices: FootageChoice[]) => {
+        for (const choice of choices) if (!used.has(choice.id) && choice.duration >= minimum && Math.min(choice.width, choice.height) >= 480 && catalogTitles.size < 18) {
+          const title = footageTitle(choice).slice(0, 160);
+          if (title) catalogTitles.add(title);
+        }
+        return rankFootage(choices, scene.query, minimum, aspect, used, selected[index - 1]?.footage, research)[0];
+      };
+      let best = rank(await searchFootage(scene.query, aspect));
+      // Keep subject and quality checks, but consider more than eight portraits.
+      for (let page = 1; !best && page <= 2; page++) {
+        await onScene(selected, `Searching more footage ${index + 1}/${selected.length} · catalogue page ${page}`);
+        best = rank(await searchFootage(scene.query, aspect, true, page, 30));
+      }
+      return best;
+    };
+    let best = await search();
+    if (!best && repairQueries && !repairAttempted) {
+      repairAttempted = true;
+      await onScene(selected, `Correcting unavailable visual searches ${index + 1}/${selected.length} — narration and selected clips retained`);
+      const queries = await repairQueries(selected, index, [...catalogTitles]);
+      if (!Array.isArray(queries) || queries.length !== selected.length || queries.some((query, at) => typeof query !== "string" || query.trim().length < 3 || query.length > 80 || (selected[at].footage && query !== selected[at].query)) || queries[index].replace(/\s+/g, " ").trim().toLowerCase() === scene.query.replace(/\s+/g, " ").trim().toLowerCase()) {
+        throw new Error(`Section ${index + 1}: visual search correction was invalid. Narration and selected footage were retained.`);
+      }
+      for (const [at, current] of selected.entries()) if (!current.footage) current.query = queries[at].trim();
+      // Save the replacement searches before using them, so explicit retry
+      // does not endlessly replay the rejected generated plan.
+      await onScene(selected, "Corrected visual searches saved — checking exact footage");
+      best = await search();
     }
     if (!best) throw new Error(`Section ${index + 1}: no distinct, suitable footage of at least ${Math.ceil(minimum)} seconds for “${scene.query}” after an expanded search. Retry later. No unrelated filler or paid fallback was used.`);
     scene.footage = best.choice;

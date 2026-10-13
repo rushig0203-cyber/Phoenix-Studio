@@ -1,5 +1,21 @@
 # Phoenix Studio
 
+### Unavailable generated stock searches — October 13, verification in progress
+
+The customer-follow-up failure had suitable-length catalogue results, but their
+visible laptop/typing titles did not match the generated completed-outcome query
+"Generic email sent". After the normal bounded search is exhausted, generated,
+unapproved plans can receive one catalogue-grounded query correction. All
+unselected queries are checked against their own narration or news policy and
+saved before searching again. Narration, timing, chosen assets, owner briefs and
+approved/exact-ID plans stay unchanged. Catalogue titles are metadata, not proof
+of screen content or reported events; unrelated or insufficient footage still
+fails safely. No provider/model/dependency or paid fallback was added.
+
+The 70 focused mock/isolated checks and scoped lint pass. Remote full verification
+and installation are pending; this source change is not yet the running release.
+No saved owner job has been retried, rendered, posted or removed.
+
 ### Compact creation and connected quality feedback — October 13, verified live
 
 Saved/re-rated structured reviews already guide matching narration and children's
