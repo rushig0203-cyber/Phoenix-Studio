@@ -205,6 +205,16 @@ test('same-account live lease blocks concurrent sync and is hidden from all publ
   changeSaved(saved => { saved.lease = { token: '12345678-1234-1234-1234-123456789abc', until: Date.now() + 60000 }; });
   const previous = calls.length; const result = await collector.syncInstagramPerformance(true); assert.equal(calls.length, previous); assert.doesNotMatch(JSON.stringify(result), /lease|12345678/);
 });
+test('a removed collection checkpoint cannot be recreated by an in-flight stale result', async () => {
+  fetcher = url => {
+    const response = defaultFetch(url);
+    if (url.pathname.endsWith('/insights')) fs.rmSync(file, { force: true });
+    return response;
+  };
+  const result = await collector.syncInstagramPerformance();
+  assert.equal(calls.length, 2); assert.equal(result.videos.length, 0);
+  assert.equal(fs.existsSync(file), false); assert.doesNotMatch(JSON.stringify(result), /fixture-token|lease/);
+});
 test('over-bound or malformed caches are not overwritten and never return untrusted credential-bearing strings', async () => {
   fs.writeFileSync(file, 'x'.repeat(8 * 1024 * 1024 + 1)); const before = fs.statSync(file).size;
   const result = await collector.readInstagramPerformance(); assert.equal(result.status, 'error'); assert.equal(result.videos.length, 0);

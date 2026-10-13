@@ -317,7 +317,7 @@ export async function syncInstagramPerformance(force = false): Promise<Instagram
     await budget.assertCurrent();
     return await withFileLock(`${filename()}.lock`, async () => {
       const current = await readStore();
-      if (!sameAccount(current?.account, state.account) || current?.lease?.token !== claim.token) return readInstagramPerformance();
+      if (!current || !sameAccount(current.account, state.account) || current.lease?.token !== claim.token) return readInstagramPerformance();
       delete state.lease; state.updatedAt = new Date().toISOString();
       try { await save(state); }
       catch {
