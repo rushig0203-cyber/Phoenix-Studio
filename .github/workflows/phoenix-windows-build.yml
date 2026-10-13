@@ -71,6 +71,13 @@ jobs:
           scripts/test-reel-music.cjs
           scripts/test-instagram-audio.cjs
           scripts/test-instagram-tags.cjs
+          scripts/test-channel-connections.cjs
+          scripts/test-instagram-performance.cjs
+          scripts/test-instagram-performance-learning.cjs
+          scripts/test-instagram-performance-ui.cjs
+          scripts/test-instagram-performance-boundaries.cjs
+          scripts/test-instagram-learning-guidance.cjs
+          scripts/test-instagram-topic-suggestions.cjs
           scripts/test-posting-automation.cjs
           scripts/test-posting-actions.cjs
           scripts/test-publish-settings-status.cjs
@@ -141,6 +148,10 @@ jobs:
           src/lib/stockBrief.ts src/lib/stockEditorial.ts src/lib/newsResearch.ts src/lib/timedCaptions.ts
           src/lib/videoPostingAnalysis.ts src/lib/postingCopyPolicy.ts
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts src/lib/instagramTags.ts
+          src/lib/channelConnections.ts src/lib/instagramPerformanceTypes.ts src/lib/instagramPerformance.ts
+          src/lib/instagramPerformanceLearning.ts src/lib/instagramLearningGuidance.ts src/lib/instagramPublishedReviews.ts
+          src/lib/instagramTopicSuggestions.ts src/components/InstagramPerformance.tsx src/components/InstagramTopicSuggestions.tsx
+          src/app/api/instagram-performance/route.ts
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
           src/components/ReviewLibrary.tsx
           src/app/api/review-files/[id]/publish/route.ts

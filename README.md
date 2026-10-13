@@ -1,5 +1,35 @@
 # Phoenix Studio
 
+### Automatic Instagram performance feedback — October 13
+
+Library now includes a compact Instagram results panel. The local worker scans
+the connected professional account's available Reel/feed video history,
+including videos posted outside Phoenix, in small resumable batches. Completed
+scans refresh hourly while Phoenix is running. Views, likes, comments, reach,
+saves, shares and supported watch-time metrics remain nullable when unavailable.
+No video downloads, local model, paid analytics service or automatic posting is
+added. Meta quotas, denied permissions and network errors keep valid cached data.
+
+Facebook Login needs `instagram_manage_insights` in addition to basic account
+and Page read access. Keep existing publishing permissions when reconnecting.
+The current owner's token was checked read-only: Meta returned HTTP 200, but
+that insights permission is not yet granted. Registration or a publishing
+connection alone cannot enable these statistics.
+
+Comparisons require mature, sufficiently exposed, same-format posts of similar
+age and matching available metrics. Repeated, exactly matched Phoenix winners
+can suggest registered topics beside fresh ideas. Reported watch-time patterns
+can guide matching new scripts; stronger comparable shorter reels can produce
+a bounded experimental cap for new automatic footage recipes. Human review,
+accuracy, native footage speed, manual trims and existing jobs remain unchanged.
+This is an observational feedback loop, not model retraining or proof of what
+caused engagement. No growth guarantee is made. Collection is bounded at 5,000
+videos/8 MiB, with an explicit incomplete state if that limit is reached;
+comparisons use up to the latest 500 records.
+
+Source implementation and isolated tests are being verified; this entry does
+not itself confirm that the running production bundle has been updated.
+
 ### Fresh detailed suggestions — October 13, verified live
 
 Creation now has 97 curated starting points, with visible angles and endings

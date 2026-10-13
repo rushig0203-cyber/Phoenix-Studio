@@ -73,7 +73,7 @@ function harness(options = {}) {
   };
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('FixtureFragment') },
-    'next/image': 'img', './ui/button': { Button: 'button' } };
+    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' } };
   const clock = {
     setTimeout(callback, milliseconds = 0) { const id = ++timerId; timers.set(id, { at: time + milliseconds, callback }); return id; },
     clearTimeout(id) { timers.delete(id); },

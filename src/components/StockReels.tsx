@@ -6,6 +6,7 @@ import type { ContentIdea } from "@/lib/contentIdeas";
 import { nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/stockFootageSuggestions";
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
+import InstagramTopicSuggestions from "./InstagramTopicSuggestions";
 
 type Results = { query: string; version: number; videos: NaturalStock[]; cursor: string | null; limited: boolean };
 type Selection = { video: NaturalStock; results: Results };
@@ -142,6 +143,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
     <details className="mt-3 rounded-xl bg-[#f1f5e8] p-3"><summary className="cursor-pointer text-sm font-medium">Topic suggestions</summary>
       <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Searchable topics, not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={!!creating} onClick={moreSuggestions}>More topics</Button></div>
       <div className="mt-2 flex flex-wrap gap-2">{suggestions.map(idea => <button key={idea.id} type="button" disabled={!!creating} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span>{idea.title}</span></button>)}</div>
+      <InstagramTopicSuggestions mode="stock" onChoose={chooseIdea} disabled={!!creating} />
       {!suggestionsRemembered ? <p className="mt-2 text-xs text-[#657153]">Browser storage is unavailable; ideas still rotate here but may repeat next visit.</p> : null}
     </details>
     {notice ? <p role="status" aria-live="polite" className="mt-4 text-sm">{notice}</p> : null}

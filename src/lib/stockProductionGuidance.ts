@@ -4,6 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { FEEDBACK_REQUESTS, type CreativeFeedback, type FeedbackDimension, type FeedbackRequest } from "./managerTypes";
 import { reviewRoot } from "./reviewFiles";
+import { getInstagramLearningGuidance, hasBoundedLearningRules, mergeInstagramLearningGuidance } from "./instagramLearningGuidance";
 
 export const STOCK_FEEDBACK_MAX_BYTES = 512 * 1024;
 export const STOCK_FEEDBACK_MAX_RECORDS = 200;
@@ -20,6 +21,7 @@ const feedbackSchema = z.object({
 export type StockProductionGuidance = {
   revision: string; feedbackCount: number; rules: string[]; historyLimit: 10 | 20;
   policyVersion: 1; shorterPostingCaption: boolean; priorities: FeedbackDimension[]; requests: FeedbackRequest[];
+  performanceMaxDuration?: number;
 };
 
 /** Fixed production rules, never commands/prompts extracted from free-text notes. */
@@ -79,15 +81,19 @@ export async function readBoundedManagerFeedback(filename = path.join(reviewRoot
 }
 
 /** Only source choices affect a new automatic recipe; saved jobs are not replanned. */
-export async function getStockProductionGuidance(filename = path.join(reviewRoot(), "manager-feedback.json")): Promise<StockProductionGuidance> {
+export async function getStockProductionGuidance(filename?: string): Promise<StockProductionGuidance> {
   const records = await readBoundedManagerFeedback(filename);
-  try { return stockProductionGuidanceFromFeedback(records); }
+  let base: StockProductionGuidance;
+  try { base = stockProductionGuidanceFromFeedback(records); }
   catch { throw new Error("Saved source-video ratings or improvement choices are invalid. Preserve the feedback and repair it before continuing content planning."); }
+  if (filename !== undefined) return base;
+  const learning = await getInstagramLearningGuidance("source"), merged = mergeInstagramLearningGuidance(base, learning);
+  return learning.maxDuration !== undefined && merged !== base ? { ...merged, performanceMaxDuration: learning.maxDuration } : merged;
 }
 
 /** Recognize a fixed saved preference, never forward arbitrary rules or notes. */
 export function prefersShortStockPostingCaption(guidance?: { revision: string; rules: string[]; policyVersion?: number }) {
   if (!guidance || !Array.isArray(guidance.rules)) return false;
-  return /^stock-v1-[a-f0-9]{12}$/.test(guidance.revision) && guidance.rules.length <= 8 && guidance.rules.includes(STOCK_CAPTION_FEEDBACK_RULE)
-    || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision) && guidance.rules.length <= 10 && guidance.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE);
+  return /^stock-v1-[a-f0-9]{12}$/.test(guidance.revision) && hasBoundedLearningRules(guidance.rules, 8) && guidance.rules.includes(STOCK_CAPTION_FEEDBACK_RULE)
+    || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision) && hasBoundedLearningRules(guidance.rules, 10) && guidance.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE);
 }

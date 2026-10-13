@@ -10,6 +10,7 @@ import { socialHandle } from "@/lib/socialAccounts";
 import Link from "next/link";
 import ChannelConnections from "@/components/ChannelConnections";
 import ReviewLibrary from "@/components/ReviewLibrary";
+import InstagramPerformance from "@/components/InstagramPerformance";
 import CreationDrafts from "@/components/CreationDrafts";
 import StockReels from "@/components/StockReels";
 import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
@@ -367,7 +368,7 @@ export default function DashboardClient() {
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
         {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
         </fieldset>
-        {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
+        {section === "library" ? <><InstagramPerformance /><ReviewLibrary files={files} loading={loading} onRefresh={load} /></> : null}
         {section === "create" ? <>
         <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-xl border border-[#bfcaa6] bg-[#fffdf7] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

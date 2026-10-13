@@ -893,6 +893,20 @@ test('missing FFmpeg stops before catalog or media access', async () => {
   assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
 });
 
+test('measured Instagram duration experiment reaches new automatic recipes without changing manual trims', async () => {
+  const h = harness({ guidance: { ...baselineGuidance, performanceMaxDuration: 20 } });
+  const result = await h.api.POST(request(automaticPayload));
+  assert.equal(result.status, 201); assert.equal(h.queued.length, 1);
+  assert.equal(h.queued[0].input.maxDuration, 20);
+  assert.equal(h.queued[0].input.options.pacing, 'cinematic');
+  assert.equal(h.queued[0].input.options.shotCadence, 'adaptive-v3');
+  const manual = harness({ guidance: { ...baselineGuidance, performanceMaxDuration: 20 } });
+  const response = await manual.api.POST(request({ requestId: automaticPayload.requestId, theme: 'Sun City', duration: 60,
+    shots: [{ provider: 'pexels', id: 1, start: 2, end: 8, trimMode: 'manual' }, { provider: 'pixabay', id: 2, start: 3, end: 9, trimMode: 'manual' }] }));
+  assert.equal(response.status, 201); assert.equal(manual.queued[0].input.maxDuration, 60);
+  assert.deepEqual(plain(manual.queued[0].downloads.map(shot => [shot.start, shot.end])), [[2, 8], [3, 9]]);
+});
+
 test('failed preflight clears the in-flight promise before retry', async () => {
   const options = { ffmpeg: false }, h = harness(options);
   assert.equal((await h.api.POST(request(automaticPayload))).status, 503);

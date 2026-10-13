@@ -137,6 +137,7 @@ function mockedRunner() {
     "./src/lib/creationDrafts.ts": { enableAutomaticCreation: async () => { calls.push("enable"); },
       processNextCreationDraft: run("drafts"), creationDraftWorkflowReady: async () => draftReady },
     "./src/lib/videoPostingAnalysis.ts": { processNextPostingAnalysis: run("posting") },
+    "./src/lib/instagramPerformance.ts": { syncInstagramPerformance: async () => { calls.push("instagram-insights"); } },
     "./src/lib/renderResources.ts": { heavyWorkStatus: async () => resources,
       reconcileLocalModelWork: async () => { calls.push("model-status"); } },
     "./scripts/worker-workflows.cjs": { createWorkerDispatcher: options => {
@@ -166,6 +167,7 @@ test("real runner wiring defers heavy workflows but permits ready Groq text plan
   runner.timers.tick(); await runner.dispatcher.queue.whenIdle();
   assert.equal(runner.calls.filter(key => key === "drafts").length, 1, "Planning overlapped an existing external renderer");
   assert.ok(runner.calls.includes("reconcile")); assert.ok(runner.calls.includes("heartbeat"));
+  assert.ok(runner.calls.includes("instagram-insights"), "Read-only insights must not wait for renderer RAM admission");
   runner.resources = { lease: null, waitingForMemory: false };
   runner.dispatcher.queue.resume(); await runner.dispatcher.queue.whenIdle();
   assert.ok(runner.calls.includes("generation")); assert.ok(runner.calls.includes("posting"));

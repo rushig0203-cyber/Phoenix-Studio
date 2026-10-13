@@ -5,6 +5,7 @@ import { Loader2, ShieldCheck, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RecommendedIdeas from "@/components/RecommendedIdeas";
 import NewsIdeas from "@/components/NewsIdeas";
+import InstagramTopicSuggestions from "@/components/InstagramTopicSuggestions";
 import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
@@ -212,7 +213,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><NewsIdeas onChoose={chooseNews} /></> : null}
+              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><InstagramTopicSuggestions mode="creation" onChoose={chooseRecommendation} disabled={busy} /><NewsIdeas onChoose={chooseNews} /></> : null}
             </details>
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}

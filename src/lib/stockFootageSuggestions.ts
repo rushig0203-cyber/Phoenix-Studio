@@ -62,6 +62,7 @@ export function stockFootageSuggestions(cursor = 0): ContentIdea[] {
   const start = validCursor(cursor) ? cursor : 0;
   return Array.from({ length: Math.min(FOOTAGE_SUGGESTION_COUNT, ideas.length) }, (_, index) => ideas[(start + index) % ideas.length]);
 }
+export function stockTopicPool(): ContentIdea[] { return [...ideas]; }
 export function nextStoredFootageSuggestions(storage: Pick<Storage, "getItem" | "setItem">, fallbackCursor = 0) {
   let cursor = validCursor(fallbackCursor) ? fallbackCursor : 0;
   let remembered = true;

@@ -773,6 +773,43 @@ test("Facebook local uploads require actual granted publish permissions, with cr
   }
 });
 
+test("Instagram insights need their own verified read permission and never grant publishing access", async () => {
+  for (const insights of [false, true]) {
+    global.fetch = async target => {
+      const url = new URL(target);
+      if (url.hostname === 'graph.instagram.com') return failure(190);
+      if (url.pathname.endsWith('/permissions')) return Response.json({ data: [
+        { permission: 'instagram_basic', status: 'granted' },
+        { permission: 'pages_read_engagement', status: 'granted' },
+        { permission: 'instagram_manage_insights', status: insights ? 'granted' : 'declined' },
+      ] });
+      return Response.json({ data: [{ id: 'insights-page', instagram_business_account: { id: '1784000000000012', username: 'insights_fixture' } }] });
+    };
+    await channels.connectInstagramToken(fbToken);
+    global.fetch = async () => assert.fail('Reading proven insights access never requests or grants a permission');
+    const status = (await channels.listChannels('http://localhost:3000')).find(item => item.platform === 'instagram');
+    assert.equal(status.publishReady, false);
+    if (insights) {
+      const access = await channels.getInstagramPerformanceAccess();
+      assert.equal(access.accountId, '1784000000000012'); assert.equal(access.accessToken, fbToken);
+      assert.ok(!JSON.stringify(status).includes(fbToken));
+      const monitor = await channels.createInstagramPerformanceAccessMonitor(access);
+      const fsPromises = require('node:fs/promises'), originalRead = fsPromises.readFile;
+      let reads = 0;
+      fsPromises.readFile = function(...args) { reads++; return originalRead.apply(this, args); };
+      try { for (let index = 0; index < 12; index++) await monitor(); assert.equal(reads, 0, 'Unchanged credentials use file metadata instead of repeated vault decryption'); }
+      finally { fsPromises.readFile = originalRead; }
+      const expired = await channels.createInstagramPerformanceAccessMonitor({ ...access, expiresAt: Date.now() - 1 });
+      await assert.rejects(expired(), /access expired/);
+      await channels.disconnectChannel('instagram');
+      await assert.rejects(monitor(), /Connect or check/);
+    } else await assert.rejects(channels.getInstagramPerformanceAccess(), error => error.code === 'permission_required'
+      && error.account.id === '1784000000000012' && /instagram_manage_insights/.test(error.message) && !error.message.includes(fbToken));
+    await channels.disconnectChannel('instagram');
+    await assert.rejects(channels.getInstagramPerformanceAccess(), error => error.code === 'not_connected' && !error.account);
+  }
+});
+
 test("upload session capabilities stay encrypted, sanitized from public status, and validate host and job keys", async () => {
   const job = "57b7800a-4549-4f49-a8a8-415fab017767";
   const session = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=fixture-private-capability";

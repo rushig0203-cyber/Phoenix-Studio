@@ -8,6 +8,7 @@ import type { CreativeFeedback, CreativeGuidance, FeedbackDimension, QualityAsse
 import { FEEDBACK_REQUESTS, type FeedbackRequest } from "./managerTypes";
 import { publishingProfile, inferPublishingFormat } from "./publishingFormats";
 import { GENERATED_CAPTION_FEEDBACK_RULE, STOCK_FEEDBACK_MAX_BYTES, STOCK_FEEDBACK_MAX_RECORDS, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
+import { getInstagramLearningGuidance, mergeInstagramLearningGuidance } from "./instagramLearningGuidance";
 
 const feedbackPath = () => path.join(reviewRoot(), "manager-feedback.json");
 const rating = z.number().int().min(1).max(5);
@@ -81,7 +82,10 @@ export function guidanceFromFeedback(records: CreativeFeedback[], creationType?:
   const revision = crypto.createHash("sha256").update(JSON.stringify([policyVersion, creationType || "all", relevant.map(record => [record.reviewId,record.ratings,record.decision,FEEDBACK_REQUESTS.filter(request => record.requests?.includes(request))]).sort((a,b) => String(a[0]).localeCompare(String(b[0])))])).digest("hex").slice(0,12);
   return { feedbackCount: relevant.length, revision, policyVersion, requests, priorities, rules: [...priorities.map(dimension => rules[dimension]), ...(creationType?.startsWith("children") && priorities.includes("captions") ? ["Use shorter subtitle groups, preserve the spoken words and leave time to read. Human synchronization review is still required."] : []), ...requests.map(request => specificRules[request])], maxCaptionWords: priorities.includes("captions") ? 7 : 10, wordsPerSecond: priorities.includes("audio") || priorities.includes("story") ? 1.7 : 1.95 };
 }
-export async function getCreativeGuidance(creationType?: string) { return guidanceFromFeedback(await readCreativeFeedback(), creationType); }
+export async function getCreativeGuidance(creationType?: string) {
+  const base = guidanceFromFeedback(await readCreativeFeedback(), creationType);
+  return mergeInstagramLearningGuidance(base, await getInstagramLearningGuidance(creationType));
+}
 
 export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): QualityAssessment {
   const blockers: string[] = [], checks: string[] = [];
@@ -127,8 +131,9 @@ export async function getQualityManagerState(): Promise<QualityManagerState> {
   const jobs = [...ai,...source,...edits,...drafts.filter(draft => !["ARCHIVED", "APPROVED"].includes(draft.status))].filter(job => !job.archivedAt);
   const map = new Map(feedback.map(item => [item.reviewId,item]));
   const assessments = files.filter(file => file.status === "READY").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).map(file => assessReview(file,map.get(file.id)));
-  return { mode:"local-feedback", checkedAt:new Date().toISOString(), queued:jobs.filter(job=>job.status==="QUEUED").length, running:jobs.filter(job=>["RUNNING","PROCESSING","PLANNING","APPROVING"].includes(job.status)).length, failed:jobs.filter(job=>["FAILED","BLOCKED"].includes(job.status)).length, reviewReady:assessments.length, guidance:guidanceFromFeedback(feedback), assessments,
-    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Structured reviews guide matching children's briefs and business/general writing with the configured writer. Caption feedback requests shorter grounded posting copy, and 2D renders use shorter subtitle groups. New automatic stock reels snapshot bounded source-review rules: weak visuals or repeated points prefer a larger recent-footage history. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code, automatic posting or performance prediction.",paidServices:false} };
+  const guidance = mergeInstagramLearningGuidance(guidanceFromFeedback(feedback), await getInstagramLearningGuidance());
+  return { mode:"local-feedback", checkedAt:new Date().toISOString(), queued:jobs.filter(job=>job.status==="QUEUED").length, running:jobs.filter(job=>["RUNNING","PROCESSING","PLANNING","APPROVING"].includes(job.status)).length, failed:jobs.filter(job=>["FAILED","BLOCKED"].includes(job.status)).length, reviewReady:assessments.length, guidance, assessments,
+    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Structured reviews guide matching children's briefs and business/general writing with the configured writer. Caption feedback requests shorter grounded posting copy, and 2D renders use shorter subtitle groups. New automatic stock reels snapshot bounded source-review rules. Fresh Instagram insights from exactly matched published videos can suggest type-specific opening/watch-time tests and a conservative automatic-stock duration cap when enough comparable evidence exists. Human review choices stay first; metrics show associations, not causes or guaranteed reach. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code or automatic posting.",paidServices:false} };
 }
 
 export function assertLocalManagerRequest(request: Request, mutation=false) {

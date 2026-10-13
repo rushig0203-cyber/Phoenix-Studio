@@ -1,5 +1,33 @@
 # Quality-first implementation — September 16, 2026
 
+## October 13 Instagram performance feedback — activation pending
+
+- Rumble/Bilibili are deferred at the owner's request. No destinations,
+  accounts or paid services were added for them.
+- Automatic read-only collection uses the existing encrypted Instagram
+  connection, all available owned video pages (including manual posts),
+  resumable private checkpoints, four media results/twelve serial requests
+  per turn, hourly completed-pass refresh and bounded quota/network backoff.
+  No video/model load or publishing request is involved. Missing metrics are
+  unknown, not zero; cache-only UI polling never calls Meta.
+- Library has compact results, eight rows/page, factual views/likes and optional
+  engagement/watch-time evidence. Comparisons use current matched-format,
+  publication-age/exposure cohorts. Sparse/new/stale data cannot invent winners.
+- Exact accepted media/account/output fingerprint mapping permits safe local
+  topic/duration attribution. Repeated stronger matching results can add at
+  most two registered topic experiments beside the existing rotating cards.
+  Same-type watch-time guidance reaches new scripts after human review rules;
+  measured shorter-winning cohorts can cap only new automatic footage recipes.
+  Current videos, owner narration, manual trims and old saved recipes stay exact.
+- The owner's stored and actual Meta grants were inspected without printing
+  credentials. The live permission edge returned HTTP 200 with
+  `instagram_manage_insights` not granted. The feature is built to show this
+  one-time authorization blocker without breaking the existing publisher.
+- Production verification/activation is pending. Isolated mocked checks cover
+  collection, pagination, missing metrics, permissions, quota backoff, changed
+  account, no-secret public responses, cohort calculations, bounded suggestions,
+  cache-only manager integration and same-origin API/body limits.
+
 ## October 13 fresh detailed suggestions — verified installed and live
 
 - New owner request: clearer creation premises and less repeated suggestions,

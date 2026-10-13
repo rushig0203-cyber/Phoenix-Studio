@@ -26,6 +26,7 @@ async function queueAutomaticStockReel(input: { provider: "pexels" | "pixabay"; 
   // Read only bounded local structured choices. A corrupt store is actionable,
   // not a reason to pretend the manager learned or silently discard preferences.
   const managerGuidance = await getStockProductionGuidance();
+  const maxDuration = Math.min(AUTOMATIC_STOCK_REEL_MAX_DURATION, managerGuidance.performanceMaxDuration || AUTOMATIC_STOCK_REEL_MAX_DURATION);
   const unavailable = await readStockReuseBlocked();
   const { query, provider } = input, anchor = await resolveNaturalStock(provider, input.id);
   if (anchor.provider !== provider || anchor.id !== input.id) throw new Error("This starting video is no longer available.");
@@ -51,8 +52,8 @@ async function queueAutomaticStockReel(input: { provider: "pexels" | "pixabay"; 
   const options = automaticStockReelOptions(query);
   options.background = "soft-v1";
   if (automaticStockGreeneryFocus(anchor)) options.sceneFocus = "greenery";
-  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), AUTOMATIC_STOCK_REEL_MAX_DURATION, options.pacing, options.minDuration, options.shotCadence);
-  return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration: AUTOMATIC_STOCK_REEL_MAX_DURATION, options,
+  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence);
+  return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration, options,
     managerGuidance: { revision: managerGuidance.revision, feedbackCount: managerGuidance.feedbackCount, rules: managerGuidance.rules } });
 }
 

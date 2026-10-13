@@ -14,6 +14,11 @@ export type ChannelPublishAccess = {
 export type InstagramHashtagResearchAccess = {
   accountId: string; connectionRevision: string; accessToken: string;
 };
+export type InstagramPerformanceAccess = InstagramHashtagResearchAccess & { name: string; expiresAt?: number };
+export class InstagramPerformanceAccessError extends Error {
+  constructor(message: string, readonly code: "not_connected" | "permission_required",
+    readonly account?: { id: string; name: string; connectionRevision: string }) { super(message); }
+}
 type Credentials = { clientId: string; clientSecret: string };
 type Account = {
   accessToken: string; refreshToken?: string; expiresAt?: number;
@@ -534,6 +539,21 @@ export async function assertChannelPublishAccessCurrent(access: ChannelPublishAc
   if (!capability.publishReady) throw new Error(capability.publishReason);
 }
 
+/** Read-only insights access is separate from publishing; this never grants a scope. */
+export async function getInstagramPerformanceAccess(): Promise<InstagramPerformanceAccess> {
+  const account = (await readVault()).accounts?.instagram;
+  if (!account || account.error || (account.expiresAt && account.expiresAt <= Date.now())) {
+    throw new InstagramPerformanceAccessError("Connect or check Instagram in Settings before reading performance.", "not_connected");
+  }
+  if (account.loginType !== "facebook" || !account.permissionsVerifiedAt
+      || !["instagram_basic", "instagram_manage_insights", "pages_read_engagement"].every(scope => account.grantedScopes?.includes(scope))) {
+    throw new InstagramPerformanceAccessError("Reconnect Instagram with instagram_manage_insights, instagram_basic and pages_read_engagement. Keep your existing publishing permissions. Posting access alone cannot read video insights.", "permission_required",
+      { id: account.id, name: account.name, connectionRevision: revision(account) });
+  }
+  if (!/^\d{1,40}$/.test(account.id)) throw new InstagramPerformanceAccessError("Check the connected Instagram professional account in Settings.", "not_connected");
+  return { accountId: account.id, name: account.name, connectionRevision: revision(account), accessToken: account.accessToken, expiresAt: account.expiresAt };
+}
+
 /** Private server-only HMAC for explicit optional location lookup; never return it through an API. */
 export async function getInstagramLocationAppSecretProof(access: ChannelPublishAccess): Promise<string | null> {
   if (access.platform !== "instagram" || access.loginType !== "facebook") throw new Error("Instagram locations need the connected Facebook Login account.");
@@ -571,6 +591,24 @@ export async function createChannelPublishAccessMonitor(access: ChannelPublishAc
     // Keep the version observed before validation so a still newer mutation
     // remains visible to the next check instead of being skipped.
     observed = version;
+  };
+}
+
+/** An insights batch must not start PowerShell once for every Graph request. */
+export async function createInstagramPerformanceAccessMonitor(access: InstagramPerformanceAccess): Promise<() => Promise<void>> {
+  const validate = async () => {
+    const current = await getInstagramPerformanceAccess();
+    if (current.accountId !== access.accountId || current.connectionRevision !== access.connectionRevision || current.accessToken !== access.accessToken) {
+      throw new InstagramPerformanceAccessError("The connected Instagram account changed. Statistics collection stopped.", "not_connected");
+    }
+  };
+  let observed = await channelVaultVersion();
+  await validate();
+  return async () => {
+    if (access.expiresAt && access.expiresAt <= Date.now()) throw new InstagramPerformanceAccessError("Instagram access expired. Check the connection in Settings.", "not_connected");
+    const version = await channelVaultVersion();
+    if (sameVaultVersion(observed, version)) return;
+    await validate(); observed = version;
   };
 }
 

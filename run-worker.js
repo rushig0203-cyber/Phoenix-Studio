@@ -23,6 +23,7 @@ const { writeWorkerHeartbeat } = require("./src/lib/studioHealth.ts");
 const { processNextReviewEdit } = require("./src/lib/reviewEdits.ts");
 const { processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady } = require("./src/lib/creationDrafts.ts");
 const { processNextPostingAnalysis } = require("./src/lib/videoPostingAnalysis.ts");
+const { syncInstagramPerformance } = require("./src/lib/instagramPerformance.ts");
 const { heavyWorkStatus, reconcileLocalModelWork } = require("./src/lib/renderResources.ts");
 const { createWorkerDispatcher } = require("./scripts/worker-workflows.cjs");
 
@@ -55,6 +56,8 @@ const dispatcher = createWorkerDispatcher({
   },
   diagnostics: {
     heartbeat: { run: writeWorkerHeartbeat, intervalMs: 5000 },
+    // Small read-only Graph batches; never wait for a model/renderer RAM slot.
+    instagramInsights: { run: syncInstagramPerformance, intervalMs: 60_000 },
     resources: { run: async () => {
       await reconcileLocalModelWork();
       // This status-only path releases terminal external reservations without
