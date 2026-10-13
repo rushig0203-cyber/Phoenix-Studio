@@ -12,7 +12,9 @@ approved/exact-ID plans stay unchanged. Catalogue titles are metadata, not proof
 of screen content or reported events; unrelated or insufficient footage still
 fails safely. No provider/model/dependency or paid fallback was added.
 
-The 70 focused mock/isolated checks and scoped lint pass. Remote full verification
+The 70 focused mock/isolated checks and scoped lint pass. A final ownership check
+also marks manually saved searches as an owner brief, preventing automatic query
+correction from overwriting them. Remote full verification
 and installation are pending; this source change is not yet the running release.
 No saved owner job has been retried, rendered, posted or removed.
 

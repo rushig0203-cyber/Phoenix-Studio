@@ -114,6 +114,8 @@ export async function saveCreationDraft(id: string, version: number, scenes: Dra
     validateDraftScenes(draft, scenes);
     // Asset metadata comes only from a server-resolved selection, never from this edit payload.
     draft.scenes = scenes.map((scene, index) => ({ narration: scene.narration.replace(/\s+/g, " ").trim(), query: scene.query.trim(), footage: draft.scenes[index]?.query === scene.query.trim() ? draft.scenes[index]?.footage : undefined }));
+    // A manually saved shot plan is an owner visual brief, not permission to rewrite searches.
+    if (isStockDraft(draft)) draft.input = { ...draft.input, visualTerms: draft.scenes.map(scene => scene.query) };
     draft.version++;
     draft.updatedAt = new Date().toISOString();
     return draft;

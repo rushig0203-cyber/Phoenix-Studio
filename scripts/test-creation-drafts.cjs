@@ -180,6 +180,17 @@ test('recovery preserves owner scripts, earlier editorial phases, waiting and ac
   }
 });
 
+test('manually saved generated searches become an owner brief and cannot receive automatic query correction', async () => {
+  const item = await ready();
+  const generated = { ...item, input: { ...item.input, scriptOrigin: 'local-model', visualTerms: undefined } };
+  write([generated]);
+  const changed = generated.scenes.map(scene => ({ ...scene, query: 'opening bedroom curtains' }));
+  const saved = await drafts.saveCreationDraft(generated.id, generated.version, changed);
+  assert.deepEqual(saved.input.visualTerms, changed.map(scene => scene.query));
+  assert.deepEqual(read()[0].input.visualTerms, saved.input.visualTerms);
+  assert.equal(saved.input.script, generated.input.script);
+});
+
 test('metadata selection rejects too-short, repeated, and clearly off-topic clips and prefers continuity', () => {
   const { rankFootage } = require(path.join(project, 'src/lib/automaticFootage.ts'));
   const choice = id => ({ ...catalog.footageChoice(fixture(id)), sourcePage: `https://www.pexels.com/video/opening-bedroom-curtains-${id}/` });

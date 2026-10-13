@@ -22,7 +22,10 @@
 - 70 focused isolated tests pass, including the exact five-section cached plan,
   resumed corrected plan, selected-asset preservation, owner exclusions, malformed
   repair, quota error, one-repair bound, news and failed-checkpoint safeguards.
-  Scoped production lint passes. Remote full build/installation are pending.
+  Scoped production lint passes. Final caller review also marks manual scene saves
+  as owner visual briefs, so generated-origin history cannot authorize replacing
+  the owner's later search edits. Its isolated route regression is included in
+  remote verification. Remote full build/installation are pending.
   No owner retry/render/post/deletion, local model, paid service or dependency.
 
 ## October 13 quality feedback, compact settings and automatic creation — verified installed and live
