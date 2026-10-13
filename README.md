@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Fresh detailed suggestions — October 13, verification in progress
+### Fresh detailed suggestions — October 13, verified live
 
 Creation now has 97 curated starting points, with visible angles and endings
 included in the exact chosen topic sent to the manager. Its bounded ID-only
@@ -12,8 +12,17 @@ verified filming locations or a guarantee of matching licensed footage.
 Readable but write-blocked recommendation storage must not reload the same stale
 history on every More ideas click; in-session fallback remains usable. No model,
 provider request, new service or automatic video creation is added. All 52
-connected recommendation/storage/footage/navigation checks and scoped lint pass;
-remote full build and activation are pending.
+focused checks pass; remote run `38341032568` passed 974 Node/43 Python checks,
+lint, isolated real render fixtures, TypeScript and compilation. Source `1395e19`
+is installed as `.next-build-gh-38341032568-1`, BUILD_ID `sJNcAEaxcvvHq7B6-baBm`;
+selected/live match, manager/worker healthy, renderer ready. Both Vercel checks
+are green. Browser verification confirms More ideas changes/reopens fresh topics,
+the complete visible premise selects exactly, and More topics reaches the new
+country/subject entries without querying providers or queuing work. The temporary
+selection was discarded and verification tab closed. All 462 metadata/credential
+hashes and 4,085 media inventories are unchanged. No owner failure was retried.
+Browser storage must remain available to remember rotation across full reloads;
+the finite banks eventually cycle. Local rendering still obeys its RAM reserve.
 
 ### Unavailable generated stock searches — October 13, verified live
 

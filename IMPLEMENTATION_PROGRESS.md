@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 13 fresh detailed suggestions — verification in progress
+## October 13 fresh detailed suggestions — verified installed and live
 
 - New owner request: clearer creation premises and less repeated suggestions,
   while retaining the successful country direction for real footage.
@@ -20,9 +20,30 @@
   if browser history storage is unavailable.
 - All 52 connected pure/UI/navigation regressions pass, including readable but
   write-blocked full history, multiple More clicks, healthy remount, denied
-  storage methods/property and exact complete visible premise selection. There
-  is no owner storage mutation, provider/model call or job submission. Scoped
-  production lint passes; full remote build and activation are pending.
+  storage methods/property and exact complete visible premise selection. These
+  isolated checks do not mutate owner storage, call providers/models or submit
+  jobs. Scoped production lint passes.
+- Remote run `38341032568` passed 974/974 Node and 43/43 Python checks, lint,
+  synthetic/public licensed-Pexels render fixtures, TypeScript and compilation.
+  Guarded verified activation installed source
+  `1395e19ff04fc531104e145ee4bd728fb01b8ea8` as `.next-build-gh-38341032568-1`,
+  BUILD_ID `sJNcAEaxcvvHq7B6-baBm`. Selected/live match; manager/worker healthy,
+  renderer ready. Both Vercel checks are green.
+- Browser verification: More ideas changed all six topics; closing/reopening
+  continued into another fresh batch. Selecting a detailed bookshelf premise
+  copied its exact entire visible title and queued nothing; Close discarded the
+  temporary form selection. Seven More topics clicks reached Switzerland trains,
+  valleys, villages/waterfalls and Norway fjords/coast without provider queries,
+  media selection, retries or posts. Normal browser suggestion-ID/cursor history
+  advanced. The agent-created verification tab was then closed to save RAM.
+- All 462 saved metadata/credential hashes and 4,085 media inventories match the
+  snapshot before/after installation and browser checks; failed request
+  `761aec2f` retains its status and original update timestamp. Proofs:
+  `phoenix-compact-ideas-live-20261013.jpg` and
+  `phoenix-country-topics-live-20261013.jpg` in the task's artifacts directory.
+  Provider inference and owner retries remain untested; finite banks cycle,
+  blocked browser storage cannot remember a full reload, and local rendering
+  still respects the existing RAM reserve. No safety threshold was lowered.
 
 ## October 13 unavailable generated stock searches — verified installed and live
 
