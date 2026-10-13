@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Automatic Instagram performance feedback — October 13
+### Automatic Instagram performance feedback — October 14, installed; Meta authorization pending
 
 Library now includes a compact Instagram results panel. The local worker scans
 the connected professional account's available Reel/feed video history,
@@ -27,8 +27,15 @@ caused engagement. No growth guarantee is made. Collection is bounded at 5,000
 videos/8 MiB, with an explicit incomplete state if that limit is reached;
 comparisons use up to the latest 500 records.
 
-Source implementation and isolated tests are being verified; this entry does
-not itself confirm that the running production bundle has been updated.
+Remote Windows run `38447673852` passed 1,092 Node and 43 Python tests, scoped
+lint, isolated real render fixtures, full TypeScript and production compilation.
+Source `1f227336129a02f0f8349a33aee992a2faef8d4c` is installed as
+`.next-build-gh-38447673852-1`, BUILD_ID `HVeBrTiMQk_hIhHd6x4yz`.
+Selected/live builds match, manager/worker are healthy, and both Vercel checks
+are green. The five saved job/library records retain their pre-install hashes.
+Browser/API verification shows the correct account and `permission_required`,
+not invented statistics. Actual Meta collection and resulting owner-specific
+learning remain unverified until the additional insights grant is authorized.
 
 ### Fresh detailed suggestions — October 13, verified live
 

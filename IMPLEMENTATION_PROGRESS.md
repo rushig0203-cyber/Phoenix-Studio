@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 13 Instagram performance feedback — activation pending
+## October 14 Instagram performance feedback — installed, insights grant pending
 
 - Rumble/Bilibili are deferred at the owner's request. No destinations,
   accounts or paid services were added for them.
@@ -23,10 +23,27 @@
   credentials. The live permission edge returned HTTP 200 with
   `instagram_manage_insights` not granted. The feature is built to show this
   one-time authorization blocker without breaking the existing publisher.
-- Production verification/activation is pending. Isolated mocked checks cover
+- Isolated mocked checks cover
   collection, pagination, missing metrics, permissions, quota backoff, changed
   account, no-secret public responses, cohort calculations, bounded suggestions,
-  cache-only manager integration and same-origin API/body limits.
+  cache-only manager integration and same-origin API/body limits. An explicit
+  missing-checkpoint guard also prevents stale in-flight results from recreating
+  a removed statistics store.
+- Remote run `38447673852` passed 1,092/1,092 Node and 43/43 Python tests, scoped
+  lint, synthetic/public licensed-Pexels render fixtures, full TypeScript and
+  compilation. The first candidate's TypeScript narrowing failure was repaired
+  before any activation; its rejected bundle was never selected.
+- Verified archive/hash/inventory staging and guarded idle activation installed
+  source `1f227336129a02f0f8349a33aee992a2faef8d4c` as
+  `.next-build-gh-38447673852-1`, BUILD_ID `HVeBrTiMQk_hIhHd6x4yz`.
+  Selected/live match, manager/worker healthy, heavy work idle. Both Vercel checks
+  are green. Five saved job/library record hashes match before/after; no owner
+  failure was retried, no video rendered, and no upload submitted by the agent.
+- Browser/API show `@__bitet.hemap`, `permission_required`, zero collected videos
+  and zero learned rules. Proof: `phoenix-instagram-performance-live-20261014.png`
+  in the task artifacts directory. The precise action-time confirmation to add
+  only `instagram_manage_insights` remains unanswered; no token was generated,
+  replaced or saved. Real statistics/owner-specific learning are not yet verified.
 
 ## October 13 fresh detailed suggestions — verified installed and live
 
