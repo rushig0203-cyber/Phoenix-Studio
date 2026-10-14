@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Free writer quota rotation — October 14, activation pending
+### Free writer quota rotation — October 14, verified live
 
 The selected cloud writer is the preference, not a permanent lock. A proven
 Groq/Cloudflare quota wait can retry the same bounded text request on the other
@@ -18,8 +18,16 @@ Caption destination consents stay separate. No keys/settings are changed, no new
 service or dependency is added, and cloud quotas never trigger local model loading.
 Ollama remains explicitly selected with its existing heavy-work/RAM checks.
 
-Focused isolated checks pass. Production build, installation and live transport
-verification remain pending; no owner failure has been retried.
+Remote run `38520317282` passed 1,103 Node and 43 Python tests, lint, isolated
+real render checks, full TypeScript and production compilation. Source
+`ec6f2a3df2073506de29e2ec45424260a250ddc5` is installed as
+`.next-build-gh-38520317282-1`, BUILD_ID `jNbI2ZrhCii9H5YtEr62-`.
+Selected/live match; website, manager and worker are healthy. Live Settings/API
+confirm both backups enabled, and tiny neutral text requests succeeded with both
+saved writers. Writer credential/preferences bytes and nine old failed-job
+statuses/timestamps are unchanged. Quota exhaustion/reset was verified with
+isolated fixtures, not by exhausting the owner's live allowance. No owner
+failure was retried and no owner video rendered or uploaded.
 
 ### Automatic Instagram performance feedback — October 14, installed; Meta authorization pending
 

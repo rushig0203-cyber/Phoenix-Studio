@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 14 free quota rotation — source ready, activation pending
+## October 14 free quota rotation — installed and verified live
 
 - The original shared writer deliberately prohibited fallback. It now rotates
   only typed quota waits between existing, independently Free-confirmed Groq and
@@ -20,10 +20,23 @@
   memory; all 30 creative tests passed with test-process-only mocked RAM and
   already-mocked model/media transports. No production threshold was changed.
   Existing model wait/worker tests passed. Initial scoped lint passed; a later
-  128 MiB all-file lint exceeded its test heap, so final lint/full TypeScript/build
-  will run in the existing remote Windows verification, not on the laptop.
-- No owner inference, video render, retry, upload or credential write has been
-  performed. The current live build remains `.next-build-gh-38447673852-1`.
+  128 MiB all-file lint exceeded its test heap; full lint/TypeScript/build instead
+  passed in the existing remote Windows verification, not on the laptop.
+- Remote run `38520317282` passed 1,103/1,103 Node and 43/43 Python tests, lint,
+  synthetic/public licensed-Pexels render checks, full TypeScript and compilation.
+  Verified archive/hash/inventory staging and guarded idle activation installed
+  source `ec6f2a3df2073506de29e2ec45424260a250ddc5` as
+  `.next-build-gh-38520317282-1`, BUILD_ID `jNbI2ZrhCii9H5YtEr62-`.
+  Selected/live match; manager/worker healthy and heavy work idle. Both Vercel
+  checks are green. The initially stopped website was started with the normal
+  launcher and remains running on the new installed release.
+- Live API/browser show Cloudflare preferred with text/caption backup configured.
+  Two small neutral text requests returned valid responses from the saved
+  Cloudflare and Groq writers. Their live allowance was not deliberately exhausted;
+  quota transitions/reset and image consent boundaries were exercised in fixtures.
+  No owner video render, failed-job retry, upload or credential write was performed.
+  Writer settings SHA256 and nine old failure statuses/timestamps remain exact.
+  Proof: task artifacts `free-writer-rotation/live-settings-20261014.png`.
 
 ## October 14 Instagram performance feedback — installed, insights grant pending
 
