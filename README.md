@@ -1,5 +1,26 @@
 # Phoenix Studio
 
+### Free writer quota rotation — October 14, activation pending
+
+The selected cloud writer is the preference, not a permanent lock. A proven
+Groq/Cloudflare quota wait can retry the same bounded text request on the other
+saved, independently Free-confirmed cloud writer. Completed callback stages are
+not replayed. Actual response provider/model remain intact; creative fingerprints
+declare the configured routing policy. Credential, billing, request-validation,
+bad-output and ordinary lock failures do not rotate.
+
+Lumina can resume queued quota waits as soon as a configured backup is available,
+including older saved quota messages. Failed jobs and ordinary recovery timers
+are untouched. Both exhausted writers wait for the earliest reset; Groq reset
+headers (including days) and Cloudflare's daily UTC allocation are respected.
+Text and frame analysis share Cloudflare's known account-level daily exhaustion.
+Caption destination consents stay separate. No keys/settings are changed, no new
+service or dependency is added, and cloud quotas never trigger local model loading.
+Ollama remains explicitly selected with its existing heavy-work/RAM checks.
+
+Focused isolated checks pass. Production build, installation and live transport
+verification remain pending; no owner failure has been retried.
+
 ### Automatic Instagram performance feedback — October 14, installed; Meta authorization pending
 
 Library now includes a compact Instagram results panel. The local worker scans

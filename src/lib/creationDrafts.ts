@@ -15,7 +15,7 @@ import { selectedFootage } from "./stockCatalog";
 import { prepareLocalSong } from "./localSinging";
 import { prepareStockCreation } from "./stockPreparation";
 import type { CreationDraft, DraftScene } from "./creationDraftTypes";
-import { isWritingWaitError, withWritingSession, writingModelIdentity } from "./writingModel";
+import { isWritingWaitError, withWritingSession, writingModelIdentity, WritingQuotaWaitError, isWriterQuotaWaiting as quotaWaiting, writerQuotaBackupReady as quotaBackupReady } from "./writingModel";
 
 const storeFile = () => path.join(reviewRoot(), "creation-drafts.json");
 const leaseOwner = `${process.pid}-${crypto.randomUUID()}`;
@@ -196,7 +196,7 @@ export async function changeDraftStatus(id: string, version: number, action: "re
 let planning = false;
 const readyToPlan = (draft: CreationDraft) => (draft.status === "QUEUED" && (!draft.nextAttemptAt || Date.parse(draft.nextAttemptAt) <= Date.now())) || (draft.status === "PLANNING" && (draft.leaseUntil || 0) < Date.now());
 const isRemoteTextIdentity = (identity: string) => identity.startsWith("groq:") || identity.startsWith("cloudflare:");
-const readyForPlanningResources = (draft: CreationDraft, resources: { waitingForMemory: boolean }) => readyToPlan(draft)
+const readyForPlanningResources = (draft: CreationDraft, resources: { waitingForMemory: boolean }, quotaReady = false) => (readyToPlan(draft) || quotaReady && quotaWaiting(draft))
   && (!resources.waitingForMemory || (isRemoteTextIdentity(writingModelIdentity()) && draft.input.creationType !== "children-song"));
 
 /** Bounded cloud text planning may run while local media work awaits RAM. */
@@ -204,7 +204,8 @@ export async function creationDraftWorkflowReady(resources: { waitingForMemory: 
   const drafts = await listCreationDrafts();
   if (drafts.some(draft => draft.status === "APPROVING")) return true;
   if (drafts.some(draft => draft.status === "PLANNING" && (draft.leaseUntil || 0) > Date.now())) return false;
-  return drafts.some(draft => readyForPlanningResources(draft, resources));
+  const quotaReady = await quotaBackupReady(drafts);
+  return drafts.some(draft => readyForPlanningResources(draft, resources, quotaReady));
 }
 
 async function attemptPlanningSlot(work: () => Promise<unknown>, kind: string) {
@@ -231,14 +232,16 @@ export async function processNextCreationDraft() {
       return;
     }
     const resources = await heavyWorkStatus();
-    if (!all.some(draft => readyForPlanningResources(draft, resources))) return;
+    const quotaReady = await quotaBackupReady(all);
+    if (!all.some(draft => readyForPlanningResources(draft, resources, quotaReady))) return;
     const draft = await mutate(drafts => {
       if (drafts.some(d => d.status === "PLANNING" && (d.leaseUntil || 0) > Date.now())) return null;
-      const selected = drafts.find(draft => readyForPlanningResources(draft, resources));
+      const selected = drafts.find(draft => readyForPlanningResources(draft, resources, quotaReady));
       if (!selected) return null;
       selected.status = "PLANNING"; selected.stage = selected.input.reviewMode === "final" ? "Planning — rendering will start automatically" : "Planning — video will wait for your approval";
       selected.leaseOwner = leaseOwner; selected.leaseUntil = Date.now() + leaseMs; selected.version++;
       selected.nextAttemptAt = undefined;
+      selected.writerQuotaWait = undefined;
       return selected;
     });
     if (!draft) return;
@@ -314,7 +317,7 @@ export async function processNextCreationDraft() {
         const current = drafts.find(d => d.id === draft.id);
         if (!current || current.leaseOwner !== leaseOwner || !["PLANNING", "APPROVING"].includes(current.status)) return;
         if (isWritingWaitError(error)) {
-          Object.assign(current, { status: "QUEUED", stage: error.message, error: undefined, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });
+          Object.assign(current, { status: "QUEUED", stage: error.message, error: undefined, writerQuotaWait: error instanceof WritingQuotaWaitError, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });
           return;
         }
         Object.assign(current, { status: "FAILED", stage: "Creation preparation failed — retry resumes saved progress", error: error instanceof Error ? error.message : "Planning failed.", version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });

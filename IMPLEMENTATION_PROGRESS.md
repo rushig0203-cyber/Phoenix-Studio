@@ -1,5 +1,30 @@
 # Quality-first implementation — September 16, 2026
 
+## October 14 free quota rotation — source ready, activation pending
+
+- The original shared writer deliberately prohibited fallback. It now rotates
+  only typed quota waits between existing, independently Free-confirmed Groq and
+  Cloudflare credentials. One request per candidate, no replayed callback or
+  consumed failure attempt, no configuration mutation, no auth/billing/output
+  fallback and no automatic local model. Policy fingerprints declare both
+  configured writers; response provenance remains the adapter's actual model.
+- Both draft planning and generation can notice a newly available backup before
+  an older quota timer. Only queued known quota waits qualify; terminal failures,
+  normal retry timers, active leases and local RAM/render admission remain intact.
+- Known Cloudflare daily allocation exhaustion is shared across writing and
+  consented frame analysis; per-model capacity backoff remains separate. Existing
+  caption switching and earliest-reset automatic recovery remain enabled. Groq
+  request reset headers now recognize days as well as shorter units.
+- 51 adapter/caption tests and 41 rotation/admission/settings tests passed.
+  Twelve creative fixture checks initially waited on this laptop's real free
+  memory; all 30 creative tests passed with test-process-only mocked RAM and
+  already-mocked model/media transports. No production threshold was changed.
+  Existing model wait/worker tests passed. Initial scoped lint passed; a later
+  128 MiB all-file lint exceeded its test heap, so final lint/full TypeScript/build
+  will run in the existing remote Windows verification, not on the laptop.
+- No owner inference, video render, retry, upload or credential write has been
+  performed. The current live build remains `.next-build-gh-38447673852-1`.
+
 ## October 14 Instagram performance feedback — installed, insights grant pending
 
 - Rumble/Bilibili are deferred at the owner's request. No destinations,

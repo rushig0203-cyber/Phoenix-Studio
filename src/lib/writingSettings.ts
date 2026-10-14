@@ -87,18 +87,20 @@ export function publicWritingSettings() {
   const raw = readRaw();
   const settings = readWritingSettings();
   const configured = settings.provider === "ollama" || (!!settings.apiKey && settings.freePlanConfirmed && (settings.provider !== "cloudflare" || !!settings.accountId));
+  const textFallbackConfigured = settings.provider === "cloudflare" ? !!settings.groqApiKey && settings.groqFreePlanConfirmed === true
+    : settings.provider === "groq" && !!raw.cloudflareApiKey && !!raw.cloudflareAccountId && raw.cloudflareFreePlanConfirmed === true;
   return { provider: settings.provider, model: settings.model, configured, hasKey: !!settings.apiKey,
     hasGroqVisionKey: !!settings.groqApiKey, hasCloudflareKey: typeof raw.cloudflareApiKey === "string",
-    hasGroqKey: !!settings.groqApiKey, freePlanConfirmed: settings.freePlanConfirmed,
+    hasGroqKey: !!settings.groqApiKey, freePlanConfirmed: settings.freePlanConfirmed, textFallbackConfigured,
     allowCloudflareVideoFrames: raw.allowCloudflareVideoFrames === true,
     cloudflareCaptionFreePlanConfirmed: raw.cloudflareFreePlanConfirmed === true,
     captionFallbackConfigured: raw.allowCloudflareVideoFrames === true && !!raw.cloudflareApiKey && !!raw.cloudflareAccountId && raw.cloudflareFreePlanConfirmed === true,
     allowVideoFrames: settings.allowVideoFrames === true, detail: settings.provider === "ollama"
       ? "Ollama writes on this PC and needs enough free RAM."
       : settings.provider === "groq" ? configured
-        ? "Groq writing configured. Test key/model access below; Phoenix cannot verify your billing tier."
+        ? `Groq is the preferred writer.${textFallbackConfigured ? " Free quota waits rotate to your configured Cloudflare writer; Groq is tried again after reset." : " Add a separately confirmed Free Cloudflare writer to enable quota backup."} Phoenix cannot verify billing tier.`
         : "Add a Groq Free-plan key and confirm the account tier. No fallback is used."
-      : configured ? "Cloudflare Workers AI writing is configured with your Free-plan confirmation. Test account/model access below; Phoenix cannot verify billing tier or remaining daily quota."
+      : configured ? `Cloudflare is the preferred writer.${textFallbackConfigured ? " Free quota waits rotate to your configured Groq writer; Cloudflare is tried again after reset." : " Add a separately confirmed Free Groq writer to enable quota backup."} Phoenix cannot verify billing tier or remaining daily quota.`
         : "Add a Cloudflare Workers AI API token and Account ID, then confirm the Free plan. No fallback is used." };
 }
 

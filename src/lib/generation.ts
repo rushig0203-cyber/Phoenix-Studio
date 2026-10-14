@@ -18,7 +18,7 @@ import { readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { getCreativeGuidance } from "./qualityManager";
 import type { CreativeGuidance } from "./managerTypes";
-import { generateWritingModel, withWritingSession, isWritingWaitError } from "./writingModel";
+import { generateWritingModel, withWritingSession, isWritingWaitError, WritingQuotaWaitError, isWriterQuotaWaiting, writerQuotaBackupReady } from "./writingModel";
 import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { NEWS_STOCK_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender } from "./newsVisualPolicy";
@@ -110,6 +110,7 @@ export type LocalGenerationJob = {
   manualRetryCount?: number;
   attempts?: AttemptRecord[];
   nextAttemptAt?: string;
+  writerQuotaWait?: boolean;
   queuedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -342,13 +343,14 @@ function isChildrenGenerationJob(job: LocalGenerationJob) {
 }
 
 async function claimQueuedJob() {
-  return mutateJobs((jobs) => {
+  return mutateJobs(async (jobs) => {
+    const quotaReady = await writerQuotaBackupReady(jobs);
     const now = Date.now();
     const childrenRenderAlreadyRunning = jobs.some((job) => job.status === "RUNNING" && isChildrenGenerationJob(job));
     const candidate = jobs
       .filter((job) =>
         !job.archivedAt && job.status === "QUEUED" &&
-        (!job.nextAttemptAt || new Date(job.nextAttemptAt).getTime() <= now) &&
+        (!job.nextAttemptAt || new Date(job.nextAttemptAt).getTime() <= now || quotaReady && isWriterQuotaWaiting(job)) &&
         !(childrenRenderAlreadyRunning && isChildrenGenerationJob(job))
       )
       .sort((left, right) => new Date(left.queuedAt).getTime() - new Date(right.queuedAt).getTime())[0];
@@ -362,6 +364,7 @@ async function claimQueuedJob() {
       stage: candidate.retryCount ? `Starting local attempt ${candidate.retryCount + 1} of 3` : "Starting local creation",
       error: undefined,
       nextAttemptAt: undefined,
+      writerQuotaWait: undefined,
       startedAt,
       finishedAt: undefined,
       ...(isChildrenGenerationJob(candidate) ? {
@@ -1122,7 +1125,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
 
 async function retryOrFail(job: LocalGenerationJob, error: unknown, failedStage: string) {
   if (isWritingWaitError(error)) {
-    return updateJob(job.id, { status: "QUEUED", stage: error.message, error: undefined, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), startedAt: undefined, finishedAt: undefined, providerLeaseOwner: undefined, providerLeaseExpiresAt: undefined, localRenderLeaseOwner: undefined, localRenderLeaseExpiresAt: undefined });
+    return updateJob(job.id, { status: "QUEUED", stage: error.message, error: undefined, writerQuotaWait: error instanceof WritingQuotaWaitError, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), startedAt: undefined, finishedAt: undefined, providerLeaseOwner: undefined, providerLeaseExpiresAt: undefined, localRenderLeaseOwner: undefined, localRenderLeaseExpiresAt: undefined });
   }
   const message = error instanceof Error ? error.message : "Local creation failed";
   const attempt = job.retryCount + 1;

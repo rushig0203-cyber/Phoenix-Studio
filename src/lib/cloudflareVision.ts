@@ -5,6 +5,7 @@ import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import { readCloudflareVideoAnalysisSettings, VISION_CLOUDFLARE_MODEL, type WritingSettings } from "./writingSettings";
 import { WritingConfigurationError, WritingWaitError } from "./groqWriter";
+import { cloudflareDailyQuotaDelay, saveCloudflareDailyQuota } from "./providerQuota";
 
 const base = "https://api.cloudflare.com/client/v4/accounts/";
 const privatePath = (name: string) => path.join(process.cwd(), "storage", "private", name);
@@ -31,7 +32,7 @@ export async function cloudflareVisionQuotaDelay(settings: WritingSettings) {
       || !Number.isSafeInteger(state.until) || state.until! <= 0) throw new Error();
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Cannot read Cloudflare caption retry state. No request was sent."); }
-  return state.identity === identity(settings) && Number.isFinite(state.until) ? Math.max(0, Math.min(86_400_000, state.until! - Date.now())) : 0;
+  return Math.max(state.identity === identity(settings) && Number.isFinite(state.until) ? Math.max(0, Math.min(86_400_000, state.until! - Date.now())) : 0, await cloudflareDailyQuotaDelay(settings));
 }
 async function boundedJson(response: Response): Promise<unknown> {
   const reader = response.body?.getReader();
@@ -105,6 +106,7 @@ export async function requestCloudflareVisual(settings: WritingSettings, images:
       const date = new Date(now), reset = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
       const until = code === 3036 ? Math.max(reset, now + retry) : now + retry;
       await writeAtomicJson(privatePath("cloudflare-vision-quota.json"), { identity: identity(settings), until });
+      if (code === 3036) await saveCloudflareDailyQuota(settings, until);
       throw new CloudflareVisionQuotaError(code === 3036
         ? "Cloudflare's daily free caption allowance is exhausted. It will resume after the UTC reset; no paid or local fallback is used."
         : "Cloudflare caption analysis is rate-limited. It will resume automatically; the video stays available.", Math.min(86_400_000, until - now));

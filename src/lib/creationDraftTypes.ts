@@ -23,6 +23,7 @@ export type CreationDraft = {
   updatedAt: string;
   error?: string;
   nextAttemptAt?: string;
+  writerQuotaWait?: boolean;
   leaseUntil?: number;
   leaseOwner?: string;
   approvedJobId?: string;

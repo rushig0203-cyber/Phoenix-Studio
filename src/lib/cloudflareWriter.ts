@@ -6,7 +6,8 @@ import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import { WRITING_CLOUDFLARE_MODEL, type WritingSettings } from "./writingSettings";
 import type { LocalGenerateBody } from "./localModelSession";
-import { WritingConfigurationError, WritingWaitError, WritingOutputValidationError } from "./groqWriter";
+import { WritingConfigurationError, WritingWaitError, WritingQuotaWaitError, WritingOutputValidationError } from "./groqWriter";
+import { cloudflareDailyQuotaDelay, providerQuotaDelay, saveCloudflareDailyQuota } from "./providerQuota";
 
 const api = "https://api.cloudflare.com/client/v4/";
 const privatePath = (name: string) => path.join(process.cwd(), "storage", "private", name);
@@ -23,6 +24,9 @@ function accountPath(settings: WritingSettings, endpoint: string) {
 }
 function identity(settings: WritingSettings) {
   return createHash("sha256").update(`${settings.accountId}:${settings.model}:${settings.apiKey}`).digest("hex");
+}
+export async function cloudflareWriterQuotaDelay(settings: WritingSettings) {
+  return Math.max(await providerQuotaDelay("cloudflare-writer-cooldown.json", identity(settings)), await cloudflareDailyQuotaDelay(settings));
 }
 
 async function boundedJson(response: Response): Promise<unknown> {
@@ -111,7 +115,8 @@ export async function generateCloudflareText(settings: WritingSettings, body: Lo
       let cooldown: Cooldown | undefined;
       try { cooldown = JSON.parse(await fs.readFile(privatePath("cloudflare-writer-cooldown.json"), "utf8")); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Cloudflare retry state could not be read. Check local storage; no request was sent."); }
-      if (cooldown?.identity === keyId && Number.isFinite(cooldown.until) && cooldown.until > Date.now()) throw new WritingWaitError("Waiting for Cloudflare Workers AI quota or capacity. Saved work is retained; no local or paid fallback is used.", Math.min(86_400_000, cooldown.until - Date.now()));
+      const quotaDelay = Math.max(cooldown?.identity === keyId && Number.isFinite(cooldown.until) ? cooldown.until - Date.now() : 0, await cloudflareDailyQuotaDelay(settings));
+      if (quotaDelay > 0) throw new WritingQuotaWaitError("Waiting for Cloudflare Workers AI quota or capacity. Saved work is retained; no local or paid fallback is used.", Math.min(86_400_000, quotaDelay));
       const timeout = Math.max(1000, Math.min(240_000, options.timeoutMs ?? 90_000));
       const deadline = Date.now() + timeout;
       const signal = AbortSignal.any([AbortSignal.timeout(timeout), ...(options.signal ? [options.signal] : [])]);
@@ -152,7 +157,8 @@ export async function generateCloudflareText(settings: WritingSettings, body: Lo
         const retryAfter = retryDelay(response.headers);
         const until = code === 3036 || code === "3036" ? Math.max(nextUtcReset(), Date.now() + retryAfter) : Date.now() + retryAfter;
         await writeAtomicJson(privatePath("cloudflare-writer-cooldown.json"), { identity: keyId, until });
-        throw new WritingWaitError(code === 3036 || code === "3036"
+        if (code === 3036 || code === "3036") await saveCloudflareDailyQuota(settings, until);
+        throw new WritingQuotaWaitError(code === 3036 || code === "3036"
           ? "Cloudflare's daily Free allocation is exhausted. Waiting until the next UTC reset; saved work is retained and no other provider is used."
           : "Cloudflare Workers AI is temporarily rate-limited or out of capacity. Waiting before retry; saved work is retained and no other provider is used.", Math.min(86_400_000, Math.max(5_000, until - Date.now())));
       }

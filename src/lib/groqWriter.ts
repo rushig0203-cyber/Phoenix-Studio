@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
+import { providerQuotaDelay } from "./providerQuota";
 import { WRITING_GROQ_MODEL, type WritingSettings } from "./writingSettings";
 import type { LocalGenerateBody } from "./localModelSession";
 
@@ -17,6 +18,7 @@ export class WritingWaitError extends Error {
   readonly code = "PHOENIX_WRITER_WAIT";
   constructor(message: string, readonly retryAfterMs: number) { super(message); }
 }
+export class WritingQuotaWaitError extends WritingWaitError {}
 export class WritingOutputValidationError extends Error {
   readonly code = "PHOENIX_WRITER_OUTPUT_VALIDATION";
 }
@@ -56,9 +58,9 @@ export function groqRetryDelay(headers: Headers, now = Date.now()) {
   for (const kind of ["requests", "tokens"]) {
     if (headers.get(`x-ratelimit-remaining-${kind}`) !== "0") continue;
     const reset = headers.get(`x-ratelimit-reset-${kind}`) || "";
-    if (/^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/.test(reset)) {
-      const units: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-      const total = [...reset.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)].reduce((sum, match) => sum + Number(match[1]) * units[match[2]], 0);
+    if (/^(?:\d+(?:\.\d+)?(?:ms|s|m|h|d))+$/.test(reset)) {
+      const units: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+      const total = [...reset.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h|d)/g)].reduce((sum, match) => sum + Number(match[1]) * units[match[2]], 0);
       delay = Math.max(delay, total);
     }
   }
@@ -131,6 +133,7 @@ export function groqPacingDelay(window: RateWindow, estimatedTokens: number, now
   return until > now ? Math.min(86400000, Math.max(5000, until - now + 1000)) : 0;
 }
 function keyIdentity(settings: WritingSettings) { return createHash("sha256").update(`${settings.model}:${settings.apiKey}`).digest("hex"); }
+export const groqWriterQuotaDelay = (settings: WritingSettings) => providerQuotaDelay("groq-cooldown.json", keyIdentity(settings));
 
 /** Use provider schema enforcement, not just a JSON-looking answer. Never turn
  * optional fields into invented required values to make strict mode work. */
@@ -152,7 +155,7 @@ export function groqStructuredFormat(schema: object) {
   return { type: "json_schema", json_schema: { name: "phoenix_writing", strict: closed(schema), schema } };
 }
 
-export async function generateGroqText(settings: WritingSettings, body: LocalGenerateBody, options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Response> {
+export async function generateGroqText(settings: WritingSettings, body: LocalGenerateBody, options: { timeoutMs?: number; signal?: AbortSignal; beforeRequest?: () => void } = {}): Promise<Response> {
   assertSettings(settings);
   options.signal?.throwIfAborted();
   if (typeof body.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 40_000 || body.images || body.tools || body.messages) throw new Error("Groq writing accepts bounded text prompts only. Images, videos and tools cannot be sent through this adapter.");
@@ -174,10 +177,11 @@ export async function generateGroqText(settings: WritingSettings, body: LocalGen
     // No model, audio or video memory is allocated here.
     return await withFileLock(privatePath("groq-writer.lock"), async () => {
       options.signal?.throwIfAborted();
+      options.beforeRequest?.();
       let cooldown: Cooldown | undefined;
       try { cooldown = JSON.parse(await fs.readFile(privatePath("groq-cooldown.json"), "utf8")); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Groq retry state could not be read. Check local storage; no request was sent."); }
-      if (cooldown?.identity === identity && Number.isFinite(cooldown.until) && cooldown.until > Date.now()) throw new WritingWaitError("Waiting for Groq's free-plan quota to reset. Saved work is retained; no local or paid fallback is used.", Math.min(86_400_000, cooldown.until - Date.now()));
+      if (cooldown?.identity === identity && Number.isFinite(cooldown.until) && cooldown.until > Date.now()) throw new WritingQuotaWaitError("Waiting for Groq's free-plan quota to reset. Saved work is retained; no local or paid fallback is used.", Math.min(86_400_000, cooldown.until - Date.now()));
       // Use provider-reported remaining capacity before sending the next stage.
       // This is conservative pacing, not a tokenizer or a promise of available quota.
       let rateWindow: RateWindow | undefined;
@@ -185,7 +189,10 @@ export async function generateGroqText(settings: WritingSettings, body: LocalGen
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Groq pacing state could not be read. Check local storage; no request was sent."); }
       const estimatedTokens = Math.ceil(Buffer.byteLength(JSON.stringify(payload.messages), "utf8") / 3) + payload.max_completion_tokens + 64;
       const pacing = rateWindow?.identity === identity ? groqPacingDelay(rateWindow, estimatedTokens) : 0;
-      if (pacing) throw new WritingWaitError("Pacing Groq writing to its reported free-plan quota. Saved work will resume at the next automatic check; no local or paid fallback is used.", pacing);
+      if (pacing) {
+        await writeAtomicJson(privatePath("groq-cooldown.json"), { identity, until: Date.now() + pacing });
+        throw new WritingQuotaWaitError("Pacing Groq writing to its reported free-plan quota. Saved work will resume at the next automatic check; no local or paid fallback is used.", pacing);
+      }
       let response: Response;
       try {
         response = await fetch(`${base}chat/completions`, {
@@ -197,7 +204,7 @@ export async function generateGroqText(settings: WritingSettings, body: LocalGen
         const retryAfterMs = groqRetryDelay(response.headers);
         await response.body?.cancel().catch(() => undefined);
         await writeAtomicJson(privatePath("groq-cooldown.json"), { identity, until: Date.now() + retryAfterMs });
-        throw new WritingWaitError("Groq's free-plan limit was reached. Waiting for quota; saved work is retained and no other provider is used.", retryAfterMs);
+        throw new WritingQuotaWaitError("Groq's free-plan limit was reached. Waiting for quota; saved work is retained and no other provider is used.", retryAfterMs);
       }
       if (!response.ok) throw await groqResponseError(response);
       const remaining = groqRateWindow(response.headers, identity);

@@ -93,6 +93,7 @@ test('Retry-After dates, seconds, resets and malformed headers are bounded',()=>
   assert.equal(transport.groqRetryDelay(new Headers({'retry-after':'tomorrow'})),60000);
   assert.equal(transport.groqRetryDelay(new Headers({'retry-after':'9999999'})),86400000);
   assert.equal(transport.groqRetryDelay(new Headers({'retry-after':'1','x-ratelimit-remaining-tokens':'0','x-ratelimit-reset-tokens':'2m3.5s'})),123500);
+  assert.equal(transport.groqRetryDelay(new Headers({'retry-after':'60','x-ratelimit-remaining-requests':'0','x-ratelimit-reset-requests':'1d'})),86400000);
   const now=Date.UTC(2026,8,27);assert.equal(transport.groqRetryDelay(new Headers({'retry-after':new Date(now+30000).toUTCString()}),now),30000);
 });
 
