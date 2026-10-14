@@ -7,11 +7,13 @@ import { nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/sto
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
 import InstagramTopicSuggestions from "./InstagramTopicSuggestions";
+import StockFootageImport from "./StockFootageImport";
 
 type Results = { query: string; version: number; videos: NaturalStock[]; cursor: string | null; limited: boolean };
 type Selection = { video: NaturalStock; results: Results };
 const emptyResults = (): Results => ({ query: "", version: 0, videos: [], cursor: null, limited: false });
 const identity = (video: NaturalStock) => `${video.provider}:${video.id}`;
+const providerLabels = { pexels: "Pexels", pixabay: "Pixabay", commons: "Wikimedia Commons", nasa: "NASA" };
 
 export default function StockReels({ initialQuery = "", onClose, onStarted }: { initialQuery?: string; onClose: () => void; onStarted: (message: string) => void }) {
   const [query, setQuery] = useState(initialQuery);
@@ -19,6 +21,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   const [visibleOffset, setVisibleOffset] = useState(0);
   const previousOffsets = useRef<number[]>([]);
   const [searching, setSearching] = useState(false), [creating, setCreating] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [queued, setQueued] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [libraryWarning, setLibraryWarning] = useState(""), [searchFailed, setSearchFailed] = useState(false);
   const [failedSelection, setFailedSelection] = useState<Selection | null>(null);
@@ -70,7 +73,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       const data = await response.json();
       if (!current()) return;
       if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Could not find footage. Try again.");
-      if (data?.configured?.pexels === false && data?.configured?.pixabay === false) throw new Error("Add a free Pexels or Pixabay key in Settings before finding footage.");
+      if (data?.configured && !Object.values(data.configured).some(value => value === true)) throw new Error("No free footage library is available. Check Settings or import a downloaded clip below.");
       const videos = previous ? mergeStockFootageCandidates(previous.videos, data?.videos) : stockFootageCandidates(data?.videos);
       const cursor = typeof data?.pagination?.cursor === "string" && data.pagination.cursor.length <= 160 ? data.pagination.cursor : null;
       const next = { query: wanted, version, videos, cursor: videos.length >= MAX_FOOTAGE_CANDIDATES ? null : cursor, limited: data?.pagination?.limited === true || videos.length >= MAX_FOOTAGE_CANDIDATES };
@@ -130,39 +133,51 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   }
   function chooseIdea(idea: ContentIdea) { changeTopic(idea.query); }
   function close() { if (creationBusy.current) return; cancelSearch(); currentResults.current = null; onClose(); }
+  function acquireImport() {
+    if (!mounted.current || creationBusy.current || submitted.current) return false;
+    creationBusy.current = true; cancelSearch(); setSearching(false); setImporting(true); setError(""); setNotice("");
+    return true;
+  }
+  function releaseImport() { creationBusy.current = false; if (mounted.current) setImporting(false); }
+  function imported(message: string) {
+    submitted.current = true;
+    if (mounted.current) { setQueued(true); setNotice(message); onStarted(message); }
+  }
+  const busy = !!creating || importing;
   const visibleVideos = results.videos.slice(visibleOffset, visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE);
   const moreAvailable = visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE < results.videos.length || !!results.cursor;
 
   return <section id="stock-reels" className="mt-5 rounded-2xl border border-[#bfcaa6] bg-white p-5">
-    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Make a reel from real footage</h2><Button type="button" variant="outline" disabled={!!creating} onClick={close}>Close footage</Button></div>
+    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Make a reel from real footage</h2><Button type="button" variant="outline" disabled={busy} onClick={close}>Close footage</Button></div>
     <p className="mt-2 text-sm text-[#657153]">Choose a topic and a starting video. Phoenix picks related footage, tighter cuts and a natural length. You review the finished reel.</p>
     <form className="mt-4" onSubmit={event => { event.preventDefault(); void findVideos(); }}>
-      <label className="block text-sm font-medium">Your reel topic<input value={query} disabled={!!creating} onChange={event => changeTopic(event.target.value)} minLength={2} maxLength={100} className="mt-2 block w-full rounded-xl border p-3" placeholder="Nature, Switzerland, trains…" aria-describedby="footage-topic-help" /></label>
+      <label className="block text-sm font-medium">Your reel topic<input value={query} disabled={busy} onChange={event => changeTopic(event.target.value)} minLength={2} maxLength={100} className="mt-2 block w-full rounded-xl border p-3" placeholder="Nature, Switzerland, trains…" aria-describedby="footage-topic-help" /></label>
       <p id="footage-topic-help" className="mt-2 text-xs text-[#657153]">Use a short place, subject or action. Matching videos appear as you type.</p>
     </form>
     <details className="mt-3 rounded-xl bg-[#f1f5e8] p-3"><summary className="cursor-pointer text-sm font-medium">Topic suggestions</summary>
-      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Searchable topics, not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={!!creating} onClick={moreSuggestions}>More topics</Button></div>
-      <div className="mt-2 flex flex-wrap gap-2">{suggestions.map(idea => <button key={idea.id} type="button" disabled={!!creating} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span>{idea.title}</span></button>)}</div>
-      <InstagramTopicSuggestions mode="stock" onChoose={chooseIdea} disabled={!!creating} />
+      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Searchable topics, not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={moreSuggestions}>More topics</Button></div>
+      <div className="mt-2 flex flex-wrap gap-2">{suggestions.map(idea => <button key={idea.id} type="button" disabled={busy} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span>{idea.title}</span></button>)}</div>
+      <InstagramTopicSuggestions mode="stock" onChoose={chooseIdea} disabled={busy} />
       {!suggestionsRemembered ? <p className="mt-2 text-xs text-[#657153]">Browser storage is unavailable; ideas still rotate here but may repeat next visit.</p> : null}
     </details>
     {notice ? <p role="status" aria-live="polite" className="mt-4 text-sm">{notice}</p> : null}
     {error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}</p> : null}
     {libraryWarning ? <p className="mt-3 text-xs text-amber-900">Some stock results are unavailable: {libraryWarning} Available choices below still work.</p> : null}
-    {searchFailed && !results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued || searching} onClick={() => void findVideos()}>Retry suggestions</Button> : null}
-    {searchFailed && results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued || searching} onClick={() => void findVideos(latestQuery.current, true)}>Retry more videos</Button> : null}
-    {failedSelection ? <Button type="button" variant="outline" className="mt-3" disabled={!!creating || queued} onClick={() => void createReel(failedSelection.video, failedSelection.results)}>Retry reel</Button> : null}
+    {searchFailed && !results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={busy || queued || searching} onClick={() => void findVideos()}>Retry suggestions</Button> : null}
+    {searchFailed && results.videos.length ? <Button type="button" variant="outline" className="mt-3" disabled={busy || queued || searching} onClick={() => void findVideos(latestQuery.current, true)}>Retry more videos</Button> : null}
+    {failedSelection ? <Button type="button" variant="outline" className="mt-3" disabled={busy || queued} onClick={() => void createReel(failedSelection.video, failedSelection.results)}>Retry reel</Button> : null}
     {results.videos.length ? <div className="mt-5"><h3 className="text-sm font-semibold">Choose the starting video · {visibleOffset + 1}–{Math.min(visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE, results.videos.length)} of {results.videos.length} loaded</h3>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{visibleVideos.map(video => <button key={identity(video)} type="button" disabled={!!creating || queued || searching} onClick={() => void createReel(video, results)} aria-label={`Make reel starting with: ${video.title}`} className="overflow-hidden rounded-xl border bg-[#fafbf6] text-left hover:border-[#58733c] disabled:opacity-50">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{visibleVideos.map(video => <button key={identity(video)} type="button" disabled={busy || queued || searching} onClick={() => void createReel(video, results)} aria-label={`Make reel starting with: ${video.title}`} className="overflow-hidden rounded-xl border bg-[#fafbf6] text-left hover:border-[#58733c] disabled:opacity-50">
         {video.image ? <Image unoptimized loading="lazy" src={video.image} alt={video.title} width={240} height={320} className="h-40 w-full object-cover" /> : <span className="flex h-40 items-center justify-center bg-[#eef3df] p-3 text-sm">Real stock video</span>}
-        <span className="block p-3"><span className="block text-sm font-medium">{video.title}</span><span className="mt-1 block text-xs text-[#657153]">{video.provider} · source {Math.round(video.duration)}s</span><span className="mt-2 block text-xs font-semibold">{creating === identity(video) ? "Preparing your reel…" : queued ? "Reel queued" : "Use this as the starting shot"}</span></span>
+        <span className="block p-3"><span className="block text-sm font-medium">{video.title}</span><span className="mt-1 block text-xs text-[#657153]">{providerLabels[video.provider]} · source {Math.round(video.duration)}s</span><span className="mt-2 block text-xs font-semibold">{creating === identity(video) ? "Preparing your reel…" : queued ? "Reel queued" : "Use this as the starting shot"}</span></span>
       </button>)}</div>
     </div> : null}
     {results.query ? <div className="mt-4 flex flex-wrap items-center gap-3">
-      {visibleOffset > 0 ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={() => setVisibleOffset(previousOffsets.current.pop() ?? 0)}>Previous videos</Button> : null}
-      {moreAvailable ? <Button type="button" variant="outline" disabled={!!creating || queued || searching} onClick={moreVideos}>{searching ? "Finding more videos…" : "More videos"}</Button> : !searching ? <p className="text-xs text-[#657153]">{results.limited ? "This topic reached the laptop-safe browsing limit. Refine your topic for different shots." : "All matching pages are checked. Try a different place, subject or action for more choices."}</p> : null}
+      {visibleOffset > 0 ? <Button type="button" variant="outline" disabled={busy || queued || searching} onClick={() => setVisibleOffset(previousOffsets.current.pop() ?? 0)}>Previous videos</Button> : null}
+      {moreAvailable ? <Button type="button" variant="outline" disabled={busy || queued || searching} onClick={moreVideos}>{searching ? "Finding more videos…" : "More videos"}</Button> : !searching ? <p className="text-xs text-[#657153]">{results.limited ? "This topic reached the laptop-safe browsing limit. Refine your topic for different shots." : "All matching pages are checked. Try a different place, subject or action for more choices."}</p> : null}
     </div> : null}
+    <StockFootageImport disabled={busy || queued} acquire={acquireImport} release={releaseImport} onStarted={imported} />
     <details className="mt-4 text-xs text-[#657153]"><summary className="cursor-pointer">Reel details</summary><p className="mt-2">Length follows the usable footage, not a fixed timer. Movement is sampled locally; unknown movement stays at native speed. No slow motion, repeated filler or guessed subtitles. Posting captions and hashtags remain separate. Thumbnails only—no preview videos load here. One vertical reel works for Instagram and YouTube.</p>
-      <p className="mt-2">Footage libraries: <a className="underline" href="https://www.pexels.com/" target="_blank" rel="noreferrer">Pexels</a> and <a className="underline" href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a>. Suggestions are keywords, not a claim that matching footage is available or was filmed there.</p></details>
+      <p className="mt-2">Footage libraries: <a className="underline" href="https://www.pexels.com/" target="_blank" rel="noreferrer">Pexels</a>, <a className="underline" href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a>, <a className="underline" href="https://commons.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Commons</a> and <a className="underline" href="https://images.nasa.gov/" target="_blank" rel="noreferrer">NASA</a>. Commons and NASA use eligible public-domain footage; third-party rights still need care. Suggestions are keywords, not a claim that matching footage is available or was filmed there.</p></details>
   </section>;
 }

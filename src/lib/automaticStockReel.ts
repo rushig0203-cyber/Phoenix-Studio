@@ -1,4 +1,5 @@
 import type { NaturalStock } from "./naturalStock";
+import { AUTOMATIC_STOCK_PROVIDERS, stockMediaIdentity } from "./stockProviders";
 import { footageMetadataMismatch } from "./footageSemantics";
 import { planStockIntervals, stockPortraitScore, type StockReelOptions } from "./stockReel";
 
@@ -219,8 +220,7 @@ function catalogDescription(video: NaturalStock) {
 }
 
 function validFilmedSource(video: NaturalStock) {
-  return (video.provider === "pexels" || video.provider === "pixabay")
-    && Number.isSafeInteger(video.id) && video.id > 0
+  return AUTOMATIC_STOCK_PROVIDERS.includes(video.provider) && !!stockMediaIdentity(video.provider, video.id)
     && Number.isFinite(video.width) && Number.isFinite(video.height) && Math.min(video.width, video.height) >= AUTOMATIC_STOCK_MIN_NATIVE_EDGE
     && Number.isFinite(video.duration) && video.duration >= 1
     && !animationMetadata.test(catalogDescription(video))
@@ -301,15 +301,15 @@ export function recentStockMediaIdentities(jobs: readonly StockReelHistoryEntry[
     .sort((a, b) => b.completed - a.completed || b.index - a.index).slice(0, historyLimit);
   const identities = new Set<string>();
   for (const { job } of recent) for (const shot of job.stockSource!.renderedShots ?? job.stockSource!.shots!) {
-    const id = Number(shot.mediaId);
-    if ((shot.provider === "pexels" || shot.provider === "pixabay") && /^\d+$/.test(shot.mediaId) && Number.isSafeInteger(id) && id > 0) identities.add(`${shot.provider}:${id}`);
+    const identity = stockMediaIdentity(shot.provider, shot.mediaId);
+    if (identity) identities.add(identity);
   }
   return identities;
 }
 
 type CatalogAccess = {
   search: (provider: NaturalStock["provider"], query: string) => Promise<NaturalStock[]>;
-  resolve: (provider: NaturalStock["provider"], id: number) => Promise<NaturalStock>;
+  resolve: (provider: NaturalStock["provider"], id: number | string) => Promise<NaturalStock>;
 };
 
 /** Resolve IDs again before download; a search result never supplies trusted trims or media. */

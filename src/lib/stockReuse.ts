@@ -1,3 +1,5 @@
+import { stockMediaIdentity } from "./stockProviders";
+
 /** Durable source-job history only: no provider requests or separate store. */
 export const STOCK_REUSE_POLICY = "four-in-18-months-v1";
 
@@ -12,10 +14,9 @@ function historyError(detail: string): never {
 }
 
 function identity(shot: StockReuseShot) {
-  if (!shot || (shot.provider !== "pexels" && shot.provider !== "pixabay") || typeof shot.mediaId !== "string" || !/^\d+$/.test(shot.mediaId)) historyError("a stock source has an invalid provider or media ID");
-  const id = Number(shot.mediaId);
-  if (!Number.isSafeInteger(id) || id <= 0) historyError("a stock media ID is not a positive safe integer");
-  return `${shot.provider}:${id}`;
+  const source = shot && typeof shot.mediaId === "string" ? stockMediaIdentity(shot.provider, shot.mediaId) : null;
+  if (!source) historyError("a stock source has an invalid provider or media ID");
+  return source;
 }
 
 function timestamp(value: string | undefined) {

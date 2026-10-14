@@ -113,6 +113,29 @@ after(() => {
   fs.rmSync(temporary, { recursive: true, force: true });
 });
 
+test('added-provider source staging keeps opaque identity and mandatory rights in the durable recipe without a render', async () => {
+  replaceHistory([]);
+  const licence = { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/',
+    attribution: 'Fixture creator — https://dareful.com/mountain/ — CC BY 4.0 — edited and cropped.',
+    requiresAttribution: true, verifiedBy: 'owner-confirmation' };
+  const selected = { ...download(memoryStream), provider: 'dareful', mediaId: 'a'.repeat(64),
+    sourcePage: 'https://dareful.com/mountain/', licence };
+  const job = await source.createStockReelJob([selected], input());
+  const saved = JSON.parse(fs.readFileSync(jobsPath, 'utf8'))[0];
+  assert.equal(saved.id, job.id); assert.equal(saved.status, 'QUEUED');
+  assert.equal(saved.stockSource.provider, 'dareful'); assert.equal(saved.stockSource.mediaId, 'a'.repeat(64));
+  assert.deepEqual(saved.stockSource.licence, licence); assert.deepEqual(saved.stockSource.shots[0].licence, licence);
+  assert.equal(fs.statSync(reviews.sourcePath(job.id, saved.stockSource.shots[0].sourceFile)).size, 4);
+  const duplicate = await source.createStockReelJob([selected], { ...input(), requestId: job.stockSource.requestId });
+  assert.equal(duplicate.id, job.id); assert.equal(JSON.parse(fs.readFileSync(jobsPath, 'utf8')).length, 1);
+  const nasa = { provider: 'nasa', mediaId: 'PIA-00042_fixture', sourcePage: 'https://images.nasa.gov/details/PIA-00042_fixture',
+    creator: 'NASA', requestId: crypto.randomUUID(), caption: '', maxDuration: 20,
+    licence: { name: 'NASA media usage guidelines', url: 'https://www.nasa.gov/nasa-brand-center/images-and-media/',
+      attribution: 'NASA', requiresAttribution: false, verifiedBy: 'provider-metadata' } };
+  const single = await source.createSourceJob((await memoryStream()).stream, 'nasa-fixture.mp4', 'coverage', 'Fixture', 4, nasa);
+  assert.equal(single.stockSource.mediaId, nasa.mediaId); assert.deepEqual(single.stockSource.licence, nasa.licence);
+});
+
 test('source admission reads archived history and rejects blocked or malformed policies before streams', async () => {
   replaceHistory(recentHistory(4)); let opened = 0;
   const open = async () => { opened++; return memoryStream(); };

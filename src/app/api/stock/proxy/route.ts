@@ -7,6 +7,9 @@ const ALLOWED_HOSTS = new Set([
   "cdn.pixabay.com",
   "images.pexels.com",
   "videos.pexels.com",
+  "upload.wikimedia.org",
+  "thumb.wikimedia.org",
+  "images-assets.nasa.gov",
 ]);
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;

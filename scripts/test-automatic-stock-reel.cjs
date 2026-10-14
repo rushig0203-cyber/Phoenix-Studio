@@ -27,7 +27,8 @@ function isolate(source, dependencies, globals = {}) {
 }
 const editing = isolate(compile('src/lib/stockReel.ts'), {});
 const semantics = isolate(compile('src/lib/footageSemantics.ts'), {});
-const automatic = isolate(compile('src/lib/automaticStockReel.ts'), { './stockReel': editing, './footageSemantics': semantics });
+const providers = isolate(compile('src/lib/stockProviders.ts'), {});
+const automatic = isolate(compile('src/lib/automaticStockReel.ts'), { './stockReel': editing, './footageSemantics': semantics, './stockProviders': providers });
 const routeSource = compile('src/app/api/stock-reels/route.ts');
 const plain = value => JSON.parse(JSON.stringify(value));
 const video = (id, title = 'Sun City skyline', extra = {}) => ({
@@ -691,6 +692,7 @@ function harness(options = {}) {
     zod: require('zod'), '@/lib/localRequest': { assertLocalRequest(request, mutating) { assert.equal(request.url.startsWith('http://localhost/'), true); if (request.method === 'POST') assert.equal(mutating, true); } },
     '@/lib/naturalStock': catalog, '@/lib/sourceProcessing': sourceProcessing,
     '@/lib/jobHistory': { JobHistoryConflictError }, '@/lib/stockReel': editing, '@/lib/automaticStockReel': automatic,
+    '@/lib/stockProviders': providers,
     '@/lib/stockProductionGuidance': { async getStockProductionGuidance() { calls.push(['guidance']); if (options.guidanceError) throw new Error(options.guidanceError); return options.guidance || baselineGuidance; } },
   }, { Request, Response, AbortSignal, async fetch(url, init) {
     fetches.push([url, init]);
@@ -1006,7 +1008,7 @@ test('paged discovery checks one page per configured provider sequentially and r
   const data = await response.json(); assert.equal(response.status, 200);
   assert.deepEqual(seen, [['pexels', 'Sun City', 1], ['pixabay', 'Sun City', 1]]);
   assert.deepEqual(identities(data.videos), ['pexels:1', 'pixabay:1']);
-  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 2, pixabay: 2, limited: false });
+  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 2, pixabay: 2, commons: null, nasa: null, limited: false });
   assert.equal(data.pagination.partial, false); assert.equal(h.queued.length, 0); assert.equal(h.fetches.length, 0);
 });
 
@@ -1015,7 +1017,7 @@ test('a cursor advances only its available provider and does not refetch exhaust
   const response = await h.api.GET(new Request('http://localhost/api/stock-reels?q=Sun%20City&browse=true&cursor=' + encodeURIComponent(cursor)));
   const data = await response.json();
   assert.deepEqual(h.calls, [['page', 'pexels', 'Sun City', 2]]);
-  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 3, pixabay: null, limited: false });
+  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 3, pixabay: null, commons: null, nasa: null, limited: false });
 });
 
 test('partial provider failure retains its exact page while successful metadata moves forward', async () => {
@@ -1027,7 +1029,7 @@ test('partial provider failure retains its exact page while successful metadata 
   const data = await response.json();
   assert.equal(response.status, 200); assert.equal(data.pagination.partial, true);
   assert.deepEqual(data.errors, ['Pixabay fixture free quota exhausted']); assert.equal(data.videos.length, 1);
-  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 2, pixabay: 1, limited: false });
+  assert.deepEqual(JSON.parse(data.pagination.cursor), { pexels: 2, pixabay: 1, commons: null, nasa: null, limited: false });
   assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
 });
 

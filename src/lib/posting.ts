@@ -1,5 +1,6 @@
 import type { ReviewFile, ReviewTarget } from "./reviewFiles";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, VIDEO_HASHTAG_BANK_LIMIT, videoHashtags } from "./postingCopyPolicy";
+import { withStockPostingCredits } from "./stockProviders";
 
 const providerTag = /^#(?:pexels|pixabay)(?:videos?|footage)?$/iu;
 
@@ -79,7 +80,7 @@ export function stripFootageProvenance(copy: string, file: ReviewFile) {
 }
 
 export function postingCaption(file: ReviewFile) {
-  return stripFootageProvenance(file.quality.postCopy?.trim() || "", file) || file.title;
+  return withStockPostingCredits(stripFootageProvenance(file.quality.postCopy?.trim() || "", file) || file.title, file);
 }
 
 export function postingText(file: ReviewFile, target?: ReviewTarget) {

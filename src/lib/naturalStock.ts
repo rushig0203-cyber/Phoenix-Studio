@@ -3,17 +3,22 @@ import type { FootageChoice } from "./creationDraftTypes";
 import { stockPortraitScore } from "./stockReel";
 import { visualWords } from "./stockBrief";
 import { footageMetadataMismatch } from "./footageSemantics";
+import { searchOpenStockPage, resolveOpenStock } from "./openStockCatalog";
+import type { AutomaticStockProvider, StockLicence } from "./stockProviders";
 
-export type NaturalStock = FootageChoice & { provider: "pexels" | "pixabay"; title: string };
-export const configuredStock = () => ({ pexels: !!process.env.PEXELS_API_KEY?.trim(), pixabay: !!process.env.PIXABAY_API_KEY?.trim() });
+export type NaturalStock = Omit<FootageChoice, "id"> & { id: number | string; provider: AutomaticStockProvider; title: string; licence?: StockLicence };
+export const configuredStock = () => ({ pexels: !!process.env.PEXELS_API_KEY?.trim(), pixabay: !!process.env.PIXABAY_API_KEY?.trim(), commons: true, nasa: true });
 export const MAX_STOCK_DISCOVERY_PAGES = 3;
 export const STOCK_DISCOVERY_PAGE_SIZE = 24;
 const pexelsTitle = (file: FootageChoice) => new URL(file.sourcePage).pathname.replace(/^\/video\//, "").replace(/-?\d+\/?$/, "").replace(/[-/]/g, " ").trim() || "Pexels footage";
 
-export function trustedStockUrl(value: string, provider: "pexels" | "pixabay") {
+export function trustedStockUrl(value: string, provider: AutomaticStockProvider) {
   const url = new URL(value);
-  const hosts = provider === "pexels" ? /(^|\.)pexels\.com$/ : /^(cdn\.)?pixabay\.com$/;
-  if (url.protocol !== "https:" || !hosts.test(url.hostname) || url.username || url.password) throw new Error("Stock provider returned an untrusted media URL.");
+  const hosts: Record<AutomaticStockProvider, RegExp> = {
+    pexels: /(^|\.)pexels\.com$/, pixabay: /^(cdn\.)?pixabay\.com$/,
+    commons: /^(upload\.wikimedia\.org|thumb\.wikimedia\.org|commons\.wikimedia\.org)$/, nasa: /^(images-assets\.nasa\.gov|images\.nasa\.gov)$/,
+  };
+  if (url.protocol !== "https:" || !hosts[provider]?.test(url.hostname) || url.username || url.password || (url.port && url.port !== "443")) throw new Error("Stock provider returned an untrusted media URL.");
   return url.toString();
 }
 
@@ -77,7 +82,8 @@ export function portraitFirstStock(videos: NaturalStock[], query?: string) {
     .map(result => result.video);
 }
 
-export async function searchNaturalStock(provider: "pexels" | "pixabay", query: string): Promise<NaturalStock[]> {
+export async function searchNaturalStock(provider: AutomaticStockProvider, query: string): Promise<NaturalStock[]> {
+  if (provider === "commons" || provider === "nasa") return portraitFirstStock((await searchOpenStockPage(provider, query, 1, 12)).videos, query);
   if (provider === "pexels") {
     // Prefer footage actually filmed vertically. A bounded landscape fallback remains available,
     // retaining the search subject rather than padding the reel with unrelated footage.
@@ -92,8 +98,12 @@ export async function searchNaturalStock(provider: "pexels" | "pixabay", query: 
 }
 
 /** One explicit metadata page, all filmed orientations; no media download or AI call. */
-export async function searchNaturalStockPage(provider: "pexels" | "pixabay", query: string, page = 1, portraitOnly = false) {
+export async function searchNaturalStockPage(provider: AutomaticStockProvider, query: string, page = 1, portraitOnly = false) {
   if (!Number.isSafeInteger(page) || page < 1 || page > MAX_STOCK_DISCOVERY_PAGES) throw new Error("This footage page is outside the laptop-safe browsing limit. Refine your topic.");
+  if (provider === "commons" || provider === "nasa") {
+    const result = await searchOpenStockPage(provider, query, page, STOCK_DISCOVERY_PAGE_SIZE);
+    return { videos: portraitFirstStock(result.videos, query), hasMore: result.hasMore };
+  }
   if (provider === "pexels") {
     const result = await searchFootagePage(query, "9:16", !portraitOnly, page, STOCK_DISCOVERY_PAGE_SIZE);
     return { videos: portraitFirstStock(result.videos.map(file => ({ ...file, provider, title: pexelsTitle(file) })), query), hasMore: result.hasMore };
@@ -110,7 +120,7 @@ export async function searchNaturalStockPage(provider: "pexels" | "pixabay", que
  * Retain successful metadata when a later free-provider page fails; no retry,
  * media download, credentials in results or unbounded catalogue crawl.
  */
-export async function searchNaturalStockPool(provider: "pexels" | "pixabay", query: string, enough: (videos: NaturalStock[]) => boolean): Promise<NaturalStock[]> {
+export async function searchNaturalStockPool(provider: AutomaticStockProvider, query: string, enough: (videos: NaturalStock[]) => boolean): Promise<NaturalStock[]> {
   let pool: NaturalStock[] = [];
   // Try real portrait companions first. A large unrelated/SD portrait response
   // cannot suppress the all-orientation fallback: only usable evidence stops it.
@@ -128,8 +138,10 @@ export async function searchNaturalStockPool(provider: "pexels" | "pixabay", que
   return pool;
 }
 
-export async function resolveNaturalStock(provider: "pexels" | "pixabay", id: number): Promise<NaturalStock> {
-  if (provider === "pexels") { const file = await selectedFootage(id); return { ...file, provider, title: pexelsTitle(file) }; }
+export async function resolveNaturalStock(provider: AutomaticStockProvider, id: number | string): Promise<NaturalStock> {
+  if (provider === "commons" || provider === "nasa") return resolveOpenStock(provider, id);
+  if (!Number.isSafeInteger(id) || Number(id) <= 0) throw new Error("This stock media ID must be a positive integer.");
+  if (provider === "pexels") { const file = await selectedFootage(Number(id)); return { ...file, provider, title: pexelsTitle(file) }; }
   const data = await pixabay({ id: String(id) });
   const video = data.hits?.find((video: PixabayVideo) => video.id === id);
   if (!video) throw new Error("This Pixabay video is no longer available.");

@@ -121,6 +121,51 @@ test("create is durable, reviewed caption is immutable, provenance stays in file
   const publicJson = JSON.stringify(first.job); assert.ok(!publicJson.includes(temporary)); assert.ok(!publicJson.includes("fixture-secret-token")); assert.ok(!publicJson.includes("accessToken"));
 });
 
+const requiredStockCredit = 'Fixture footage by Fixture Creator — https://dareful.com/mountain/ — CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ — edited and cropped.';
+async function creditedFixture(target = 'instagram') {
+  const value = await fixture(target, 100);
+  value.file.source.kind = 'dareful';
+  value.file.source.stockLicence = { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/',
+    attribution: requiredStockCredit, requiresAttribution: true, verifiedBy: 'owner-confirmation' };
+  await files.saveReviewFile(value.file);
+  return value;
+}
+
+test('mandatory source attribution is checked before accepting posting approval, never silently added to owner text', async () => {
+  for (const platform of ['instagram', 'youtube']) {
+    const { id } = await creditedFixture(platform);
+    await assert.rejects(publishing.prepareReviewPublication(id, settings(platform, { caption: 'My approved text.' })), /required footage credits/);
+    assert.deepEqual(await publishing.listReviewPublishJobs(id), []); assert.equal(accessCalls, 0);
+    const caption = `My approved text.\n\n${requiredStockCredit}`;
+    const accepted = await publishing.prepareReviewPublication(id, settings(platform, { caption }));
+    assert.equal(accepted.dispatch, true); assert.equal(readStored(id, platform).caption, caption);
+    accessCalls = 0;
+  }
+});
+
+test('captionless standalone and matching Stories cannot discard compulsory creator/source/licence credits', async () => {
+  for (const mode of ['standalone', 'matching']) {
+    const { id } = await creditedFixture('instagram');
+    const input = mode === 'standalone' ? { action: 'create-story', confirm: true, connectionRevision: 'fixture-revision' }
+      : settings('instagram', { caption: `My approved text.\n\n${requiredStockCredit}`, companionStory: true });
+    await assert.rejects(publishing.prepareReviewPublication(id, input), /requires visible attribution.*Stories cannot carry/);
+    assert.deepEqual(await publishing.listReviewPublishJobs(id), []); assert.equal(scheduled.length, 0);
+  }
+});
+
+test('changed required attribution after approval stops the upload before any video transfer', async () => {
+  for (const platform of ['instagram', 'youtube']) {
+    const { id, file } = await creditedFixture(platform);
+    const approved = await publishing.prepareReviewPublication(id, settings(platform, { caption: `My approved text.\n\n${requiredStockCredit}` }));
+    file.source.stockLicence.attribution += ' Corrected creator credit.';
+    await files.saveReviewFile(file);
+    let contacted = 0; global.fetch = async () => { contacted++; assert.fail('Changed required credits must be checked before provider upload'); };
+    await publishing.runReviewPublication(id, approved.job.id);
+    const status = (await publishing.listReviewPublishJobs(id))[0];
+    assert.equal(status.status, 'FAILED'); assert.match(status.detail, /required footage credits/); assert.equal(contacted, 0);
+  }
+});
+
 test("Instagram rejects extra caption hashtags before credentials or dispatch, retaining reviewed text rather than silently truncating it", async () => {
   const {id}=await fixture('instagram');
   const caption='Approved caption #one #two #three #four #five ＃six';

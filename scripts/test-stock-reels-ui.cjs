@@ -20,6 +20,7 @@ const planningSource = compile('src/lib/stockReel.ts');
 const ideasSource = compile('src/lib/contentIdeas.ts');
 const suggestionsSource = compile('src/lib/stockFootageSuggestions.ts');
 const candidatesSource = compile('src/lib/stockFootageCandidates.ts');
+const providersSource = compile('src/lib/stockProviders.ts');
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('')
   : typeof node === 'object' ? text(node.props?.children) : String(node);
 function nodes(tree) {
@@ -73,7 +74,8 @@ function harness(options = {}) {
   };
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('FixtureFragment') },
-    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' } };
+    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' },
+    './StockFootageImport': { default: 'fixture-stock-footage-import' } };
   const clock = {
     setTimeout(callback, milliseconds = 0) { const id = ++timerId; timers.set(id, { at: time + milliseconds, callback }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -103,6 +105,7 @@ function harness(options = {}) {
     return mod.exports;
   }
   dependencies['@/lib/stockReel'] = load(planningSource);
+  dependencies['./stockProviders'] = dependencies['@/lib/stockProviders'] = load(providersSource);
   dependencies['./contentIdeas'] = load(ideasSource);
   dependencies['@/lib/stockFootageSuggestions'] = load(suggestionsSource);
   dependencies['@/lib/stockFootageCandidates'] = load(candidatesSource);
@@ -138,7 +141,7 @@ function harness(options = {}) {
     changeTopic(value) { input().props.onChange({ target: { value: String(value) } }); render(); },
     click(label) { button(label).props.onClick(); render(); },
     async enter() { find(node => node.type === 'form', 'Topic form').props.onSubmit({ preventDefault() {} }); render(); await flush(); },
-    candidates() { return nodes(renderer.tree).filter(node => node.type === 'button' && /^(pexels|pixabay):\d+$/.test(node.key)); },
+    candidates() { return nodes(renderer.tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Make reel starting with: ')); },
     choose(id) { const key = (id % 2 ? 'pexels' : 'pixabay') + ':' + id; find(node => node.type === 'button' && node.key === key, 'Candidate ' + id).props.onClick(); render(); },
     async advance(milliseconds) {
       const target = time + milliseconds;
@@ -335,10 +338,20 @@ test('network failure has an explicit retry that retrieves suggestions but never
   assert.equal(h.gets.length, 2); assert.equal(h.candidates().length, 3); assert.equal(h.posts.length, 0);
 });
 
-test('missing both free library keys is actionable and never produces fabricated choices', async () => {
-  const h = harness({ search: () => successfulSearch([], { configured: { pexels: false, pixabay: false } }) });
-  await results(h); assert.match(text(h.tree), /Add a free Pexels or Pixabay key in Settings/);
+test('no available free libraries is actionable and never produces fabricated choices', async () => {
+  const h = harness({ search: () => successfulSearch([], { configured: { pexels: false, pixabay: false, commons: false, nasa: false } }) });
+  await results(h); assert.match(text(h.tree), /No free footage library is available.*Check Settings or import a downloaded clip/);
   assert.equal(h.candidates().length, 0); assert.equal(h.posts.length, 0);
+});
+
+test('keyless NASA and Commons cards remain selectable when Pexels and Pixabay are not configured', async () => {
+  const nasa = { ...video(1, 'Earth from orbit'), provider: 'nasa', id: 'PIA-00042_fixture' };
+  const commons = { ...video(2, 'Mountain light'), provider: 'commons', id: 42 };
+  const h = harness({ search: () => successfulSearch([nasa, commons], { configured: { pexels: false, pixabay: false, commons: true, nasa: true } }) });
+  await results(h); assert.equal(h.candidates().length, 2); assert.doesNotMatch(text(h.tree), /Add a free.*key|No free footage library/);
+  h.candidates()[0].props.onClick(); await h.flush();
+  assert.equal(h.posts.length, 1); const payload = JSON.parse(h.posts[0].body);
+  assert.equal(payload.provider, 'nasa'); assert.equal(payload.id, 'PIA-00042_fixture'); assert.equal(payload.automatic, true);
 });
 
 test('an unconfirmed success response is not called queued and Retry reel retains its request ID', async () => {

@@ -128,6 +128,9 @@ jobs:
           scripts/test-automatic-stock-pool.cjs
           scripts/test-stock-catalog-paging.cjs
           scripts/test-natural-stock-relevance.cjs
+          scripts/test-open-stock-catalog.cjs
+          scripts/test-stock-provider-integration.cjs
+          scripts/test-stock-footage-import-ui.cjs
           scripts/test-stock-reel-adaptive.cjs
           scripts/test-stock-motion.cjs
           scripts/test-stock-reuse.cjs
@@ -143,6 +146,8 @@ jobs:
         run: >-
           npx --no-install eslint
           src/lib/reelMusic.ts src/lib/postingEvidence.ts
+          src/lib/stockProviders.ts src/lib/openStockCatalog.ts
+          src/app/api/stock/manual-import/route.ts src/components/StockFootageImport.tsx
           src/lib/generation.ts
           src/app/api/generations/route.ts
           src/lib/stockStoryboard.ts src/lib/stockPreparation.ts src/lib/automaticFootage.ts src/lib/newsVisualPolicy.ts

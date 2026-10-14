@@ -1,5 +1,28 @@
 # Phoenix Studio
 
+### Additional free footage sources — October 14, source update
+
+Find Footage searches Wikimedia Commons and NASA alongside Pexels/Pixabay.
+The two public APIs need no additional key or local model. Searches remain
+bounded; selected sources stream to disk sequentially under the existing
+500 MB reel limit. Commons accepts only explicit CC0/public-domain video;
+NASA accepts documented NASA-origin footage with readable original metadata,
+not third-party footage or generated visualizations. Sparse or unsuitable
+results are not replaced with unrelated clips or invented dimensions.
+
+The collapsed **Import Mixkit / Dareful** panel processes an owner-downloaded
+clip through the same local queue, captions, editing and final posting review.
+These two websites are not scraped or advertised as automatic API integrations.
+Mixkit imports require the Free licence, not Restricted; Dareful requires the
+creator and CC BY 4.0 confirmation. Source pages and licence evidence stay saved.
+Required credits remain in posting text and are checked before upload. Exported
+files must also be credited when posted outside Phoenix. Captionless Stories
+are blocked for files requiring credits until visible Story attribution exists.
+Coverr is excluded. No paid service, dependency or model was added.
+
+Verification and activation are still pending; the existing selected/live bundle
+is retained until the production build passes.
+
 ### Free writer quota rotation — October 14, verified live
 
 The selected cloud writer is the preference, not a permanent lock. A proven

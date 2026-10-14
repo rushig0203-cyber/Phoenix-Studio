@@ -22,6 +22,7 @@ function compiled(relative) {
 const componentSource = compiled('src/components/ReviewPublishActions.tsx');
 const postingSource = compiled('src/lib/posting.ts');
 const postingPolicySource = compiled('src/lib/postingCopyPolicy.ts');
+const providersSource = compiled('src/lib/stockProviders.ts');
 const storyIdeasSource = compiled('src/lib/instagramStoryIdeas.ts');
 const locationSuggestionsSource = compiled('src/lib/instagramLocationSuggestions.ts');
 const instagramAudioSource = compiled('src/lib/instagramAudio.ts');
@@ -157,6 +158,7 @@ function uiHarness(options = {}) {
     return module.exports;
   }
   dependencies['./postingCopyPolicy'] = dependencies['@/lib/postingCopyPolicy'] = load(postingPolicySource);
+  dependencies['./stockProviders'] = dependencies['@/lib/stockProviders'] = load(providersSource);
   dependencies['@/lib/posting'] = load(postingSource);
   dependencies['@/lib/instagramStoryIdeas'] = load(storyIdeasSource);
   dependencies['@/lib/instagramLocationSuggestions'] = load(locationSuggestionsSource);

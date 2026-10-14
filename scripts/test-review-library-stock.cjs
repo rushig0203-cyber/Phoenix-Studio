@@ -97,6 +97,32 @@ test('mixed-provider provenance labels and React keys distinguish equal numeric 
   assert.equal(new Set(links.map(node => node.key)).size, 2);
 });
 
+test('all added footage sources use stock library review and display their correct provenance without manual caption subtitles', t => {
+  const labels = { commons: 'Wikimedia Commons', nasa: 'NASA', mixkit: 'Mixkit', dareful: 'Dareful' };
+  const records = Object.keys(labels).map(provider => fixture(`new-${provider}`, `${provider} fixture`, {
+    source: { kind: provider, filename: `source-${provider}.mp4`, licence: 'Fixture source rights' },
+    quality: { ...files[0].quality, captions: [], visualSources: [{ provider, providerMediaId: provider === 'nasa' ? 'PIA-42' : '42',
+      providerUrl: `https://fixture.example/${provider}/42`, creator: 'Fixture creator', licence: 'Fixture source rights' }] },
+  }));
+  const h = harness(t, records); h.filter('stock'); assert.equal(h.titles().length, 4);
+  for (const label of Object.values(labels)) assert.match(text(h.tree), new RegExp(label));
+  const links = nodes(h.tree, node => node.type === 'a' && /^https:\/\/fixture\.example\//.test(node.props?.href || ''));
+  assert.deepEqual(links.map(text), ['Wikimedia Commons #42', 'NASA #PIA-42', 'Mixkit #42', 'Dareful #42']);
+  assert.equal(nodes(h.tree, node => node.type === 'video').length, 0, 'New catalogues do not create eager playback');
+});
+
+test('mandatory imported footage credits remain visible and copyable in the library posting text', t => {
+  const attribution = 'Fixture creator — https://dareful.com/mountain/ — CC BY 4.0 — edited and cropped.';
+  const stockLicence = { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/',
+    attribution, requiresAttribution: true, verifiedBy: 'owner-confirmation' };
+  const file = fixture('dareful-credit', 'Mountain light', { source: { kind: 'dareful', filename: 'mountain.mp4', licence: stockLicence.name, stockLicence },
+    quality: { ...files[0].quality, captions: [] } });
+  const h = harness(t, [file]); assert.ok(text(h.tree).includes(attribution));
+  const actions = nodes(h.tree, node => node.type?.name === 'PostingActions');
+  assert.equal(actions.length, 1); assert.equal(actions[0].props.file.source.stockLicence.attribution, attribution);
+  assert.deepEqual(file.quality.captions, [], 'Posting attribution is not synthetic spoken subtitles');
+});
+
 test('SSR retains video-specific copy and preview with one collapsed posting and export entry', t => {
   activeHarness = undefined;
   const originalFetch = global.fetch;
@@ -216,5 +242,5 @@ test('an older posted output stays Generated with clear version wording and Post
   assert.deepEqual(h.titles(), ['Revised video']);
   assert.match(text(h.tree), /An earlier version was posted; this output is new or changed/);
   h.button('Posted · 0').props.onClick(); h.render();
-  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed posts yet/);
+  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed Reel or YouTube posts yet/);
 });

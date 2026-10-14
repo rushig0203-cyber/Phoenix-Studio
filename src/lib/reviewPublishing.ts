@@ -8,6 +8,7 @@ import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "./postingCopyPolicy";
 import { stripFootageProvenance } from "./posting";
+import { stockPostingCredits } from "./stockProviders";
 import { getReviewFile, reviewRoot, safeReviewId, type ReviewTarget } from "./reviewFiles";
 import { reviewMediaPath, selectedReviewTarget } from "./reviewMedia";
 import { eligibleInstagramLocation, instagramLocationId, publicInstagramLocation, INSTAGRAM_LOCATION_SEARCH_LIMIT, type InstagramLocation, type InstagramLocationSearch } from "./instagramLocations";
@@ -519,6 +520,7 @@ export async function recommendInstagramAudio(reviewId: string, connectionRevisi
 }
 
 function assertStoryMedia(media: Awaited<ReturnType<typeof readyMedia>>) {
+  if (stockPostingCredits(media.file).length) throw problem("This footage requires visible attribution. Stories cannot carry the saved caption credits; post the credited Reel only or prepare a Story with visible credits first.");
   const output = media.file.outputs[media.target];
   if (!output || !Number.isFinite(output.duration) || output.duration < 3 || output.duration > 60 ||
       !Number.isFinite(output.width) || !Number.isFinite(output.height) || output.width <= 0 || output.width >= output.height || output.width > 1920 || media.fingerprint.size > 100_000_000) {
@@ -670,6 +672,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
           }
         }
         const correctedCaption = stripFootageProvenance(caption, media.file);
+        if (stockPostingCredits(media.file).some(credit => !correctedCaption.includes(credit))) throw problem("Keep the required footage credits in the caption. Copy the complete posting text from the Library.");
         checkPlatformPostingText("instagram", job.title, correctedCaption);
         await assertCurrent(access);
         // Keep the complete failed attempt privately before reusing this job ID.
@@ -731,6 +734,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
       // report/news citations stay intact. Existing upload jobs keep their
       // already-confirmed immutable metadata on duplicate create/continue.
       const caption = stripFootageProvenance(requestedCaption, media.file);
+      if (stockPostingCredits(media.file).some(credit => !caption.includes(credit))) throw problem("Keep the required footage credits in the caption. Copy the complete posting text from the Library.");
       checkPlatformPostingText(platform, title, caption);
       if (caption.length > (platform === "youtube" ? 5000 : 2200)) throw problem("Shorten the caption to fit the platform's limit.");
       const access = await accessFor(platform, revision);
@@ -779,6 +783,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
       const access = await accessFor(platform, job.connectionRevision);
       if (access.accountId !== job.accountId) throw problem("The destination account changed. This saved upload cannot be continued.", 409);
       const media = await readyMedia(reviewId, platform, job.fingerprint, job.renderTarget); await assertCurrent(access);
+      if (kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Review the complete posting copy before uploading.");
       if (kind === "story") { await assertStoryParent(job); assertStoryMedia(media); await assertStoryAccount(access); }
       job.status = "QUEUED"; job.queuedAt = Date.now(); job.canContinue = false;
       job.detail = "Continue confirmed. Phoenix will check the existing upload before sending more data.";
@@ -859,6 +864,7 @@ async function completeYoutube(job: StoredJob, result: ProviderResult) {
 async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, url: string, offset: number, instagram = false) {
   const safeUrl = validateReviewUploadUrl(url, job.platform);
   const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
+  if (job.kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Publishing was stopped.");
   let handle: Awaited<ReturnType<typeof fs.open>>;
   try { handle = await fs.open(media.filename, "r"); }
   catch { throw problem("The saved video could not be opened. The upload is retained."); }
@@ -1023,6 +1029,7 @@ async function instagram(job: StoredJob, access: ChannelPublishAccess) {
   job.phase = "publishing"; job.status = "PROCESSING"; job.percent = 98; job.canContinue = false;
   job.detail = `Instagram finished processing. Publishing the confirmed public ${label}.`; await persist(job);
   const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
+  if (job.kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Publishing was stopped.");
   if (job.kind === "story") { await assertStoryParent(job); assertStoryMedia(media); }
   await assertCurrent(access);
   const published = await providerCall(`${instagramGraph(job)}/${access.accountId}/media_publish`, {
@@ -1065,6 +1072,7 @@ export async function runReviewPublication(reviewId: string, jobId: string) {
             const access = await accessFor(platform, job.connectionRevision);
             if (access.accountId !== job.accountId) throw problem("The upload destination account changed. The saved upload was stopped.", 409);
             const media = await readyMedia(reviewId, platform, job.fingerprint, job.renderTarget); await assertCurrent(access);
+            if (kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Uploading was stopped.");
             if (kind === "story") { await assertStoryParent(job); assertStoryMedia(media); await assertStoryAccount(access); }
             if (platform === "youtube") await youtube(job, access); else await instagram(job, access);
           }, { timeoutMs: 31 * 60_000, retryMs: 1000, staleMs: LEASE_MS });

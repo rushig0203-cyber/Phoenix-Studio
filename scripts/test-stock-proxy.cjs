@@ -74,6 +74,23 @@ function harness(source = upstream(), fetchOverride) {
   return { api: module.exports, source, calls, timers };
 }
 
+test('approved NASA and Wikimedia assets use the same bounded media proxy without enabling manual-source scraping', async () => {
+  for (const url of ['https://upload.wikimedia.org/wikipedia/commons/fixture/clip.mp4',
+    'https://images-assets.nasa.gov/video/fixture/fixture~medium.mp4']) {
+    const source = upstream({ headers: { 'Content-Type': 'video/mp4', 'Content-Length': '2' }, chunks: [new Uint8Array([1, 2])] });
+    const h = harness(source), response = await h.api.GET(request(url));
+    assert.equal(response.status, 200); assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [1, 2]);
+    assert.equal(h.calls.length, 1); assert.equal(h.calls[0][0], url); assert.equal(h.calls[0][1].redirect, 'error');
+    assert.equal(h.source.state.arrayBuffers, 0);
+  }
+  for (const url of ['https://upload.wikimedia.org.evil.test/clip.mp4', 'https://images-assets.nasa.gov.evil.test/clip.mp4',
+    'https://user:pass@upload.wikimedia.org/clip.mp4', 'https://images-assets.nasa.gov:444/clip.mp4',
+    'https://mixkit.co/free-stock-video/clip/', 'https://dareful.com/clip/', 'https://coverr.co/clip.mp4']) {
+    const h = harness(), response = await h.api.GET(request(url));
+    assert.equal(response.status, 400); assert.equal(h.calls.length, 0);
+  }
+});
+
 test('proxy streams on demand without arrayBuffer or read-ahead and releases its reader', { timeout: 2000 }, async () => {
   const source = upstream({
     headers: { 'Content-Type': 'video/mp4', 'Content-Length': '5', 'Accept-Ranges': 'bytes', ETag: 'mock-tag', 'Last-Modified': 'Wed, 01 Jan 2025 00:00:00 GMT' },

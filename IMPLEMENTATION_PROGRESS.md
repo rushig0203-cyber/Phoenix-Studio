@@ -2856,6 +2856,14 @@ This checklist is an implementation log, not a completion certificate.
 
 ## Implementation log
 
+- October 14: additional free footage providers implemented in source. Commons
+  and NASA use bounded public metadata APIs; Mixkit/Dareful use streamed,
+  owner-confirmed downloaded-file import, not scraping. Provider identities,
+  reuse limits, saved licences, required posting credits and captionless Story
+  restrictions are shared with the existing workflow. Coverr remains excluded.
+  Adapter/UI fixtures passed independently; full remote release verification and
+  local activation are pending. No owner jobs were retried, rendered or posted.
+
 - September16: resumed from current files; first changes target immutable artifact
   identity/edit safety and consistent production paths. Remaining requirements
   above are still open until supported by current tests and real output evidence.

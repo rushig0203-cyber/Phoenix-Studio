@@ -135,6 +135,10 @@ function isolatedPixabay(fetchFixture) {
     './stockReel': require(path.join(project, 'src/lib/stockReel.ts')),
     './stockBrief': require(path.join(project, 'src/lib/stockBrief.ts')),
     './footageSemantics': require(path.join(project, 'src/lib/footageSemantics.ts')),
+    './openStockCatalog': {
+      searchOpenStockPage() { assert.fail('Pixabay fixtures must not search a different provider'); },
+      resolveOpenStock() { assert.fail('Pixabay fixtures must not resolve a different provider'); },
+    },
   };
   const context = vm.createContext({
     module: isolatedModule, exports: isolatedModule.exports, Error, URL, URLSearchParams,

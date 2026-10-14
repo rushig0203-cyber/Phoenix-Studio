@@ -15,6 +15,7 @@ import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOC
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
+import { stockLicenceName, withStockPostingCredits, type StockLicence, type StockProvider } from "./stockProviders";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
   FFMPEG_FILTER_RESOURCE_ARGS,
@@ -36,9 +37,9 @@ export const MAX_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
 
 export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
-export type StockReelShot = { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual" };
+export type StockReelShot = { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual"; licence?: StockLicence };
 export type SourceJob = {
-  stockSource?: { provider: "pexels" | "pixabay"; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: "pexels" | "pixabay"; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"] };
+  stockSource?: { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: StockProvider; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"]; licence?: StockLicence };
   id: string;
   title: string;
   sourceFile: string;
@@ -1125,7 +1126,7 @@ function buildReviewItem(
   const item: ReviewFile = makeReviewFile({
     title: clipTitle,
     targets: ["instagram", "youtube"],
-    source: job.stockSource ? { kind: job.stockSource.provider, filename: job.sourceFile, providerUrl: job.stockSource.sourcePage, providerMediaId: job.stockSource.mediaId, licence: `${job.stockSource.provider === "pexels" ? "Pexels License" : "Pixabay Content License"} · ${job.stockSource.creator} · verify reuse rights before posting`, downloadedAt: job.createdAt } : { kind: "upload", filename: job.sourceFile, licence: "Local file supplied by studio owner" },
+    source: job.stockSource ? { kind: job.stockSource.provider, filename: job.sourceFile, providerUrl: job.stockSource.sourcePage, providerMediaId: job.stockSource.mediaId, licence: `${stockLicenceName(job.stockSource.provider, job.stockSource.licence)} · ${job.stockSource.creator} · verify reuse rights before posting`, stockLicence: job.stockSource.licence, downloadedAt: job.createdAt } : { kind: "upload", filename: job.sourceFile, licence: "Local file supplied by studio owner" },
     audience: "general",
     quality: {
       sourceDuration: part.end - part.start,
@@ -1182,6 +1183,7 @@ function buildReviewItem(
     item.quality.hashtags = existing.quality.hashtags;
   }
   if (existing) item.createdAt = existing.createdAt;
+  if (job.stockSource) item.quality.postCopy = withStockPostingCredits(item.quality.postCopy || "", item);
   item.updatedAt = new Date().toISOString();
   return item;
 }
@@ -1286,12 +1288,12 @@ export async function createStockReelJob(
       if (!limiter.bytes) throw new Error("One provider returned an empty video.");
       if (expectedBytes && limiter.bytes !== expectedBytes) throw new SourceUploadInterruptedError(limiter.bytes, expectedBytes);
       bytes += limiter.bytes;
-      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, trimMode: shot.trimMode, sourceFile: filename });
+      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, trimMode: shot.trimMode, sourceFile: filename, licence: shot.licence });
     }
     const now = new Date().toISOString(), first = shots[0];
     const job: SourceJob = {
       id, title: input.caption || input.theme || first.title, sourceFile: first.sourceFile,
-      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots, ...(input.options.pacing !== undefined ? { editVersion: STOCK_REEL_EDIT_VERSION } : {}), ...(input.managerGuidance ? { managerGuidance: input.managerGuidance } : {}) },
+      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, licence: first.licence, requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots, ...(input.options.pacing !== undefined ? { editVersion: STOCK_REEL_EDIT_VERSION } : {}), ...(input.managerGuidance ? { managerGuidance: input.managerGuidance } : {}) },
       mode: "coverage", status: "QUEUED", progress: 1, stage: `${shots.length} source shot${shots.length === 1 ? "" : "s"} verified · waiting in the FIFO queue`, createdAt: now, updatedAt: now, completedClips: 0, totalClips: 1, reviewIds: [], attempts: 0, queuedAt: now,
     };
     const accepted = await withJobMutation(async () => {
@@ -1714,7 +1716,8 @@ async function processStockReel(
     `Pipeline signature ${signature}`,
   ];
   item.quality.postCopy = retainedPosting?.copy ?? stock.caption;
-  item.quality.visualSources = shots.map(shot => ({ provider: shot.provider, providerMediaId: shot.mediaId, providerUrl: shot.sourcePage, creator: shot.creator, licence: shot.provider === "pexels" ? "Pexels License" : "Pixabay Content License" }));
+  item.quality.visualSources = shots.map(shot => ({ provider: shot.provider, providerMediaId: shot.mediaId, providerUrl: shot.sourcePage, creator: shot.creator, licence: stockLicenceName(shot.provider, shot.licence), stockLicence: shot.licence }));
+  item.quality.postCopy = withStockPostingCredits(item.quality.postCopy || "", item);
   if (retainedPosting?.hashtags) item.quality.hashtags = retainedPosting.hashtags;
   else item.quality.hashtags = [...new Set(words(shots.map(shot => shot.title).join(" ")).slice(0, 6).map(word => `#${word[0].toUpperCase()}${word.slice(1)}`))];
   item.quality.warning = options.audio === "music" && states.some(state => state.usable) ? "This export uses a continuous instrumental soundtrack. Original audio is retained with each downloaded source." : subtitleDecisions.some(item => item.decision === "uncertain") ? "Some source sound could not be checked for speech. Review it before posting." : undefined;

@@ -16,6 +16,11 @@ const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX,
   },
 }).outputText;
+const providersFilename = path.join(project, 'src/lib/stockProviders.ts'), providersModule = { exports: {} };
+new vm.Script(ts.transpileModule(fs.readFileSync(providersFilename, 'utf8'), {
+  fileName: providersFilename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText, { filename: providersFilename }).runInNewContext({ module: providersModule, exports: providersModule.exports,
+  require(name) { assert.fail(`Pure stock-provider metadata must not load ${name}`); } }, { timeout: 1000 });
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -88,9 +93,11 @@ function uiHarness() {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
     'next/image': { __esModule: true, default: MockImage },
     'next/link': { __esModule: true, default: MockLink },
-    'lucide-react': { FolderOpen: MockIcon, Play: MockIcon, RotateCcw: MockIcon, Search: MockIcon, Trash2: MockIcon },
+    'lucide-react': { FolderOpen: MockIcon, Info: MockIcon, Play: MockIcon, RotateCcw: MockIcon, Search: MockIcon, Trash2: MockIcon },
     './ReviewPlayer': { __esModule: true, default: MockReviewPlayer, reviewTarget: () => 'source' },
     './PostingActions': { __esModule: true, default: MockPostingActions },
+    './ReviewStorageSummary': { __esModule: true, default: function MockStorageSummary() { throw new Error('Storage UI must stay inert'); } },
+    '@/lib/stockProviders': providersModule.exports,
   };
   const module = { exports: {} };
   const context = vm.createContext({

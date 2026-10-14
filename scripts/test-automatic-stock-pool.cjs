@@ -18,7 +18,8 @@ function compile(relative, dependencies, globals = {}) {
 const reel = compile('src/lib/stockReel.ts', {});
 const semantics = compile('src/lib/footageSemantics.ts', {});
 const brief = compile('src/lib/stockBrief.ts', {});
-const automatic = compile('src/lib/automaticStockReel.ts', { './stockReel': reel, './footageSemantics': semantics });
+const providers = compile('src/lib/stockProviders.ts', {});
+const automatic = compile('src/lib/automaticStockReel.ts', { './stockReel': reel, './footageSemantics': semantics, './stockProviders': providers });
 const video = (id, subject = 'horse grazing in meadow', changes = {}) => ({ id, duration: 20, width: 720, height: 1280,
   previewUrl: `https://videos.pexels.com/video-files/${id}/720.mp4`, image: '', creator: 'Fixture only',
   sourcePage: `https://www.pexels.com/video/${subject.replace(/ /g, '-')}-${id}/`, ...changes });
@@ -26,6 +27,10 @@ function harness(pages) {
   const calls = [];
   const stock = compile('src/lib/naturalStock.ts', {
     './stockReel': reel, './stockBrief': brief, './footageSemantics': semantics,
+    './openStockCatalog': {
+      searchOpenStockPage() { assert.fail('Pexels pool fixtures must not search a different provider'); },
+      resolveOpenStock() { assert.fail('Pool search must not resolve or download media'); },
+    },
     './stockCatalog': {
       async searchFootagePage(query, aspect, anyOrientation, page, size) {
         calls.push({ query, aspect, anyOrientation, page, size });

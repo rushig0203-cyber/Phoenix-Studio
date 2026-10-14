@@ -1,4 +1,5 @@
 import type { NaturalStock } from "./naturalStock";
+import { AUTOMATIC_STOCK_PROVIDERS, stockMediaIdentity } from "./stockProviders";
 
 export const FOOTAGE_SEARCH_DELAY_MS = 600;
 export const FOOTAGE_CANDIDATE_PAGE_SIZE = 20;
@@ -8,8 +9,7 @@ export function stockFootageCandidates(value: unknown): NaturalStock[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.filter((video): video is NaturalStock => {
-    if (!video || typeof video !== "object" || !["pexels", "pixabay"].includes(video.provider)
-      || !Number.isSafeInteger(video.id) || video.id <= 0 || typeof video.title !== "string"
+    if (!video || typeof video !== "object" || !AUTOMATIC_STOCK_PROVIDERS.includes(video.provider) || !stockMediaIdentity(video.provider, video.id) || typeof video.title !== "string"
       || !Number.isFinite(video.duration) || video.duration <= 0
       || !Number.isFinite(video.width) || video.width <= 0 || !Number.isFinite(video.height) || video.height <= 0) return false;
     const key = `${video.provider}:${video.id}`;

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
+import type { StockLicence, StockProvider } from "./stockProviders";
 
 export type ReviewTarget = "instagram" | "youtube";
 export type ReviewStatus = "READY" | "NEEDS_RENDERER" | "FAILED";
@@ -27,11 +28,12 @@ export type ReviewFile = {
   status: ReviewStatus;
   targets: ReviewTarget[];
   source: {
-    kind: "upload" | "pexels" | "pixabay";
+    kind: "upload" | StockProvider;
     filename: string;
     providerUrl?: string;
     providerMediaId?: string;
     licence: string;
+    stockLicence?: StockLicence;
     downloadedAt?: string;
   };
   outputs: Partial<Record<ReviewTarget, { filename: string; duration: number; width: number; height: number }>>;
@@ -62,11 +64,12 @@ export type ReviewFile = {
     postCopy?: string;
     checks: string[];
     visualSources?: Array<{
-      provider: "pexels" | "pixabay";
+      provider: StockProvider;
       providerMediaId: string;
       providerUrl: string;
       creator: string;
       licence: string;
+      stockLicence?: StockLicence;
     }>;
     warning?: string;
   };
