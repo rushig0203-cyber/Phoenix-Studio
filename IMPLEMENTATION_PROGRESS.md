@@ -12,8 +12,10 @@
 - Children's 2D scenes now match complete words, retain the last explicit object
   and setting on reaction lines, choose the first narrated giver, and assign
   separate actions to named characters. Held props follow the actual posed hand.
-  Raster cache version 9 includes actor actions; finite frame budgets remain.
-- Local focused checks passed 25 stock/posting cases and 27 animation/raster
+  Raster cache version 10 includes actor actions; finite frame budgets remain.
+- Independent review also corrected later handoffs after an earlier action and
+  attached kite strings to the posed holder's hand without duplicating the kite.
+- Local focused checks passed 25 stock/posting cases and 42 animation/story/runtime
   cases. The large publishing UI fixture is reserved for the remote compiler
   heap. News/business/general creations use the existing stock-footage path,
   so these 2D fixes do not establish actual footage of a reported news event.

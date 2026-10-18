@@ -98,9 +98,11 @@ export function planKidsPerformance(text: string, cast: [KidsAnimationKind, Kids
   const narration = kidsNarratedActions(lower);
   const aliases = cast.map((kind, index) => [kind, names?.[index], kind === "bunny" ? "rabbit" : kind === "dog" ? "puppy" : kind === "cat" ? "kitten" : ""].filter(Boolean).map(name => name!.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   const mentioned = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\b`).test(lower)));
-  const subjects = aliases.map(values => values.flatMap(name => [...narration.matchAll(new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly|patiently|just)\\s+)?([a-z]+)\\b`, "g"))]).filter(match => narratedKidsAction(match[1])).sort((a, b) => a.index! - b.index!)[0]);
-  const actions = subjects.map(match => match ? narratedKidsAction(match[1], /\bkites?\b/.test(narration)) : undefined);
-  const subject = subjects.map((match, index) => ({ match, index })).filter(item => item.match && actions[item.index] === "reach").sort((a, b) => a.match!.index! - b.match!.index!)[0]?.index ?? -1;
+  const subjects = aliases.map(values => values.flatMap(name => [...narration.matchAll(new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly|patiently|just)\\s+)?([a-z]+)\\b`, "g"))]).filter(match => narratedKidsAction(match[1])).sort((a, b) => a.index! - b.index!));
+  const actions = subjects.map(matches => matches[0] ? narratedKidsAction(matches[0][1], /\bkites?\b/.test(narration)) : undefined);
+  const objectActions = subjects.flatMap((matches, index) => matches.map(match => ({ match, index }))).filter(item => narratedKidsAction(item.match[1]) === "reach");
+  const giving = objectActions.filter(item => /^(?:gives?|gave|giving|passes|pass|passed|passing|offers?|offered|offering|shares?|shared|sharing|hands?|handed|handing)$/.test(item.match[1]));
+  const subject = (giving.length ? giving : objectActions).sort((a, b) => a.match.index! - b.match.index!)[0]?.index ?? -1;
   const observing = actions.map(action => action === "listen");
   const shared = song || /\b(?:together|both|they|friends)\b/.test(lower) || !mentioned.some(Boolean);
   return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), actions, subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
@@ -308,9 +310,11 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star"].includes(scene.prop);
   const interacting = portable && (scene.action === "reach" || ["held", "offered", "received"].includes(scene.objectState));
   const directSubject = planned.subject === 0 || planned.subject === 1 ? planned.subject : undefined;
-  const owner = scene.intent === "offer" && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
+  const explicitHolder = scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsNarratedActions(options.caption));
+  const owner = (scene.intent === "offer" || explicitHolder) && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
   const transfer = scene.intent === "offer";
   let contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer) : undefined;
+  let kiteHolder = scene.prop === "kite" ? kidsAnimationContact(options.aspect, p, owner) : undefined;
   const shot = options.scene?.shot || kidsShotFor(scene.intent, options.index, mouth.speaker, scene.prop !== "none");
   const focus = shot === "speaker" ? (scene.focus ?? Math.max(0, planned.speaker, mouth.speaker)) : shot === "reaction" ? (active[0] !== active[1] ? (active[0] ? 1 : 0) : options.index % 2) : -1;
   const focusX = focus >= 0 ? w * (focus ? (vertical ? .74 : .71) : (vertical ? .26 : .29)) : w / 2;
@@ -333,7 +337,7 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
     for (const [i, kind] of options.cast.entries()) {
       const receiving = transfer && i !== owner && p >= .4;
       const explicitAction = planned.actions[i];
-      let action = receiving || interacting && i === owner && !explicitAction ? "reach" : active[i] ? explicitAction || scene.action : "listen";
+      let action = transfer && i === owner || receiving || interacting && i === owner && !explicitAction ? "reach" : active[i] ? explicitAction || scene.action : "listen";
       if (scene.prop === "kite" && i === owner && scene.objectState === "held" && !explicitAction) action = "reach";
       if (scene.prop === "kite" && i !== owner && scene.intent !== "untangle" && action === "reach") action = "listen";
       const travel = action === "march" ? (i ? -1 : 1) * ramp(p, .14, .70) * (vertical ? 18 : 39) : 0;
@@ -346,18 +350,20 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
       }
       if (options.song && mouth.mouthOpen > 0) pose.speaking = true;
       const motion = kidsRigMotion(pose);
-      if (contact && !transfer && i === owner && action !== "reach") {
+      if (!transfer && i === owner && (contact && action !== "reach" || kiteHolder)) {
         // A held object follows the posed hand even when its owner waves or hops.
         const [hx, hy] = motion.hands[i ? 0 : 1], angle = motion.lean * Math.PI / 180;
         const handX = hx * motion.scaleX, handY = 176 + (hy - 176) * motion.scaleY - 170;
-        contact = { x: x + size * (handX * Math.cos(angle) - handY * Math.sin(angle)), y: y + size * (170 + handX * Math.sin(angle) + handY * Math.cos(angle) - motion.lift), transfer: 0 };
+        const posedHand = { x: x + size * (handX * Math.cos(angle) - handY * Math.sin(angle)), y: y + size * (170 + handX * Math.sin(angle) + handY * Math.cos(angle) - motion.lift), transfer: 0 };
+        if (contact) contact = posedHand;
+        if (kiteHolder) kiteHolder = posedHand;
       }
       world += ellipse(x, ground + 3, 53 - motion.lift * .28, 8, "#3f5b6226");
       world += `<g data-actor="${i}" data-action="${action}" data-speaking="${pose.speaking}" data-beat="${beat.stage}"${pose.handTarget ? ` data-hand-target="${n(pose.handTarget[0])},${n(pose.handTarget[1])}"` : ""} transform="translate(${n(x)} ${n(y)}) scale(${size})">${kidsCharacterSvg(kind, pose)}</g>`;
       if (scene.prop === "drum") world += `<g transform="translate(${n(x)} ${n(y + 108 * size)}) scale(${size})"><path d="M-38 0 H38 V34 Q0 48 -38 34Z" fill="#d692a9" stroke="${ink}" stroke-width="3"/>${ellipse(0, 0, 38, 12, "#ffedce", ink)}<path d="M-31 12 L-13 36 L4 12 L24 36 L32 12" fill="none" stroke="#ffedce" stroke-width="3"/>${line(motion.hands[0][0], motion.hands[0][1] - 108, -11, -8, ink, 3)}${line(motion.hands[1][0], motion.hands[1][1] - 108, 11, -8, ink, 3)}</g>`;
     }
     if (scene.prop === "kite" && (scene.action === "reach" || scene.objectState === "held")) {
-      const holder = kidsAnimationContact(options.aspect, p, owner);
+      const holder = kiteHolder!;
       const position = kitePosition(stage, visibleScene, phase * .2);
       world += `<path data-contact="kite-string" d="M${n(position.x)} ${n(position.y)} Q${n((position.x + holder.x) / 2)} ${n(holder.y - 27)} ${n(holder.x)} ${n(holder.y)}" fill="none" stroke="#867a71" stroke-width="1.5"/>`;
     }
@@ -419,7 +425,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
     const active = performance?.active || planned.active;
     const actionSeconds = Math.min(cue.end - cue.start, 4.5);
     const progress = quantizeKidsProgress((time - cue.start) / actionSeconds, poseBudgets[cueIndex]);
-    const key = createHash("sha1").update(JSON.stringify([9, scene, planned.actions, progress, mouth, active, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
+    const key = createHash("sha1").update(JSON.stringify([10, scene, planned.actions, progress, mouth, active, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
     const filename = `animation/${key}.png`;
     if (!rendered.has(key)) {
       if (rendered.size >= KIDS_MAX_UNIQUE_FRAMES) throw new Error("Animation exceeded the bounded drawing budget; split the narration into fewer visual scenes.");
@@ -435,7 +441,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
   timeline.push(`file '${lastFile}'`);
   await fs.writeFile(path.join(options.directory, "scenes.txt"), timeline.join("\n") + "\n", "utf8");
   await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({
-    version: 9, timeline: "finite-action-reaction-hold", fps: KIDS_ANIMATION_FPS, rasterBudget: KIDS_MAX_UNIQUE_FRAMES, uniqueFrames: rendered.size, frames,
+    version: 10, timeline: "finite-action-reaction-hold", fps: KIDS_ANIMATION_FPS, rasterBudget: KIDS_MAX_UNIQUE_FRAMES, uniqueFrames: rendered.size, frames,
     speechAnimation: options.performanceFrames ? "measured-performance" : "text-speaker-estimate",
     scenes: options.cues.map((cue, index) => ({ ...cue, ...scenes[index], poseSamples: poseBudgets[index], actionSeconds: Math.min(cue.end - cue.start, 4.5), performance: performances[index] })),
   }, null, 2));

@@ -201,6 +201,51 @@ test('visual alignment: the first textual giver wins over cast ordering and a la
   assert.ok(letterX(late) < letterX(early), 'The letter moves from Bear on the right to Bunny on the left in the actual preview SVG');
 });
 
+test('visual alignment: later object actions retain the actual giver and holder after an earlier wave', () => {
+  for (const caption of [
+    'Bear waves. Bear hands Bunny the letter. Bunny holds it.',
+    'Bunny holds the letter. Bear waves, then Bear hands Bunny the letter.',
+  ]) {
+    const planned = planKidsPerformance(caption, ['bunny', 'bear'], ['Bunny', 'Bear']);
+    assert.equal(planned.actions[1], 'wave'); assert.equal(planned.subject, 1);
+    const scene = planKidsAnimationScene(base.topic, caption, 1);
+    const early = kidsAnimationSvg({ ...base, caption, scene, sceneProgress: .1 });
+    const late = kidsAnimationSvg({ ...base, caption, scene, sceneProgress: 1 });
+    assert.match(early, /data-actor="1" data-action="reach"/);
+    assert.match(late, /data-actor="0" data-action="reach"/);
+    const letterX = svg => Number(svg.match(/data-object-state="offered" transform="translate\(([^ ]+) /)[1]);
+    assert.ok(letterX(late) < letterX(early), 'The later narrated handoff still travels from Bear to Bunny');
+  }
+  const caption = 'Bear waves, then Bear held the ball.';
+  const planned = planKidsPerformance(caption, ['bunny', 'bear'], ['Bunny', 'Bear']);
+  assert.equal(planned.subject, 1); assert.equal(planned.actions[1], 'wave');
+  const scene = planKidsAnimationScene('Friends', caption, 1);
+  const svg = kidsAnimationSvg({ ...base, topic: 'Friends', caption, scene, sceneProgress: .45 });
+  assert.match(svg, /data-actor="1" data-action="wave"/);
+  const ballX = Number(svg.match(/data-object-state="held" transform="translate\(([^ ]+) /)[1]);
+  assert.ok(ballX > 480, 'The ball is attached to Bear on the right, not the default first actor');
+});
+
+test('visual alignment: a kite string follows its actual waving or hopping holder without a duplicate kite', () => {
+  const endpoint = svg => svg.match(/data-contact="kite-string" d="M[-\d.]+ [-\d.]+ Q[-\d.]+ [-\d.]+ ([-\d.]+) ([-\d.]+)"/).slice(1).map(Number);
+  for (const owner of [0, 1]) {
+    const holder = owner ? 'Bear' : 'Bunny', listener = owner ? 'Bunny' : 'Bear';
+    const held = planKidsAnimationScene('Garden kite', `${holder} held the kite string.`);
+    held.objectOwner = owner;
+    for (const verb of ['waves', 'hops']) {
+      const caption = `${holder} ${verb} while ${listener} watches.`;
+      const scene = planKidsAnimationScene('Garden kite', caption, 1, held);
+      const options = { ...base, topic: 'Garden kite', caption, scene };
+      const rest = kidsAnimationSvg({ ...options, sceneProgress: .1 });
+      const active = kidsAnimationSvg({ ...options, sceneProgress: .45 });
+      assert.match(active, new RegExp(`data-actor="${owner}" data-action="${verb === 'waves' ? 'wave' : 'hop'}"`));
+      assert.ok(endpoint(active)[1] < endpoint(rest)[1] - (verb === 'waves' ? 50 : 20), 'The actual string endpoint rises with its holder hand');
+      assert.equal((active.match(/data-kite-state=/g) || []).length, 1);
+      assert.doesNotMatch(active, /data-contact="hands"/);
+    }
+  }
+});
+
 test('visual alignment: named actions remain distinct while a held ball follows its owner', async () => {
   const caption = 'Bunny hops while Bear watches.';
   const held = planKidsAnimationScene('Garden kite', 'Bunny held the ball.');
