@@ -1,5 +1,26 @@
 # Quality-first implementation — September 16, 2026
 
+## October 18 continuation — source fixes, release verification pending
+
+- Fixed required stock-credit lookup for older review cards that have no source
+  metadata. Explicit rendered-source rights still take priority over an unused
+  starting asset; mandatory credits remain in the posting caption.
+- The prior Windows release failed both on that compatibility regression and on
+  the large publishing UI fixture exceeding its test heap. Remote regression
+  tests remain serial, with a 384 MiB compiler/test heap. Laptop service, render,
+  model and build admission limits are unchanged.
+- Children's 2D scenes now match complete words, retain the last explicit object
+  and setting on reaction lines, choose the first narrated giver, and assign
+  separate actions to named characters. Held props follow the actual posed hand.
+  Raster cache version 9 includes actor actions; finite frame budgets remain.
+- Local focused checks passed 25 stock/posting cases and 27 animation/raster
+  cases. The large publishing UI fixture is reserved for the remote compiler
+  heap. News/business/general creations use the existing stock-footage path,
+  so these 2D fixes do not establish actual footage of a reported news event.
+- Additional footage providers remain a source update until a complete Windows
+  release passes and its selected/live build is verified. No owner jobs have been
+  retried or posted during this continuation.
+
 ## October 14 free quota rotation — installed and verified live
 
 - The original shared writer deliberately prohibited fallback. It now rotates

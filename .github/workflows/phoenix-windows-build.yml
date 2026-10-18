@@ -58,8 +58,9 @@ jobs:
       - name: Verify subtitle placement uses the actual decoded picture size
         run: python -B scripts/test-renderer-subtitle-canvas.py
       - name: Run release regressions one file at a time
+        # UI fixture compilation needs more heap than the application data tests.
         run: >-
-          node --max-old-space-size=192 --test --test-concurrency=1
+          node --max-old-space-size=384 --test --test-concurrency=1
           scripts/test-package-phoenix-build.cjs
           scripts/test-install-phoenix-build.cjs
           scripts/test-review-publishing.cjs
@@ -118,6 +119,8 @@ jobs:
           scripts/test-source-status-polling.cjs
           scripts/test-kids-writing-direction.cjs
           scripts/test-kids-story-quality.cjs
+          scripts/test-expressive-animation.cjs
+          scripts/test-animation-and-delete.cjs
           scripts/test-writing-settings.cjs
           scripts/test-writing-settings-ui.cjs
           scripts/test-posting-snapshot-order.cjs
@@ -179,6 +182,7 @@ jobs:
           src/lib/qualityManager.ts
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
+          src/lib/kidsAnimation.ts
           src/app/api/source-processing/route.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs

@@ -120,6 +120,15 @@ test('finished rendered-source metadata excludes compulsory credits from an unus
   assert.deepEqual(plain(providers.stockPostingCredits(file)), [cc.attribution], 'Single-source and older exports fall back to saved source rights');
 });
 
+test('older review cards without source metadata keep their caption and rendered-source credits', () => {
+  const file = review(); delete file.source; delete file.quality.visualSources;
+  assert.deepEqual(plain(providers.stockPostingCredits(file)), []);
+  assert.equal(posting.postingCaption(file), file.quality.postCopy);
+  file.quality.visualSources = [{ stockLicence: cc }];
+  assert.deepEqual(plain(providers.stockPostingCredits(file)), [cc.attribution]);
+  assert.ok(posting.postingCaption(file).endsWith(cc.attribution));
+});
+
 function routeHarness(options = {}) {
   const calls = [], queued = [], fetched = [];
   const configured = options.configured || { pexels: false, pixabay: false, commons: true, nasa: true };

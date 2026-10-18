@@ -23,6 +23,13 @@ Coverr is excluded. No paid service, dependency or model was added.
 Verification and activation are still pending; the existing selected/live bundle
 is retained until the production build passes.
 
+October 18 continuation fixes old review cards without source metadata and
+checks 2D narration-to-scene alignment. Release verification runs on the public
+Windows build runner; it does not compile the website on the laptop.
+Children's 2D planning now keeps explicit objects/settings across reactions,
+matches complete words and follows each named character's action. This update
+does not change the stock-footage visual path for news or business creations.
+
 ### Free writer quota rotation — October 14, verified live
 
 The selected cloud writer is the preference, not a permanent lock. A proven

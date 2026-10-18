@@ -29,52 +29,48 @@ const line = (x1: number, y1: number, x2: number, y2: number, fill: string, widt
 export function planKidsAnimationScene(topic: string, text: string, index = 0, previous?: Scene): Scene {
   topic = topic.toLowerCase();
   const words = kidsNarratedActions(text).toLowerCase();
-  const theme = /ocean|underwater|fish|shark/.test(topic) ? "ocean" : /bedtime|sleep|moon|night|star/.test(topic) ? "night" : /clean|tidy|playroom|toy/.test(topic) ? "room" : "garden";
-  let action: KidsAnimationAction = /clap|pat your/.test(words) ? "clap"
-    : /drum|bucket|tap.*beat/.test(words) ? "drum"
-    : /fly|flies/.test(words) && /kite/.test(`${topic} ${words}`) ? "reach"
-    : /flap|wing|fly|flies/.test(words) ? "flap"
-    : /hop|jump|bounce|splash/.test(words) ? "hop"
-    : /sleep|breathe|hush|rest|close.*eyes/.test(words) ? "sleep"
-    : /wave|hello|goodbye|goodnight/.test(words) ? "wave"
-    : /march|step|walk|cross|follow|hurri|tiptoe/.test(words) ? "march"
-    : /reach|pick|lift|carry|carried|hold|held|share|help|give|gave|pass|hands?|handed/.test(words) ? "reach" : "sway";
-  const prop: Prop = /kite/.test(topic) && /ribbon|string|spool|tangle/.test(words) ? "kite"
+  const theme = /\b(?:underwater|(?:in|into|beneath) (?:the |an? |their )?ocean)\b/.test(words) ? "ocean"
+    : /\b(?:at night|during the night|after dark)\b/.test(words) ? "night"
+    : /\b(?:in|into|inside) (?:the |an? |their )?(?:room|playroom)\b/.test(words) ? "room"
+    : /\b(?:in|into) (?:the |an? |their )?garden\b/.test(words) ? "garden"
+    : previous?.theme ?? (/\b(?:ocean|underwater|fish|sharks?)\b/.test(topic) ? "ocean" : /\b(?:bedtime|sleep|moon|night|stars?)\b/.test(topic) ? "night" : /\b(?:clean|tidy|playroom|toys?)\b/.test(topic) ? "room" : "garden");
+  let action = narratedKidsAction(words, /\bkites?\b/.test(`${topic} ${words}`)) || "sway";
+  const prop: Prop = /\bkites?\b/.test(topic) && /\b(?:ribbons?|strings?|spools?|tangl\w*)\b/.test(words) ? "kite"
     : /\b(bus|wheel|vehicle|car)\b/.test(words) ? "bus"
-    : /umbrella/.test(words) ? "umbrella"
-    : /bucket|drum/.test(words) ? "drum"
-    : /kite|windmill/.test(words) ? "kite"
-    : /ball|bounce.*round/.test(words) ? "ball"
-    : /flower|bloom|seed|petal/.test(words) ? "flower"
-    : /rain|puddle|drip|splash|cloud/.test(words) ? "rain"
-    : /star|moon|glow|lantern|firefl/.test(words) ? "star"
-    : /toy|tidy|sort|clean|block/.test(words) ? "toys"
-    : /bridge|stream|river|stone/.test(words) ? "bridge"
-    : /letter|invitation|map|clue|ribbon/.test(words) ? "letter"
-    : /present|gift|basket|snack/.test(words) ? "gift"
+    : /\bumbrellas?\b/.test(words) ? "umbrella"
+    : /\b(?:buckets?|drums?)\b/.test(words) ? "drum"
+    : /\b(?:kites?|windmills?)\b/.test(words) ? "kite"
+    : /\bballs?\b|\bbounc\w*\b.*\bround\b/.test(words) ? "ball"
+    : /\b(?:flowers?|blooms?|seeds?|petals?)\b/.test(words) ? "flower"
+    : /\b(?:rain|puddles?|drips?|splashes|splash|clouds?)\b/.test(words) ? "rain"
+    : /\b(?:stars?|moon|glow|lanterns?|fireflies|firefly)\b/.test(words) ? "star"
+    : /\b(?:toys?|tidy|sort|clean|blocks?)\b/.test(words) ? "toys"
+    : /\b(?:bridges?|streams?|rivers?|stones?)\b/.test(words) ? "bridge"
+    : /\b(?:letters?|invitations?|maps?|clues?|ribbons?)\b/.test(words) ? "letter"
+    : /\b(?:presents?|gifts?|baskets?|snacks?)\b/.test(words) ? "gift"
     // Keep the central object visible across pronouns and reaction lines.
-    : /kite/.test(topic) ? "kite" : /ball/.test(topic) ? "ball"
-    : /star|moon/.test(topic) ? "star" : /flower|garden/.test(topic) ? "flower" : previous?.prop || "none";
+    : previous?.prop ?? (/\bkites?\b/.test(topic) ? "kite" : /\bballs?\b/.test(topic) ? "ball"
+    : /\b(?:stars?|moon)\b/.test(topic) ? "star" : /\b(?:flowers?|garden)\b/.test(topic) ? "flower" : "none");
   const resolved = reportsKiteResolution(words);
   const tangled = !resolved && /\b(?:tangled?|stuck|caught|snagged|knotted)\b/.test(words);
   const flight = reportsKiteFlight(words);
   const heldKite = /\b(?:holds?|held|carried|carries|picked up|built|made)\s+(?:(?:the|their|our|my|a)\s+)?kite\b(?!\s+(?:string|ribbon|spool|tail|line)\b)/.test(words);
   const kiteState = tangled || previous?.kiteState === "tangled" && !resolved ? "tangled"
     : flight ? "flying" : resolved || heldKite ? "held" : previous?.kiteState || "held";
-  const kiteCaughtHigh = kiteState === "tangled" && (/branch|tree|vine/.test(words) || !!previous?.kiteCaughtHigh);
+  const kiteCaughtHigh = kiteState === "tangled" && (/\b(?:branches|branch|trees?|vines?)\b/.test(words) || !!previous?.kiteCaughtHigh);
   const emotion: KidsExpression = resolved || /\b(?:smil\w*|laugh\w*|happy|solved|cheer\w*)\b/.test(text.toLowerCase()) ? "happy"
     : /relieved|phew/.test(words) ? "relieved" : /determined|carefully|try again|tried again/.test(words) ? "determined"
     : /gasp|surprised|amazed/.test(words) ? "surprised" : /tired|sleepy|yawn/.test(words) ? "tired"
     : /lost|stuck|torn|\btangle|problem|afraid|dim|sad|wrong|wobbl|worried/.test(words) ? "worried"
     : /look|notice|wonder|clue|find|surpris/.test(words) ? "curious" : previous?.emotion || "happy";
-  const intent: KidsStoryIntent = /give|gave|pass|offer|share|\bhands?\b|handed/.test(words) ? "offer"
-    : /receive|accept|took|takes/.test(words) ? "receive" : resolved || /untangl|unty|unwind/.test(words) ? "untangle"
-    : /comfort|beside|hug|reassur/.test(words) ? "comfort" : /look|notice|wonder|sad|afraid|worried/.test(words) || action === "sway" && /watch|listen/.test(words) ? "observe"
+  const intent: KidsStoryIntent = /\b(?:gives?|gave|giving|passes|pass|passed|passing|offers?|offered|offering|shares?|shared|sharing|hands?|handed|handing)\b/.test(words) ? "offer"
+    : /\b(?:receives?|received|accepts?|accepted|took|takes)\b/.test(words) ? "receive" : resolved || /\b(?:untangl\w*|unty\w*|unwind\w*)\b/.test(words) ? "untangle"
+    : /comfort|beside|hug|reassur/.test(words) ? "comfort" : /look|notice|wonder|sad|afraid|worried/.test(words) || action === "listen" ? "observe"
     : action === "sleep" ? "rest" : action === "wave" ? "greet" : action === "march" ? "approach"
     : /cheer|laugh|hooray|celebrat/.test(words) ? "celebrate" : action === "reach" ? "explore" : "perform";
   if (intent === "untangle") action = "reach";
   const objectState = intent === "offer" ? "offered" : intent === "receive" ? "received"
-    : /tidied|sorted|cleaned|put.*away/.test(words) ? "arranged" : /hold|held|carry|carried|pick|lift/.test(words) ? "held"
+    : /\b(?:tidied|sorted|cleaned)\b|\bput\b.*\baway\b/.test(words) ? "arranged" : /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/.test(words) ? "held"
     : previous?.prop === prop ? previous.objectState : "grounded";
   const previousOwner = previous?.prop === prop ? previous.objectOwner : 0;
   const objectOwner: 0 | 1 = intent === "offer" ? (previousOwner ? 0 : 1) : previousOwner;
@@ -84,14 +80,30 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
   return { action, prop, theme, close: shot === "reaction", emotion, emotionFrom: previous?.emotion !== emotion ? previous?.emotion : undefined, kiteState, kiteCaughtHigh, kiteFrom, kiteFromHigh: kiteFrom ? previous?.kiteCaughtHigh : undefined, intent, objectState, objectOwner, objectFrom, shot };
 }
 
+function narratedKidsAction(words: string, kite = false): KidsAnimationAction | undefined {
+  return /\b(?:claps?|clapped|clapping)\b|\bpat your\b/.test(words) ? "clap"
+    : /\b(?:drums?|drummed|drumming)\b|\btap\w*\b.*\bbeat\b/.test(words) ? "drum"
+    : /\b(?:fly|flies|flying|flew)\b/.test(words) && kite ? "reach"
+    : /\b(?:flaps?|flapped|flapping|wings?|fly|flies|flying|flew)\b/.test(words) ? "flap"
+    : /\b(?:hops?|hopped|hopping|jumps?|jumped|jumping|bounce[sd]?|bouncing|splashes|splash|splashed|splashing)\b/.test(words) ? "hop"
+    : /\b(?:sleeps?|sleeping|slept|breathes?|breathing|hush|rests?|rested|resting)\b|\bclos\w*\b.*\beyes\b/.test(words) ? "sleep"
+    : /\b(?:waves?|waved|waving|hello|goodbye|goodnight)\b/.test(words) ? "wave"
+    : /\b(?:march(?:es|ed|ing)?|steps?|stepped|stepping|walks?|walked|walking|cross(?:es|ed|ing)?|follows?|followed|following|hurr(?:y|ies|ied|ying)|tiptoe[sd]?|tiptoeing)\b/.test(words) ? "march"
+    : /\b(?:reach(?:es|ed|ing)?|picks?|picked|picking|lifts?|lifted|lifting|carry|carries|carrying|carried|holds?|holding|held|shares?|shared|sharing|helps?|helped|helping|gives?|giving|gave|passes|pass|passed|passing|hands?|handed|handing|offers?|offered|offering)\b/.test(words) ? "reach"
+    : /\b(?:watches|watch|watched|watching|listens?|listened|listening|waits?|waited|waiting)\b/.test(words) ? "listen" : undefined;
+}
+
 export function planKidsPerformance(text: string, cast: [KidsAnimationKind, KidsAnimationKind], names?: [string, string], song = false) {
   const lower = text.toLowerCase();
+  const narration = kidsNarratedActions(lower);
   const aliases = cast.map((kind, index) => [kind, names?.[index], kind === "bunny" ? "rabbit" : kind === "dog" ? "puppy" : kind === "cat" ? "kitten" : ""].filter(Boolean).map(name => name!.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   const mentioned = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\b`).test(lower)));
-  const subject = aliases.findIndex(values => values.some(name => new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly)\\s+)?(?:give[sn]?|gave|hands?|handed|passes?|passed|offers?|offered|holds?|held|carries|carried|picks?|picked|lifts?|lifted)\\b`).test(lower)));
-  const observing = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\s+(?:(?:quietly|patiently|just)\\s+)?(?:watch(?:es|ed)?|listen(?:s|ed)?|wait(?:s|ed)?|looks? on)\\b`).test(lower)));
+  const subjects = aliases.map(values => values.flatMap(name => [...narration.matchAll(new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly|patiently|just)\\s+)?([a-z]+)\\b`, "g"))]).filter(match => narratedKidsAction(match[1])).sort((a, b) => a.index! - b.index!)[0]);
+  const actions = subjects.map(match => match ? narratedKidsAction(match[1], /\bkites?\b/.test(narration)) : undefined);
+  const subject = subjects.map((match, index) => ({ match, index })).filter(item => item.match && actions[item.index] === "reach").sort((a, b) => a.match!.index! - b.match!.index!)[0]?.index ?? -1;
+  const observing = actions.map(action => action === "listen");
   const shared = song || /\b(?:together|both|they|friends)\b/.test(lower) || !mentioned.some(Boolean);
-  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
+  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), actions, subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
 }
 
 function kitePosition(stage: Stage, scene: Scene, phase: number) {
@@ -296,9 +308,9 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star"].includes(scene.prop);
   const interacting = portable && (scene.action === "reach" || ["held", "offered", "received"].includes(scene.objectState));
   const directSubject = planned.subject === 0 || planned.subject === 1 ? planned.subject : undefined;
-  const owner = !options.scene && scene.intent === "offer" && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
+  const owner = scene.intent === "offer" && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
   const transfer = scene.intent === "offer";
-  const contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer) : undefined;
+  let contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer) : undefined;
   const shot = options.scene?.shot || kidsShotFor(scene.intent, options.index, mouth.speaker, scene.prop !== "none");
   const focus = shot === "speaker" ? (scene.focus ?? Math.max(0, planned.speaker, mouth.speaker)) : shot === "reaction" ? (active[0] !== active[1] ? (active[0] ? 1 : 0) : options.index % 2) : -1;
   const focusX = focus >= 0 ? w * (focus ? (vertical ? .74 : .71) : (vertical ? .26 : .29)) : w / 2;
@@ -320,8 +332,9 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   } else {
     for (const [i, kind] of options.cast.entries()) {
       const receiving = transfer && i !== owner && p >= .4;
-      let action = receiving || interacting && i === owner ? "reach" : active[i] ? scene.action : "listen";
-      if (scene.prop === "kite" && i === owner && scene.objectState === "held") action = "reach";
+      const explicitAction = planned.actions[i];
+      let action = receiving || interacting && i === owner && !explicitAction ? "reach" : active[i] ? explicitAction || scene.action : "listen";
+      if (scene.prop === "kite" && i === owner && scene.objectState === "held" && !explicitAction) action = "reach";
       if (scene.prop === "kite" && i !== owner && scene.intent !== "untangle" && action === "reach") action = "listen";
       const travel = action === "march" ? (i ? -1 : 1) * ramp(p, .14, .70) * (vertical ? 18 : 39) : 0;
       const x = w * (i ? (vertical ? .74 : transfer ? .64 : .71) : (vertical ? .26 : transfer ? .36 : .29)) + travel, y = ground - 176 * size;
@@ -333,6 +346,12 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
       }
       if (options.song && mouth.mouthOpen > 0) pose.speaking = true;
       const motion = kidsRigMotion(pose);
+      if (contact && !transfer && i === owner && action !== "reach") {
+        // A held object follows the posed hand even when its owner waves or hops.
+        const [hx, hy] = motion.hands[i ? 0 : 1], angle = motion.lean * Math.PI / 180;
+        const handX = hx * motion.scaleX, handY = 176 + (hy - 176) * motion.scaleY - 170;
+        contact = { x: x + size * (handX * Math.cos(angle) - handY * Math.sin(angle)), y: y + size * (170 + handX * Math.sin(angle) + handY * Math.cos(angle) - motion.lift), transfer: 0 };
+      }
       world += ellipse(x, ground + 3, 53 - motion.lift * .28, 8, "#3f5b6226");
       world += `<g data-actor="${i}" data-action="${action}" data-speaking="${pose.speaking}" data-beat="${beat.stage}"${pose.handTarget ? ` data-hand-target="${n(pose.handTarget[0])},${n(pose.handTarget[1])}"` : ""} transform="translate(${n(x)} ${n(y)}) scale(${size})">${kidsCharacterSvg(kind, pose)}</g>`;
       if (scene.prop === "drum") world += `<g transform="translate(${n(x)} ${n(y + 108 * size)}) scale(${size})"><path d="M-38 0 H38 V34 Q0 48 -38 34Z" fill="#d692a9" stroke="${ink}" stroke-width="3"/>${ellipse(0, 0, 38, 12, "#ffedce", ink)}<path d="M-31 12 L-13 36 L4 12 L24 36 L32 12" fill="none" stroke="#ffedce" stroke-width="3"/>${line(motion.hands[0][0], motion.hands[0][1] - 108, -11, -8, ink, 3)}${line(motion.hands[1][0], motion.hands[1][1] - 108, 11, -8, ink, 3)}</g>`;
@@ -382,7 +401,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
     const active = performances[index].active;
     const subject = performances[index].subject;
     const actor = subject === 0 || subject === 1 ? subject : active[0] !== active[1] ? (active[1] ? 1 : 0) : undefined;
-    if (scene.objectState === "held" && /hold|held|carry|carried|pick|lift/i.test(cue.text) && actor !== undefined && (subject >= 0 || !/[“"]/.test(cue.text))) scene.objectOwner = actor;
+    if (scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsNarratedActions(cue.text)) && actor !== undefined && (subject >= 0 || !/[“"]/.test(cue.text))) scene.objectOwner = actor;
     if (scene.intent === "offer" && actor !== undefined) { scene.objectFrom = actor; scene.objectOwner = actor ? 0 : 1; }
     const speaking = options.performanceFrames?.slice(Math.floor(cue.start * KIDS_ANIMATION_FPS), Math.ceil(cue.end * KIDS_ANIMATION_FPS)).find(value => (value.speaker ?? -1) >= 0)?.speaker ?? performances[index].speaker;
     scene.shot = kidsShotFor(scene.intent, index, speaking, scene.prop !== "none");
@@ -400,7 +419,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
     const active = performance?.active || planned.active;
     const actionSeconds = Math.min(cue.end - cue.start, 4.5);
     const progress = quantizeKidsProgress((time - cue.start) / actionSeconds, poseBudgets[cueIndex]);
-    const key = createHash("sha1").update(JSON.stringify([8, scene, progress, mouth, active, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
+    const key = createHash("sha1").update(JSON.stringify([9, scene, planned.actions, progress, mouth, active, options.cast, options.aspect, options.transparent, options.song])).digest("hex").slice(0, 16);
     const filename = `animation/${key}.png`;
     if (!rendered.has(key)) {
       if (rendered.size >= KIDS_MAX_UNIQUE_FRAMES) throw new Error("Animation exceeded the bounded drawing budget; split the narration into fewer visual scenes.");
@@ -416,7 +435,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
   timeline.push(`file '${lastFile}'`);
   await fs.writeFile(path.join(options.directory, "scenes.txt"), timeline.join("\n") + "\n", "utf8");
   await fs.writeFile(path.join(options.directory, "animation-plan.json"), JSON.stringify({
-    version: 8, timeline: "finite-action-reaction-hold", fps: KIDS_ANIMATION_FPS, rasterBudget: KIDS_MAX_UNIQUE_FRAMES, uniqueFrames: rendered.size, frames,
+    version: 9, timeline: "finite-action-reaction-hold", fps: KIDS_ANIMATION_FPS, rasterBudget: KIDS_MAX_UNIQUE_FRAMES, uniqueFrames: rendered.size, frames,
     speechAnimation: options.performanceFrames ? "measured-performance" : "text-speaker-estimate",
     scenes: options.cues.map((cue, index) => ({ ...cue, ...scenes[index], poseSamples: poseBudgets[index], actionSeconds: Math.min(cue.end - cue.start, 4.5), performance: performances[index] })),
   }, null, 2));

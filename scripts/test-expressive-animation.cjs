@@ -89,9 +89,9 @@ test('actual kite ascent and observed flight are distinct from hopes, other flye
 
 test('kite holders use their own reachable hand while the partner listens, and cooperative untangling has two bounded reaches', () => {
   const topic = 'Benny and Tika untangle a garden kite';
-  const caption = 'Benny waved with a happy smile, and the two friends watched their kite fly.';
-  const scene = planKidsAnimationScene(topic, caption, 3);
   for (const owner of [0, 1]) {
+    const caption = `${owner ? 'Tika' : 'Benny'} held the kite string while ${owner ? 'Benny' : 'Tika'} watched the kite fly.`;
+    const scene = planKidsAnimationScene(topic, caption, 3);
     scene.objectOwner = owner; scene.objectState = 'held';
     const svg = kidsAnimationSvg({ ...base, topic, caption, scene, sceneProgress: .85, cast: ['bunny', 'bird'], castNames: ['Benny', 'Tika'] });
     assert.match(svg, new RegExp(`data-actor="${owner}" data-action="reach"`));
@@ -166,4 +166,73 @@ test('action/reaction staging changes visible pixels in small real raster sample
     images.push(await sharp(Buffer.from(svg)).resize(360, 203).removeAlpha().raw().toBuffer());
   }
   assert.notDeepEqual(images[0], images[1]); assert.notDeepEqual(images[1], images[2]);
+});
+
+test('visual alignment: train, started and balloon never invent rain, stars or a ball', () => {
+  const topic = 'A train started a balloon search';
+  const caption = 'The train started beside a balloon.';
+  const scene = planKidsAnimationScene(topic, caption);
+  assert.equal(scene.prop, 'none'); assert.equal(scene.theme, 'garden'); assert.equal(scene.action, 'sway');
+  const svg = kidsAnimationSvg({ ...base, topic, caption, scene });
+  assert.doesNotMatch(svg, /fill="#eab674"|fill="#f9dd83"|stroke="#72bdda"/);
+  assert.equal(planKidsAnimationScene('Friends', 'Bunny hopped beside the flowers.').action, 'hop');
+  assert.equal(planKidsAnimationScene('Friends', 'Bird flapped its wings.').action, 'flap');
+});
+
+test('visual alignment: an explicit ball persists across pronouns despite the kite topic', () => {
+  const topic = 'Garden kite';
+  const held = planKidsAnimationScene(topic, 'Bunny held the ball.');
+  const reaction = planKidsAnimationScene(topic, 'He smiled at it.', 1, held);
+  assert.equal(held.prop, 'ball'); assert.equal(reaction.prop, 'ball');
+  const svg = kidsAnimationSvg({ ...base, topic, caption: 'He smiled at it.', scene: reaction });
+  assert.match(svg, /<ellipse cx="0" cy="0" rx="28" ry="28" fill="#eab674"/);
+  assert.doesNotMatch(svg, /data-kite-state/);
+  assert.equal(planKidsAnimationScene(topic, 'Bunny picked up the letter.', 2, reaction).prop, 'letter');
+});
+
+test('visual alignment: the first textual giver wins over cast ordering and a later holder', () => {
+  const caption = 'Bear hands Bunny the letter. Bunny holds it carefully.';
+  const planned = planKidsPerformance(caption, ['bunny', 'bear'], ['Bunny', 'Bear']);
+  assert.equal(planned.subject, 1);
+  const scene = planKidsAnimationScene(base.topic, caption, 1);
+  const early = kidsAnimationSvg({ ...base, caption, scene, sceneProgress: .1 });
+  const late = kidsAnimationSvg({ ...base, caption, scene, sceneProgress: 1 });
+  const letterX = svg => Number(svg.match(/data-object-state="offered" transform="translate\(([^ ]+) /)[1]);
+  assert.ok(letterX(late) < letterX(early), 'The letter moves from Bear on the right to Bunny on the left in the actual preview SVG');
+});
+
+test('visual alignment: named actions remain distinct while a held ball follows its owner', async () => {
+  const caption = 'Bunny hops while Bear watches.';
+  const held = planKidsAnimationScene('Garden kite', 'Bunny held the ball.');
+  const scene = planKidsAnimationScene('Garden kite', caption, 1, held);
+  const options = { ...base, topic: 'Garden kite', caption, scene };
+  const rest = kidsAnimationSvg({ ...options, sceneProgress: .1 });
+  const hop = kidsAnimationSvg({ ...options, sceneProgress: .45 });
+  assert.match(hop, /data-actor="0" data-action="hop"/);
+  assert.match(hop, /data-actor="1" data-action="listen"/);
+  const ballY = svg => Number(svg.match(/data-object-state="held" transform="translate\([^ ]+ ([^)]+)\)/)[1]);
+  assert.ok(ballY(hop) < ballY(rest) - 20, 'The actual ball geometry rises with the hopping hand');
+  const raster = await sharp(Buffer.from(hop)).resize(160, 90).png().toBuffer({ resolveWithObject: true });
+  assert.equal(raster.info.width, 160); assert.ok(raster.data.length > 1000);
+  const waveCaption = 'Bunny waves while Bear watches.';
+  const waveScene = planKidsAnimationScene('Garden kite', waveCaption, 1, held);
+  const wave = kidsAnimationSvg({ ...options, caption: waveCaption, scene: waveScene, sceneProgress: .45 });
+  assert.match(wave, /data-actor="0" data-action="wave"/);
+  assert.ok(ballY(wave) < ballY(rest) - 50, 'A retained ball follows the actual raised waving hand');
+  const separate = kidsAnimationSvg({ ...base, topic: 'Friends', caption: 'Bunny hops while Bear waves.', sceneProgress: .45 });
+  assert.match(separate, /data-actor="0" data-action="hop"/);
+  assert.match(separate, /data-actor="1" data-action="wave"/);
+});
+
+test('visual alignment: supported explicit settings persist through reaction lines', () => {
+  const topic = 'Garden kite';
+  const room = planKidsAnimationScene(topic, 'Bunny walked inside the playroom.');
+  const reaction = planKidsAnimationScene(topic, 'Bear held a star and smiled.', 1, room);
+  assert.equal(room.theme, 'room'); assert.equal(reaction.theme, 'room');
+  const svg = kidsAnimationSvg({ ...base, topic, caption: 'Bear held a star and smiled.', scene: reaction });
+  assert.match(svg, /fill="#fff0d9"/); assert.doesNotMatch(svg, /data-layer="garden-detail"/);
+  const garden = planKidsAnimationScene(topic, 'They walked into the garden.', 2, reaction);
+  const night = planKidsAnimationScene(topic, 'They rested at night.', 3, garden);
+  const ocean = planKidsAnimationScene(topic, 'The friends met underwater.', 4, night);
+  assert.equal(garden.theme, 'garden'); assert.equal(night.theme, 'night'); assert.equal(ocean.theme, 'ocean');
 });

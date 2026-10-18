@@ -34,9 +34,9 @@ export function stockLicenceName(provider: StockProvider, licence?: StockLicence
 }
 
 /** Mandatory credits belong in posting text, never disguised as speech subtitles. */
-export function stockPostingCredits(file: { source: { stockLicence?: StockLicence }; quality: { visualSources?: Array<{ stockLicence?: StockLicence }> } }): string[] {
+export function stockPostingCredits(file: { source?: { stockLicence?: StockLicence }; quality: { visualSources?: Array<{ stockLicence?: StockLicence }> } }): string[] {
   const sources = file.quality.visualSources;
-  return [...new Set((sources?.length ? sources.map(source => source.stockLicence) : [file.source.stockLicence])
+  return [...new Set((sources?.length ? sources.map(source => source.stockLicence) : [file.source?.stockLicence])
     .filter((licence): licence is StockLicence => !!licence?.requiresAttribution)
     .map(licence => licence.attribution.trim()).filter(Boolean))];
 }
