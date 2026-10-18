@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Additional free footage sources — October 14, source update
+### Additional free footage and 2D alignment — October 18, verified live
 
 Find Footage searches Wikimedia Commons and NASA alongside Pexels/Pixabay.
 The two public APIs need no additional key or local model. Searches remain
@@ -20,15 +20,22 @@ files must also be credited when posted outside Phoenix. Captionless Stories
 are blocked for files requiring credits until visible Story attribution exists.
 Coverr is excluded. No paid service, dependency or model was added.
 
-Verification and activation are still pending; the existing selected/live bundle
-is retained until the production build passes.
+Installed release: `.next-build-gh-39144121254-1`, production source `4959677`,
+BUILD_ID `fezGU-OtG4SlCsaAh11Nw`. Selected/live builds match; the dashboard,
+manager and worker are healthy. Both Desktop shortcuts use the canonical project.
+[Windows verification](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/39144121254)
+passed 1,177 Node and 43 Python checks, lint, real exports, TypeScript and build.
+Both Vercel deployments are green. Builds run on the public Windows runner.
 
-October 18 continuation fixes old review cards without source metadata and
-checks 2D narration-to-scene alignment. Release verification runs on the public
-Windows build runner; it does not compile the website on the laptop.
+Old review cards without source metadata work again. Saved footage recipes keep
+their exact provenance after reload even when optional licence data is absent.
 Children's 2D planning now keeps explicit objects/settings across reactions,
 matches complete words and follows each named character's action. This update
 does not change the stock-footage visual path for news or business creations.
+All five saved job/review records are unchanged. A full new narrated story was
+not rendered; the 2D checks use planning, SVG geometry and small raster samples.
+Live Commons browsing returned eight videos. NASA can return no accepted videos
+when original metadata or rights cannot be verified; bounded limits stay active.
 
 ### Free writer quota rotation — October 14, verified live
 

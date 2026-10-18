@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 18 continuation — source fixes, release verification pending
+## October 18 footage and 2D continuation — installed and verified live
 
 - Fixed required stock-credit lookup for older review cards that have no source
   metadata. Explicit rendered-source rights still take priority over an unused
@@ -23,9 +23,25 @@
   cases. The large publishing UI fixture is reserved for the remote compiler
   heap. News/business/general creations use the existing stock-footage path,
   so these 2D fixes do not establish actual footage of a reported news event.
-- Additional footage providers remain a source update until a complete Windows
-  release passes and its selected/live build is verified. No owner jobs have been
-  retried or posted during this continuation.
+- Windows run `39144121254` passed 1,177/1,177 Node and 43/43 Python checks,
+  lint, real synthetic/public licensed-Pexels exports, full TypeScript and build.
+  The public proof fully decoded 288 frames over 12 seconds, retained five coherent
+  shots and confirmed idempotent retry without owner media or provider keys.
+- Verified archive/hash/inventory staging and guarded idle activation installed
+  source `495967764ab8236048a2a8a38194139a1b81c77f` as
+  `.next-build-gh-39144121254-1`, BUILD_ID `fezGU-OtG4SlCsaAh11Nw`.
+  Selected/live match, dashboard HTTP 200, manager/worker healthy, heavy work idle.
+  Both Vercel deployments are green. Both Desktop shortcuts target this same
+  canonical project. The existing local generated-type config was preserved.
+- Live Commons `wildlife` browsing returned eight videos with no provider errors.
+  NASA `Earth` returned no accepted footage; `Apollo` had no accepted results and
+  reported an oversized metadata response. Limits were preserved. NASA remains
+  available for documented eligible assets, with sparse/unsupported results
+  explicitly excluded; these probes do not certify every catalogue topic.
+- All five saved job/review JSON hashes match before/after activation. No owner
+  job was retried, rendered or posted during this continuation. Full new narrated
+  story quality was not evaluated; the 2D evidence is focused planning/SVG/raster
+  checks. Rumble/Bilibili publishing access remains a separate pending request.
 
 ## October 14 free quota rotation — installed and verified live
 
