@@ -1288,12 +1288,12 @@ export async function createStockReelJob(
       if (!limiter.bytes) throw new Error("One provider returned an empty video.");
       if (expectedBytes && limiter.bytes !== expectedBytes) throw new SourceUploadInterruptedError(limiter.bytes, expectedBytes);
       bytes += limiter.bytes;
-      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, trimMode: shot.trimMode, sourceFile: filename, licence: shot.licence });
+      shots.push({ provider: shot.provider, mediaId: shot.mediaId, sourcePage: shot.sourcePage, creator: shot.creator, title: shot.title, start: shot.start, end: shot.end, trimMode: shot.trimMode, sourceFile: filename, ...(shot.licence ? { licence: shot.licence } : {}) });
     }
     const now = new Date().toISOString(), first = shots[0];
     const job: SourceJob = {
       id, title: input.caption || input.theme || first.title, sourceFile: first.sourceFile,
-      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, licence: first.licence, requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots, ...(input.options.pacing !== undefined ? { editVersion: STOCK_REEL_EDIT_VERSION } : {}), ...(input.managerGuidance ? { managerGuidance: input.managerGuidance } : {}) },
+      stockSource: { provider: first.provider, mediaId: first.mediaId, sourcePage: first.sourcePage, creator: first.creator, ...(first.licence ? { licence: first.licence } : {}), requestId: input.requestId, caption: input.caption, theme: input.theme, maxDuration: input.maxDuration, options: input.options, shots, ...(input.options.pacing !== undefined ? { editVersion: STOCK_REEL_EDIT_VERSION } : {}), ...(input.managerGuidance ? { managerGuidance: input.managerGuidance } : {}) },
       mode: "coverage", status: "QUEUED", progress: 1, stage: `${shots.length} source shot${shots.length === 1 ? "" : "s"} verified · waiting in the FIFO queue`, createdAt: now, updatedAt: now, completedClips: 0, totalClips: 1, reviewIds: [], attempts: 0, queuedAt: now,
     };
     const accepted = await withJobMutation(async () => {

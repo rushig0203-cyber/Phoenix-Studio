@@ -15,6 +15,10 @@
   Raster cache version 10 includes actor actions; finite frame budgets remain.
 - Independent review also corrected later handoffs after an earlier action and
   attached kite strings to the posed holder's hand without duplicating the kite.
+- The real public-footage proof caught an absent licence property being added
+  as `undefined` before save. New recipes now omit absent optional licence data,
+  preserving exact downloaded-source records across the durable JSON round trip;
+  all 16 isolated reuse/staging checks passed with that correction.
 - Local focused checks passed 25 stock/posting cases and 42 animation/story/runtime
   cases. The large publishing UI fixture is reserved for the remote compiler
   heap. News/business/general creations use the existing stock-footage path,

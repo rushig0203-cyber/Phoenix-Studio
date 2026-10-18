@@ -113,6 +113,15 @@ after(() => {
   fs.rmSync(temporary, { recursive: true, force: true });
 });
 
+test('catalogue shots without optional licence metadata retain the exact durable recipe', async () => {
+  replaceHistory([]);
+  const job = await source.createStockReelJob([{ ...download(memoryStream), trimMode: 'auto' }], input());
+  const saved = await source.getSourceJob(job.id);
+  assert.deepEqual(saved.stockSource.shots, job.stockSource.shots);
+  assert.equal(Object.hasOwn(job.stockSource.shots[0], 'licence'), false);
+  assert.equal(Object.hasOwn(job.stockSource, 'licence'), false);
+});
+
 test('added-provider source staging keeps opaque identity and mandatory rights in the durable recipe without a render', async () => {
   replaceHistory([]);
   const licence = { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/',
