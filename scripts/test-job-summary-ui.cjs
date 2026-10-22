@@ -28,8 +28,13 @@ test('compact job names and dates reveal progress, ETA, stage and errors only in
   assert.doesNotMatch(cards, /<details[^>]*\bopen(?:\s|=|>)/);
 });
 
-test('Create intro describes the current adaptive edit, not a fixed old duration', () => {
-  assert.match(dashboard, /choosing cuts, length and modest speed-ups from sampled movement/);
+test('Create uses short workflow cards without the removed editing essay or a fixed duration claim', () => {
+  const start = dashboard.indexOf('<section aria-label="Creation workflows"');
+  const end = dashboard.indexOf('</section>', start);
+  assert.ok(start >= 0 && end > start);
+  const workflows = dashboard.slice(start, end);
+  for (const title of ['Clip a Video', 'Create a Video', 'Make a Reel']) assert.ok(workflows.includes(`>${title}</h2>`));
+  assert.doesNotMatch(workflows, /<p(?:\s|>)/);
   assert.doesNotMatch(dashboard, /40–45 second reel/);
 });
 

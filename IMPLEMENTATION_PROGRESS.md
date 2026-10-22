@@ -18,6 +18,11 @@
   opposite-energy guard passed the complete 24-case music suite. Full Windows
   regression/TypeScript/build verification and guarded activation are pending.
   No owner failed job was retried or posted; saved captions are not mass-reset.
+- First Windows run `39840589945` passed 1,187/1,188 Node checks, including all
+  Rumble handoff interactions. Its one failure was an older source-text fixture
+  still requiring the removed Create-card paragraph; that fixture now checks
+  the requested short titles and absence of card essays instead. No candidate
+  from the failed run was installed. Full verification is being rerun.
 - Saved attention records include unsupported news visuals, insufficient matching
   stock, an old narration length mismatch and one unverifiable source-picture
   duration. Their safety checks are not bypassed to turn the history green.
