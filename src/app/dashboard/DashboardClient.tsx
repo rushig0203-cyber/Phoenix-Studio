@@ -347,26 +347,23 @@ export default function DashboardClient() {
         <section aria-label="Creation workflows" className="grid gap-4 xl:grid-cols-3">
           <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
             <FileVideo className="h-7 w-7 text-[#536b35]" />
-            <h2 className="mt-4 text-2xl font-semibold">Process an episode</h2>
-            <p className="mt-2 text-sm leading-6 text-[#687657]">Choose a local video, select full coverage or best highlights, then create real clips.</p>
+            <h2 className="mt-4 text-2xl font-semibold">Clip a Video</h2>
             <Button type="button" onClick={() => { setSourceOpen(open => !open); setAiOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
               {sourceOpen ? "Close processor" : "Choose a video"}
             </Button>
           </article>
           <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
             <Sparkles className="h-7 w-7 text-[#536b35]" />
-            <h2 className="mt-4 text-2xl font-semibold">Create a new video</h2>
-            <p className="mt-2 text-sm leading-6 text-[#687657]">Business and general videos from stock footage, or simple 2D children’s animation.</p>
+            <h2 className="mt-4 text-2xl font-semibold">Create a Video</h2>
             <Button type="button" onClick={() => { setAiOpen(open => !open); setSourceOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
               {aiOpen ? "Close creation" : "Create a video"}
             </Button>
           </article>
-          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a footage reel</h2><p className="mt-2 text-sm leading-6 text-[#657153]">Type a topic and choose a starting video. Phoenix edits related real footage into a compact reel, choosing cuts, length and modest speed-ups from sampled movement. No generated visuals.</p><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
+          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a Reel</h2><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
         </section>
         {sourceOpen ? <SourceProcessor active={section === "create" && !offline} onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
-        {!sourceOpen && !aiOpen && !stockOpen ? <p className="mt-6 text-sm text-[#657153]">Choose Create a video to see fresh recommendations for your selected video type.</p> : null}
         </fieldset>
         {section === "library" ? <><InstagramPerformance /><ReviewLibrary files={files} loading={loading} onRefresh={load} /></> : null}
         {section === "create" ? <>

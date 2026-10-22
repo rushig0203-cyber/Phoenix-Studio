@@ -50,10 +50,28 @@ test('visual music mood shares the one bounded caption request and optional malf
   const request=JSON.parse(calls[0].init.body),text=request.messages[0].content[0].text;
   assert.match(text,/musicBrief/);assert.match(text,/not full-video\/audio review, measured motion or BPM/);
   assert.match(text,/Edit context: 40.0 sec, 8 source entries \(~5.0 sec each\)/);
-  assert.match(text,/Choose one visible action\/detail/);assert.match(text,/strongest five first/);
+  assert.match(text,/Choose one strong visible anchor across the samples/);assert.match(text,/strongest five first/);
   assert.equal(calls.length,1);assert.equal(request.max_completion_tokens,900);
   assert.equal(request.messages[0].content.filter(item=>item.type==='image_url').length,3);
 });
+test('social captions use an editorial voice without turning evidence into invented facts or a shot inventory',async()=>{
+  const caption='Take a closer look at those mossy rocks.';
+  const variants=['White water meets moss-covered stone.','Mossy rocks deserve a closer look.'];
+  global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,caption,captionVariants:variants})}}]});};
+  const accepted=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'',{sourceCount:6,duration:24,conciseStockCaption:true});
+  const request=JSON.parse(calls[0].init.body),text=request.messages[0].content[0].text;
+  assert.equal(accepted.caption,caption);assert.deepEqual(accepted.captionVariants,variants);
+  assert.match(text,/observations literal factual evidence, separate from audience-facing captions/);
+  assert.match(text,/not image alt text or a bare subject label/);
+  assert.match(text,/2–3 different phrasings of that SAME anchor, not descriptions of different shots/);
+  assert.match(text,/Editorial invitation or contrast is welcome when grounded in visible detail/);
+  assert.match(text,/never invented subject feelings/);assert.match(text,/No shot inventory, generic cliches/);
+  assert.match(text,/Never invent identity, precise geography, events, motives\/emotions, continuity across shots, motion\/speed/);
+  assert.match(text,/stills do not prove motion\/change/);assert.match(text,/max 24 words\/160 chars/);
+  assert.ok(text.length<=2900);assert.equal(calls.length,1);assert.equal(request.max_completion_tokens,900);
+  assert.equal(request.messages[0].content.filter(item=>item.type==='image_url').length,3);
+});
+
 test('stock validation selects a supplied concise alternative without truncating the generated inventory',()=>{
   const verbose='The camera follows a dog through the park, followed by shots of leaves and a painted horse.';
   const concise='A curious dog explores the leafy path.';

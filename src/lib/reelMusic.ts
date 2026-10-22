@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ReviewFile } from "./reviewFiles";
-import type { InstagramAudioTrack } from "./instagramAudio";
+import { publicInstagramAudioDiscovery, type InstagramAudioDiscovery, type InstagramAudioTrack } from "./instagramAudio";
 
 export const reelMusicBriefSchema = z.object({
   version: z.literal(1),
@@ -10,7 +10,8 @@ export const reelMusicBriefSchema = z.object({
   evidenceFrames: z.array(z.number().int().min(1).max(3)).min(1).max(3),
 });
 export type ReelMusicBrief = z.infer<typeof reelMusicBriefSchema>;
-export type RecommendedInstagramAudio = InstagramAudioTrack & { recommendation?: { rank: number; kind: "english-vocal" | "instrumental"; reason: string } };
+export type CatalogInstagramAudio = InstagramAudioTrack & { discovery?: InstagramAudioDiscovery };
+export type RecommendedInstagramAudio = InstagramAudioTrack & { recommendation?: { rank: number; kind: "english-vocal" | "instrumental"; reason: string; discovery?: InstagramAudioDiscovery } };
 export type ReelMusicRecommendation = { preference: "english-and-instrumental"; basis: "sampled-frames" | "saved-observations"; mood: ReelMusicBrief["mood"]; energy: ReelMusicBrief["energy"]; reason: string };
 type Seed = { title: string; artist: string; aliases?: string[]; kind: "english-vocal" | "instrumental"; moods: ReelMusicBrief["mood"][]; energy: "low" | "medium" | "high"; character: string; source: string };
 
@@ -70,24 +71,31 @@ const moodCatalog = {
   playful: { query: "playful", cues: /\b(?:playful|fun|cheerful|happy|bouncy|comic|ukulele|funk)\b/ },
 } as const;
 
-/** One account catalog read and two relevant instrumental searches, never paging or retries. */
+/** Meta documents a blank query as trending; keyword matches alone establish no trend. */
 export function musicCatalogQueries(brief: ReelMusicBrief): string[] {
   if (brief.mood === "uncertain") return [];
   return ["", `${moodCatalog[brief.mood].query} instrumental`, "instrumental"].slice(0, REEL_MUSIC_LOOKUP_LIMIT);
 }
 
 /** Prefer known recordings or explicit catalog labels; titles in English alone prove no vocal language. */
-export function rankMusicCatalog(tracks: readonly InstagramAudioTrack[], brief: ReelMusicBrief, limit = 6): RecommendedInstagramAudio[] {
+export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief: ReelMusicBrief, limit = 6): RecommendedInstagramAudio[] {
   if (brief.mood === "uncertain") return [];
   const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
-  const candidates = new Map<string, { track: InstagramAudioTrack; kind: "english-vocal" | "instrumental"; score: number; reason: string }>();
-  for (const track of tracks) {
+  const candidates = new Map<string, { track: InstagramAudioTrack; kind: "english-vocal" | "instrumental"; score: number; reason: string; order: number }>();
+  const discoveries = new Map<string, InstagramAudioDiscovery>();
+  for (const [order, track] of tracks.entries()) {
+    const discovery = publicInstagramAudioDiscovery(track.discovery), previousDiscovery = discoveries.get(track.audio_id);
+    if (discovery && (!previousDiscovery || (discovery.source === "meta-trending" && (previousDiscovery.source !== "meta-trending" || discovery.position < previousDiscovery.position)))) {
+      discoveries.set(track.audio_id, discovery);
+    }
     const original = REEL_MUSIC_SEEDS.find(seed => musicSeedMatches(track, seed));
     let kind: "english-vocal" | "instrumental", score: number, reason: string;
     if (original) {
       if (!original.moods.includes(brief.mood)) continue;
+      const energyGap = Math.abs({ low: 0, medium: 1, high: 2 }[original.energy] - energy);
+      if (brief.energy !== "unknown" && energyGap > 1) continue;
       kind = original.kind;
-      score = 100 - 15 * Math.abs({ low: 0, medium: 1, high: 2 }[original.energy] - energy);
+      score = 100 - 15 * energyGap;
       reason = `${original.character} fits the ${brief.mood} visual mood. Verified recording identity; editorial fit, not audio analysis.`;
     } else {
       const title = normalized(track.title);
@@ -109,11 +117,15 @@ export function rankMusicCatalog(tracks: readonly InstagramAudioTrack[], brief: 
       reason = `Catalog title labels an instrumental and a style fitting the ${brief.mood} mood. Metadata fit; audio was not analyzed.`;
     }
     const previous = candidates.get(track.audio_id);
-    if (!previous || previous.score < score) candidates.set(track.audio_id, { track, kind, score, reason });
+    if (!previous || previous.score < score) candidates.set(track.audio_id, { track, kind, score, reason, order: previous?.order ?? order });
   }
-  return [...candidates.values()].sort((left, right) => right.score - left.score || normalized(left.track.title).localeCompare(normalized(right.track.title))
+  return [...candidates.values()].map(candidate => ({ ...candidate, discovery: discoveries.get(candidate.track.audio_id) }))
+    .sort((left, right) => Number(right.discovery?.source === "meta-trending") - Number(left.discovery?.source === "meta-trending") || right.score - left.score
+    || (left.discovery?.position ?? left.order) - (right.discovery?.position ?? right.order) || normalized(left.track.title).localeCompare(normalized(right.track.title))
     || left.track.audio_id.localeCompare(right.track.audio_id)).slice(0, Math.min(6, Math.max(0, limit))).map((candidate, index) => ({
-      ...candidate.track, recommendation: { rank: index + 1, kind: candidate.kind, reason: candidate.reason },
+      audio_id: candidate.track.audio_id, title: candidate.track.title, display_artist: candidate.track.display_artist,
+      ...(candidate.track.preview_url ? { preview_url: candidate.track.preview_url } : {}),
+      recommendation: { rank: index + 1, kind: candidate.kind, reason: candidate.reason, ...(candidate.discovery ? { discovery: candidate.discovery } : {}) },
     }));
 }
 

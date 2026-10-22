@@ -309,6 +309,14 @@ test('successful preparation retry feedback selects Active page one without retr
   assert.ok(h.requests.every(request => !request.method));
 });
 
+test('Create has three short workflow titles without explanatory card paragraphs', async t => {
+  const h = harness(t); global.window.location.hash = '#create'; await h.flush();
+  const workflows = nodes(h.tree, node => node.props?.['aria-label'] === 'Creation workflows')[0];
+  assert.deepEqual(nodes(workflows, node => node.type === 'h2').map(text), ['Clip a Video', 'Create a Video', 'Make a Reel']);
+  assert.equal(nodes(workflows, node => node.type === 'p').length, 0);
+  for (const label of ['Choose a video', 'Create a video', 'Find footage']) assert.ok(h.button(label));
+});
+
 for (const [label, componentName, acceptedMessage] of [
   ['Choose a video', 'SourceProcessor', 'Source video queued. Follow preparation and rendering below.'],
   ['Find footage', 'StockReels', 'Footage fixture accepted; rendering queued.'],

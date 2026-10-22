@@ -24,6 +24,18 @@ test('public music metadata strips provider downloads and private fields', () =>
   assert.ok(!JSON.stringify(result).includes('secret'));
   for (const value of [null, [], { audio_id: 'bad', title: 'Song' }, { audio_id: '123', title: 'Song\nInjected' }, { audio_id: '123', title: 'Song', audio_type: 'original_sound' }]) assert.equal(audio.publicInstagramAudioTrack(value), null);
 });
+
+test('lookup provenance validates source, timestamp and bounded source position without trusting provider labels', () => {
+  const discovery = { source: 'meta-trending', fetchedAt: '2026-10-18T10:20:30.000Z', position: 29 };
+  assert.deepEqual(plain(audio.publicInstagramAudioDiscovery(discovery)), discovery);
+  assert.deepEqual(plain(audio.publicInstagramAudioDiscovery({ ...discovery, source: 'keyword-search' })), { ...discovery, source: 'keyword-search' });
+  for (const value of [null, [], { ...discovery, source: 'popular' }, { ...discovery, fetchedAt: 'yesterday' },
+    { ...discovery, fetchedAt: '2026-10-18T10:20:30.000Z\n' }, { ...discovery, position: -1 }, { ...discovery, position: 30 }, { ...discovery, position: 1.5 }]) {
+    assert.equal(audio.publicInstagramAudioDiscovery(value), undefined);
+  }
+  const track = audio.publicInstagramAudioTrack({ audio_id: '123', title: 'Song', discovery });
+  assert.equal(track.discovery, undefined, 'Only Phoenix assigns discovery from the request it actually made');
+});
 test('configuration requires the exact documented immutable fields with integer volumes 1 through 100', () => {
   const config = { audio_id: '12345', audio_volume: 100, video_volume: 1 };
   assert.deepEqual(plain(audio.instagramAudioConfiguration(config)), config);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import type { ReviewPublishJob, InstagramStoryCapability } from "@/lib/reviewPublishing";
@@ -8,7 +8,7 @@ import { postingDownload, postingText } from "@/lib/posting";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "@/lib/postingCopyPolicy";
 import { instagramStoryIdeas } from "@/lib/instagramStoryIdeas";
 import { instagramLocationSuggestions } from "@/lib/instagramLocationSuggestions";
-import { instagramAudioId, instagramAudioPreviewUrl } from "@/lib/instagramAudio";
+import { instagramAudioId, instagramAudioPreviewUrl, publicInstagramAudioDiscovery } from "@/lib/instagramAudio";
 import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/reelMusic";
 import { automaticInstagramUserTags } from "@/lib/instagramTags";
 
@@ -32,12 +32,14 @@ function publicTrackRecommendation(value: unknown): RecommendedInstagramAudio["r
   const recommendation = value as NonNullable<RecommendedInstagramAudio["recommendation"]>;
   if (!Number.isInteger(recommendation.rank) || recommendation.rank < 1 || recommendation.rank > 6
       || !["english-vocal", "instrumental"].includes(recommendation.kind) || !musicText(recommendation.reason)) return undefined;
-  return { rank: recommendation.rank, kind: recommendation.kind, reason: recommendation.reason.trim() };
+  const discovery = publicInstagramAudioDiscovery(recommendation.discovery);
+  return { rank: recommendation.rank, kind: recommendation.kind, reason: recommendation.reason.trim(), ...(discovery ? { discovery } : {}) };
 }
 
 /** Opening/checking this panel never uploads. Only its final confirmation does. */
 export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [rumbleOpen, setRumbleOpen] = useState(false);
   const [platform, setPlatform] = useState<ChannelPlatform | null>(null);
   const [instagramMode, setInstagramMode] = useState<"reel" | "story">("reel");
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
@@ -107,6 +109,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
 
   async function open(next: ChannelPlatform, mode: "reel" | "story" = "reel") {
     if (busy) return;
+    setRumbleOpen(false);
     const version = ++epoch.current;
     setViewEpoch(version);
     controller.current?.abort();
@@ -150,7 +153,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     finally { if (epoch.current === version) setLoading(false); }
   }
   function close() {
-    epoch.current++; controller.current?.abort(); setChooserOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
+    epoch.current++; controller.current?.abort(); setChooserOpen(false); setRumbleOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
     changeLocationQuery("");
     resetAudio();
     setPostingDefaultsBusy(false);
@@ -273,6 +276,29 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     try { await navigator.clipboard.writeText(caption); setNotice(`${platform === "youtube" ? "YouTube" : "Instagram"} text copied. Review it before posting.`); }
     catch { setNotice("Clipboard unavailable. Select and copy the posting text in this panel."); }
   }
+  async function copyRumbleText(value: string, label: string) {
+    const version = epoch.current, revision = videoRevision;
+    try {
+      await navigator.clipboard.writeText(value);
+      if (epoch.current === version && latestVideoRevision.current === revision) setNotice(`${label} copied. Paste it on Rumble; nothing has been uploaded.`);
+    } catch {
+      if (epoch.current === version && latestVideoRevision.current === revision) setNotice("Clipboard unavailable. Select and copy the Rumble text below.");
+    }
+  }
+  function prepareRumble(event: MouseEvent<HTMLAnchorElement>) {
+    const saved = postingDownload(file);
+    if (!saved) { event.preventDefault(); setNotice("No finished video is available. Check Library before uploading."); return; }
+    // shortcut: Rumble publishing access is unverified; hand off to its normal
+    // upload page until a supported free API or written permission is available.
+    try {
+      const download = document.createElement("a");
+      download.href = saved.url; download.download = `${file.title}-${saved.target}.mp4`;
+      download.click();
+    } catch {
+      event.preventDefault(); setNotice("The download could not start. Use Download MP4 below, then open Rumble."); return;
+    }
+    void copyRumbleText(postingText(file), "Rumble description and hashtags");
+  }
   async function submit(job?: ReviewPublishJob, revise = false, makeStandalone = false) {
     const createStory = platform === "instagram" && instagramMode === "story" && (!job || makeStandalone);
     const directReelPost = platform === "instagram" && !createStory && (!job || revise);
@@ -348,6 +374,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const existing = platformJobs.length > 0;
   const name = platform === "youtube" ? "YouTube" : "Instagram";
   const output = platform ? postingDownload(file, platform) : null;
+  const rumbleOutput = rumbleOpen ? postingDownload(file) : null;
   const metadata = output ? file.outputs[output.target] : null;
   const instagramTags = platform === "instagram" ? captionHashtags(caption).length : 0;
   const youtubeTextIssue = platform === "youtube" ? youtubePostingTextIssue(title.trim(), caption.trim()) : undefined;
@@ -371,8 +398,27 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         <button type="button" className={button} disabled={busy} aria-pressed={platform === "youtube"} onClick={() => void open("youtube")}>Upload to YouTube</button>
         <button type="button" className={button} disabled={busy} aria-pressed={platform === "instagram" && !storyOnly} onClick={() => void open("instagram")}>Post to Instagram</button>
         <button type="button" className={button} disabled={busy} aria-pressed={storyOnly} onClick={() => void open("instagram", "story")}>Post Story only</button>
+        <button type="button" className={button} disabled={busy} aria-pressed={rumbleOpen} onClick={() => { close(); setChooserOpen(true); setRumbleOpen(true); setNotice(""); setError(""); }}>Rumble upload</button>
       </div>
-      {!platform && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
+      {!platform && !rumbleOpen && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
+      {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 text-xs">
+        <h6 className="font-semibold">Rumble · assisted upload</h6>
+        <p>Downloads your finished MP4, copies its description and hashtags, and opens Rumble. Select that file, paste the text, review the licence and publish on Rumble. Automatic publishing is not connected.</p>
+        {rumbleOutput ? <a href="https://rumble.com/upload" target="_blank" rel="noopener noreferrer" className={button} onClick={prepareRumble}>Download & open Rumble ↗</a> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
+        <p>Uses the saved video and audio; Instagram catalogue music is not included. Confirm your destination account on Rumble.</p>
+        {!file.quality.postCopy?.trim() && <p role="status">No analyzed posting caption is saved yet. The text below is a draft; review it before posting.</p>}
+        <label className="block">Rumble title<input className={input} readOnly value={file.title.slice(0, 100)} /></label>
+        <button type="button" className={button} onClick={() => void copyRumbleText(file.title.slice(0, 100), "Rumble title")}>Copy title</button>
+        <details><summary className="cursor-pointer">Description, hashtags & download options</summary>
+          <label className="mt-2 block">Rumble description and hashtags<textarea className={`${input} min-h-24`} readOnly value={postingText(file)} /></label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" className={button} onClick={() => void copyRumbleText(postingText(file), "Rumble description and hashtags")}>Copy Rumble text</button>
+            {rumbleOutput && <a href={rumbleOutput.url} download={`${file.title}-${rumbleOutput.target}.mp4`} className={button}>Download MP4</a>}
+            <a href="https://rumble.com/upload" target="_blank" rel="noopener noreferrer" className={button}>Open Rumble ↗</a>
+          </div>
+        </details>
+        {notice && <p role="status">{notice}</p>}
+      </section>}
       {platform && <section aria-label={`${name} upload confirmation`} className="space-y-3">
       <h6 className="font-semibold">{name}{storyOnly ? " Story only" : ""} · final posting review</h6>
       {loading ? <p role="status" className="text-xs">Checking saved account and previous uploads…</p> : <>
@@ -450,6 +496,9 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
                 <p><span className="font-semibold">Instagram music:</span> {selectedAudio.title}{selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}</p>
                 <details><summary className="cursor-pointer">Music choice details</summary>
                   <p>{selectedAudio.recommendation?.reason || audioRecommendation?.reason}</p>
+                  <p>{selectedAudio.recommendation?.discovery?.source === "meta-trending"
+                    ? <>Returned by Meta&apos;s trending music lookup <time dateTime={selectedAudio.recommendation.discovery.fetchedAt}>{new Date(selectedAudio.recommendation.discovery.fetchedAt).toLocaleString()}</time>. Mood fit is editorial.</>
+                    : "Mood recommendation; current trending status is not verified."}</p>
                   <p>Based on sampled visual evidence, not listening or beat analysis. Instagram adds this track when the Reel is published; the local preview/download and matching Story keep the saved MP4 audio.</p>
                 </details>
               </> : audioCheckedRevision === videoRevision ? <>

@@ -1,5 +1,33 @@
 # Phoenix Studio
 
+### Rumble handoff and caption/music improvements — October 23, verification pending
+
+**Post / export → Rumble upload** prepares an assisted handoff, not a connected
+publisher. **Download & open Rumble** starts the existing MP4 download, copies
+the video's description/hashtags and opens Rumble's official upload page. Copy
+the title with its adjacent button; select the file, paste the text, review the
+licence and publish on Rumble. Selectable text and separate download/open links
+remain available if clipboard or download access fails. No re-render, full-file
+buffer, provider credential, new queue, browser automation or paid service is
+needed. Instagram catalogue music is not part of the saved MP4. Required stock
+credits remain in the description. Phoenix does not mark this handoff Posted or
+invent upload progress. Account confirmation and publication happen on Rumble.
+[Rumble's upload instructions](https://rumble.support/help/how-to-upload-a-video)
+describe its normal upload and licence steps; automated access still needs
+[Rumble's written permission](https://rumble.com/s/terms). Existing access
+requests are not resent and the scheduled publishing follow-up stays paused.
+
+New automatic frame analyses now ask for concise, viewer-facing caption variants
+around one visible detail, keeping literal observations separate. Existing
+captions/owner edits and the three-frame consent/request limits are unchanged.
+Instagram music retains whether a track came from Meta's trending lookup or a
+keyword search. Eligible trending matches are preferred only after mood, energy
+and English-original/instrumental checks; keyword hits are not labelled trends.
+These are metadata/editorial recommendations, not listening, BPM measurement or
+guaranteed fit. No model or extra provider request was added. Create cards are
+now **Clip a Video**, **Create a Video**, and **Make a Reel**, without card essays.
+This candidate is not yet claimed live; release verification is pending.
+
 ### Additional free footage and 2D alignment — October 18, verified live
 
 Find Footage searches Wikimedia Commons and NASA alongside Pexels/Pixabay.

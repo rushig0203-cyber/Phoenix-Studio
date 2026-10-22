@@ -1,5 +1,31 @@
 # Quality-first implementation — September 16, 2026
 
+## October 23 Rumble handoff, captions and music — verification pending
+
+- Added an explicitly assisted Rumble choice beside Instagram/YouTube in the
+  existing posting panel. One action requests the existing local MP4 download,
+  copies its description and opens the official upload page. Title copy and
+  selectable description/separate links cover browser failures. Nothing is
+  uploaded, queued, marked Posted, or represented as a verified connection.
+  Rumble account, licence choice and final publication stay on Rumble; its
+  written-permission request remains unverified and no duplicate was sent.
+- The unfinished October 18 changes are retained: three renamed, compact Create
+  cards; literal frame observations separated from grounded social captions;
+  music trending/keyword provenance and lookup time retained through dedupe,
+  fit checks before trend preference, provider order retained for equal fit.
+  Known originals with clearly opposite energy are now excluded as well.
+- Focused metadata/caption/Cloudflare checks passed 70 tests; the additional
+  opposite-energy guard passed the complete 24-case music suite. Full Windows
+  regression/TypeScript/build verification and guarded activation are pending.
+  No owner failed job was retried or posted; saved captions are not mass-reset.
+- Saved attention records include unsupported news visuals, insufficient matching
+  stock, an old narration length mismatch and one unverifiable source-picture
+  duration. Their safety checks are not bypassed to turn the history green.
+- Docker was uninstalled with the owner's explicit approval on October 18;
+  its virtual disks were removed, approximately 9.6 GiB freed, Ubuntu retained.
+  Automatic safety review blocked residual small Docker log/cache cleanup.
+  No Phoenix media was deleted and the six-hour publishing automation is paused.
+
 ## October 18 footage and 2D continuation — installed and verified live
 
 - Fixed required stock-credit lookup for older review cards that have no source

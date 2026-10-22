@@ -1,5 +1,6 @@
 /** Public metadata only. Preview links open Instagram; audio files are never downloaded. */
 export type InstagramAudioTrack = { audio_id: string; title: string; display_artist: string; preview_url?: string };
+export type InstagramAudioDiscovery = { source: "meta-trending" | "keyword-search"; fetchedAt: string; position: number };
 export type InstagramAudioConfiguration = { audio_id: string; audio_volume: number; video_volume: number };
 export type InstagramAudioSelection = InstagramAudioConfiguration & { title: string; display_artist: string };
 export type InstagramAudioSearch = {
@@ -15,6 +16,14 @@ export const INSTAGRAM_AUDIO_CATALOG_LIMIT = 30;
 export const INSTAGRAM_AUDIO_GRAPH_VERSION = "v22.0";
 export const instagramAudioId = (value: unknown): value is string => typeof value === "string" && /^[0-9]{1,40}$/.test(value) && !/[\r\n]/.test(value);
 const label = (value: unknown, empty = false): value is string => typeof value === "string" && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value) && (empty || Boolean(value.trim()));
+export function publicInstagramAudioDiscovery(value: unknown): InstagramAudioDiscovery | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const discovery = value as InstagramAudioDiscovery;
+  if (!["meta-trending", "keyword-search"].includes(discovery.source) || typeof discovery.fetchedAt !== "string"
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(discovery.fetchedAt) || !Number.isFinite(Date.parse(discovery.fetchedAt))
+      || !Number.isInteger(discovery.position) || discovery.position < 0 || discovery.position >= INSTAGRAM_AUDIO_CATALOG_LIMIT) return undefined;
+  return { source: discovery.source, fetchedAt: discovery.fetchedAt, position: discovery.position };
+}
 export function instagramAudioPreviewUrl(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length > 2048) return undefined;
   try {

@@ -99,6 +99,34 @@ test('catalog ranking returns at most six stable, unique tracks after comparing 
   assert.deepEqual(result.map(value=>value.recommendation.rank),[1,2,3,4,5,6]);
 });
 
+test('eligible Meta trending music outranks a stronger editorial seed without letting unrelated trends bypass fit',()=>{
+  const fetchedAt='2026-10-18T10:20:30.000Z';
+  const result=rankMusicCatalog([
+    {...track('Holocene','Bon Iver','501'),discovery:{source:'keyword-search',fetchedAt,position:0}},
+    {...track('Calm Meadow (Instrumental)','Fixture composer','502'),discovery:{source:'meta-trending',fetchedAt,position:4}},
+    {...track('Dance Party (Instrumental)','Fixture composer','503'),discovery:{source:'meta-trending',fetchedAt,position:0}},
+    {...track('Calm English Song','Unknown singer','504'),discovery:{source:'meta-trending',fetchedAt,position:1}},
+  ],brief());
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['502','501']);
+  assert.deepEqual(result[0].recommendation.discovery,{source:'meta-trending',fetchedAt,position:4});
+  assert.equal(result[1].recommendation.discovery.source,'keyword-search');
+  assert.equal(result[0].discovery,undefined,'Provenance stays in recommendation metadata, outside the saved track configuration');
+});
+
+test('deduplication retains trending membership and provider order rather than alphabetical order',()=>{
+  const fetchedAt='2026-10-18T10:20:30.000Z';
+  const result=rankMusicCatalog([
+    {...track('Alpha Calm (Instrumental)','Fixture composer','601'),discovery:{source:'keyword-search',fetchedAt,position:0}},
+    {...track('Zulu Calm (Instrumental)','Fixture composer','602'),discovery:{source:'meta-trending',fetchedAt,position:0}},
+    {...track('Alpha Calm (Instrumental)','Fixture composer','601'),discovery:{source:'meta-trending',fetchedAt,position:1}},
+    {...track('Zulu Calm (Instrumental)','Fixture composer','602'),discovery:{source:'keyword-search',fetchedAt,position:0}},
+  ],brief());
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['602','601']);
+  assert.deepEqual(result.map(candidate=>candidate.recommendation.discovery.source),['meta-trending','meta-trending']);
+  assert.deepEqual(result.map(candidate=>candidate.recommendation.discovery.position),[0,1]);
+  assert.equal(new Set(result.map(candidate=>candidate.audio_id)).size,2);
+});
+
 test('covers, remixes, live variants and extra artists do not inherit original-song labels',()=>{
   const original=seed('Holocene');
   for(const candidate of [
@@ -127,6 +155,13 @@ test('bounded searches include vocals and instrumentals whenever both fit the vi
     assert.ok(choices.some(choice=>choice.kind==='instrumental'),mood);
     assert.ok(choices.every(choice=>choice.moods.includes(mood)),mood);
   }
+});
+
+test('a trending original cannot bypass a clearly opposite visual energy level',()=>{
+  const trend = { audio_id: '123', title: 'Adventure Of A Lifetime', display_artist: 'Coldplay', discovery: { source: 'meta-trending', fetchedAt: '2026-10-23T01:00:00.000Z', position: 0 } };
+  assert.deepEqual(rankMusicCatalog([trend], brief('uplifting','low')), []);
+  assert.equal(rankMusicCatalog([trend], brief('uplifting','high'))[0].audio_id, '123');
+  assert.equal(rankMusicCatalog([trend], brief('uplifting','unknown'))[0].audio_id, '123');
 });
 
 test('different visual moods and energy levels change music ordering',()=>{

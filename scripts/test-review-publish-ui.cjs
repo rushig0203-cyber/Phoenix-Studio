@@ -68,8 +68,12 @@ const recommendationResult = (extra = {}) => ({
 
 function uiHarness(options = {}) {
   let active, nextInterval = 0;
-  const requests = [], intervals = new Map(), cleared = [], deadlines = [], copied = [];
-  const document = { hidden: false };
+  const requests = [], intervals = new Map(), cleared = [], deadlines = [], copied = [], downloads = [];
+  const document = { hidden: false, createElement(tag) {
+    assert.equal(tag, 'a', 'The handoff creates only a local download link');
+    if (options.downloadUnavailable) throw new Error('Download unavailable');
+    return { href: '', download: '', click() { downloads.push({ href: this.href, download: this.download }); } };
+  } };
   let file = options.file || sampleFile();
   const endpoint = `/api/review-files/${encodeURIComponent(file.id)}/publish`;
   const channels = options.channels || [channel('youtube'), channel('instagram')];
@@ -182,7 +186,7 @@ function uiHarness(options = {}) {
   }
   render();
   const h = {
-    get file() { return file; }, endpoint, requests, intervals, cleared, deadlines, copied, document, render,
+    get file() { return file; }, endpoint, requests, intervals, cleared, deadlines, copied, downloads, document, render,
     updateFile(next) { file = next; renderer.dirty = true; render(); },
     get tree() { return renderer.tree; }, get text() { return text(renderer.tree); },
     get posts() { return requests.filter(request => request.method === 'POST'); },
@@ -254,6 +258,54 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   assert.equal(h.requests.length, 4);
   assert.ok(h.requests.every(request => request.method === 'GET'));
   assert.equal(h.intervals.size, 0);
+});
+
+test('Rumble is an inert assisted handoff beside Instagram with one-action download, description copy and official upload link', async t => {
+  const file = sampleFile({ quality: { postCopy: 'Light through the trees.\nCredit: source creator.', hashtags: ['#Forest', '#Nature'], captions: [] } });
+  const h = uiHarness({ file }); t.after(() => h.unmount());
+  h.choose('Rumble upload'); await h.flush();
+  assert.equal(h.requests.length, 0); assert.equal(h.intervals.size, 0);
+  assert.match(h.text, /Rumble · assisted upload/); assert.match(h.text, /Automatic publishing is not connected/);
+  assert.match(h.text, /Instagram catalogue music is not included/);
+  assert.equal(h.control('Rumble title', 'input').props.value, file.title);
+  assert.equal(h.control('Rumble description and hashtags', 'textarea').props.value, 'Light through the trees.\nCredit: source creator.\n\n#Forest #Nature');
+  const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
+  assert.equal(action.props.href, 'https://rumble.com/upload'); assert.equal(action.props.target, '_blank'); assert.equal(action.props.rel, 'noopener noreferrer');
+  let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
+  assert.equal(prevented, false); assert.deepEqual(h.downloads, [{ href: '/api/review-files/review%20video%2Fone/media?target=instagram', download: 'Saved review video-instagram.mp4' }]);
+  assert.deepEqual(h.copied, [h.control('Rumble description and hashtags', 'textarea').props.value]);
+  assert.match(h.text, /description and hashtags copied/); assert.doesNotMatch(h.text, /Upload permission verified|100%|Upload is complete/);
+  h.click('Copy title'); await h.flush(); assert.equal(h.copied.at(-1), file.title);
+  assert.equal(h.requests.length, 0, 'The handoff never calls a provider, starts a job or changes upload history');
+});
+
+test('Rumble clipboard or download failure remains recoverable without claiming success', async t => {
+  for (const options of [{ clipboardUnavailable: true }, { downloadUnavailable: true }]) {
+    const h = uiHarness(options); t.after(() => h.unmount()); h.choose('Rumble upload'); await h.flush();
+    const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
+    let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
+    assert.equal(prevented, Boolean(options.downloadUnavailable));
+    assert.equal(h.downloads.length, options.downloadUnavailable ? 0 : 1); assert.equal(h.copied.length, 0);
+    assert.match(h.text, options.clipboardUnavailable ? /Clipboard unavailable/ : /download could not start/);
+    assert.ok(nodes(h.tree).some(node => node.type === 'a' && text(node) === 'Download MP4'));
+    assert.ok(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://rumble.com/upload'));
+    assert.equal(h.requests.length, 0);
+  }
+});
+
+test('Rumble uses current saved output and copy, handles missing media and does not keep Instagram polling', async t => {
+  const h = uiHarness({ jobs: [job({ platform: 'instagram', status: 'PROCESSING' })] }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush(); assert.equal(h.intervals.size, 1);
+  h.choose('Rumble upload'); await h.flush(); assert.equal(h.intervals.size, 0);
+  const reads = h.requests.length;
+  h.updateFile(sampleFile({ title: 'New saved title', updatedAt: '2026-10-23T01:00:00Z', outputs: { youtube: { width: 1080, height: 1920, duration: 24 } }, quality: { postCopy: 'New caption.', hashtags: ['#Mountains'], captions: [] } }));
+  const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
+  action.props.onClick({ preventDefault() { assert.fail('A ready saved output is allowed'); } }); await h.flush();
+  assert.equal(h.downloads.at(-1).href, '/api/review-files/review%20video%2Fone/media?target=youtube');
+  assert.equal(h.copied.at(-1), 'New caption.\n\n#Mountains'); assert.equal(h.control('Rumble title', 'input').props.value, 'New saved title');
+  h.updateFile({ ...h.file, status: 'FAILED' }); await h.flush();
+  assert.equal(nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗'), undefined);
+  assert.match(h.text, /No finished video is available/); assert.equal(h.requests.length, reads); assert.equal(h.posts.length, 0);
 });
 
 test('location ideas are optional, honest and inert until explicit Meta search', async t => {
@@ -1213,8 +1265,26 @@ test('automatic music explains its validated visual basis and ignores optional b
     assert.match(h.text, /Reflective English vocals fit the quiet scenery/);
     assert.match(h.text, /Based on sampled visual evidence, not listening or beat analysis/);
     assert.match(h.text, /local preview\/download and matching Story keep the saved MP4 audio/);
+    assert.match(h.text, /Mood recommendation; current trending status is not verified/);
     assert.doesNotMatch(h.text, /trending audio|Never expose diagnostic payload/);
     assert.equal(h.confirmation(), undefined); assert.ok(h.requests.every(request => request.method === 'GET')); assert.equal(h.posts.length, 0);
+  }
+});
+
+test('automatic music distinguishes verified Meta trending lookup evidence from a keyword mood recommendation', async t => {
+  const discovery={source:'meta-trending',fetchedAt:'2026-10-18T10:20:30.000Z',position:2};
+  for(const value of [discovery,{...discovery,source:'keyword-search'},{...discovery,source:'popular'},{...discovery,fetchedAt:'yesterday'}]) {
+    const h=uiHarness({file:footageFile(),audio:[audioResult({recommendation:{rank:1,kind:'instrumental',reason:'Calm instrumental fits the sampled scenery.',discovery:value}})]});
+    t.after(()=>h.unmount());h.choose('Post to Instagram');await h.flush();
+    const panel=automaticMusicPanel(h);
+    if(value.source==='meta-trending'&&value.fetchedAt===discovery.fetchedAt) {
+      assert.match(text(panel),/Returned by Meta's trending music lookup/);
+      const timestamp=nodes(panel).find(node=>node.type==='time');assert.equal(timestamp.props.dateTime,discovery.fetchedAt);
+    } else {
+      assert.match(text(panel),/Mood recommendation; current trending status is not verified/);
+      assert.doesNotMatch(text(panel),/Returned by Meta's trending music lookup/);
+    }
+    assertNoManualMusicControls(h);assert.equal(h.posts.length,0);
   }
 });
 

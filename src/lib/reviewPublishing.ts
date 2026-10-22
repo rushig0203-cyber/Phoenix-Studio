@@ -15,7 +15,7 @@ import { eligibleInstagramLocation, instagramLocationId, publicInstagramLocation
 import { instagramAudioId, instagramAudioConfiguration, instagramAudioCatalog, publicInstagramAudioTrack, publicInstagramAudioSelection, INSTAGRAM_AUDIO_SEARCH_LIMIT, INSTAGRAM_AUDIO_GRAPH_VERSION,
   type InstagramAudioConfiguration, type InstagramAudioSelection, type InstagramAudioSearch } from "./instagramAudio";
 import { automaticInstagramUserTags, instagramUserTags, publicInstagramUserTags, INSTAGRAM_USER_TAG_LIMIT } from "./instagramTags";
-import { musicBriefFromReview, musicCatalogQueries, rankMusicCatalog, type RecommendedInstagramAudio } from "./reelMusic";
+import { musicBriefFromReview, musicCatalogQueries, rankMusicCatalog, type CatalogInstagramAudio } from "./reelMusic";
 import { postingMediaFingerprint } from "./postingEvidence";
 import {
   assertLocalChannelRequest, assertChannelPublishAccessCurrent, createChannelPublishAccessMonitor, getChannelPublishAccess,
@@ -485,10 +485,10 @@ export async function recommendInstagramAudio(reviewId: string, connectionRevisi
   const recommendation = { preference: "english-and-instrumental" as const, basis: profile.basis, mood: profile.brief.mood, energy: profile.brief.energy, reason: profile.brief.reason };
   const queries = musicCatalogQueries(profile.brief);
   if (!queries.length) return { audio: [], outcome: "uncertain", recommendation, reason: "The sampled visual mood is uncertain. No unrelated Instagram track was selected." };
-  const tracks: RecommendedInstagramAudio[] = [];
+  const tracks: CatalogInstagramAudio[] = [];
   const catalog = { requests: 0, received: 0, inspected: 0, valid: 0, malformed: 0, eligible: 0, truncated: false };
   try {
-    // At most three sequential metadata reads. Rank the bounded account catalog
+    // At most three sequential metadata reads. Rank the bounded trending catalog
     // as well as mood/instrumental searches; never infer vocals from an English title.
     for (const query of queries) {
       await readyMedia(reviewId, "instagram", media.fingerprint, media.target);
@@ -496,9 +496,10 @@ export async function recommendInstagramAudio(reviewId: string, connectionRevisi
       url.searchParams.set("audio_type", "music"); url.searchParams.set("user_id", access.accountId);
       if (query) url.searchParams.set("search_query", query);
       const result = instagramAudioCatalog(await audioProviderGet(url, access));
+      const fetchedAt = new Date().toISOString();
       catalog.requests++; catalog.received += result.received; catalog.inspected += result.inspected;
       catalog.valid += result.tracks.length; catalog.malformed += result.malformed; catalog.truncated ||= result.truncated;
-      tracks.push(...result.tracks);
+      tracks.push(...result.tracks.map((track, position) => ({ ...track, discovery: { source: query ? "keyword-search" as const : "meta-trending" as const, fetchedAt, position } })));
     }
     await assertCurrent(access);
     const latest = await readyMedia(reviewId, "instagram", media.fingerprint, media.target);

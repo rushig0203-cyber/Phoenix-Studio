@@ -1525,6 +1525,25 @@ test('catalog omission and wrong-language-looking unverified identities return n
   assert.equal(result.outcome,'no-preferred-match');assert.match(result.reason, /no inspected track/); assert.equal(scheduled.length, 0);
 });
 
+test('music discovery retains fresh Meta trending provenance through keyword duplicates and favors eligible trends', async () => {
+  const { id } = await musicFixture(); const started = Date.now();
+  const queries = installMusicCatalog(url => Response.json({ audio: url.searchParams.has('search_query') ? [
+    audioTrack({ audio_id:'98101', title:'Holocene', display_artist:'Bon Iver' }),
+    audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
+  ] : [
+    audioTrack({ audio_id:'98103', title:'Unrelated Dance Vocal', display_artist:'Unknown singer' }),
+    audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
+  ] }));
+  const result = await publishing.recommendInstagramAudio(id,'fixture-revision');
+  assert.equal(queries.length,3); assert.deepEqual(result.audio.map(track=>track.audio_id),['98102','98101']);
+  const discovery=result.audio[0].recommendation.discovery;
+  assert.equal(discovery.source,'meta-trending'); assert.equal(discovery.position,1);
+  assert.ok(Date.parse(discovery.fetchedAt)>=started&&Date.parse(discovery.fetchedAt)<=Date.now());
+  assert.equal(result.audio[1].recommendation.discovery.source,'keyword-search');
+  assert.equal(result.audio[0].discovery,undefined); assert.equal(scheduled.length,0);
+  assert.deepEqual(await publishing.listReviewPublishJobs(id),[]);
+});
+
 test('automatic catalog discovery finds a relevant non-seed instrumental beyond the old first-six cutoff', async () => {
   const { id, file } = await musicFixture();
   const queries = installMusicCatalog(() => Response.json({ audio: [
