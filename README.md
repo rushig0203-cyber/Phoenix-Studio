@@ -1,6 +1,6 @@
 # Phoenix Studio
 
-### Rumble handoff and caption/music improvements — October 23, verification pending
+### Rumble handoff and caption/music improvements — October 23, verified live
 
 **Post / export → Rumble upload** prepares an assisted handoff, not a connected
 publisher. **Download & open Rumble** starts the existing MP4 download, copies
@@ -26,7 +26,19 @@ and English-original/instrumental checks; keyword hits are not labelled trends.
 These are metadata/editorial recommendations, not listening, BPM measurement or
 guaranteed fit. No model or extra provider request was added. Create cards are
 now **Clip a Video**, **Create a Video**, and **Make a Reel**, without card essays.
-This candidate is not yet claimed live; release verification is pending.
+Installed release: `.next-build-gh-39841936792-1`, production source `3ebe44a`,
+BUILD_ID `Xjeoixca0z1_rcaPomMUO`. Selected and serving builds match; dashboard
+HTTP 200, manager/worker healthy. Both Desktop shortcuts use the same canonical
+folder. [Windows verification](https://github.com/rushig0203-cyber/Phoenix-Studio/actions/runs/39841936792)
+passed 1,188 Node and 43 Python tests, lint, real exports, TypeScript and build;
+both Vercel checks are green. The existing generated-type configuration was
+preserved, including its original text and LF formatting. All five saved
+job/review stores have identical before/after hashes. No owner job was retried
+and no video was uploaded. One real three-frame public-footage analysis returned
+valid copy via the existing Groq Free setup, without a local model or owner
+caption changes. A live read-only Meta music lookup returned no eligible match
+for one saved video; available/trending music and subjective fit are not
+guaranteed. Instagram upload access was verified; YouTube is not connected.
 
 ### Additional free footage and 2D alignment — October 18, verified live
 

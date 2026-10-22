@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 23 Rumble handoff, captions and music — verification pending
+## October 23 Rumble handoff, captions and music — installed and verified live
 
 - Added an explicitly assisted Rumble choice beside Instagram/YouTube in the
   existing posting panel. One action requests the existing local MP4 download,
@@ -15,14 +15,34 @@
   fit checks before trend preference, provider order retained for equal fit.
   Known originals with clearly opposite energy are now excluded as well.
 - Focused metadata/caption/Cloudflare checks passed 70 tests; the additional
-  opposite-energy guard passed the complete 24-case music suite. Full Windows
-  regression/TypeScript/build verification and guarded activation are pending.
-  No owner failed job was retried or posted; saved captions are not mass-reset.
+  opposite-energy guard passed the complete 24-case music suite. Five compact
+  job/card checks also passed. No owner failed job was retried or posted;
+  saved captions were not mass-reset.
 - First Windows run `39840589945` passed 1,187/1,188 Node checks, including all
   Rumble handoff interactions. Its one failure was an older source-text fixture
   still requiring the removed Create-card paragraph; that fixture now checks
   the requested short titles and absence of card essays instead. No candidate
-  from the failed run was installed. Full verification is being rerun.
+  from the failed run was installed. The corrected full verification passed.
+- Windows run `39841936792` passed 1,188/1,188 Node tests, 43/43 Python tests,
+  scoped lint, synthetic/public licensed-Pexels render proofs, TypeScript and
+  production build. The public proof fully decoded 288 frames over 12 seconds
+  with five coherent shots and idempotent retry; no owner media was uploaded.
+- Verified archive/hash/inventory staging and guarded idle activation installed
+  production source `3ebe44a2021c2ac7b77e92c87763df0625d7f221` as
+  `.next-build-gh-39841936792-1`, BUILD_ID `Xjeoixca0z1_rcaPomMUO`.
+  Selected/serving match; dashboard HTTP 200, manager/worker healthy and idle.
+  Both Vercel checks are green and Desktop shortcuts target the canonical folder.
+  The generated-type config's text and original LF formatting were restored;
+  the temporary installation stash was removed only after exact comparison.
+- All five saved job/review stores retain identical before/after hashes. A single
+  live three-frame request against public test footage returned valid caption,
+  variants, 12 relevant tags and a music brief through the configured Groq Free
+  adapter, with no local model or saved owner-caption change. A live read-only
+  Meta music check made three bounded metadata requests and returned
+  `no-preferred-match` for reflective/low-energy evidence; no unrelated track,
+  trending claim or provider publication was substituted. Instagram reports
+  publishing access; YouTube is currently not connected. These checks do not
+  certify subjective music fit, Rumble automatic publishing, or a live upload.
 - Saved attention records include unsupported news visuals, insufficient matching
   stock, an old narration length mismatch and one unverifiable source-picture
   duration. Their safety checks are not bypassed to turn the history green.
