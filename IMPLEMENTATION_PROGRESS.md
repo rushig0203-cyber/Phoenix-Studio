@@ -14,6 +14,8 @@
 - Removed unreachable duplicate upload/ideas/mock-ultimate UI, the broken
   whole-file browser/WASM editor graph, orphaned media assets and six unused
   direct packages (17 locked packages, with no retained version changes).
+  Final caller checks also retired five unused provider/topic/manual-scene
+  GET wrappers; automatic stock search and shared recommendation banks remain.
   Old editor/review bookmarks provide a native-editor/library handoff instead
   of broken render controls. Existing timeline data is not automatically converted.
 - Removed obsolete Docker/AuraClip deployment and booster/gateway instructions;
@@ -25,6 +27,14 @@
   is named verify-stock-reel-render.cjs so ordinary unit discovery cannot start it.
   Focused boundary/import/library/archive checks use isolated stores and no
   provider/model/owner render. Full run and installation are not yet claimed.
+- First expanded Windows run `39924736102` passed 1,380/1,381 Node and all
+  43 Python checks. A previously omitted local-model lifecycle fixture used
+  129 words for a current 86–113-word budget, triggering the real rewrite guard
+  against its incomplete mock. Its example is now 97 words with a budget assert;
+  all 17 lifecycle tests pass locally. Single-runner/unload-before-footage and
+  saved-retry assertions remain. No production validation was relaxed and the
+  failed candidate was not installed. Both Vercel deployments and the Linux
+  output-verification workflow passed for the first cleanup source.
 
 ## October 23 Rumble handoff, captions and music — installed and verified live
 

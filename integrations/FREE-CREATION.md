@@ -2,15 +2,15 @@
 
 ## Three distinct creation paths
 
-- **Real footage reels:** `GET /api/stock-reels?q=...&provider=all` searches the configured free Pexels/Pixabay libraries. `POST /api/stock-reels` accepts a provider/asset ID, request UUID, descriptive caption and maximum duration. The server resolves the media address itself, bounds downloads to 500 MB, streams to local storage and queues `sourceProcessing`. No Ollama, Whisper transcription, synthetic visuals or generated voice runs for this path. The overlay is explicitly labelled descriptive, not a transcript. Existing short footage stays short.
+- **Real footage reels:** `GET /api/stock-reels?q=...&provider=all` searches the eligible configured/public stock libraries. The current UI sends `POST /api/stock-reels` with `automatic: true`, a provider/asset ID, query and request UUID. The server selects related sources, resolves addresses, streams under a shared 500 MB limit and queues `sourceProcessing`. No Ollama, Whisper transcription, synthetic visuals, generated voice or posting-title overlay runs for this path. Length follows usable content without slowdown, loops or frozen padding. Older explicit caption/duration API inputs remain compatibility options, not the ordinary UI.
 - **Narrated business/general videos:** local writing and a timed stock storyboard, with automatic exact-asset selection and final review. Structured ratings for the matching creation type guide new narration; supplied scripts remain unchanged.
 - **Children's original 2D:** the local illustrated-animation path remains available, with optional ten-part stories and the previously documented singing limits.
 
-The manager/dashboard topic explorer uses `GET /api/content-ideas` for 42 curated, original prompts across 10 categories, with balanced initial suggestions and local title-history rotation. It is not limited to those prompts: search for any stock subject or supply your own creation topic. It does not claim live trend discovery or guaranteed earnings.
+Suggestions are inside the current creation/footage forms, using their bounded local recommendation banks and saved rotation. The legacy topic explorer and manual provider/scene search endpoints are retired. Active shared idea/catalogue helpers remain; any supported topic can still be entered. Suggestions do not claim live trend discovery or guaranteed earnings.
 
 Phoenix's dashboard creates persistent preparation records which **automatically dispatch render jobs**. Records live in `storage/Phoenix Studio Review Files/creation-drafts.json` and are planned by `run-worker.js`. No scene approval is required for new creations.
 
-1. Choose a story, song, business video, or general video and select **Create video**.
+1. Describe the desired video or choose a suggested idea, then select **Create video**. There is no mandatory content-category picker.
 2. Phoenix plans the narration and visual sequence. Stock selection checks catalog descriptions, sufficient duration, aspect fit, uniqueness and contributor continuity. It does not understand actual video frames or guarantee the same people across clips.
 3. The saved plan automatically becomes a render job. Repeated submissions and interrupted dispatch reuse its identity; partially selected footage survives retry. No automatic publishing is enabled.
 4. Watch the finished video in Library, listen to its audio, and edit if necessary before posting. Older waiting plans resume automatically at worker startup. The plan editor and manual finish button have been removed from the app.
@@ -65,7 +65,6 @@ The dashboard sends `POST /api/generations` with `planOnly: false`. It returns `
 | --- | --- |
 | `GET /api/creation-drafts` | List saved, non-archived drafts |
 | `PATCH /api/creation-drafts` | `save`, `choose`, `approve`, `finish` (automatically), `retry`, or `archive` a draft |
-| `GET /api/creation-drafts/footage?q=...&aspect=9:16` | Search real Pexels choices |
 | `GET /api/creation-drafts/:id/preview?scene=0&frame=6` | Preview the children's SVG pose for a saved section |
 | `GET` / `HEAD /api/creation-drafts/:id/audio` | Stream the saved song, including byte-range playback |
 | `GET /api/singing/status` | Explain local engine availability or its blocker |

@@ -200,7 +200,7 @@ test('cold loading requires a verifiable installed identity before allocating or
   assert.deepEqual(reservations, []);
 });
 
-const script = 'Replace a vague task with a small action you can actually finish. Suppose your list says organize the kitchen, but you keep walking past it because the job feels too big. Choose just one drawer and name what you will do there. Write put the loose spoons into the tray instead of organize everything. Open that drawer and move those spoons, leaving the other cupboards for another time. Now you can tell whether the action is finished by looking at the empty space beside the tray. If another object needs a home, write that as a separate action instead of silently expanding this one. A small next step does not solve the whole kitchen. It gives you a clear place to begin and a visible stopping point for today.';
+const script = 'Replace a vague task with a small action you can finish. Suppose your list says organize the kitchen, but the job feels too big. Choose just one drawer and name its next action. Write put loose spoons into the tray instead of organize everything. Open that drawer and move the spoons, leaving other cupboards for later. Check the empty space beside the tray to see whether this action is finished. If another object needs a home, write a separate action. One drawer does not solve the kitchen, but it gives you a clear beginning and stopping point.';
 const outline = {
   viewerQuestion: 'How can a vague task become one specific next action?', audience: 'People planning everyday household tasks',
   angles: [
@@ -228,6 +228,8 @@ function stockResponse(body) {
 }
 
 test('actual stock writing shares one runner and releases it before footage; saved retry does no model work', async () => {
+  assert.equal(require('../src/lib/stockBrief.ts').stockNarrationError(script, stockInput().duration), null,
+    'The runner-lifecycle fixture must fit the actual editorial word budget');
   const guidance = require('../src/lib/qualityManager.ts');
   const footage = require('../src/lib/automaticFootage.ts');
   const { prepareStockCreation } = require('../src/lib/stockPreparation.ts');

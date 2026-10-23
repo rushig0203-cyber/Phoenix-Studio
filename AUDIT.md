@@ -32,6 +32,8 @@ multi-user production service. Vercel is a separate web build, not the renderer.
 5. **Obsolete deployment paths gave misleading setup instructions.** Removed
    the unused Docker files and old AuraClip CI. The supported Windows lifecycle,
    remote verification/installer and separate Vercel verification remain.
+   Unused old provider, topic-explorer and manual-scene GET wrappers are also
+   removed; current automatic stock search/planning helpers remain shared.
 6. **README mixed years of historical instructions with current operation.**
    Replaced duplicate release essays and obsolete menus/lengths with a current
    user/operator guide. Dated release evidence stays in IMPLEMENTATION_PROGRESS
