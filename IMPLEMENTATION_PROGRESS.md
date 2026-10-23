@@ -1,5 +1,31 @@
 # Quality-first implementation — September 16, 2026
 
+## October 23 whole-project cleanup — source prepared, release verification pending
+
+- Audited the single-owner Windows workflows and their callers/tests before
+  removal. Preserved originals, finished videos, editable masters, credentials,
+  queue/history records, saved timelines, schema and migrations. The pre-existing
+  generated-type paths in tsconfig.json are not part of the cleanup commit.
+- Retired the unused multi-gigabyte buffered review-file POST; current source
+  upload still streams through preflight and the durable processing queue.
+  Added origin/host checks before generation retry/delete, song staging and
+  Desktop shortcut work. Retired unused legacy preference/project/stock/admin
+  mutations while preserving archive reads; archive reads no longer create owners.
+- Removed unreachable duplicate upload/ideas/mock-ultimate UI, the broken
+  whole-file browser/WASM editor graph, orphaned media assets and six unused
+  direct packages (17 locked packages, with no retained version changes).
+  Old editor/review bookmarks provide a native-editor/library handoff instead
+  of broken render controls. Existing timeline data is not automatically converted.
+- Removed obsolete Docker/AuraClip deployment and booster/gateway instructions;
+  kept native lifecycle, verified-release/rollback/RAM guards, both Phoenix
+  verification workflows and free-only provider policies. README is now a current
+  operating guide; AUDIT records evidence, retained paths and remaining limits.
+- Expanded serial Windows regression coverage to previously omitted retained
+  UI/resource/file-lock/editor/storage/worker suites. The opt-in full render CLI
+  is named verify-stock-reel-render.cjs so ordinary unit discovery cannot start it.
+  Focused boundary/import/library/archive checks use isolated stores and no
+  provider/model/owner render. Full run and installation are not yet claimed.
+
 ## October 23 Rumble handoff, captions and music — installed and verified live
 
 - Added an explicitly assisted Rumble choice beside Instagram/YouTube in the

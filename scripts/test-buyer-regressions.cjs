@@ -45,30 +45,70 @@ function nodes(node, predicate, found = []) {
 }
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
 
-test('stock Create remains usable after clearing the optional description and submits it unchanged', async t => {
+test('stock Create needs no manual description and leaves posting copy for video analysis', async t => {
   const react = require('react');
   const previousLoad = Module._load;
-  let index = 0;
+  const previousGlobals = { fetch: global.fetch, localStorage: global.localStorage, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
+  const slots = [], effects = [], pending = [], started = [], requests = [];
+  let index = 0, dirty = true, tree;
+  t.after(() => { effects.forEach(effect => effect?.cleanup?.()); Object.assign(global, previousGlobals); });
   Module._load = function (name, parent, ...args) {
     if (name === 'react' && parent?.filename.endsWith(`${path.sep}StockReels.tsx`)) return {
       ...react,
-      useState: initial => { const current = index++; return [current === 4 ? video : current === 5 ? '' : initial, () => undefined]; },
-      useRef: value => ({ current: value }), useEffect: () => undefined,
+      useState(initial) {
+        const at = index++;
+        if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial;
+        return [slots[at], value => { const next = typeof value === 'function' ? value(slots[at]) : value; if (!Object.is(next, slots[at])) { slots[at] = next; dirty = true; } }];
+      },
+      useRef(value) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: value }; return slots[at]; },
+      useEffect(callback, deps) {
+        const at = index++, previous = effects[at];
+        if (!previous || deps.some((value, position) => !Object.is(value, previous.deps[position]))) pending.push({ at, callback, deps });
+      },
     };
     return previousLoad.call(this, name, parent, ...args);
   };
   let component;
   try { component = require(path.join(project, 'src/components/StockReels.tsx')).default; }
   finally { Module._load = previousLoad; }
-  let submitted;
-  global.fetch = async (url, init) => { assert.equal(url, '/api/stock-reels'); submitted = JSON.parse(init.body); return Response.json({ job: { id: 'fixture-job' } }, { status: 201 }); };
-  t.after(() => { global.fetch = realFetch; });
-  const tree = component({ onClose() {}, onStarted() {} });
-  const button = nodes(tree, node => typeof node.props?.onClick === 'function' && text(node) === 'Create reel from this footage')[0];
+  global.localStorage = { getItem() { return null; }, setItem() {} };
+  global.setTimeout = () => 1; global.clearTimeout = () => {};
+  global.fetch = async (url, init = {}) => {
+    requests.push({ url, ...init });
+    if (!init.method) {
+      assert.equal(url, '/api/stock-reels?q=forest&provider=all&automatic=true&browse=true');
+      return Response.json({ videos: [video], configured: { pixabay: true }, errors: [] });
+    }
+    assert.equal(url, '/api/stock-reels'); assert.equal(init.method, 'POST');
+    return Response.json({ job: { id: 'fixture-job' } }, { status: 201 });
+  };
+  function render() {
+    for (let pass = 0; dirty; pass++) {
+      assert.ok(pass < 20, 'Stock effects must settle');
+      index = 0; dirty = false;
+      tree = component({ onClose() {}, onStarted(message) { started.push(message); } });
+      for (const effect of pending.splice(0)) { effects[effect.at]?.cleanup?.(); effects[effect.at] = { deps: effect.deps, cleanup: effect.callback() }; }
+    }
+  }
+  async function flush() { for (let pass = 0; pass < 16; pass++) { await Promise.resolve(); render(); } }
+  render();
+  assert.equal(nodes(tree, node => node.type === 'textarea').length, 0, 'Manual caption entry is not required');
+  const topic = nodes(tree, node => node.type === 'input')[0];
+  topic.props.onChange({ target: { value: 'forest' } }); render();
+  nodes(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  await flush();
+  const button = nodes(tree, node => node.props?.['aria-label'] === `Make reel starting with: ${video.title}`)[0];
   assert.ok(button); assert.equal(button.props.disabled, false);
   button.props.onClick();
-  for (let i = 0; i < 12; i++) await Promise.resolve();
-  assert.equal(submitted.caption, '');
+  await flush();
+  const submissions = requests.filter(request => request.method === 'POST');
+  assert.equal(submissions.length, 1);
+  const submitted = JSON.parse(submissions[0].body);
+  assert.deepEqual(Object.keys(submitted).sort(), ['automatic', 'id', 'provider', 'query', 'requestId']);
+  assert.equal(submitted.automatic, true); assert.equal(submitted.provider, video.provider); assert.equal(submitted.id, video.id); assert.equal(submitted.query, 'forest');
+  assert.match(submitted.requestId, /^[a-f0-9-]{36}$/);
+  assert.equal(started.length, 1);
+  assert.match(text(tree), /Reel queued/);
 });
 
 test('caption-free edited copies retain the off choice, custom style and cues for a later explicit opt-in', async t => {

@@ -63,6 +63,30 @@ jobs:
           node --max-old-space-size=384 --test --test-concurrency=1
           scripts/test-package-phoenix-build.cjs
           scripts/test-install-phoenix-build.cjs
+          scripts/test-project-cleanup.cjs
+          scripts/test-buyer-regressions.cjs
+          scripts/test-local-mutation-boundaries.cjs
+          scripts/test-file-lock.cjs
+          scripts/test-runtime-lazy-loading.cjs
+          scripts/test-workflow-admission.cjs
+          scripts/test-editor-controls.cjs
+          scripts/test-channel-connections-ui.cjs
+          scripts/test-creative-brief.cjs
+          scripts/test-encoder-benchmark.cjs
+          scripts/test-instagram-hashtag-activity.cjs
+          scripts/test-instagram-story-ideas.cjs
+          scripts/test-kids-speech-timing.cjs
+          scripts/test-local-model-session.cjs
+          scripts/test-narration-timing.cjs
+          scripts/test-natural-stock.cjs
+          scripts/test-posting-provenance.cjs
+          scripts/test-review-library-stock.cjs
+          scripts/test-review-library.cjs
+          scripts/test-review-poster-resources.cjs
+          scripts/test-review-poster-ui.cjs
+          scripts/test-review-storage.cjs
+          scripts/test-stock-proxy.cjs
+          scripts/test-worker-startup.cjs
           scripts/test-review-publishing.cjs
           scripts/test-review-publish-ui.cjs
           scripts/test-review-publication-summary.cjs
@@ -184,6 +208,11 @@ jobs:
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
           src/lib/kidsAnimation.ts
           src/app/api/source-processing/route.ts
+          src/app/api/review-files/route.ts src/app/api/review-files/shortcut/route.ts src/app/api/song-audio/route.ts
+          src/app/api/projects/[id]/route.ts src/app/api/projects/[id]/timeline/route.ts src/app/api/projects/[id]/review/route.ts
+          src/app/api/stock/used/route.ts src/app/api/settings/publish/route.ts src/app/api/admin/users/route.ts
+          src/app/admin/users/page.tsx src/app/dashboard/project/[id]/editor/page.tsx src/app/dashboard/review/[id]/page.tsx
+          src/lib/session.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys

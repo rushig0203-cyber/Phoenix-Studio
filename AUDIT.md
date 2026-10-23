@@ -1,31 +1,77 @@
-# AuraClip product audit
+# Phoenix cleanup audit — October 23, 2026
 
-Reviewed: 2026-08-13
+## What this repo does
 
-## Fixed in this pass
+Phoenix is a single-owner, native Windows video app: streaming episode clips,
+licensed-stock reels, narrated/2D creation, final-video editing and reviewed
+publishing. This audit assumes one owner on an 8 GB laptop, not a publicly hosted
+multi-user production service. Vercel is a separate web build, not the renderer.
 
-- Replaced the generic logo-and-gradient landing screen with a complete, responsive product page.
-- Unified the public-facing product name as AuraClip (the previous UI mixed Phoenix Frame and AuraClip).
-- Rebuilt navigation with meaningful destinations, a working mobile menu, accessible labels, and a clear primary action.
-- Replaced vague, template-like copy with concise product-specific messaging.
-- Improved information hierarchy, spacing, contrast, typography, calls to action, and responsive behavior.
-- Reused real product imagery so the page demonstrates the app instead of relying on decorative AI-style effects.
-- Added reduced-motion support, a visible selection color, smooth anchor navigation, and descriptive image text.
-- Replaced placeholder footer links with working product destinations.
-- Updated the browser title and description to match the AuraClip brand.
-- Confirmed the production build and TypeScript compilation complete successfully across all 27 routes.
+## Fixed or removed
 
-## Remaining engineering follow-ups
+1. **Unused upload endpoint could exhaust RAM.** The old multipart/remote
+   `POST /api/review-files` buffered up to 5 GB and only made placeholder records.
+   No retained caller used it. Removed it; GET/library summaries remain. Active
+   uploads keep the bounded `/api/source-processing` stream and preflight.
+2. **Local mutations lacked consistent request checks.** Generation retry/delete,
+   song staging and Desktop-shortcut creation now reject nonlocal/cross-origin
+   requests before parsing input or starting work. Valid local actions retain
+   their existing queue, stream and native-shortcut paths.
+   Unused legacy project/settings/stock/admin writes were removed rather than
+   maintained as a second workflow. Archive owner lookup now reads an existing
+   account instead of creating one during a GET.
+3. **Broken browser editor was a second, RAM-heavy rendering path.** Its core
+   renderer was absent, it fetched whole source blobs, and Back/Ultimate links
+   led back to itself. Retired its unreachable UI/store/exporter/analysis code.
+   Old editor/review bookmarks show an honest Library/native-editor notice.
+   Saved timelines/files are untouched and are not automatically migrated.
+4. **Dead UI and dependencies added maintenance with no user benefit.** Removed
+   the unused upload consoles, duplicate ideas screen, mock Ultimate widgets,
+   unused UI primitives, landing/starter graphics and orphaned WASM assets.
+   Removed their unused packages; native FFmpeg/FFprobe stay installed.
+5. **Obsolete deployment paths gave misleading setup instructions.** Removed
+   the unused Docker files and old AuraClip CI. The supported Windows lifecycle,
+   remote verification/installer and separate Vercel verification remain.
+6. **README mixed years of historical instructions with current operation.**
+   Replaced duplicate release essays and obsolete menus/lengths with a current
+   user/operator guide. Dated release evidence stays in IMPLEMENTATION_PROGRESS
+   and Git history; retired booster/gateway setup documents are removed.
 
-- ESLint reports 45 non-blocking warnings, mainly unused imports and unfinished state in admin, editor, and ultimate-studio modules. There are no lint errors.
-- The publishing integration uses dynamic filesystem access, which causes a Next.js output-tracing warning and may increase deployment size. It should be refactored as a focused backend task before production deployment.
-- No automated test suite is configured. Add route, upload, processing, editor, and publishing tests before a public launch.
-- The repository still contains the default create-next-app README; replace it with setup, environment, worker, and deployment documentation.
-- GitHub publishing requires GitHub authentication and a repository destination from the owner.
+Removed tracked source/assets/configuration can be recovered from Git history.
+No owner video, original, editable master, credential, database, saved job,
+timeline, review or unrelated PC file is part of this cleanup.
 
-## Validation
+## Retained deliberately
 
-- `next build`: passed
-- TypeScript: passed
-- Static generation: 27/27 routes passed
-- ESLint: 0 errors, 45 warnings
+- Source/stock/creation queues; automatic planning; retry and duplicate guards.
+- Native source rendering and editing; subtitle timing and visual/source checks.
+- Public stock rights/provenance and required posting credits.
+- Free writer rotation, explicit local-model choice and sampled-frame consents.
+- Quality/performance feedback, library previews/Trash, reviewed publishing.
+- Native startup/shutdown, low-RAM admission, release validation and rollback.
+- Legacy database schema/migrations and read-only archive access for saved data;
+  no destructive migration or automatic database cleanup is performed.
+
+## Verification
+
+Cleanup regression checks cover retired modules/packages, retained local imports,
+bookmark behavior, mutation trust boundaries and the existing library GET. The
+Windows release workflow also runs the retained editor, queue/file, resource,
+preview, posting, provider, animation and deployment checks serially, with real
+isolated render proofs and TypeScript/build validation. Exact run results and
+the installed source/build belong in IMPLEMENTATION_PROGRESS after verification.
+
+## Remaining limits / not checked
+
+- No real social video is posted as a test. Instagram eligibility/music/location
+  results vary; YouTube requires its own OAuth grant. Rumble is assisted export,
+  not automatic publishing; Bilibili.tv publishing access remains unverified.
+- Whole-film editorial quality, genuine automatic singing and growth/revenue
+  are not established by tests. A 49-minute owner episode is not rendered here.
+- Legacy PostgreSQL archives are preserved, not certified as a multi-user app or
+  migrated into the native editor. Filled credentials and personal media are
+  excluded from the remote build and are not inspected for content.
+- Removing dead code reduces maintenance/install/browser baggage, not the RAM
+  demanded by all other apps or the minimum needed to encode a real video.
+- This is a risk-led audit of entrypoints and connected workflows, not a claim
+  that every line or possible provider response has been exhaustively tested.

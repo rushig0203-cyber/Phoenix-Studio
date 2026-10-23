@@ -40,6 +40,14 @@ test('missing parent records remain Generated without creating a publication fol
   assert.deepEqual(await summaries.reviewPublicationSummary(file.id), { status: 'GENERATED', postedTo: [] });
   assert.deepEqual(fs.readdirSync(publicationRoot), before);
 });
+test('the library endpoint is read-only instead of buffering legacy multi-gigabyte uploads', async () => {
+  assert.deepEqual(Object.keys(route), ['GET']);
+  const request = new Request('http://localhost:3000/api/review-files');
+  request.formData = request.arrayBuffer = () => { throw new Error('Library listing must not consume media'); };
+  const response = await route.GET(request);
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(await response.json()));
+});
 test('only a completed matching parent upload with its exact output fingerprint is Posted', async () => {
   write('instagram', parent('instagram')); write('youtube', parent('youtube'));
   const result = await summaries.reviewPublicationSummary(file.id);

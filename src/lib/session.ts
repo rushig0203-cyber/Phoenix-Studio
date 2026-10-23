@@ -2,14 +2,14 @@ import { db } from "@/lib/db";
 
 const OWNER_ID = process.env.AURACLIP_OWNER_ID || "auraclip-owner";
 
-/** AuraClip is a single-owner studio: it does not require a sign-in screen. */
+/** Legacy archive reads never create or modify an owner account. */
 export async function requireUserId(): Promise<string> {
-  await db.user.upsert({
+  const owner = await db.user.findUnique({
     where: { id: OWNER_ID },
-    update: {},
-    create: { id: OWNER_ID, name: "Studio owner", role: "ADMIN" },
+    select: { id: true },
   });
-  return OWNER_ID;
+  if (!owner) throw new Error("Legacy archive unavailable: configure AURACLIP_OWNER_ID for an existing saved owner. Current local videos and jobs are unaffected.");
+  return owner.id;
 }
 
 export function isUnauthorized(_error: unknown) {

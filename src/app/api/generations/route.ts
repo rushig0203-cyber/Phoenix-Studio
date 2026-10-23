@@ -64,8 +64,9 @@ function selectedFormat(data: z.infer<typeof schema>): PublishingFormat {
 }
 
 export async function POST(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   try {
-    assertLocalRequest(request, true);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid creation request." }, { status: 400 });
@@ -198,6 +199,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   const parsed = z.string().uuid().safeParse(new URL(request.url).searchParams.get("id"));
   if (!parsed.success) return NextResponse.json({ error: "A valid job id is required." }, { status: 400 });
   try {
@@ -213,6 +216,8 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   try {
     const body = z.object({ id: z.string().uuid(), regenerate: z.boolean().optional() }).parse(await request.json());
     const job = body.regenerate

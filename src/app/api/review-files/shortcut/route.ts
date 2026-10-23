@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ensureReviewFolders, reviewRoot } from "@/lib/reviewFiles";
+import { assertLocalRequest } from "@/lib/localRequest";
 
 const execFileAsync = promisify(execFile);
-export async function POST() {
+export async function POST(request: Request) {
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   try {
     await ensureReviewFolders();
     if (process.platform !== "win32") return NextResponse.json({ error: "Desktop shortcuts are available on Windows only." }, { status: 409 });

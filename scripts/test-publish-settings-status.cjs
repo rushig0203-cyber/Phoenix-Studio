@@ -4,7 +4,6 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const ts = require('typescript');
-const { z } = require('zod');
 
 function route(channels, saved = {}, unauthorized = false) {
   const calls = [];
@@ -14,7 +13,6 @@ function route(channels, saved = {}, unauthorized = false) {
   vm.runInNewContext(code, {
     exports, URL, require(name) {
       if (name === 'next/server') return { NextResponse: { json: Response.json } };
-      if (name === 'zod') return { z };
       if (name === '@/lib/session') return {
         requireUserId: async () => { if (unauthorized) throw new Error('unauthorized'); return 'owner'; },
         isUnauthorized: error => error.message === 'unauthorized',
@@ -22,7 +20,7 @@ function route(channels, saved = {}, unauthorized = false) {
       if (name === '@/lib/channelConnections') return { listChannels: async origin => { calls.push({ origin }); return channels; } };
       if (name === '@/lib/db') return { db: { publishSettings: {
         findUnique: async () => saved,
-        upsert: async input => { calls.push(input); return { ...saved, ...input.update }; },
+        upsert: async () => assert.fail('The legacy settings archive must not save preferences'),
       } } };
       throw new Error('Forbidden dependency: ' + name);
     },
@@ -42,15 +40,10 @@ test('legacy preferences reports encrypted-channel identity and uploading permis
   assert.deepEqual(app.calls, [{ origin: 'http://localhost:3000' }]);
 });
 
-test('preferences cannot set channel connection status or save pasted tokens through their generic form', async () => {
+test('the retired preference form cannot save ignored settings or pasted tokens', () => {
   const app = route([{ platform: 'youtube', connected: false, publishReady: false }]);
-  const response = await app.exports.POST(new Request('http://localhost:3000/api/settings/publish', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aiTone: 'professional', youtubeConnected: true, youtubeAccessToken: 'PRIVATE_TOKEN' }),
-  }));
-  const data = await response.json();
-  assert.equal(data.youtubeConnected, false); assert.equal(data.aiTone, 'professional');
-  assert.doesNotMatch(JSON.stringify(app.calls), /PRIVATE_TOKEN|youtubeConnected|youtubeAccessToken/);
+  assert.equal(app.exports.POST, undefined);
+  assert.deepEqual(app.calls, []);
 });
 
 test('unauthenticated preferences cannot inspect channel settings', async () => {

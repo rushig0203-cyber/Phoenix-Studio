@@ -1,4 +1,4 @@
-// Opt-in three-second FFmpeg compatibility proof. Holds the canonical heavy-work
+// Explicit three-second FFmpeg compatibility proof, not an ordinary unit suite. Holds the canonical heavy-work
 // lease; all queue/media fixtures live in one ignored, isolated work directory.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

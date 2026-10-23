@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { stageSongAudio } from "@/lib/songAudio";
+import { assertLocalRequest } from "@/lib/localRequest";
 export const runtime="nodejs";
 export async function GET(){return NextResponse.json({ singingAvailable:false,mode:"recording",message:"Add a real sung recording and its lyrics. Local Windows narration is for stories and does not sing." });}
 export async function POST(request:Request){
+  try { assertLocalRequest(request, true); }
+  catch { return NextResponse.json({ error: "Open this action directly in Phoenix Studio on this PC." }, { status: 403 }); }
   try{
     if(Number(request.headers.get("content-length"))>100*1024*1024)return NextResponse.json({error:"Maximum song size is 100 MB."},{status:413});
     const filename=decodeURIComponent(request.headers.get("x-phoenix-filename")||"");
