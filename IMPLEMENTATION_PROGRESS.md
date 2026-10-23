@@ -35,6 +35,31 @@
   saved-retry assertions remain. No production validation was relaxed and the
   failed candidate was not installed. Both Vercel deployments and the Linux
   output-verification workflow passed for the first cleanup source.
+- A final registry audit found six production advisory groups in retained
+  dependencies. The targeted lock now selects Next/eslint-config-next 16.4.2,
+  concurrently 9.2.5, sharp 0.35.5, shell-quote 1.12.0,
+  baseline-browser-mapping 2.11.31 and source-map-js 1.2.2 with matching native
+  framework packages. No new package entries are added; production audit is
+  zero-known-vulnerabilities. Primary Next/sharp/shell-quote advisories were
+  checked and linked in AUDIT. These safety patches intentionally change some
+  retained versions after the initial version-preserving dead-code cleanup.
+  Full verification and the matching installed dependencies are still required.
+- Corrected cleanup source `b3675c2` passed Windows run `39925984791`:
+  1,381/1,381 Node tests, 43/43 Python checks, scoped lint, real synthetic/public
+  footage exports, TypeScript and build. It is not installed because the later
+  security/dependency cleanup must be verified together first.
+- The now-unused shadcn generator and its configuration/CSS import were removed
+  after checking its complete exported stylesheet and all class consumers. It
+  removes another 195 lock entries and the critical development-only proxy chain;
+  native Button/Tailwind styling remains. This is seven direct removals overall,
+  with no new direct packages. Remaining developer-tool findings are tracked separately
+  from the zero-known-vulnerability production dependency audit.
+- A bounded compatible patch pass also updates Prisma/client/adapter to 7.10.1,
+  ESLint to 9.39.5 and their supported security transitives. The final lock has
+  634 entries (216 fewer than the initial 850). One vendor-required SQL escaping
+  replacement is transitive, not a new selected feature. Production audit remains
+  zero; full audit has five high developer-only Next lint-chain groups with no
+  compatible offered fix. No downgrade, forced override or paid service is used.
 
 ## October 23 Rumble handoff, captions and music — installed and verified live
 

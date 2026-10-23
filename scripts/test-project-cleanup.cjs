@@ -7,7 +7,7 @@ const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
-const retired = ['@base-ui/react', '@ffmpeg/ffmpeg', '@ffmpeg/util', 'date-fns', 'framer-motion', 'zustand'];
+const retired = ['@base-ui/react', '@ffmpeg/ffmpeg', '@ffmpeg/util', 'date-fns', 'framer-motion', 'zustand', 'shadcn'];
 
 test('unused packages are absent from both direct dependencies and locked installation', () => {
   const pkg = JSON.parse(read('package.json')), lock = JSON.parse(read('package-lock.json'));
@@ -15,10 +15,24 @@ test('unused packages are absent from both direct dependencies and locked instal
   assert.deepEqual(lock.packages[''].devDependencies, pkg.devDependencies);
   for (const name of retired) {
     assert.equal(pkg.dependencies[name], undefined, name);
+    assert.equal(pkg.devDependencies[name], undefined, name);
     assert.equal(lock.packages[`node_modules/${name}`], undefined, name);
   }
   for (const name of ['@ffmpeg-installer/ffmpeg', '@ffprobe-installer/ffprobe', 'ts-node', 'tsconfig-paths']) {
     assert.ok(pkg.dependencies[name], `${name} is still needed by native rendering/worker startup`);
+  }
+});
+
+test('retained framework, image and command tooling meet the reviewed security patch baselines', () => {
+  const pkg = JSON.parse(read('package.json')), lock = JSON.parse(read('package-lock.json'));
+  assert.equal(pkg.dependencies.next, pkg.devDependencies['eslint-config-next']);
+  for (const [name, minimum] of Object.entries({ next: [16, 4, 2], sharp: [0, 35, 5],
+    concurrently: [9, 2, 5], 'shell-quote': [1, 11, 0], 'baseline-browser-mapping': [2, 11, 0], 'source-map-js': [1, 2, 2] })) {
+    const version = lock.packages[`node_modules/${name}`]?.version;
+    assert.match(version || '', /^\d+\.\d+\.\d+$/, `${name} must use a stable locked release`);
+    const actual = version.split('.').map(Number);
+    const firstDifference = actual.findIndex((part, index) => part !== minimum[index]);
+    assert.ok(firstDifference === -1 || actual[firstDifference] > minimum[firstDifference], `${name}@${version} is below the reviewed patch baseline`);
   }
 });
 
@@ -31,9 +45,10 @@ test('retired buffering, mock UI, WASM assets and unsupported deployment paths s
     'src/app/api/analyze/route.ts', 'src/app/api/clips/analyze/route.ts',
     'src/app/api/stock/pexels/route.ts', 'src/app/api/stock/pixabay/route.ts',
     'src/app/api/content-ideas/route.ts', 'src/app/api/review-files/ideas/route.ts', 'src/app/api/creation-drafts/footage/route.ts',
-    'public/ffmpeg.js', 'public/814.ffmpeg.js', 'GENERATION_AUTOPILOT.md', 'LUMINA_MANAGER.md']) {
+    'public/ffmpeg.js', 'public/814.ffmpeg.js', 'GENERATION_AUTOPILOT.md', 'LUMINA_MANAGER.md', 'components.json']) {
     assert.equal(fs.existsSync(path.join(root, file)), false, file);
   }
+  assert.doesNotMatch(read('src/app/globals.css'), /shadcn/);
 });
 
 function sourceFiles(directory) {
