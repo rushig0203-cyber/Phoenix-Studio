@@ -1,6 +1,17 @@
 # Quality-first implementation — September 16, 2026
 
-## October 31 one automatic footage workflow — prepared for verification
+## October 31 one automatic footage workflow — installed and verified live
+
+- Source `a1d94108f99bc07a40092d4cbf7d2854b8cb0619` passed Windows run
+  `41108714122`: 1,375 Node tests, 43 Python checks, lint, synthetic/public-footage
+  renders, TypeScript and production build. Both Vercel project checks passed.
+  The verified bundle `.next-build-gh-41108714122-1` is selected and serving,
+  with healthy manager/worker and ready renderer. No local Next build was needed.
+- The live browser confirmed one Make a Reel form and zero Import Mixkit / Dareful
+  controls; the retired endpoint returns HTTP 404. The five saved media/job stores
+  and the pre-existing tsconfig change have identical before/after hashes. No
+  owner job was retried, video deleted or social post made. The temporary test
+  tab was closed after saving proof.
 
 - Removed the separate Import Mixkit / Dareful panel, its manual upload endpoint,
   import-only component/state and retired route/UI fixtures at the owner's
@@ -12,7 +23,7 @@
 - Existing imported videos, source records, queue history, creator/licence credits
   and provider identities remain supported. No runtime file or credential was
   removed. Retained metadata/credit, automatic search/queue and single-form checks
-  passed 63 local tests. Exact-source remote build and installation are pending.
+  passed 63 local tests before the full remote verification above.
 
 ## October 30 Create, news, mixed suggestions and concurrent posting panels
 
