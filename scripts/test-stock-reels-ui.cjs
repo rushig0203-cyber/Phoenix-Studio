@@ -74,8 +74,7 @@ function harness(options = {}) {
   };
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('FixtureFragment') },
-    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' },
-    './StockFootageImport': { default: 'fixture-stock-footage-import' } };
+    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' } };
   const clock = {
     setTimeout(callback, milliseconds = 0) { const id = ++timerId; timers.set(id, { at: time + milliseconds, callback }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -162,6 +161,9 @@ async function results(h, topic = 'forest stream') { h.changeTopic(topic); await
 
 test('opening is idle; typing waits 600ms and only a meaningful topic starts one free-library search', async () => {
   const h = harness(); await h.advance(1000); assert.equal(h.requests.length, 0);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'form').length, 1);
+  assert.ok(!nodes(h.tree).some(node => node.type === 'input' && node.props.type === 'file'));
+  assert.doesNotMatch(text(h.tree), /Import Mixkit|Dareful|Import and make reel/);
   h.changeTopic('a'); await h.advance(1000); assert.equal(h.requests.length, 0);
   h.changeTopic('forest'); await h.advance(599); assert.equal(h.requests.length, 0);
   h.changeTopic('forest stream & moss'); await h.advance(599); assert.equal(h.requests.length, 0);
@@ -340,7 +342,7 @@ test('network failure has an explicit retry that retrieves suggestions but never
 
 test('no available free libraries is actionable and never produces fabricated choices', async () => {
   const h = harness({ search: () => successfulSearch([], { configured: { pexels: false, pixabay: false, commons: false, nasa: false } }) });
-  await results(h); assert.match(text(h.tree), /No free footage library is available.*Check Settings or import a downloaded clip/);
+  await results(h); assert.match(text(h.tree), /No free footage library is available.*Check the footage connections in Settings/);
   assert.equal(h.candidates().length, 0); assert.equal(h.posts.length, 0);
 });
 

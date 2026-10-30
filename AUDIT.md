@@ -67,6 +67,10 @@ timeline, review or unrelated PC file is part of this cleanup.
 
 ## Retained deliberately
 
+The October 31 UI cleanup also retires the separate Mixkit/Dareful import form
+and its upload endpoint. Existing imported media identities and required credits
+remain supported; new footage selection uses the single automatic reel flow.
+
 - Source/stock/creation queues; automatic planning; retry and duplicate guards.
 - Native source rendering and editing; subtitle timing and visual/source checks.
 - Public stock rights/provenance and required posting credits.

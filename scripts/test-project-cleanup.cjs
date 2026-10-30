@@ -44,6 +44,7 @@ test('retired buffering, mock UI, WASM assets and unsupported deployment paths s
     'src/lib/ffmpeg.ts', 'src/lib/clipExporter.ts', 'src/lib/transcriber.ts', 'src/lib/clipAnalyzer.ts',
     'src/app/api/analyze/route.ts', 'src/app/api/clips/analyze/route.ts',
     'src/app/api/stock/pexels/route.ts', 'src/app/api/stock/pixabay/route.ts',
+    'src/components/StockFootageImport.tsx', 'src/app/api/stock/manual-import/route.ts',
     'src/app/api/content-ideas/route.ts', 'src/app/api/review-files/ideas/route.ts', 'src/app/api/creation-drafts/footage/route.ts',
     'public/ffmpeg.js', 'public/814.ffmpeg.js', 'GENERATION_AUTOPILOT.md', 'LUMINA_MANAGER.md', 'components.json']) {
     assert.equal(fs.existsSync(path.join(root, file)), false, file);

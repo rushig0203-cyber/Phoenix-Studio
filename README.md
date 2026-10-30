@@ -26,8 +26,8 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
 
 Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Commons
 and NASA footage. Commons/NASA results require supported rights and source
-evidence. Mixkit Free and Dareful clips can be imported after downloading and
-confirming their licence. Required credits are retained; Coverr is not included.
+evidence. These sources share the same Make a Reel flow. Required credits for
+existing and new videos are retained; Coverr is not included.
 No arbitrary internet video scraping is enabled.
 
 ## Writers, captions and quality

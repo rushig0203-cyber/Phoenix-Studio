@@ -1,5 +1,19 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 one automatic footage workflow — prepared for verification
+
+- Removed the separate Import Mixkit / Dareful panel, its manual upload endpoint,
+  import-only component/state and retired route/UI fixtures at the owner's
+  request. Make a Reel remains the single automatic stock workflow, with the
+  same topic suggestions, starting-shot selection and related-footage queue.
+- The unavailable-library message now points to Settings instead of a removed
+  import form. README and the release workflow no longer advertise or compile
+  that manual path. Existing local-upload processing remains available separately.
+- Existing imported videos, source records, queue history, creator/licence credits
+  and provider identities remain supported. No runtime file or credential was
+  removed. Retained metadata/credit, automatic search/queue and single-form checks
+  passed 63 local tests. Exact-source remote build and installation are pending.
+
 ## October 30 Create, news, mixed suggestions and concurrent posting panels
 
 - Installed and verified live: source `3b098bf8296824ef87d56e577b5abdf4c6ac656a`,

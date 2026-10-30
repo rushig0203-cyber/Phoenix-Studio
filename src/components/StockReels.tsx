@@ -7,7 +7,6 @@ import { nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/sto
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
 import InstagramTopicSuggestions from "./InstagramTopicSuggestions";
-import StockFootageImport from "./StockFootageImport";
 
 type Results = { query: string; version: number; videos: NaturalStock[]; cursor: string | null; limited: boolean };
 type Selection = { video: NaturalStock; results: Results };
@@ -21,7 +20,6 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   const [visibleOffset, setVisibleOffset] = useState(0);
   const previousOffsets = useRef<number[]>([]);
   const [searching, setSearching] = useState(false), [creating, setCreating] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
   const [queued, setQueued] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [libraryWarning, setLibraryWarning] = useState(""), [searchFailed, setSearchFailed] = useState(false);
   const [failedSelection, setFailedSelection] = useState<Selection | null>(null);
@@ -73,7 +71,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       const data = await response.json();
       if (!current()) return;
       if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Could not find footage. Try again.");
-      if (data?.configured && !Object.values(data.configured).some(value => value === true)) throw new Error("No free footage library is available. Check Settings or import a downloaded clip below.");
+      if (data?.configured && !Object.values(data.configured).some(value => value === true)) throw new Error("No free footage library is available. Check the footage connections in Settings, then retry.");
       const videos = previous ? mergeStockFootageCandidates(previous.videos, data?.videos) : stockFootageCandidates(data?.videos);
       const cursor = typeof data?.pagination?.cursor === "string" && data.pagination.cursor.length <= 160 ? data.pagination.cursor : null;
       const next = { query: wanted, version, videos, cursor: videos.length >= MAX_FOOTAGE_CANDIDATES ? null : cursor, limited: data?.pagination?.limited === true || videos.length >= MAX_FOOTAGE_CANDIDATES };
@@ -133,17 +131,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   }
   function chooseIdea(idea: ContentIdea) { changeTopic(idea.query); }
   function close() { if (creationBusy.current) return; cancelSearch(); currentResults.current = null; onClose(); }
-  function acquireImport() {
-    if (!mounted.current || creationBusy.current || submitted.current) return false;
-    creationBusy.current = true; cancelSearch(); setSearching(false); setImporting(true); setError(""); setNotice("");
-    return true;
-  }
-  function releaseImport() { creationBusy.current = false; if (mounted.current) setImporting(false); }
-  function imported(message: string) {
-    submitted.current = true;
-    if (mounted.current) { setQueued(true); setNotice(message); onStarted(message); }
-  }
-  const busy = !!creating || importing;
+  const busy = !!creating;
   const visibleVideos = results.videos.slice(visibleOffset, visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE);
   const moreAvailable = visibleOffset + FOOTAGE_CANDIDATE_PAGE_SIZE < results.videos.length || !!results.cursor;
 
@@ -176,7 +164,6 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       {visibleOffset > 0 ? <Button type="button" variant="outline" disabled={busy || queued || searching} onClick={() => setVisibleOffset(previousOffsets.current.pop() ?? 0)}>Previous videos</Button> : null}
       {moreAvailable ? <Button type="button" variant="outline" disabled={busy || queued || searching} onClick={moreVideos}>{searching ? "Finding more videos…" : "More videos"}</Button> : !searching ? <p className="text-xs text-[#657153]">{results.limited ? "This topic reached the laptop-safe browsing limit. Refine your topic for different shots." : "All matching pages are checked. Try a different place, subject or action for more choices."}</p> : null}
     </div> : null}
-    <StockFootageImport disabled={busy || queued} acquire={acquireImport} release={releaseImport} onStarted={imported} />
     <details className="mt-4 text-xs text-[#657153]"><summary className="cursor-pointer">Reel details</summary><p className="mt-2">Length follows the usable footage, not a fixed timer. Movement is sampled locally; unknown movement stays at native speed. No slow motion, repeated filler or guessed subtitles. Posting captions and hashtags remain separate. Thumbnails only—no preview videos load here. One vertical reel works for Instagram and YouTube.</p>
       <p className="mt-2">Footage libraries: <a className="underline" href="https://www.pexels.com/" target="_blank" rel="noreferrer">Pexels</a>, <a className="underline" href="https://pixabay.com/" target="_blank" rel="noreferrer">Pixabay</a>, <a className="underline" href="https://commons.wikimedia.org/" target="_blank" rel="noreferrer">Wikimedia Commons</a> and <a className="underline" href="https://images.nasa.gov/" target="_blank" rel="noreferrer">NASA</a>. Commons and NASA use eligible public-domain footage; third-party rights still need care. Suggestions are keywords, not a claim that matching footage is available or was filmed there.</p></details>
   </section>;
