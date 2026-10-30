@@ -95,6 +95,11 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   async function create(event: React.FormEvent) {
     event.preventDefault();
     if (submitInFlight.current) return;
+    if (!(children && autoIdea) && topic.trim().length < 3) {
+      setError("Describe your video or choose an idea/report first (at least 3 characters).");
+      setIdeaOpen(true);
+      return;
+    }
     submitInFlight.current = true;
     setBusy(true);
     setError("");
@@ -109,6 +114,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
       const response = await fetch("/api/generations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(60000),
         body: JSON.stringify({
           newsId: selectedNews?.id,
           planOnly: false,
@@ -137,13 +143,19 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         setError(data?.error || "Creation could not be queued.");
         return;
       }
+      if (!Array.isArray(data?.draftIds) || !data.draftIds.length || !data.draftIds.every((id: unknown) => typeof id === "string" && /^[a-f0-9-]{36}$/i.test(id))) {
+        setError("The creation confirmation was unreadable. Check Jobs before retrying; the same request ID is kept.");
+        return;
+      }
       requestId.current = crypto.randomUUID();
       onStarted(data?.count === 10
         ? "Ten videos queued. Phoenix will plan and render them one at a time. Review only the finished videos in Review Files."
         : "Video queued. Follow its progress below; review the finished video in Library.");
       onClose();
-    } catch {
-      setError("Phoenix could not reach a required service. Check Studio health for the selected writer and local renderer; your saved jobs are retained.");
+    } catch (cause) {
+      setError(cause instanceof Error && cause.name === "TimeoutError"
+        ? "Creation took too long to confirm. Check Jobs before trying again; Phoenix keeps the same request ID to avoid duplicate submissions."
+        : "Phoenix could not reach a required service. Check Studio health for the selected writer and local renderer; your saved jobs are retained.");
     } finally {
       submitInFlight.current = false;
       setBusy(false);
@@ -166,7 +178,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         <Button type="button" variant="outline" onClick={onClose}>Close</Button>
       </div>
 
-      <form onSubmit={(event) => void create(event)} className="mt-5 space-y-4">
+      <form noValidate onSubmit={(event) => void create(event)} className="mt-5 space-y-4">
         <details className="rounded-xl border border-[#cad7a4] bg-[#f4f8e8] p-3">
           <summary className="cursor-pointer text-sm font-semibold">How Phoenix will make this</summary>
           <p className="flex items-center gap-2 text-sm font-bold text-[#3d5428]">
@@ -278,7 +290,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !lyrics.trim() : !singing?.available))} className="bg-[#26331f] px-5 text-white">
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {busy
-            ? "Queuing your video…"
+            ? selectedNews ? "Reading the report and checking creation…" : "Queuing your video…"
             : batchCount === 10
               ? "Create 10 story videos"
               : "Create video"}

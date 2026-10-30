@@ -55,12 +55,28 @@ const ideas: ContentIdea[] = [...CONTENT_IDEAS.filter(idea => idea.workflow === 
   const title = `${country} ${subject}`;
   return { id: `footage-${country.toLowerCase()}-${subject}`, category: "Places & travel", title, query: title, workflow: "stock-reel" as const };
 }))];
+// Balance each visible batch; a long country list must not crowd out wildlife.
+const animals = new Set(["Birds", "Butterflies", "Cats", "Dogs", "Horses", "Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish"]);
+const places = new Set(extraTopics[0].titles);
+const nature = new Set(["Nature", "Ocean", "Forest", "Mountains", "Rain", "Gardens", "Parks"]);
+const pools: ContentIdea[][] = Array.from({ length: FOOTAGE_SUGGESTION_COUNT }, () => []);
+for (const idea of ideas) {
+  const group = animals.has(idea.title) ? 0
+    : idea.category === "Nature & wildlife" || nature.has(idea.title) ? 1
+    : places.has(idea.title) ? 2
+    : idea.category === "Movement & outdoors" || idea.title === "Train" ? 3
+    : countryTopics.some(([country]) => idea.title.startsWith(country + " ")) ? 5 : 4;
+  pools[group].push(idea);
+}
+const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
+const cursorLimit = pools.reduce((period, pool) => period / gcd(period, pool.length) * pool.length, 1) * FOOTAGE_SUGGESTION_COUNT;
 function validCursor(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < ideas.length;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < cursorLimit;
 }
 export function stockFootageSuggestions(cursor = 0): ContentIdea[] {
   const start = validCursor(cursor) ? cursor : 0;
-  return Array.from({ length: Math.min(FOOTAGE_SUGGESTION_COUNT, ideas.length) }, (_, index) => ideas[(start + index) % ideas.length]);
+  const batch = Math.floor(start / FOOTAGE_SUGGESTION_COUNT);
+  return pools.map(pool => pool[batch % pool.length]);
 }
 export function stockTopicPool(): ContentIdea[] { return [...ideas]; }
 export function nextStoredFootageSuggestions(storage: Pick<Storage, "getItem" | "setItem">, fallbackCursor = 0) {
@@ -73,7 +89,7 @@ export function nextStoredFootageSuggestions(storage: Pick<Storage, "getItem" | 
       if (saved?.version === 1 && validCursor(saved.cursor)) cursor = saved.cursor;
     }
   } catch { remembered = false; /* Continue in memory if browser storage is unavailable/corrupt. */ }
-  const nextCursor = (cursor + FOOTAGE_SUGGESTION_COUNT) % ideas.length;
+  const nextCursor = (cursor + FOOTAGE_SUGGESTION_COUNT) % cursorLimit;
   try { storage.setItem(FOOTAGE_SUGGESTION_STORAGE_KEY, JSON.stringify({ version: 1, cursor: nextCursor })); }
   catch { remembered = false; }
   return { ideas: stockFootageSuggestions(cursor), nextCursor, remembered };

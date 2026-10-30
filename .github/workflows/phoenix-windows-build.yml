@@ -64,6 +64,8 @@ jobs:
           scripts/test-package-phoenix-build.cjs
           scripts/test-install-phoenix-build.cjs
           scripts/test-project-cleanup.cjs
+          scripts/test-rumble-window.cjs
+          scripts/test-create-news-controls.cjs
           scripts/test-buyer-regressions.cjs
           scripts/test-local-mutation-boundaries.cjs
           scripts/test-file-lock.cjs
@@ -213,6 +215,7 @@ jobs:
           src/app/api/stock/used/route.ts src/app/api/settings/publish/route.ts src/app/api/admin/users/route.ts
           src/app/admin/users/page.tsx src/app/dashboard/project/[id]/editor/page.tsx src/app/dashboard/review/[id]/page.tsx
           src/lib/session.ts
+          src/components/NewsIdeas.tsx src/lib/rumbleWindow.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys

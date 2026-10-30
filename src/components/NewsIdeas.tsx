@@ -1,19 +1,28 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NewsIdea } from "@/lib/newsResearch";
 export default function NewsIdeas({ onChoose }: { onChoose: (idea: NewsIdea) => void }) {
   const [items, setItems] = useState<NewsIdea[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), []);
   async function load() {
     if (lock.current) return; lock.current = true; setBusy(true); setError("");
+    const controller = new AbortController(); pending.current = controller;
     try {
-      const response = await fetch("/api/news-ideas", { signal: AbortSignal.timeout(15000) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "News unavailable.");
+      const response = await fetch("/api/news-ideas", { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "News unavailable. Check that Phoenix is running, then try again.");
+      if (!Array.isArray(data?.items) || !data.items.length) throw new Error("No recent usable reports were returned. Try again later; no headlines were invented.");
+      if (controller.signal.aborted) return;
       setItems(data.items);
-    } catch (e) { setError(e instanceof Error ? e.message : "News unavailable."); }
-    finally { lock.current = false; setBusy(false); }
+    } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error && e.name !== "TimeoutError" ? e.message : "News lookup timed out. Try again; your selected idea is kept."); }
+    finally {
+      if (pending.current === controller) { pending.current = null; lock.current = false; }
+      if (!controller.signal.aborted) setBusy(false);
+    }
   }
   return <section aria-label="World news suggestions" className="mt-3 rounded-xl border p-4">
     <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold">World news & international affairs</h4><button type="button" disabled={busy} onClick={() => void load()} className="rounded-lg border px-3 py-2 text-xs">{busy ? "Checking reports…" : items.length ? "Refresh reports" : "Find recent reports"}</button></div>

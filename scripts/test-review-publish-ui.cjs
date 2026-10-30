@@ -106,6 +106,7 @@ function uiHarness(options = {}) {
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = {
     react: hooks,
+    '@/lib/rumbleWindow': { openRumbleUpload: () => !options.popupBlocked },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
   };
   const shared = {
@@ -269,8 +270,8 @@ test('Rumble is an inert assisted handoff beside Instagram with one-action downl
   assert.match(h.text, /Instagram catalogue music is not included/);
   assert.equal(h.control('Rumble title', 'input').props.value, file.title);
   assert.equal(h.control('Rumble description and hashtags', 'textarea').props.value, 'Light through the trees.\nCredit: source creator.\n\n#Forest #Nature');
-  const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
-  assert.equal(action.props.href, 'https://rumble.com/upload'); assert.equal(action.props.target, '_blank'); assert.equal(action.props.rel, 'noopener noreferrer');
+  const action = h.button('Download & open Rumble ↗');
+  assert.equal(action.props.type, 'button');
   let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
   assert.equal(prevented, false); assert.deepEqual(h.downloads, [{ href: '/api/review-files/review%20video%2Fone/media?target=instagram', download: 'Saved review video-instagram.mp4' }]);
   assert.deepEqual(h.copied, [h.control('Rumble description and hashtags', 'textarea').props.value]);
@@ -282,30 +283,43 @@ test('Rumble is an inert assisted handoff beside Instagram with one-action downl
 test('Rumble clipboard or download failure remains recoverable without claiming success', async t => {
   for (const options of [{ clipboardUnavailable: true }, { downloadUnavailable: true }]) {
     const h = uiHarness(options); t.after(() => h.unmount()); h.choose('Rumble upload'); await h.flush();
-    const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
+    const action = h.button('Download & open Rumble ↗');
     let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
-    assert.equal(prevented, Boolean(options.downloadUnavailable));
+    assert.equal(prevented, false);
     assert.equal(h.downloads.length, options.downloadUnavailable ? 0 : 1); assert.equal(h.copied.length, 0);
     assert.match(h.text, options.clipboardUnavailable ? /Clipboard unavailable/ : /download could not start/);
     assert.ok(nodes(h.tree).some(node => node.type === 'a' && text(node) === 'Download MP4'));
-    assert.ok(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://rumble.com/upload'));
+    assert.ok(h.button('Open Rumble ↗'));
     assert.equal(h.requests.length, 0);
   }
 });
 
-test('Rumble uses current saved output and copy, handles missing media and does not keep Instagram polling', async t => {
+test('Rumble preserves Instagram polling and both panels while using current saved output and copy', async t => {
   const h = uiHarness({ jobs: [job({ platform: 'instagram', status: 'PROCESSING' })] }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); assert.equal(h.intervals.size, 1);
-  h.choose('Rumble upload'); await h.flush(); assert.equal(h.intervals.size, 0);
+  h.choose('Rumble upload'); await h.flush(); assert.equal(h.intervals.size, 1);
+  assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Instagram upload confirmation'));
+  assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Rumble assisted upload'));
+  h.tick(); await h.flush();
   const reads = h.requests.length;
   h.updateFile(sampleFile({ title: 'New saved title', updatedAt: '2026-10-23T01:00:00Z', outputs: { youtube: { width: 1080, height: 1920, duration: 24 } }, quality: { postCopy: 'New caption.', hashtags: ['#Mountains'], captions: [] } }));
-  const action = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗');
+  const action = h.button('Download & open Rumble ↗');
   action.props.onClick({ preventDefault() { assert.fail('A ready saved output is allowed'); } }); await h.flush();
   assert.equal(h.downloads.at(-1).href, '/api/review-files/review%20video%2Fone/media?target=youtube');
   assert.equal(h.copied.at(-1), 'New caption.\n\n#Mountains'); assert.equal(h.control('Rumble title', 'input').props.value, 'New saved title');
   h.updateFile({ ...h.file, status: 'FAILED' }); await h.flush();
-  assert.equal(nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Download & open Rumble ↗'), undefined);
+  assert.equal(h.button('Download & open Rumble ↗'), undefined);
   assert.match(h.text, /No finished video is available/); assert.equal(h.requests.length, reads); assert.equal(h.posts.length, 0);
+});
+
+test('Rumble stays visible when opening Instagram and blocked popups cannot claim a completed handoff', async t => {
+  const h = uiHarness({ popupBlocked: true }); t.after(() => h.unmount());
+  h.choose('Rumble upload'); await h.flush();
+  h.choose('Post to Instagram'); await h.flush();
+  assert.ok(h.button('Download & open Rumble ↗'));
+  h.click('Download & open Rumble ↗'); await h.flush();
+  assert.match(h.text, /browser blocked the Rumble window/);
+  assert.equal(h.downloads.length, 0); assert.equal(h.copied.length, 0); assert.equal(h.posts.length, 0);
 });
 
 test('location ideas are optional, honest and inert until explicit Meta search', async t => {

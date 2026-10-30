@@ -1,5 +1,34 @@
 # Quality-first implementation — September 16, 2026
 
+## October 30 Create, news, mixed suggestions and concurrent posting panels
+
+- Live browser checks confirmed recent BBC reports load and selecting one fills
+  the displayed Create topic correctly. Empty Create submissions now show an
+  inline error rather than relying on hidden native form validation. Submission
+  has a bounded confirmation wait and requires returned durable draft IDs;
+  uncertain confirmations retain the request ID instead of claiming success.
+  News refresh has a timeout, abort cleanup and visible retryable errors while
+  preserving earlier usable reports.
+- The latest saved news failure was a narration/footage-policy mismatch in
+  section 1, not a dead fetch button. That guard remains: unrelated illustrative
+  footage is not silently substituted. No owner failure was retried or deleted.
+- Every six-chip footage batch now mixes wildlife, nature, a place, movement,
+  an everyday/craft subject and a country/subject combination. Rotation still
+  persists without a model; smaller categories repeat while the larger bank
+  cycles. Clicking a chip continues to use its exact displayed text.
+- Rumble and Instagram can remain open as independent bordered panels, with
+  independent notices and uninterrupted Instagram polling. The Rumble helper
+  focuses its remembered upload window without resetting an unfinished upload;
+  popup blocks are explicit. It cannot enumerate unrelated browser tabs.
+- Rumble remains an assisted export. Its current terms still require prior
+  written permission for automated website access; no supported free upload
+  grant was verified, and the upload API documentation was inaccessible. No
+  account session, private endpoint, real post, paid plan or repeated support
+  request was used. The paused follow-up remains paused.
+- Focused local checks passed 102 tests across publish controls, Create/news,
+  window reuse and mixed suggestions. Exact-commit Windows verification and
+  guarded installation are the next release steps; source is not yet live.
+
 ## October 23 whole-project cleanup — source prepared, release verification pending
 
 - Audited the single-owner Windows workflows and their callers/tests before

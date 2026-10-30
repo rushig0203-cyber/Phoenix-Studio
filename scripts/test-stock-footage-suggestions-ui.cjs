@@ -38,19 +38,14 @@ function loadPure(relative, dependencies = {}) {
 const catalog = loadPure('src/lib/contentIdeas.ts');
 const helper = loadPure('src/lib/stockFootageSuggestions.ts', { './contentIdeas': catalog });
 const storageKey = helper.FOOTAGE_SUGGESTION_STORAGE_KEY;
-const allTopics = [];
-for (let cursor = 0; cursor < 512; cursor++) {
-  const idea = helper.stockFootageSuggestions(cursor)[0];
-  if (allTopics.some(previous => previous.id === idea.id)) break;
-  allTopics.push(idea);
-}
+const allTopics = helper.stockTopicPool();
 
 test('catalogue returns six distinct stock-only ideas and rejects malformed saved cursors', () => {
   const expected = allTopics, first = helper.stockFootageSuggestions();
   assert.equal(first.length, 6); assert.equal(new Set(first.map(idea => idea.id)).size, 6);
   assert.ok(first.every(idea => idea.workflow === 'stock-reel' && idea.query.length >= 2 && idea.query.length <= 100));
   const seen = new Set();
-  for (let cursor = 0; cursor < expected.length; cursor += 6) helper.stockFootageSuggestions(cursor).forEach(idea => seen.add(idea.id));
+  for (let cursor = 0; cursor < expected.length * 6; cursor += 6) helper.stockFootageSuggestions(cursor).forEach(idea => seen.add(idea.id));
   assert.deepEqual([...seen].sort(), plain(expected.map(idea => idea.id)).sort());
   for (const cursor of [-1, NaN, 999999, 1.1, '6']) assert.deepEqual(plain(helper.stockFootageSuggestions(cursor)), plain(first));
   for (const raw of ['{broken', JSON.stringify({ version: 1, cursor: -1 }), 'x'.repeat(257)]) {
@@ -75,16 +70,21 @@ test('footage recommendations are short broad topics while the rich creation cat
   assert.ok(catalog.CONTENT_IDEAS.filter(idea => idea.workflow !== 'stock-reel').some(idea => idea.title.split(/\s+/).length > 2));
 });
 
-test('fresh six-topic batches cover the expanded catalogue before repeating and preserve a saved cursor', () => {
+test('each batch mixes wildlife, nature, places, movement and other subjects while rotating saved cursors', () => {
   const storage = memoryStorage(), seen = new Set();
-  for (let batch = 0; batch < allTopics.length / helper.FOOTAGE_SUGGESTION_COUNT; batch++) {
+  let previous;
+  for (let batch = 0; batch < allTopics.length; batch++) {
     const next = helper.nextStoredFootageSuggestions(storage);
-    for (const idea of next.ideas) { assert.equal(seen.has(idea.id), false, 'More topics must not revisit an earlier chip before completing the cycle'); seen.add(idea.id); }
+    assert.ok(next.ideas[0].title.match(/Bird|Butterfl|Cat|Dog|Horse|Dolphin|Turtle|Deer|Fox|Owl|Penguin|Elephant|Jellyfish/));
+    assert.equal(new Set(next.ideas.map(idea => idea.id)).size, 6);
+    if (previous) assert.ok(next.ideas.every(idea => !previous.includes(idea.id)), 'Adjacent mixed batches stay fresh');
+    previous = next.ideas.map(idea => idea.id);
+    for (const idea of next.ideas) seen.add(idea.id);
   }
   assert.equal(seen.size, allTopics.length);
   const legacyCursor = catalog.CONTENT_IDEAS.filter(idea => idea.workflow === 'stock-reel').length - 1;
   const remembered = helper.nextStoredFootageSuggestions(memoryStorage({ [storageKey]: JSON.stringify({ version: 1, cursor: legacyCursor }) }));
-  assert.equal(remembered.ideas[0].id, allTopics[legacyCursor].id);
+  assert.deepEqual(plain(remembered.ideas), plain(helper.stockFootageSuggestions(legacyCursor)));
   assert.equal(remembered.remembered, true);
 });
 
@@ -130,7 +130,7 @@ test('clicking an idea searches its exact topic in both free libraries but never
 
 test('every displayed chip inserts its exact label after repeated More topics rotations', async () => {
   const h = harness(); const seen = new Set();
-  for(let batch = 0; batch < Math.ceil(allTopics.length / helper.FOOTAGE_SUGGESTION_COUNT); batch++) {
+  for(let batch = 0; batch < allTopics.length; batch++) {
     for(const idea of ideas(h)) {
       const title = text(nodes(idea).filter(node => node.type === 'span').at(-1));
       idea.props.onClick(); h.render();

@@ -17,6 +17,8 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
 - **Make a Reel:** enter a short, concrete subject, select a starting video and let
   Phoenix assemble related footage. Length follows usable content, not a padded
   duration. Automatic recipes do not slow, loop or freeze shots to fill time.
+  Each suggestion batch mixes wildlife, nature, places, movement and everyday
+  subjects; it does not scroll through a long country-only block.
 - **Jobs** sits below creation. It retains progress, failures and explicit retry.
   **Library** separates generated and confirmed posted videos, with previews,
   posting copy, native editing and recoverable Trash.
@@ -67,7 +69,10 @@ Use **Post / export** on a finished video:
 - **Rumble upload:** an assisted handoff. **Download & open Rumble** requests the
   existing MP4 download, copies its description and opens the official upload
   page. Copy the title, select the file and review/publish on Rumble. Phoenix does
-  not claim upload progress or mark this handoff Posted.
+  not claim upload progress or mark this handoff Posted. Its Rumble panel stays
+  open alongside Instagram and does not interrupt Instagram's upload monitoring.
+  Phoenix reuses the Rumble window it opened where browser policy permits;
+  unrelated manually opened tabs cannot be detected or controlled.
 - **Bilibili.tv:** automatic publishing is not connected. No supported free
   account-specific publishing route has been verified.
 
