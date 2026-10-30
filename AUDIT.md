@@ -42,7 +42,7 @@ multi-user production service. Vercel is a separate web build, not the renderer.
    user/operator guide. Dated release evidence stays in IMPLEMENTATION_PROGRESS
    and Git history; retired booster/gateway setup documents are removed.
 7. **Retained dependencies had known security advisories.** The production
-   registry audit reported six affected package groups, including Next.js/image
+   initial registry audit reported six affected package groups, including Next.js/image
    processing and command quoting. Targeted locked updates select Next and its
    ESLint configuration 16.4.2, concurrently 9.2.5, sharp 0.35.5, shell-quote
    1.12.0, baseline-browser-mapping 2.11.31 and source-map-js 1.2.2, plus matching
@@ -50,8 +50,9 @@ multi-user production service. Vercel is a separate web build, not the renderer.
    Prisma/client/adapter 7.10.1 and ESLint 9.39.5 patches also update required
    transitive packages; the final lock has 634 entries versus the original 850.
    The production audit
-   reports zero known vulnerabilities after updating the lock; remote release
-   verification and matching local installation are required before activation.
+   reports zero known vulnerabilities after updating the lock. Exact-source
+   remote release verification and matching local installation passed on
+   October 30; the installed source/build is recorded in IMPLEMENTATION_PROGRESS.
    Primary patch information: [Next.js](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw),
    [sharp](https://github.com/lovell/sharp/security/advisories/GHSA-wq5f-xc86-pv6w),
    [shell-quote](https://github.com/advisories/GHSA-pqg4-j6r4-53mv).
@@ -99,9 +100,7 @@ the installed source/build belong in IMPLEMENTATION_PROGRESS after verification.
   demanded by all other apps or the minimum needed to encode a real video.
 - This is a risk-led audit of entrypoints and connected workflows, not a claim
   that every line or possible provider response has been exhaustively tested.
-- Full dependency audit still reports five high development-only groups in the
-  Next lint chain (`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob`
-  → `micromatch` → `braces`). No compatible fixed chain was offered; the audit's
-  suggested framework downgrade is not applied and no forced override hides it.
-  Production dependencies have zero known findings at this check, not a security
-  guarantee. Lint only trusted checked-out source; revisit on an upstream fix.
+- The October 23 registry snapshot reported five high development-only lint-chain
+  groups. The October 30 production-only and full audits both report zero known
+  findings with the final lock. No framework downgrade or forced override was
+  applied. Registry results can change; zero findings is not a security guarantee.

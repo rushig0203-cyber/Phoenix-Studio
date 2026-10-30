@@ -2,6 +2,19 @@
 
 ## October 30 Create, news, mixed suggestions and concurrent posting panels
 
+- Installed and verified live: source `3b098bf8296824ef87d56e577b5abdf4c6ac656a`,
+  Windows run `41088872089`, selected/serving build
+  `.next-build-gh-41088872089-1`. All 1,389 Node tests, 43 Python checks,
+  lint, isolated synthetic/public-Pexels render proofs, TypeScript and build
+  passed. Both Vercel project checks passed for this source. The matching locked
+  packages are installed; no full Next build ran on the owner's laptop.
+- Activation confirmed HTTP 200, healthy worker/manager and ready renderer.
+  Browser checks confirmed two rotating mixed topic batches, an inline empty
+  Create error, 24 recent news results and concurrent Rumble/Instagram sections
+  with the existing account's verified upload permission. No real posting or
+  owner retry was used to test this. The five saved video/job stores and the
+  pre-existing tsconfig change have identical before/after SHA-256 checksums.
+  The temporary test tab was closed after capturing proof to release its RAM.
 - Live browser checks confirmed recent BBC reports load and selecting one fills
   the displayed Create topic correctly. Empty Create submissions now show an
   inline error rather than relying on hidden native form validation. Submission
@@ -26,15 +39,20 @@
   account session, private endpoint, real post, paid plan or repeated support
   request was used. The paused follow-up remains paused.
 - Focused local checks passed 102 tests across publish controls, Create/news,
-  window reuse and mixed suggestions. Exact-commit Windows verification and
-  guarded installation are the next release steps; source is not yet live.
+  window reuse and mixed suggestions before the exact-commit Windows run above.
+  Clipboard writing begins before Rumble takes focus; a popup-block notice
+  cannot be overwritten by a late clipboard success. Browser policy can still
+  restrict window reuse, and manually opened tabs cannot be enumerated.
 - The current registry recheck found a newly reported Zod collection-validation
   memory issue relative to the earlier clean production audit. The compatible
   minimum is updated to 4.6.6 and included in the patch-baseline regression.
   Local packages were aligned to the locked versions without a local Next build;
   Prisma Client was regenerated without a database migration.
+- The final lock selects Zod 4.6.7. Both production-only and full registry audits
+  report zero known findings on October 30. This supersedes the older audit
+  snapshot below, not a guarantee against future advisories.
 
-## October 23 whole-project cleanup — source prepared, release verification pending
+## October 23 whole-project cleanup — included in the verified October 30 release
 
 - Audited the single-owner Windows workflows and their callers/tests before
   removal. Preserved originals, finished videos, editable masters, credentials,
