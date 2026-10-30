@@ -292,7 +292,6 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   function prepareRumble() {
     const saved = postingDownload(file);
     if (!saved) { setRumbleNotice("No finished video is available. Check Library before uploading."); return; }
-    if (!openRumbleUpload()) { setRumbleNotice("The browser blocked the Rumble window. Allow popups for Phoenix or open Rumble manually."); return; }
     // shortcut: Rumble publishing access is unverified; hand off to its normal
     // upload page until a supported free API or written permission is available.
     try {
@@ -302,7 +301,13 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     } catch {
       setRumbleNotice("The download could not start. Use Download MP4 below, then open Rumble."); return;
     }
+    // Start clipboard access while Phoenix still has focus. Opening a new tab
+    // first can make the browser reject an otherwise permitted clipboard write.
     void copyRumbleText(postingText(file), "Rumble description and hashtags");
+    if (!openRumbleUpload()) {
+      rumbleEpoch.current++;
+      setRumbleNotice("MP4 download requested, but the browser blocked the Rumble window. Allow popups for Phoenix or open Rumble manually; use Copy Rumble text below if needed.");
+    }
   }
   async function submit(job?: ReviewPublishJob, revise = false, makeStandalone = false) {
     const createStory = platform === "instagram" && instagramMode === "story" && (!job || makeStandalone);

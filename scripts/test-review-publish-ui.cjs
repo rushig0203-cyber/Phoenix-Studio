@@ -106,7 +106,7 @@ function uiHarness(options = {}) {
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = {
     react: hooks,
-    '@/lib/rumbleWindow': { openRumbleUpload: () => !options.popupBlocked },
+    '@/lib/rumbleWindow': { openRumbleUpload: () => { options.onOpenRumble?.({ copied, downloads }); return !options.popupBlocked; } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
   };
   const shared = {
@@ -263,7 +263,7 @@ test('mount is inert and opening or checking a platform only reads accounts and 
 
 test('Rumble is an inert assisted handoff beside Instagram with one-action download, description copy and official upload link', async t => {
   const file = sampleFile({ quality: { postCopy: 'Light through the trees.\nCredit: source creator.', hashtags: ['#Forest', '#Nature'], captions: [] } });
-  const h = uiHarness({ file }); t.after(() => h.unmount());
+  const h = uiHarness({ file, onOpenRumble({ copied, downloads }) { assert.equal(copied.length, 1, 'Start clipboard access before the tab takes focus'); assert.equal(downloads.length, 1); } }); t.after(() => h.unmount());
   h.choose('Rumble upload'); await h.flush();
   assert.equal(h.requests.length, 0); assert.equal(h.intervals.size, 0);
   assert.match(h.text, /Rumble · assisted upload/); assert.match(h.text, /Automatic publishing is not connected/);
@@ -319,7 +319,8 @@ test('Rumble stays visible when opening Instagram and blocked popups cannot clai
   assert.ok(h.button('Download & open Rumble ↗'));
   h.click('Download & open Rumble ↗'); await h.flush();
   assert.match(h.text, /browser blocked the Rumble window/);
-  assert.equal(h.downloads.length, 0); assert.equal(h.copied.length, 0); assert.equal(h.posts.length, 0);
+  assert.equal(h.downloads.length, 1); assert.equal(h.copied.length, 1); assert.equal(h.posts.length, 0);
+  assert.doesNotMatch(h.text, /description and hashtags copied/);
 });
 
 test('location ideas are optional, honest and inert until explicit Meta search', async t => {
