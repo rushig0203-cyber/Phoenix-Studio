@@ -55,6 +55,10 @@ multi-user production service. Vercel is a separate web build, not the renderer.
    Primary patch information: [Next.js](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw),
    [sharp](https://github.com/lovell/sharp/security/advisories/GHSA-wq5f-xc86-pv6w),
    [shell-quote](https://github.com/advisories/GHSA-pqg4-j6r4-53mv).
+   An October 30 recheck found Zod's oversized-collection memory-exhaustion
+   advisory. Its compatible minimum is now 4.6.6, with the patch locked and
+   included in the security-baseline test:
+   [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
 
 Removed tracked source/assets/configuration can be recovered from Git history.
 No owner video, original, editable master, credential, database, saved job,

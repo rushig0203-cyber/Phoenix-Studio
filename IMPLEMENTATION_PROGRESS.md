@@ -28,6 +28,11 @@
 - Focused local checks passed 102 tests across publish controls, Create/news,
   window reuse and mixed suggestions. Exact-commit Windows verification and
   guarded installation are the next release steps; source is not yet live.
+- The current registry recheck found a newly reported Zod collection-validation
+  memory issue relative to the earlier clean production audit. The compatible
+  minimum is updated to 4.6.6 and included in the patch-baseline regression.
+  Local packages were aligned to the locked versions without a local Next build;
+  Prisma Client was regenerated without a database migration.
 
 ## October 23 whole-project cleanup — source prepared, release verification pending
 

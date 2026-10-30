@@ -26,7 +26,7 @@ test('unused packages are absent from both direct dependencies and locked instal
 test('retained framework, image and command tooling meet the reviewed security patch baselines', () => {
   const pkg = JSON.parse(read('package.json')), lock = JSON.parse(read('package-lock.json'));
   assert.equal(pkg.dependencies.next, pkg.devDependencies['eslint-config-next']);
-  for (const [name, minimum] of Object.entries({ next: [16, 4, 2], sharp: [0, 35, 5],
+  for (const [name, minimum] of Object.entries({ next: [16, 4, 2], sharp: [0, 35, 5], zod: [4, 6, 6],
     concurrently: [9, 2, 5], 'shell-quote': [1, 11, 0], 'baseline-browser-mapping': [2, 11, 0], 'source-map-js': [1, 2, 2] })) {
     const version = lock.packages[`node_modules/${name}`]?.version;
     assert.match(version || '', /^\d+\.\d+\.\d+$/, `${name} must use a stable locked release`);
