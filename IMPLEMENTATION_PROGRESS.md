@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 31 VoiceStudio repair and lightweight story narration — verification in progress
+## October 31 VoiceStudio repair and lightweight story narration — installed and verified
 
 - Repaired the official 0.5.7 CPU runtime using its downloaded Python 3.11.16
   directly, avoiding failed managed-Python discovery through a redirected
@@ -21,8 +21,18 @@
 - The actual Phoenix-to-Python bridge produced English/Hindi WAVs and matching
   phrase evidence; the parent-exit containment check passed. Existing Windows
   explicit voices and recorded songs retain their paths. General stock-video
-  narration is unchanged. Remote full verification and activation remain open
-  at this entry; source changes alone are not a live release.
+  narration is unchanged.
+- Source `b33c519a1ab7bdcde0033c77a3f9c88aebc1359c` passed Windows run
+  `41179241082`: 1,379 Node tests, 43 Python checks, lint, isolated real renders,
+  TypeScript and production build. The Linux check also passed. The verified
+  `.next-build-gh-41179241082-1` bundle is selected and serving, with healthy
+  manager/worker and an idle heavy-work slot. The local adapter is enabled.
+- A complete isolated 34-second 720×1280 H.264/AAC story render exercised the
+  actual VoiceStudio narration, existing animation/music, clean master and
+  caption burn-in. Phrase evidence identifies Supertonic-3 M1; phoneme timing
+  remains unavailable. The voice worker was gone before rendering. No owner
+  job was retried or social post made; saved media/job stores and the owner's
+  pre-existing tsconfig change were preserved. No local production build ran.
 
 ## October 31 one automatic footage workflow — installed and verified live
 
