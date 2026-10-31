@@ -36,11 +36,16 @@ async function main() {
   global.fetch = async () => { throw new Error('Network forbidden in render mechanics proof.'); };
   const downloads = [];
   for (let index = 0; index < 8; index++) {
-    const filename = path.join(temp, `source-${index}.mp4`);
+    const webm = index === 0;
+    const filename = path.join(temp, `source-${index}.${webm ? 'webm' : 'mp4'}`);
     const color = ['forestgreen', 'blue', 'yellow', 'purple'][index % 4];
     await tool(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', ...resources.FFMPEG_FILTER_RESOURCE_ARGS,
       '-f', 'lavfi', '-i', index % 2 ? 'testsrc2=s=180x320:r=24' : `color=c=${color}:s=180x320:r=24`,
-      '-t', '8', '-an', '-c:v', 'libx264', '-preset', 'veryfast', ...resources.FFMPEG_ENCODER_RESOURCE_ARGS, '-pix_fmt', 'yuv420p', filename]);
+      '-t', '8', '-an', ...(webm ? ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8'] : ['-c:v', 'libx264', '-preset', 'veryfast']), ...resources.FFMPEG_ENCODER_RESOURCE_ARGS, '-pix_fmt', 'yuv420p', filename]);
+    if (webm) {
+      const metadata = JSON.parse(await tool(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration,nb_frames:stream_tags=DURATION', '-of', 'json', filename])).streams[0];
+      assert.ok(!metadata.duration && !metadata.nb_frames && metadata.tags?.DURATION, 'Fixture must exercise the actual Commons WebM duration path.');
+    }
     downloads.push({ provider: 'pexels', mediaId: String(index + 1), sourcePage: `https://www.pexels.com/video/synthetic-fixture-${index + 1}/`,
       creator: 'Synthetic test fixture only', title: 'Synthetic test fixture', start: 0, end: 8, trimMode: 'auto',
       open: async () => ({ stream: Readable.toWeb(fs.createReadStream(filename)), expectedBytes: fs.statSync(filename).size }) });

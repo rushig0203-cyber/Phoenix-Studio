@@ -30,6 +30,11 @@
   checks; the recordings measured −16.00 to −16.15 LUFS, true peak below −2 dB.
   The mocked editor fixture now mocks the actual nonblocking admission function,
   avoiding dependence on the laptop's free RAM. Production guards were not lowered.
+- A read-only check of the saved “valleys” failure found valid Commons VP9/WebM
+  with per-video `DURATION` but no numeric stream duration/frame count. Probe now
+  accepts that strictly parsed video-stream tag, never the longer container/audio
+  duration. The remote synthetic render includes a real VP9/WebM input to cover
+  this path. The owner's failed job was not retried or rewritten.
 - Remote Windows verification, a complete licensed-footage render and verified
   local activation are still required before calling this source update live.
 

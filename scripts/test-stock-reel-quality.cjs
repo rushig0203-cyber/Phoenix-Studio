@@ -87,6 +87,19 @@ test('minimum-length auto windows reserve genuine EOF context for off-cadence fo
   assert.equal(source.stockSourcePictureInterval({ ...shot, end: 8 }, info, 40).end, 8, 'Selected end away from EOF stays unchanged');
 });
 
+test('Commons WebM video duration tags work without trusting a longer container or audio track', () => {
+  const stream = { tags: { DURATION: '00:00:08.675000000' } };
+  const picture = source.sourcePictureDuration(stream, 30000 / 1001);
+  assert.equal(picture, 8.675);
+  const bounded = source.stockSourcePictureInterval({ start: 0, end: 8.675, trimMode: 'auto' }, { duration: 60, videoDuration: picture, frameRate: 30000 / 1001 }, 12);
+  assert.ok(bounded.end < 8.675 && bounded.end > 8.5);
+  assert.equal(source.sourcePictureDuration({ duration: '5', ...stream }, 24), 5);
+  assert.equal(source.sourcePictureDuration({ nb_frames: '144', ...stream }, 24), 6);
+  assert.equal(source.sourcePictureDuration({ tags: { DURATION: '00:02:03.5' } }), 123.5);
+  for (const stamp of ['', 'N/A', '8.675', '-00:00:08', '00:61:00', '00:00:00', '00:00:08 trailing']) assert.equal(source.sourcePictureDuration({ tags: { DURATION: stamp } }), undefined);
+  assert.equal(source.sourcePictureDuration({}), undefined);
+});
+
 test('aligned 24fps footage still supplies five complete eight-second intervals', () => {
   const bounds = Array.from({ length: 5 }, () => source.stockSourcePictureInterval({ start: 0, end: 8, trimMode: 'auto' }, { duration: 8, videoDuration: 8, frameRate: 24 }, 40));
   const plan = planning.planStockIntervals(bounds, 45, 'cinematic', 40);

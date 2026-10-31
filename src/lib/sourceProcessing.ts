@@ -518,25 +518,36 @@ export async function ffmpegAvailable() {
   return checks.every(check => check.available);
 }
 
+/** WebM commonly stores its per-video duration as a stream tag, not duration/nb_frames. */
+export function sourcePictureDuration(video: { duration?: string; nb_frames?: string; tags?: { DURATION?: string } }, frameRate?: number) {
+  const seconds = Number(video.duration), frameSeconds = frameRate && Number(video.nb_frames) / frameRate;
+  if (seconds > 0 && Number.isFinite(seconds)) return seconds;
+  if (frameSeconds && Number.isFinite(frameSeconds) && frameSeconds > 0) return frameSeconds;
+  const stamp = video.tags?.DURATION;
+  if (!stamp || !/^\d{2,3}:[0-5]\d:[0-5]\d(?:\.\d{1,9})?$/.test(stamp)) return undefined;
+  const [hours, minutes, rest] = stamp.split(":").map(Number);
+  const tagged = hours * 3600 + minutes * 60 + rest;
+  return tagged > 0 ? tagged : undefined;
+}
+
 async function probe(file: string): Promise<MediaInfo> {
   const raw = await run(ffprobePath, [
     "-v", "error",
-    "-show_entries", "format=duration:stream=codec_type,codec_name,pix_fmt,avg_frame_rate,width,height,sample_rate,channels,duration,nb_frames",
+    "-show_entries", "format=duration:stream=codec_type,codec_name,pix_fmt,avg_frame_rate,width,height,sample_rate,channels,duration,nb_frames:stream_tags=DURATION",
     "-of", "json",
     file,
   ]);
   const data = JSON.parse(raw) as {
     format?: { duration?: string };
-    streams?: Array<{ codec_type?: string; codec_name?: string; pix_fmt?: string; avg_frame_rate?: string; width?: number; height?: number; sample_rate?: string; channels?: number; duration?: string; nb_frames?: string }>;
+    streams?: Array<{ codec_type?: string; codec_name?: string; pix_fmt?: string; avg_frame_rate?: string; width?: number; height?: number; sample_rate?: string; channels?: number; duration?: string; nb_frames?: string; tags?: { DURATION?: string } }>;
   };
   const video = data.streams?.find((stream) => stream.codec_type === "video");
   const audio = data.streams?.find((stream) => stream.codec_type === "audio");
   const rate = video?.avg_frame_rate?.split("/").map(Number);
   const frameRate = rate?.length === 2 && rate[1] > 0 ? rate[0] / rate[1] : undefined;
-  const pictureSeconds = Number(video?.duration), frameSeconds = frameRate && Number(video?.nb_frames) / frameRate;
   return {
     duration: Number(data.format?.duration || 0),
-    videoDuration: pictureSeconds > 0 && Number.isFinite(pictureSeconds) ? pictureSeconds : frameSeconds && Number.isFinite(frameSeconds) && frameSeconds > 0 ? frameSeconds : undefined,
+    videoDuration: video ? sourcePictureDuration(video, frameRate) : undefined,
     width: Number(video?.width || 0),
     height: Number(video?.height || 0),
     hasAudio: Boolean(audio),
