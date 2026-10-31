@@ -57,6 +57,8 @@ recording and native-tempo excerpt. No music-model download, paid API or extra
 account is required. See [recording sources](assets/music/lofi-cc0-v1/SOURCES.md).
 These are recorded lofi instrumentals, not a claim of current Instagram trends.
 Per-reel editing audio uses lossless FLAC at 48 kHz to avoid large PCM copies.
+Commons WebM footage can supply picture duration through its video-stream
+duration tag; a longer audio/container duration is never used to extend picture.
 
 Quality ratings supply bounded guidance for matching future work. Supported
 Instagram performance metrics can guide experiments after the necessary insights

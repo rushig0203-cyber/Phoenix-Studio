@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## October 31 recorded music, usable feedback and portrait discovery — source prepared
+## October 31 recorded music, usable feedback and portrait discovery — installed and verified
 
 - New automatic stock recipes use six composer-published CC0 instrumental
   recordings, bundled as ~5.6 MiB of static production assets. The source page,
@@ -35,8 +35,30 @@
   accepts that strictly parsed video-stream tag, never the longer container/audio
   duration. The remote synthetic render includes a real VP9/WebM input to cover
   this path. The owner's failed job was not retried or rewritten.
-- Remote Windows verification, a complete licensed-footage render and verified
-  local activation are still required before calling this source update live.
+- Source `43c00a72633a9a58994e65b50c998370077101be` passed Windows run
+  `41203982431`: 1,397 Node checks, 43 Python checks, lint, twelve real encoded
+  music fixtures, actual VP9/WebM-to-MP4 editing, licensed public-footage rendering,
+  TypeScript and production build. Superseded run `41203649966` was intentionally
+  cancelled when the WebM repair was added; it was not used as release evidence.
+- Verified bundle `.next-build-gh-41203982431-1`, build ID
+  `j0xnpuhC81__I8VAMwX1Q`, is selected and serving. HTTP 200, healthy manager and
+  worker, five media/job-store hashes and the owner's unchanged config hash were
+  verified after activation. No local Next build, owner-job retry or social test
+  post was performed. Both Desktop shortcuts still point to the canonical tree.
+- After the owner resumed and Phoenix was started again, the live historical scan
+  passed the two old-post errors and completed all 59 video records at
+  `2026-10-31T14:36:46.937Z`. Status is `limited` for genuinely unavailable Meta
+  metrics, not a failed collection. Forty-seven posts qualify for comparison.
+  Source-specific production guidance uses 34 exactly matched posts, no manual
+  source ratings, a saved watch-time opening experiment and a conservative
+  17-second cap. No missing value was fabricated or counted as zero.
+- The actual public-footage MP4 fully decoded, retained its exact hash on retry,
+  and measured −16.0 LUFS / −2.2 dB true peak with the saved CC0 recording. The
+  contact sheet still shows wide-source framing in several cuts; green-scene
+  sampling removed an unsuitable portrait source. Better composition after
+  measured source selection remains quality work, not a proven final result.
+  YouTube is currently disconnected; Instagram is connected. No owner media or
+  private credentials were included in the build or its public-footage proof.
 
 ## October 31 quality and automatic feedback repair — installed and verified live
 

@@ -35,17 +35,21 @@ const planning = require(path.join(project, 'src/lib/stockReel.ts'));
 const visual = require(path.join(project, 'src/lib/stockVisualContinuity.ts'));
 const movement = require(path.join(project, 'src/lib/stockMotion.ts'));
 const fixtures = [
+  // Actual production catalogue selection on October 31: two portrait pages,
+  // anchor retained, eight authoritative native-portrait park sources.
   [36918287, 'man strolling in lush green park with blossoming trees', 'Nishant Aneja', '36918287/15639615_720_1280_60fps.mp4'],
+  [38687742, 'peaceful park path with green trees', 'Shan Ali', '38687742/16433318_720_1280_60fps.mp4'],
+  [34988423, 'serene pathway in a lush green park', 'Şeyhmus Kino', '34988423/14823149_720_1280_17fps.mp4'],
+  [38601107, 'scenic aerial view of lush green park landscape', 'David Torres', '38601107/16394166_720_1280_30fps.mp4'],
+  [37444397, 'serene spring day in lush green park', 'sohaib Mohammed', '37444397/15858937_720_1280_30fps.mp4'],
+  [35783561, 'peaceful walkway through lush green park', 'Yousaf Abbasi', '35783561/15170980_720_1280_30fps.mp4'],
+  [38406194, 'tranquil summer day in a lush green park', 'Lindz Walker', '38406194/16308332_720_1280_30fps.mp4'],
+  [32220094, 'serene park path in lush green landscape', 'Eugenia Sol', '32220094/13741706_720_1280_60fps.mp4'],
+  // Negative controls still exercise actual subject/colour rejection.
   [13712406, 'city park and skyscrapers', 'Julio Lopez', '13712406/13712406-hd_720_1280_30fps.mp4'],
-  [31980579, 'tranquil walk through a green city park', 'Earth Photart', '31980579/13627386_720_1280_30fps.mp4'],
   [3699513, 'people enjoying their day in a park', 'George Morina', '3699513/3699513-hd_1280_720_30fps.mp4'],
-  [4085166, 'people flowers garden park', 'George Morina', '4085166/4085166-hd_1280_720_30fps.mp4'],
   [13439228, 'park in city in birds eye view', 'Marc Espejo', '13439228/13439228-hd_1280_720_30fps.mp4'],
-  [37195943, 'aerial view of lush green urban park with fountain', 'Juan Camilo Trujillo Botero', '37195943/15757011_1280_720_30fps.mp4'],
   [36659594, 'tree by roadside in sunny park setting', 'BJ Zurc', '36659594/15541679_720_958_30fps.mp4'],
-  [35995053, 'tranquil park scene with lush greenery', 'Raaj Ugar', '35995053/15262479_720_1280_30fps.mp4'],
-  [4085318, 'people flowers garden park', 'George Morina', '4085318/4085318-hd_1280_720_30fps.mp4'],
-  [39633057, 'sunny park with picnic tables and trees', 'Sururi Ballıdağ Director', '39633057/16895589_1280_720_50fps.mp4'],
 ].map(([id, title, creator, cdn]) => ({ provider: 'pexels', id, title, creator,
   sourcePage: `https://www.pexels.com/video/${title.replaceAll(' ', '-')}-${id}/`, previewUrl: `https://videos.pexels.com/video-files/${cdn}` }));
 function tool(binary, args) {
@@ -95,20 +99,22 @@ async function main() {
   for (const fixture of fixtures) downloaded.push(await download(fixture)); // One streamed download at a time.
   global.fetch = async () => { throw new Error('Further network/provider calls are forbidden in the isolated render.'); };
   const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks').slice(0, 9)];
-  assert.ok(selected.length >= 4 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
+  assert.ok(selected.length >= 8 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
+  assert.equal(selected.filter(video => video.width === 720 && video.height === 1280).length, 8, 'The actual discovered portrait pool must survive metadata selection.');
   assert.ok(!selected.some(video => [13712406, 36659594, 13439228].includes(video.id)), 'Skyline, roadside and ungrounded city-plaza footage must not pass the chosen green-park setting.');
-  const options = automatic.automaticStockReelOptions('Parks'); assert.equal(options.continuity, 'visual-v1');
+  const options = { ...automatic.automaticStockReelOptions('Parks'), openingExperiment: 'watch-time-v1' }; assert.equal(options.continuity, 'visual-v1');
+  const maximum = 17; // Exercise a bounded learning cap with real picture, no owner statistics.
   assert.equal(automatic.automaticStockGreeneryFocus(selected[0]), true); options.sceneFocus = 'greenery'; options.background = 'soft-v1';
   const job = await source.createStockReelJob(selected.map(video => ({ provider: video.provider, mediaId: String(video.id), title: video.title,
     creator: video.creator, sourcePage: video.sourcePage, start: 0, end: video.duration, trimMode: 'auto',
     open: async () => ({ stream: Readable.toWeb(fs.createReadStream(video.filename)), expectedBytes: video.bytes }) })),
-    { requestId: crypto.randomUUID(), caption: '', theme: 'Parks', maxDuration: 40, options });
+    { requestId: crypto.randomUUID(), caption: '', theme: 'Parks', maxDuration: maximum, options });
   await source.processNextSourceJob(); const done = await source.getSourceJob(job.id);
   assert.equal(done.status, 'COMPLETED', done.error || done.stage);
   const file = await reviews.getReviewFile(done.reviewIds[0]), output = reviews.outputPath(file.id, 'instagram');
   const info = await probe(output, true);
   assert.equal(info.width, 720); assert.equal(info.height, 1280); assert.equal(info.frameRate, 24);
-  assert.ok(info.videoDuration >= 12 && info.videoDuration <= 32 && info.hasAudio);
+  assert.ok(info.videoDuration >= 12 && info.videoDuration <= maximum && info.hasAudio);
   assert.equal(info.frames, Math.round(info.videoDuration * 24)); assert.deepEqual(file.quality.captions, []);
   assert.ok(file.quality.checks.some(check => /one continuous bed across every shot/.test(check)));
   await tool(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-']);
@@ -126,8 +132,9 @@ async function main() {
   shots = greenery.indices.map(index => shots[index]); bounds = greenery.indices.map(index => bounds[index]);
   stats = greenery.indices.map(index => stats[index]); motion = greenery.windows;
   assert.ok(shots.length >= 4 && omittedAtRender.includes('3699513'), 'The grey bare-tree source must not survive green-context sampling.');
-  const provisional = planning.planStockIntervals(bounds.map((part, index) => ({ ...part, motionWindows: motion[index] })), 40, 'cinematic', undefined,
-    options.shotCadence, options.musicLibrary ? undefined : { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
+  assert.ok(shots.every(shot => selected.find(video => String(video.id) === shot.mediaId).width === 720), 'Measured green-picture selection must preserve native portrait framing.');
+  const provisional = planning.planStockIntervals(bounds.map((part, index) => ({ ...part, motionWindows: motion[index] })), maximum, 'cinematic', undefined,
+    options.shotCadence, options.musicLibrary ? undefined : { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm }, options.openingExperiment);
   const appearance = shots.map((shot, index) => {
     const cache = JSON.parse(fs.readFileSync(path.join(assembly, `appearance-${index + 1}.json`), 'utf8'));
     const identity = crypto.createHash('sha256').update(JSON.stringify({ version: 1, filename: shot.sourceFile, bytes: stats[index].size,

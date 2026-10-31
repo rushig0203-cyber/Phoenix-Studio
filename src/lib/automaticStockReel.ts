@@ -349,5 +349,5 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
 }
 
 export function automaticStockReelMessage(clipCount: number, existing = false) {
-  return `${existing ? "Your existing reel uses" : "Reel queued with"} ${clipCount} related videos. ${existing ? "Its saved timing and sound choices are retained." : "Phoenix chooses compact cuts, length and modest speed-ups from sampled movement, with one continuous original instrumental across all shots."}`;
+  return `${existing ? "Your existing reel uses" : "Reel queued with"} ${clipCount} related videos. ${existing ? "Its saved timing and sound choices are retained." : "Phoenix chooses compact cuts, length and modest speed-ups from sampled movement, with one continuous licensed instrumental across all shots."}`;
 }
