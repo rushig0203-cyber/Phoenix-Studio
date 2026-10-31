@@ -1,5 +1,38 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 recorded music, usable feedback and portrait discovery — source prepared
+
+- New automatic stock recipes use six composer-published CC0 instrumental
+  recordings, bundled as ~5.6 MiB of static production assets. The source page,
+  archive, original/derived hashes and licence are retained. No owner media,
+  private key or model is included. The full 100 MB download is not a dependency.
+- Music is selected and reserved under the existing queue lock, including queued
+  requests in the last-three cooldown. It is persisted with the job, retained
+  on retry and validated against pinned asset hashes. New excerpts use native
+  tempo, fades, 48 kHz lossless editing audio and the existing measured mastering.
+  Original/legacy sound paths remain versioned; unmeasured recorded tempo cannot
+  inherit the synthetic music's beat-grid claim. CC0 credit is review metadata,
+  not forced into the posting caption. Manual trims adjust recording provenance.
+- Fresh matched source watch-time guidance now reaches a saved opening-cut
+  experiment, rather than only a metadata sentence. Its target is 1.2 instead
+  of 1.6 seconds when real picture capacity permits; minimum-duration/native
+  playback constraints win. Unrelated types, stale/unauthorized insights and old
+  jobs are unchanged. No causal or growth guarantee is made.
+- Pexels assembly discovery checks up to two portrait pages before wide-shot
+  fallback, retaining the four-request budget and metadata/subject/reuse gates.
+- The live insights scan exposed two March Reels returning Meta code 100,
+  subcode 2108006, “Invalid parameter.” The collector now uses its existing
+  per-media metric probes for this numeric error; unavailable values stay null,
+  supported metrics survive and one old post cannot stop later history/new posts.
+  Permission, quota and unrelated parameter failures retain their safeguards.
+- Focused queue/recording/planning/insights fixtures pass. Twelve real audio
+  exports (six legacy compositions and six recordings) passed encoded loudness
+  checks; the recordings measured −16.00 to −16.15 LUFS, true peak below −2 dB.
+  The mocked editor fixture now mocks the actual nonblocking admission function,
+  avoiding dependence on the laptop's free RAM. Production guards were not lowered.
+- Remote Windows verification, a complete licensed-footage render and verified
+  local activation are still required before calling this source update live.
+
 ## October 31 quality and automatic feedback repair — installed and verified live
 
 - The owner approved adding instagram_manage_insights to studio finalll's five

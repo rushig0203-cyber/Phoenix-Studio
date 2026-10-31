@@ -22,6 +22,10 @@ export type StockReelOptions = {
   musicVersion?: 2;
   /** New music-only recipes; absent on saved jobs to preserve their sound. */
   audioMastering?: "loudness-v1";
+  /** Saved only on new recipes with fresh matching watch-time evidence. */
+  openingExperiment?: "watch-time-v1";
+  /** Bundled public-domain recordings for new automatic reels only. */
+  musicLibrary?: "cc0-lofi-v1";
 };
 
 export const DEFAULT_STOCK_REEL_OPTIONS: StockReelOptions = { audio: "auto", mood: "reflective", transition: "cut", framing: "auto" };
@@ -120,10 +124,11 @@ export function suggestStockTrim(duration: number, singleShot = false) {
  * The separately saved brisk cadence keeps a three-second opening and caps
  * real windows at six seconds. Missing cadence retains every older recipe.
  */
-export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"], rhythm?: { bpm: number }): StockInterval[] {
+export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"], rhythm?: { bpm: number }, openingExperiment?: StockReelOptions["openingExperiment"]): StockInterval[] {
   if (!shots.length || shots.length > MAX_STOCK_SHOTS || !Number.isFinite(maximum) || maximum <= 0 || maximum > 105) throw new Error("Choose one to twelve shots and a reel length up to 105 seconds.");
   if (pacing !== undefined && pacing !== "cinematic" && pacing !== "selected") throw new Error("Choose cinematic pacing or keep the selected moments.");
   if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2" && shotCadence !== "adaptive-v3") throw new Error("Choose the supported automatic shot cadence.");
+  if (openingExperiment !== undefined && (openingExperiment !== "watch-time-v1" || shotCadence !== "adaptive-v3")) throw new Error("The watch-time opening experiment requires the current automatic cadence.");
   const selected = shots.map(shot => {
     if (!Number.isFinite(shot.duration) || shot.duration <= 0) throw new Error("A selected shot has no readable duration.");
     const start = shot.start ?? 0, end = shot.end ?? shot.duration;
@@ -177,7 +182,7 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     const cap = Math.floor(Math.min(maximum, 32) * STOCK_REEL_FPS + 1e-7);
     const naturalSeconds = windows.map((window, index) => {
       if (compact) {
-        if (index === 0) return 1.6;
+        if (index === 0) return openingExperiment ? 1.2 : 1.6;
         if (window.motion === undefined) return [2.2, 2.6, 2.4, 2.8, 2.3][(index - 1) % 5];
         if (window.motion < 4) return 1.9 + window.motion / 4 * .3;
         if (window.motion < 12) return 2.2 + (window.motion - 4) / 8 * .2;

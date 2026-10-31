@@ -262,7 +262,7 @@ test('new automatic reel replaces mixed source sound with one full-length instru
   const priority = mock.method(resources, 'lowerChildProcessPriority', () => undefined);
   t.after(() => { spawn.mock.restore(); slot.mock.restore(); priority.mock.restore(); });
   const open = async () => ({ stream: Readable.toWeb(Readable.from(Buffer.alloc(2048))), expectedBytes: 2048 });
-  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), minDuration: 40, shotCadence: 'brisk-v1' } };
+  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), musicLibrary: undefined, minDuration: 40, shotCadence: 'brisk-v1' } };
   const makeDownloads = () => Array.from({ length: 8 }, (_, index) => ({ ...download(index + 1, open), end: 8, trimMode: 'auto' }));
   const job = await source.createStockReelJob(makeDownloads(), input);
   assert.equal(job.stockSource.options.shotCadence, 'brisk-v1', 'The new cadence is saved before rendering');
@@ -304,7 +304,7 @@ test('new cadence validation runs before opening streams for incomplete or manua
   let opened = 0;
   const open = async () => { opened++; return { stream: Readable.toWeb(Readable.from(Buffer.alloc(2048))), expectedBytes: 2048 }; };
   const downloads = Array.from({ length: 8 }, (_, index) => ({ ...download(index + 1, open), end: 8, trimMode: 'auto' }));
-  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), minDuration: 40, shotCadence: 'brisk-v1' } };
+  const input = { ...reelInput(), maxDuration: 45, options: { ...automatic.automaticStockReelOptions('forest'), musicLibrary: undefined, minDuration: 40, shotCadence: 'brisk-v1' } };
   await assert.rejects(source.createStockReelJob(downloads.slice(1), input), /Brisk cadence/);
   await assert.rejects(source.createStockReelJob(downloads, { ...input, options: { ...input.options, minDuration: undefined } }), /Brisk cadence/);
   await assert.rejects(source.createStockReelJob(downloads.map((shot, index) => index ? shot : { ...shot, trimMode: 'manual' }), input), /Brisk cadence/);
@@ -452,4 +452,17 @@ test('older automatic recipes clamp rounded catalog ends to actual picture; manu
   await source.processNextSourceJob();
   const invalidDone = await source.getSourceJob(invalidStart.id);
   assert.equal(invalidDone.status, 'FAILED'); assert.match(invalidDone.error, /trim lies outside/);
+});
+
+test('simultaneous recorded-music jobs reserve distinct soundtracks and duplicate requests retain their saved choice',async()=>{
+  fs.cpSync(path.join(project,'assets/music/lofi-cc0-v1'),path.join(temporary,'assets/music/lofi-cc0-v1'),{recursive:true});
+  const open=async()=>({stream:Readable.toWeb(Readable.from(Buffer.alloc(2048))),expectedBytes:2048});
+  const downloads=Array.from({length:8},(_,index)=>({...download(800+index,open),end:8,trimMode:'auto'}));
+  const firstInput={requestId:crypto.randomUUID(),caption:'',theme:'fixture forest',maxDuration:40,options:automatic.automaticStockReelOptions('forest')};
+  const secondInput={...firstInput,requestId:crypto.randomUUID()};
+  const [first,second]=await Promise.all([source.createStockReelJob(downloads,firstInput),source.createStockReelJob(downloads,secondInput)]);
+  assert.notEqual(first.stockSource.musicRecording.trackId,second.stockSource.musicRecording.trackId);
+  const repeated=await source.createStockReelJob(downloads,firstInput);
+  assert.equal(repeated.id,first.id);assert.deepEqual(repeated.stockSource.musicRecording,first.stockSource.musicRecording);
+  await source.updateJob(first.id,{status:'CANCELLED'});await source.updateJob(second.id,{status:'CANCELLED'});
 });

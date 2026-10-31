@@ -15,6 +15,7 @@ process.env.PHOENIX_FFPROBE_PATH = ffprobe;
 require('ts-node').register({ project: path.join(project, 'tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });
 // Resolve all runtime stores only after changing into the isolated fixture.
 process.chdir(temp);
+fs.cpSync(path.join(project,'assets/music/lofi-cc0-v1'),path.join(temp,'assets/music/lofi-cc0-v1'),{recursive:true});
 const resources = require('../src/lib/renderResources.ts');
 const source = require('../src/lib/sourceProcessing.ts');
 const reviews = require('../src/lib/reviewFiles.ts');
@@ -44,7 +45,7 @@ async function main() {
       creator: 'Synthetic test fixture only', title: 'Synthetic test fixture', start: 0, end: 8, trimMode: 'auto',
       open: async () => ({ stream: Readable.toWeb(fs.createReadStream(filename)), expectedBytes: fs.statSync(filename).size }) });
   }
-  const job = await source.createStockReelJob(downloads, { requestId: crypto.randomUUID(), caption: '', theme: 'mechanics only', maxDuration: 40, options: automatic.automaticStockReelOptions('forest') });
+  const job = await source.createStockReelJob(downloads, { requestId: crypto.randomUUID(), caption: '', theme: 'mechanics only', maxDuration: 40, options: { ...automatic.automaticStockReelOptions('forest'), openingExperiment:'watch-time-v1' } });
   await source.processNextSourceJob();
   const done = await source.getSourceJob(job.id);
   assert.equal(done.status, 'COMPLETED', done.error);
@@ -57,7 +58,11 @@ async function main() {
   assert.equal(picture.width, 720); assert.equal(picture.height, 1280);
   assert.ok(media.streams.some(stream => stream.codec_type === 'audio'));
   assert.deepEqual(file.quality.captions, []);
+  assert.match(file.quality.checks.join(' '),/Watch-time opening experiment v1/);
   assert.equal(file.quality.audioMastering?.version, 'loudness-v1');
+  assert.equal(file.quality.musicRecording?.licence,'CC0-1.0');
+  assert.equal(done.stockSource.musicRecording.trackId,file.quality.musicRecording.trackId);
+  assert.ok(!file.quality.checks.some(check=>check.includes('BPM instrumental')),'Unmeasured recording tempo cannot inherit the synthetic beat-grid claim.');
   assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 16) <= 1.5);
   assert.ok(file.quality.audioMastering.truePeakDb <= -1);
   assert.ok(!file.quality.checks.some(check => /1\.25× playback/.test(check)), 'New v3 recipes never reuse the old automatic acceleration rule');

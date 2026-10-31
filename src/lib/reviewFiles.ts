@@ -61,6 +61,7 @@ export type ReviewFile = {
     audio: "natural-audio-preserved" | "local-music-replaced" | "local-narration-music" | "local-narration" | "supplied-song" | "no-audio" | "needs-review";
     /** Measured from the finished encoded video, not its input music file. */
     audioMastering?: import("./stockReel").StockMusicLoudness & { version: "loudness-v1" };
+    musicRecording?: import("./stockMusicLibrary").StockRecordingCredit;
     captions: string[];
     hashtags: string[];
     postCopy?: string;

@@ -122,13 +122,23 @@ export async function searchNaturalStockPage(provider: AutomaticStockProvider, q
  */
 export async function searchNaturalStockPool(provider: AutomaticStockProvider, query: string, enough: (videos: NaturalStock[]) => boolean): Promise<NaturalStock[]> {
   let pool: NaturalStock[] = [];
+  let remaining = MAX_STOCK_DISCOVERY_PAGES + (provider === "pexels" ? 1 : 0);
   // Try real portrait companions first. A large unrelated/SD portrait response
   // cannot suppress the all-orientation fallback: only usable evidence stops it.
   if (provider === "pexels") {
-    pool = (await searchNaturalStockPage(provider, query, 1, true)).videos;
-    if (enough(pool)) return pool;
+    // Spend the same four-request budget on up to two portrait pages first.
+    for (let page = 1; page <= 2; page += 1) {
+      let found: Awaited<ReturnType<typeof searchNaturalStockPage>>;
+      try { found = await searchNaturalStockPage(provider, query, page, true); }
+      catch (error) { if (!pool.length) throw error; return pool; }
+      remaining--;
+      pool = portraitFirstStock([...pool, ...found.videos], query);
+      if (enough(pool)) return pool;
+      if (!found.hasMore) break;
+    }
   }
-  for (let page = 1; page <= MAX_STOCK_DISCOVERY_PAGES; page += 1) {
+  for (let page = 1; page <= MAX_STOCK_DISCOVERY_PAGES && remaining > 0; page += 1) {
+    remaining--;
     let found: Awaited<ReturnType<typeof searchNaturalStockPage>>;
     try { found = await searchNaturalStockPage(provider, query, page); }
     catch (error) { if (!pool.length) throw error; break; }

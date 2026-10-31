@@ -18,7 +18,7 @@ test('explicit product policies exist without invented ratings or saved-feedback
   assert.equal(value.feedbackCount, 0); assert.equal(value.historyLimit, 10); assert.equal(value.shorterPostingCaption, false);
   assert.match(value.rules.join(' '), /natural duration.*movement samples.*modest acceleration/);
   assert.match(value.rules.join(' '), /subject and catalog-described scene context/);
-  assert.match(value.rules.join(' '), /varied instrument blend, melody and rhythm/);
+  assert.match(value.rules.join(' '), /saved licensed instrumental choice.*avoid the last three soundtracks/);
   assert.match(value.revision, /^stock-v1-[a-f0-9]{12}$/);
 });
 

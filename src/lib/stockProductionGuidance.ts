@@ -22,6 +22,7 @@ export type StockProductionGuidance = {
   revision: string; feedbackCount: number; rules: string[]; historyLimit: 10 | 20;
   policyVersion: 1; shorterPostingCaption: boolean; priorities: FeedbackDimension[]; requests: FeedbackRequest[];
   performanceMaxDuration?: number;
+  openingExperiment?: "watch-time-v1";
 };
 
 /** Fixed production rules, never commands/prompts extracted from free-text notes. */
@@ -42,13 +43,13 @@ export function stockProductionGuidanceFromFeedback(records: readonly CreativeFe
   const rules = [
     "New automatic reels choose compact, varied cuts and natural duration from bounded movement samples; use native speed or modest acceleration, never slow, loop, freeze or add unrelated filler to meet duration.",
     "Keep the starting video's subject and catalog-described scene context throughout the reel; stock metadata does not verify the same real location or continuous event.",
-    "Use a reproducible per-reel original music arrangement with varied instrument blend, melody and rhythm; retain usable original ambience without copying commercial songs.",
+    "Use a saved licensed instrumental choice, avoid the last three soundtracks when alternatives exist, and retain rights evidence. Do not copy commercial songs or infer trending status.",
     ...(freshness ? ["Prefer suitable footage absent from the last 20 completed reels; keep the chosen starting video and allow related reuse only when suitable fresh alternatives are unavailable."] : []),
     ...(weak("visuals") || requested("matching-visuals") ? ["Prioritize one consistent visible subject and setting over catalog variety; do not switch between sky, water, forest and city merely because they share a broad search term."] : []),
-    ...(weak("audio") ? ["Keep a continuous restrained original music bed beneath usable ambience; the saved varied arrangement is a listening-review draft, not a professional-song guarantee."] : []),
+    ...(weak("audio") ? ["Keep a continuous restrained licensed instrumental; the saved soundtrack is a listening-review draft, not a professional-song guarantee."] : []),
     ...(shorterPostingCaption ? [STOCK_CAPTION_FEEDBACK_RULE] : []),
   ];
-  const revision = `stock-v1-${crypto.createHash("sha256").update("adaptive-v3:").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
+  const revision = `stock-v1-${crypto.createHash("sha256").update("adaptive-v3-cc0-music-v1:").update(JSON.stringify(relevant.map(record => [record.reviewId, record.ratings, record.decision, FEEDBACK_REQUESTS.filter(request => record.requests.includes(request))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))).digest("hex").slice(0, 12)}`;
   return { revision, feedbackCount: relevant.length, policyVersion: 1, rules, historyLimit: freshness ? 20 : 10, shorterPostingCaption,
     priorities: (["story", "visuals", "audio", "captions"] as FeedbackDimension[]).filter(weak), requests: FEEDBACK_REQUESTS.filter(requested) };
 }
@@ -88,7 +89,7 @@ export async function getStockProductionGuidance(filename?: string): Promise<Sto
   catch { throw new Error("Saved source-video ratings or improvement choices are invalid. Preserve the feedback and repair it before continuing content planning."); }
   if (filename !== undefined) return base;
   const learning = await getInstagramLearningGuidance("source"), merged = mergeInstagramLearningGuidance(base, learning);
-  return learning.maxDuration !== undefined && merged !== base ? { ...merged, performanceMaxDuration: learning.maxDuration } : merged;
+  return merged !== base ? { ...merged, ...(learning.maxDuration !== undefined ? { performanceMaxDuration: learning.maxDuration } : {}), ...(learning.openingExperiment ? { openingExperiment: learning.openingExperiment } : {}) } : merged;
 }
 
 /** Recognize a fixed saved preference, never forward arbitrary rules or notes. */

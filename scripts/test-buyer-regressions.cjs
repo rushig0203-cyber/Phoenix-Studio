@@ -125,7 +125,7 @@ test('caption-free edited copies retain the off choice, custom style and cues fo
     });
     return child;
   });
-  const slot = mock.method(resources, 'withLocalRenderSlot', async operation => operation());
+  const slot = mock.method(resources, 'tryWithLocalRenderSlot', async operation => ({ acquired:true, value:await operation() }));
   const priority = mock.method(resources, 'lowerChildProcessPriority', () => undefined);
   t.after(() => { spawn.mock.restore(); slot.mock.restore(); priority.mock.restore(); });
   await reviews.ensureReviewFolders();
@@ -135,7 +135,7 @@ test('caption-free edited copies retain the off choice, custom style and cues fo
   fs.writeFileSync(clean, 'isolated clean master');
   fs.writeFileSync(captions, '1\n00:00:00,000 --> 00:00:02,000\nFirst spoken line\n\n2\n00:00:02,000 --> 00:00:04,000\nSecond spoken line\n');
   const now = new Date().toISOString();
-  await reviews.saveReviewFile({ id, title: 'Fixture', createdAt: now, updatedAt: now, status: 'READY', targets: ['youtube'], source: { kind: 'upload', filename: 'fixture.mp4', licence: 'Test only' }, outputs: { youtube: { filename: 'fixture.mp4', duration: 4, width: 320, height: 180 } }, audience: 'general', quality: { audio: 'natural-audio-preserved', captions: ['First spoken line', 'Second spoken line'], hashtags: ['#Fixture'], checks: [] }, artifacts: { version: 1, renderRevision: 'fixture', finalVideo: artifactReference(reviews.outputPath(id, 'youtube')), editing: { video: artifactReference(clean), offsetSeconds: 0, captionsBaked: false }, captions: artifactReference(captions) } });
+  await reviews.saveReviewFile({ id, title: 'Fixture', createdAt: now, updatedAt: now, status: 'READY', targets: ['youtube'], source: { kind: 'upload', filename: 'fixture.mp4', licence: 'Test only' }, outputs: { youtube: { filename: 'fixture.mp4', duration: 4, width: 320, height: 180 } }, audience: 'general', quality: { audio: 'natural-audio-preserved', musicRecording:{trackId:'fixture',title:'Fixture',artist:'Fixture',licence:'CC0-1.0',sourcePage:'https://example.invalid',assetSha256:'a'.repeat(64),originalOffsetSeconds:30}, captions: ['First spoken line', 'Second spoken line'], hashtags: ['#Fixture'], checks: [] }, artifacts: { version: 1, renderRevision: 'fixture', finalVideo: artifactReference(reviews.outputPath(id, 'youtube')), editing: { video: artifactReference(clean), offsetSeconds: 0, captionsBaked: false }, captions: artifactReference(captions) } });
   const initial = await edits.getReviewEditState(id);
   assert.equal(initial.draft.captionsEnabled, true, 'Existing files without saved editing defaults still use their caption cues');
   const draft = { ...initial.draft, trimStart: 1, trimEnd: 3, captionsEnabled: false, captionPosition: 'top', captionSize: 24, captionColor: '#abc123' };
@@ -143,6 +143,7 @@ test('caption-free edited copies retain the off choice, custom style and cues fo
   const job = (await edits.listReviewEdits()).find(item => item.id === queued.id);
   assert.equal(job.status, 'COMPLETED', job.error);
   const output = await reviews.getReviewFile(queued.outputId);
+  assert.equal(output.quality.musicRecording.originalOffsetSeconds,31,'Trimmed copies retain correct recording provenance.');
   assert.deepEqual(output.quality.captions, [], 'Caption-free render has no visible subtitle metadata');
   assert.deepEqual(output.captionEditing, { enabled: false, position: 'top', size: 24, color: '#abc123' });
   assert.equal(output.captionCues.length, 2, 'Editable speech timing remains available separately');

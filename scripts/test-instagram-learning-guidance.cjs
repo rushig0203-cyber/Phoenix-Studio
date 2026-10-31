@@ -83,6 +83,10 @@ test('source guidance keeps stock signature/caption preference and custom-feedba
   assert.equal(stock.prefersShortStockPostingCaption(result), true);
   assert.deepEqual(await stock.getStockProductionGuidance(filename), base);
   assert.equal(result.performanceMaxDuration, undefined, 'Low watch time alone cannot invent a duration cap');
+  assert.equal(result.openingExperiment, 'watch-time-v1', 'Fresh matched source watch times enable a bounded opening test.');
+  assert.equal((await learning.getInstagramLearningGuidance('general')).openingExperiment, undefined, 'Source evidence cannot change narration-led timing.');
+  cached = { ...cached, status:'permission_required' };
+  assert.equal((await stock.getStockProductionGuidance()).openingExperiment, undefined, 'Lost insight access disables tests for new recipes.');
 });
 
 test('qualified shorter-duration experiments cap only new automatic source recipes, never narration targets', async () => {

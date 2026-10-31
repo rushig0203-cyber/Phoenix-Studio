@@ -72,6 +72,22 @@ test('v3 rejects owner trims, forged timing bounds and malformed measurements in
   assert.deepEqual(reel.planStockIntervals(owner, 40, 'cinematic'), [{ start: 1, end: 7, outputStart: 0, outputEnd: 6, frames: 144 }]);
 });
 
+test('fresh watch-time opening tests change real cut budgets without changing playback, source bounds or saved recipes', () => {
+  const shots=Array.from({length:8},()=>automatic(20,{motionWindows:[{start:8,end:15,motion:15}]}));
+  const saved=compact(shots), tested=reel.planStockIntervals(shots,40,'cinematic',undefined,'adaptive-v3',{bpm:90},'watch-time-v1');
+  assert.ok(tested[0].frames<saved[0].frames);
+  assert.ok(tested.at(-1).outputEnd<saved.at(-1).outputEnd);
+  assert.ok(tested.every((shot,index)=>shot.speed===saved[index].speed&&shot.start>=8&&shot.end<=15));
+  assert.deepEqual(compact(shots),saved,'Absent experiment leaves the saved cut recipe unchanged.');
+  for(const count of [4,5,8,10]){
+    const short=reel.planStockIntervals(Array.from({length:count},()=>automatic(6)),15,'cinematic',undefined,'adaptive-v3',undefined,'watch-time-v1');
+    assert.ok(short.at(-1).outputEnd>=12&&short.at(-1).outputEnd<=15,'Short inputs retain the existing meaningful-picture floor.');
+    short.forEach(shot=>assert.ok(shot.end>shot.start&&shot.start>=0&&shot.end<=6));
+  }
+  assert.throws(()=>reel.planStockIntervals(shots,40,'cinematic',undefined,'adaptive-v2',undefined,'watch-time-v1'),/opening experiment/);
+  assert.throws(()=>reel.planStockIntervals(shots,40,'cinematic',undefined,'adaptive-v3',undefined,'unverified-test'),/opening experiment/);
+});
+
 test('adaptive picks the highest measured motion window and keeps output frame boundaries exact', () => {
   const shots = Array.from({ length: 5 }, () => automatic(20, { motionWindows: [
     { start: 1, end: 8, motion: 22 }, { start: 10, end: 19, motion: 80 }, { start: 2, end: 6, motion: 3 },

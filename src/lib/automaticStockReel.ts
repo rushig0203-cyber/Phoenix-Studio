@@ -6,7 +6,7 @@ import { planStockIntervals, stockPortraitScore, type StockReelOptions } from ".
 export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
 export const AUTOMATIC_STOCK_REEL_OPTIONS: StockReelOptions = {
-  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, audioMastering: "loudness-v1", shotCadence: "adaptive-v3", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
+  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, musicLibrary: "cc0-lofi-v1", audioMastering: "loudness-v1", shotCadence: "adaptive-v3", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
 };
 
 /** Lightweight topic cue, not a claim to have understood the video's emotion. */

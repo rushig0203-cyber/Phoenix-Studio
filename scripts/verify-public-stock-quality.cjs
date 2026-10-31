@@ -22,6 +22,7 @@ fs.mkdirSync(destination);
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-public-footage-'));
 assert.equal(path.dirname(fs.realpathSync(scratch)), fs.realpathSync(os.tmpdir()));
 process.chdir(scratch); // Resolve every runtime store only inside this fixture.
+fs.cpSync(path.join(project,'assets/music/lofi-cc0-v1'),path.join(scratch,'assets/music/lofi-cc0-v1'),{recursive:true});
 const ffmpeg = path.join(project, 'node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe');
 const ffprobe = path.join(project, 'node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 process.env.PHOENIX_FFMPEG_PATH = ffmpeg; process.env.PHOENIX_FFPROBE_PATH = ffprobe;
@@ -126,7 +127,7 @@ async function main() {
   stats = greenery.indices.map(index => stats[index]); motion = greenery.windows;
   assert.ok(shots.length >= 4 && omittedAtRender.includes('3699513'), 'The grey bare-tree source must not survive green-context sampling.');
   const provisional = planning.planStockIntervals(bounds.map((part, index) => ({ ...part, motionWindows: motion[index] })), 40, 'cinematic', undefined,
-    options.shotCadence, { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
+    options.shotCadence, options.musicLibrary ? undefined : { bpm: planning.stockMusicArrangement(options.mood, job.id).bpm });
   const appearance = shots.map((shot, index) => {
     const cache = JSON.parse(fs.readFileSync(path.join(assembly, `appearance-${index + 1}.json`), 'utf8'));
     const identity = crypto.createHash('sha256').update(JSON.stringify({ version: 1, filename: shot.sourceFile, bytes: stats[index].size,

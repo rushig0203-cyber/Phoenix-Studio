@@ -50,12 +50,23 @@ marking it ready. This is an export target, not an Instagram requirement or a
 claim of musical quality. Existing recipes and original-audio mixes keep their
 saved sound; manual edits discard the old measurement until measured again.
 
+New automatic reels use six compact CC0 instrumental recordings bundled with
+the app, with rights/source evidence retained. Queue reservations avoid the last
+three soundtracks even when requests arrive together; retries keep their saved
+recording and native-tempo excerpt. No music-model download, paid API or extra
+account is required. See [recording sources](assets/music/lofi-cc0-v1/SOURCES.md).
+These are recorded lofi instrumentals, not a claim of current Instagram trends.
+Per-reel editing audio uses lossless FLAC at 48 kHz to avoid large PCM copies.
+
 Quality ratings supply bounded guidance for matching future work. Supported
 Instagram performance metrics can guide experiments after the necessary insights
 permission is granted. Collection runs in small background batches; fresh,
 age/exposure-comparable measured videos can guide experiments while older history
 is still scanning. Incomplete history is labelled, missing metrics remain unknown,
 and disconnected/stale data cannot teach new work. No manual rating is required.
+For source reels, a sufficiently supported low-watch-time signal can enable a
+saved shorter-opening experiment; footage capacity and the meaningful-picture
+floor still take priority. Existing recipes are never changed by new statistics.
 Neither mechanism retrains a model, edits app code by
 itself, proves causation or guarantees views, monetization or income.
 

@@ -170,7 +170,9 @@ async function graph(access: InstagramPerformanceAccess, endpoint: string, query
   if (response.status === 401 || response.status === 403 || [10, 190, 200, 294].includes(code)) throw new GraphFailure("permission", 24 * hour);
   if (!response.ok || error) {
     const message = text(error?.message, 4096);
-    if (endpoint.endsWith("/insights") && code === 100 && /(?:metric.*(?:invalid|not supported|unsupported|not valid|must|allowed)|(?:invalid|unsupported|not supported).*metric|valid.*metric)/i.test(message)) throw new GraphFailure("metric");
+    // Meta also uses this media-specific subcode with only "Invalid parameter".
+    // Probe metrics individually; never discard the whole account or invent zeroes.
+    if (endpoint.endsWith("/insights") && code === 100 && (Number(error?.error_subcode) === 2108006 || /(?:metric.*(?:invalid|not supported|unsupported|not valid|must|allowed)|(?:invalid|unsupported|not supported).*metric|valid.*metric)/i.test(message))) throw new GraphFailure("metric");
     if (endpoint.endsWith("/insights") && code === 100 && /unsupported get request|does not exist|cannot be loaded/i.test(message)) throw new GraphFailure("missing");
     throw new GraphFailure("request", 30 * 60_000);
   }

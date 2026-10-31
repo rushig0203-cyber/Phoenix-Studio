@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "library": "cc0-lofi-v1",
+  "artist": "Loyalty Freak Music",
+  "album": "MELODIES WITH A BEAT",
+  "sourcePage": "https://loyaltyfreakmusic.com/music/melodies-with-a-beat/",
+  "licence": "CC0-1.0",
+  "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "sourceArchiveSha256": "d6e73fdf9ea1b8fc6586a106d7a3951a84f8cf59887d8d8af65d44885f661c8f",
+  "notes": "Instrumental hip-hop/ambient/lofi recording excerpts, not AI synthesis. Mood tags are editorial, not measured musical understanding. Do not register these shared recordings as exclusive Content ID assets.",
+  "recordings": [
+    {
+      "id": "sweet-you",
+      "title": "Sweet You",
+      "filename": "sweet-you.m4a",
+      "sha256": "8c7345eb375578e6fe80dfb23bf7837405516979838348d9cee1cb85c15a127e",
+      "bytes": 975819,
+      "durationSeconds": 60,
+      "moods": [
+        "warm",
+        "journey"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 01 Sweet You.mp3",
+      "originalSha256": "046cf5f03e3ae7ba4f0fe6de22abf946118cf01395c3eab4cea755aab9b4523c",
+      "originalOffsetSeconds": 30
+    },
+    {
+      "id": "old-saga",
+      "title": "Old Saga",
+      "filename": "old-saga.m4a",
+      "sha256": "aa8982f8bd00119aa18cfc1a3a0f7e532b0d013287edfa2c0ea00bd601360dad",
+      "bytes": 975631,
+      "durationSeconds": 60,
+      "moods": [
+        "reflective"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 02 Old Saga.mp3",
+      "originalSha256": "8c1c2b3f37654e57a8549f12ca56289ba3f34be95ce01d4629515fdf7414a69a",
+      "originalOffsetSeconds": 30
+    },
+    {
+      "id": "love-her",
+      "title": "Love Her",
+      "filename": "love-her.m4a",
+      "sha256": "fbb433d529d0ebb941832de321b623f0d4a5c74e4923efbefc61e36e2a8b814d",
+      "bytes": 975085,
+      "durationSeconds": 60,
+      "moods": [
+        "warm",
+        "reflective"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 04 Love Her.mp3",
+      "originalSha256": "f8cc08afde96e0f01e9836a5f01958548c76aa34196eedd6a9af089e71311aa8",
+      "originalOffsetSeconds": 30
+    },
+    {
+      "id": "beach",
+      "title": "Beach",
+      "filename": "beach.m4a",
+      "sha256": "4266898ca3861f6e559b473055168bb69b71f10c7aea9c3bc934532864a3411d",
+      "bytes": 975860,
+      "durationSeconds": 60,
+      "moods": [
+        "warm",
+        "journey"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 08 Beach.mp3",
+      "originalSha256": "3313ea5b90b0702f2c8ca5e67aaeda763b547250fc8b2b42b947e7415e0d73b7",
+      "originalOffsetSeconds": 30
+    },
+    {
+      "id": "standing",
+      "title": "Standing",
+      "filename": "standing.m4a",
+      "sha256": "784f7b0099a5759e165f3fa86876829e6b7087c375a3c208daa091e6f545e01e",
+      "bytes": 975455,
+      "durationSeconds": 60,
+      "moods": [
+        "journey"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 11 Standing.mp3",
+      "originalSha256": "76a06b4fdec5ff8f7affdc4c9df09f853b118508d1bd69c09ea04345b324d8bc",
+      "originalOffsetSeconds": 30
+    },
+    {
+      "id": "work",
+      "title": "Work",
+      "filename": "work.m4a",
+      "sha256": "498d9ae5f42e706223e4d5a58e4b9dc258375d8600c23a6ef082c1aa9838c76e",
+      "bytes": 974618,
+      "durationSeconds": 60,
+      "moods": [
+        "reflective",
+        "journey"
+      ],
+      "originalFilename": "Loyalty Freak Music - MELODIES WITH A BEAT - 13 Work.mp3",
+      "originalSha256": "cae4e095772cf91de2fcc3121b6d507a7203de2a44ba2f1767c596bdfe55e7a7",
+      "originalOffsetSeconds": 30
+    }
+  ]
+}

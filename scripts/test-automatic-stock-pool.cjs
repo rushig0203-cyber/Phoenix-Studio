@@ -34,7 +34,7 @@ function harness(pages) {
     './stockCatalog': {
       async searchFootagePage(query, aspect, anyOrientation, page, size) {
         calls.push({ query, aspect, anyOrientation, page, size });
-        const result = pages[page - 1];
+        const result = typeof pages === 'function' ? pages({query,anyOrientation,page}) : pages[page - 1];
         if (result instanceof Error) throw result;
         return result || { videos: [], hasMore: false };
       },
@@ -52,9 +52,9 @@ test('automatic discovery proceeds past a full page with too few coherent native
   const h = harness([{ videos: first, hasMore: true }, { videos: next, hasMore: true }]);
   const enough = pool => automatic.automaticStockCompanions(anchor, pool, 'Nature').length >= 9;
   const pool = await h.stock.searchNaturalStockPool('pexels', 'horse meadow', enough);
-  assert.deepEqual(h.calls.map(call => call.page), [1, 1, 2]);
+  assert.deepEqual(h.calls.map(call => call.page), [1, 2]);
   assert.equal(h.calls[0].anyOrientation, false);
-  assert.ok(h.calls.slice(1).every(call => call.anyOrientation && call.size === 24 && call.query === 'horse meadow'));
+  assert.ok(h.calls.every(call => !call.anyOrientation && call.size === 24 && call.query === 'horse meadow'));
   assert.equal(automatic.automaticStockCompanions(anchor, pool, 'Nature').length, 10);
   assert.ok(pool.every(item => !Object.hasOwn(item, 'key')));
 });
@@ -65,11 +65,12 @@ test('usable coherent count can stop early without fetching every discovery page
   assert.equal(pool.length, 10); assert.equal(h.calls.length, 1); assert.equal(h.calls[0].anyOrientation, false);
 });
 
-test('automatic discovery remains bounded to one portrait lookup plus three metadata pages and deduplicates sources', async () => {
+test('automatic discovery retains its four-request bound across portrait and mixed metadata and deduplicates sources', async () => {
   const first = Array.from({ length: 24 }, (_, at) => video(at + 1));
   const h = harness(Array.from({ length: 5 }, () => ({ videos: first, hasMore: true })));
   const pool = await h.stock.searchNaturalStockPool('pexels', 'horse meadow', () => false);
-  assert.deepEqual(h.calls.map(call => call.page), [1, 1, 2, 3]); assert.equal(pool.length, 24);
+  assert.deepEqual(h.calls.map(call => call.page), [1, 2, 1, 2]); assert.equal(pool.length, 24);
+  assert.deepEqual(h.calls.map(call=>call.anyOrientation),[false,false,true,true]);
 });
 
 test('catalogue exhaustion stops even when valid source count is sparse', async () => {
@@ -81,8 +82,14 @@ test('catalogue exhaustion stops even when valid source count is sparse', async 
 test('later free-provider failure retains successful metadata without retry; first-page failure is explicit', async () => {
   const h = harness([{ videos: [video(1)], hasMore: true }, new Error('Free catalogue quota reached')]);
   assert.equal((await h.stock.searchNaturalStockPool('pexels', 'horse meadow', () => false)).length, 1);
-  assert.deepEqual(h.calls.map(call => call.page), [1, 1, 2]);
+  assert.deepEqual(h.calls.map(call => call.page), [1, 2]);
   const failed = harness([new Error('Free catalogue quota reached')]);
   await assert.rejects(failed.stock.searchNaturalStockPool('pexels', 'horse meadow', () => false), /quota/);
   assert.equal(failed.calls.length, 1);
+});
+
+test('scarce portrait footage still permits a bounded mixed-orientation fallback',async()=>{
+  const h=harness(({anyOrientation})=>({videos:[video(anyOrientation?2:1,'horse grazing in meadow',anyOrientation?{width:1280,height:720}:{})],hasMore:false}));
+  const pool=await h.stock.searchNaturalStockPool('pexels','horse meadow',()=>false);
+  assert.equal(pool.length,2);assert.deepEqual(h.calls.map(call=>call.anyOrientation),[false,true]);
 });

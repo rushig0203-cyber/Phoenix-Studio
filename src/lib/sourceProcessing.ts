@@ -14,6 +14,7 @@ import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from
 import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
+import { selectStockRecording, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, type StockRecordingSelection } from "./stockMusicLibrary";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
 import { stockLicenceName, withStockPostingCredits, type StockLicence, type StockProvider } from "./stockProviders";
 import {
@@ -39,7 +40,7 @@ export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
 export type StockReelShot = { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual"; licence?: StockLicence };
 export type SourceJob = {
-  stockSource?: { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: StockProvider; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"]; licence?: StockLicence };
+  stockSource?: { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: StockProvider; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"]; licence?: StockLicence; musicRecording?: StockRecordingSelection };
   id: string;
   title: string;
   sourceFile: string;
@@ -1273,8 +1274,9 @@ export async function createStockReelJob(
   if (previous) return previous;
   validateStockReusePolicy(input.options);
   if (input.options.audioMastering !== undefined && (input.options.audioMastering !== "loudness-v1" || input.options.audio !== "music")) throw new Error("Music mastering is supported only for the continuous music soundtrack.");
+  if (input.options.musicLibrary !== undefined && (input.options.musicLibrary !== "cc0-lofi-v1" || input.options.audio !== "music" || input.maxDuration > 40)) throw new Error("The licensed music library supports automatic music-only reels up to 40 seconds.");
   assertStockReuseAvailable(downloads, await readJobsUnlocked());
-  planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence);
+  planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence, undefined, input.options.openingExperiment);
   await ensure();
   const id = crypto.randomUUID(), staged: string[] = [], shots: StockReelShot[] = [];
   let bytes = 0;
@@ -1302,6 +1304,14 @@ export async function createStockReelJob(
       if (duplicate?.archivedAt || duplicate?.status === "CANCELLED") throw new JobHistoryConflictError("This stock request was cancelled or removed. Start a new request.");
       if (duplicate) return duplicate;
       assertStockReuseAvailable(shots, jobs);
+      if (input.options.musicLibrary) {
+        const recent = jobs.filter(item => !item.archivedAt && item.status !== "CANCELLED").slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .flatMap(item => item.stockSource?.musicRecording ? [item.stockSource.musicRecording.trackId] : []).slice(0, 20);
+        // Reserve under the existing queue lock so simultaneous requests also rotate.
+        const recording = selectStockRecording(input.options.mood, id, recent);
+        await stockRecordingFile(recording);
+        job.stockSource!.musicRecording = recording;
+      }
       jobs.unshift(job); await saveJobsUnlocked(jobs); return job;
     });
     if (accepted.id !== id) for (const filename of staged) await fs.rm(filename, { force: true });
@@ -1491,6 +1501,8 @@ async function processStockReel(
 ) {
   const stock = job.stockSource!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
   if (options.audioMastering !== undefined && (options.audioMastering !== "loudness-v1" || options.audio !== "music")) throw new Error("This saved music-mastering recipe is unsupported. Original sound will not be normalized as music.");
+  if (options.musicLibrary !== undefined && (options.musicLibrary !== "cc0-lofi-v1" || options.audio !== "music" || !stock.musicRecording || stock.musicRecording.library !== options.musicLibrary)) throw new Error("This licensed soundtrack recipe is incomplete. No different recording was substituted.");
+  const recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
   const adaptive = options.shotCadence === "adaptive-v2" || options.shotCadence === "adaptive-v3";
   let shots = [...stock.shots!]; // Render order must never rewrite saved source provenance.
   const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
@@ -1560,9 +1572,9 @@ async function processStockReel(
       ? `Grounded greenery cue: sampled green-colour windows retained; ${excluded.length} source(s) omitted (${excluded.map(shot => `${shot.provider}:${shot.mediaId}`).join(", ") || "none"}); unknown samples remain unverified. Colour does not recognize plants, action, season or location`
       : "Greenery sampling unavailable; source context remains catalogue-only, without invented colour validation";
   }
-  const rhythm = options.continuity === "visual-v1" && options.audio === "music" && options.musicVersion === 2
+  const rhythm = !recording && options.continuity === "visual-v1" && options.audio === "music" && options.musicVersion === 2
     ? { bpm: stockMusicArrangement(options.mood, job.id).bpm } : undefined;
-  const plan = () => planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(adaptive ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence, rhythm);
+  const plan = () => planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(adaptive ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence, rhythm, options.openingExperiment);
   let intervals = plan(), continuityCheck: string | undefined, reordered = false;
   if (options.continuity === "visual-v1" && adaptive) {
     const appearances: Array<StockAppearancePair | undefined> = [];
@@ -1603,7 +1615,7 @@ async function processStockReel(
   const duration = intervals[intervals.length - 1].outputEnd;
   const renderedStock = { ...stock, renderedShots: shots.map(shot => ({ provider: shot.provider, mediaId: shot.mediaId })) };
   const minimumPictureDuration = adaptive ? duration : options.minDuration;
-  const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
+  const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1", ...(recording ? { musicRecording: stock.musicRecording } : {}) })).digest("hex").slice(0, 24);
   const completed = (await readReviewFiles()).find(file => file.processing?.jobId === job.id && file.status === "READY" && file.processing.status === "COMPLETED" && file.quality.checks.includes(`Stock plan identity ${planIdentity}`));
   if (completed) {
     if (options.audioMastering) {
@@ -1683,10 +1695,11 @@ async function processStockReel(
   const anyOriginal = preserveOriginal && states.some(state => state.usable);
   const useMusic = options.audio === "music" || options.audio === "ambience-music" || (options.audio === "auto" && states.some(state => !state.usable));
   const musicSections = stockReelMusicSections(intervals, states, preserveOriginal, options.audio === "auto");
-  const master = path.join(directory, "editable-master.mp4"), music = path.join(directory, "instrumental.wav");
+  const master = path.join(directory, "editable-master.mp4"), music = path.join(directory, recording ? "instrumental.flac" : "instrumental.wav");
   if (useMusic) {
-    await report(49, `Composing a ${options.mood} instrumental for this reel${anyOriginal ? options.audio === "auto" ? " · only filling silent shot intervals" : " · keeping the original sound above it" : ""}`);
-    await fs.writeFile(music, stockMusicWav(duration, options.mood, job.id, options.musicVersion));
+    await report(49, recording ? `Preparing the saved CC0 instrumental · ${recording.credit.title}` : `Composing a ${options.mood} instrumental for this reel${anyOriginal ? options.audio === "auto" ? " · only filling silent shot intervals" : " · keeping the original sound above it" : ""}`);
+    if (recording) await run(ffmpegPath, stockRecordingPreparationArgs(await stockRecordingFile(stock.musicRecording!), music, stock.musicRecording!, duration));
+    else await fs.writeFile(music, stockMusicWav(duration, options.mood, job.id, options.musicVersion));
     const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-i", originalAssembly, "-i", music];
     if (anyOriginal) args.push("-filter_complex", `[1:a]${stockReelMusicVolume(musicSections)}[bed];[0:a][bed]amix=inputs=2:duration=longest:dropout_transition=0,volume=2,alimiter=limit=0.97:level=false[a]`, "-map", "0:v:0", "-map", "[a]");
     else args.push("-map", "0:v:0", "-map", "1:a:0");
@@ -1709,6 +1722,7 @@ async function processStockReel(
   const credits = shots.map((shot, index) => `Shot ${index + 1}: ${shot.creator} / ${shot.provider} — ${shot.sourcePage}`);
   item.title = job.title;
   item.quality.audio = anyOriginal ? "natural-audio-preserved" : useMusic ? "local-music-replaced" : "no-audio";
+  if (recording) item.quality.musicRecording = recording.credit;
   item.quality.checks = [
     `Real footage reel: ${shots.length} shots in the ${adaptive ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v3" ? "native speed or bounded 1.35× acceleration from measured movement" : adaptive ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
@@ -1720,8 +1734,9 @@ async function processStockReel(
     ...framingChecks, ...credits,
     ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
     `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${adaptive ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
-    useMusic ? `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
-    ...(useMusic && options.musicVersion === 2 ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
+    useMusic ? recording ? `CC0 recording: ${recording.credit.title} — ${recording.credit.artist}; ${recording.credit.sourcePage}; one continuous bed across every shot. Recorded instrumental, not AI music or a verified trending track; tempo/beat phase were not measured` : `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
+    ...(useMusic && options.musicVersion === 2 && !recording ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
+    ...(options.openingExperiment ? ["Watch-time opening experiment v1: the opening targets 1.2 rather than 1.6 seconds when genuine picture and the minimum allow it; the chosen subject, measured window and native/bounded playback stay intact. This tests an observational signal, not a proven cause of low watch time"] : []),
     subtitleDecision.reason,
     `Stock plan identity ${planIdentity}`,
     `Pipeline signature ${signature}`,
@@ -1733,7 +1748,7 @@ async function processStockReel(
   else item.quality.hashtags = [...new Set(words(shots.map(shot => shot.title).join(" ")).slice(0, 6).map(word => `#${word[0].toUpperCase()}${word.slice(1)}`))];
   item.quality.warning = options.audio === "music" && states.some(state => state.usable) ? "This export uses a continuous instrumental soundtrack. Original audio is retained with each downloaded source." : subtitleDecisions.some(item => item.decision === "uncertain") ? "Some source sound could not be checked for speech. Review it before posting." : undefined;
   item.processing!.reason = adaptive ? "Real footage with compact movement-informed cuts, bounded acceleration and automatic duration. Composition, continuity, sound and posting relevance still require final viewing." : "Real footage, owner-selected intervals and order. Composition, continuity, sound and posting relevance require final viewing.";
-  item.monetizationReview!.rightsBasis = `All source pages retained: ${shots.map(shot => shot.sourcePage).join(" · ")}. A provider licence does not establish originality or monetization eligibility.`;
+  item.monetizationReview!.rightsBasis = `All source pages retained: ${shots.map(shot => shot.sourcePage).join(" · ")}.${recording ? ` Music: ${recording.credit.title} — ${recording.credit.artist}, CC0-1.0; ${recording.credit.sourcePage}.` : ""} A provider licence does not establish originality or monetization eligibility.`;
   const instagram = outputPath(item.id, "instagram"), youtube = outputPath(item.id, "youtube");
   let instagramInfo = reuse ? await validOutput(instagram, duration, minimumPictureDuration) : null, youtubeInfo = reuse ? await validOutput(youtube, duration, minimumPictureDuration) : null;
   if (instagramInfo && !youtubeInfo) { await copyFileAtomically(instagram, youtube); youtubeInfo = await validOutput(youtube, duration, minimumPictureDuration); }

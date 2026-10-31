@@ -148,6 +148,29 @@ test('probe checkpoints resume within the request budget rather than repeatedly 
   const previous = calls.length; const second = await collector.syncInstagramPerformance(true); assert.equal(second.historyComplete, true); assert.ok(calls.length - previous <= 12);
   assert.equal(calls.filter(call => new URL(call.url).searchParams.get('metric')?.includes(',')).length, 3);
 });
+
+test('Meta media-specific Invalid parameter errors isolate metrics and cannot block later owned videos',async()=>{
+  const oldId='180000000000001',laterId='180000000000002';
+  fetcher=url=>{
+    if(url.pathname.endsWith('/media'))return Response.json({data:[video(oldId),video(laterId)]});
+    if(url.pathname.includes(oldId)&&(url.searchParams.get('metric').includes(',')||url.searchParams.get('metric')==='ig_reels_avg_watch_time'))return Response.json({error:{code:100,error_subcode:2108006,message:`Invalid parameter private=${account.accessToken}`}},{status:400});
+    return insights(url);
+  };
+  const result=await collector.syncInstagramPerformance();
+  assert.equal(result.historyComplete,true);assert.equal(result.status,'limited');assert.ok(calls.length<=12);
+  assert.equal(result.videos.find(item=>item.id===oldId).metrics.averageWatchTimeMs,null);
+  assert.equal(result.videos.find(item=>item.id===oldId).metrics.views,1000);
+  assert.equal(result.videos.find(item=>item.id===laterId).metrics.views,1000);
+  assert.doesNotMatch(JSON.stringify(result),/private=|fixture-token/);
+});
+
+test('an entirely ineligible old video stays unknown while collection completes and later cycles avoid its rejected metrics',async()=>{
+  fetcher=url=>url.pathname.endsWith('/media')?Response.json({data:[video()]}):Response.json({error:{code:100,error_subcode:2108006,message:'Invalid parameter'}},{status:400});
+  const result=await collector.syncInstagramPerformance();
+  assert.equal(result.status,'limited');assert.equal(result.historyComplete,true);
+  assert.equal(result.videos[0].metrics.views,null);assert.equal(result.videos[0].metricIssues.length,6);
+  const before=calls.length;await collector.syncInstagramPerformance(true);assert.equal(calls.length-before,1,'The next cycle scans owned media without retrying known rejected metrics.');
+});
 test('permission failures retain same-account cache but never expose provider errors or request URLs', async () => {
   await collector.syncInstagramPerformance();
   const failure = new Error(`private ${account.accessToken}`); failure.code = 'permission_required';

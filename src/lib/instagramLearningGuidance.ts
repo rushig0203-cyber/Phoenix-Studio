@@ -3,7 +3,7 @@ import { readInstagramPerformance } from "./instagramPerformance";
 import { instagramPerformanceSummary } from "./instagramPerformanceLearning";
 import type { InstagramPerformanceState } from "./instagramPerformanceTypes";
 
-type LearningGuidance = { revision: string; rules: string[]; maxDuration?: number };
+type LearningGuidance = { revision: string; rules: string[]; maxDuration?: number; openingExperiment?: "watch-time-v1" };
 const EMPTY: LearningGuidance = { revision: "", rules: [] };
 const types = ["source", "general", "business", "children-story", "children-song"];
 
@@ -22,8 +22,9 @@ export function instagramLearningGuidanceFromState(state: InstagramPerformanceSt
   if (rules.length < 2) return EMPTY;
   const maxDuration = creationType === "source" && Number.isInteger(summary.durationExperimentSeconds)
     && summary.durationExperimentSeconds! >= 15 && summary.durationExperimentSeconds! <= 40 ? summary.durationExperimentSeconds : undefined;
-  const revision = createHash("sha256").update(JSON.stringify([1, state.account?.id, state.account?.connectionRevision, creationType, rules, maxDuration])).digest("hex").slice(0, 12);
-  return { revision, rules, ...(maxDuration !== undefined ? { maxDuration } : {}) };
+  const openingExperiment = creationType === "source" && rules.some(rule => rule.startsWith("In ")) ? "watch-time-v1" as const : undefined;
+  const revision = createHash("sha256").update(JSON.stringify([2, state.account?.id, state.account?.connectionRevision, creationType, rules, maxDuration, openingExperiment])).digest("hex").slice(0, 12);
+  return { revision, rules, ...(maxDuration !== undefined ? { maxDuration } : {}), ...(openingExperiment ? { openingExperiment } : {}) };
 }
 
 /** Reads the current-account cache only; optional statistics never block content creation. */

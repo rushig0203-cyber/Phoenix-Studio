@@ -169,6 +169,7 @@ jobs:
           scripts/test-stock-reel-editing.cjs
           scripts/test-stock-reel-quality.cjs
           scripts/test-stock-reel-audio.cjs
+          scripts/test-stock-music-library.cjs
           scripts/test-stock-music-variation.cjs
           scripts/test-stock-reel-remux.cjs
       - name: Lint changed production interfaces
@@ -191,6 +192,7 @@ jobs:
           src/components/ReviewLibrary.tsx
           src/app/api/review-files/[id]/publish/route.ts
           src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockReuse.ts src/lib/stockVisualContinuity.ts src/lib/stockTemporaryCleanup.ts
+          src/lib/stockMusicLibrary.ts
           src/lib/automaticStockReel.ts src/lib/naturalStock.ts src/lib/sourceProcessing.ts
           src/app/api/stock-reels/route.ts
           src/lib/stockProductionGuidance.ts src/components/StockReels.tsx

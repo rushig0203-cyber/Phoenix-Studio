@@ -54,9 +54,10 @@ async function queueAutomaticStockReel(input: { provider: AutomaticStockProvider
     return { provider: video.provider, mediaId: String(video.id), sourcePage: video.sourcePage, creator: video.creator, title: video.title, licence: video.licence, start: 0, end: video.duration, trimMode: "auto", open: () => openStockVideo(url) };
   });
   const options = automaticStockReelOptions(query);
+  if (managerGuidance.openingExperiment) options.openingExperiment = managerGuidance.openingExperiment;
   options.background = "soft-v1";
   if (automaticStockGreeneryFocus(anchor)) options.sceneFocus = "greenery";
-  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence);
+  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence, undefined, options.openingExperiment);
   return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration, options,
     managerGuidance: { revision: managerGuidance.revision, feedbackCount: managerGuidance.feedbackCount, rules: managerGuidance.rules } });
 }

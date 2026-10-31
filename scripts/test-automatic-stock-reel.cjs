@@ -47,7 +47,7 @@ test('new automatic soundtrack uses compact adaptive timing without changing man
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_SOURCES, 10);
   for (const [topic, mood] of [['Sunrise over mountains', 'warm'], ['birds in a garden', 'warm'], ['Sun City videos', 'journey'], ['ocean waves', 'journey'], ['misty mountains', 'reflective'], ['moonlit lake', 'reflective']]) {
-    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
+    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
   }
   const first = automatic.automaticStockReelOptions('sunrise'); first.mood = 'journey';
   assert.equal(automatic.automaticStockReelOptions('sunrise').mood, 'warm', 'A caller cannot mutate later defaults');
@@ -731,7 +731,7 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
   assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [
@@ -978,6 +978,19 @@ test('structured source feedback expands recent-history preference and snapshots
   const saved=harness({existing:{id:'kept',stockSource:{shots:[{},{}]}},guidanceError:'Should not read feedback'});
   assert.equal((await saved.api.POST(request(automaticPayload))).status,200);
   assert.equal(saved.calls.filter(call=>call[0]==='guidance').length,0);
+});
+
+test('measured watch-time opening advice reaches only a newly queued automatic recipe', async () => {
+  const guidance={...baselineGuidance,openingExperiment:'watch-time-v1'};
+  const h=harness({guidance}),response=await h.api.POST(request(automaticPayload));
+  assert.equal(response.status,201);
+  assert.equal(h.queued[0].input.options.openingExperiment,'watch-time-v1');
+  const saved=harness({guidance,existing:{id:'saved',stockSource:{shots:[{},{}]}}});
+  assert.equal((await saved.api.POST(request(automaticPayload))).status,200);
+  assert.equal(saved.queued.length,0,'A saved request is not replanned when insight evidence changes.');
+  const manual=harness({guidance});
+  const posted=await manual.api.POST(request({requestId:automaticPayload.requestId,theme:'Sun City',duration:60,shots:[{provider:'pexels',id:1,start:1,end:8,trimMode:'manual'},{provider:'pixabay',id:2,start:1,end:8,trimMode:'manual'}]}));
+  assert.equal(posted.status,201);assert.equal(manual.queued[0].input.options.openingExperiment,undefined);
 });
 
 test('broken source-feedback storage blocks new automatic planning before catalog/media work, but not saved or manual recipes', async () => {
