@@ -54,6 +54,17 @@ Songs need a real sung recording and matching lyrics on this laptop. The optiona
 local ACE-Step adapter does not bundle its engine/models and is disabled below
 Phoenix's hardware guard; narration is not advertised as singing.
 
+The optional VoiceStudio narration adapter uses the separately installed,
+user-approved Supertonic-3 engine (SDK 1.3.1, pinned model revision) for English
+and Hindi 2D stories. Local configuration lives in ignored
+`storage/voicestudio.json`: `enabled`, `licenseAccepted`, absolute `python` and
+`modelDirectory` paths. No model or desktop app is started with the website.
+The voice worker uses one CPU thread, runs offline, exits before rendering and
+retains measured phrase boundaries for captions. It does not provide phoneme
+alignment, singing or music. A low-memory wait preserves the queued request.
+Without this optional configuration, the existing Windows story voice remains
+available; an explicitly selected Windows voice remains authoritative.
+
 ## Posting
 
 Use **Post / export** on a finished video:

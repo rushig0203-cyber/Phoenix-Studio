@@ -14,6 +14,7 @@ import { checkKidsScript } from "./scriptChecks";
 import { childrenStoryDirection } from "./creativeDirection";
 import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief, type CreativeBriefAttempt } from "./creativeBrief";
 import { kidsVoicePlan, parseSpeechTiming, measuredKidsCaptionCues, kidsSpeechPerformance, mergeBriefKidsCaptions } from "./kidsSpeechTiming";
+import { synthesizeVoiceStudio, voiceStudioCues } from "./voiceStudio";
 import { checkKidsStory, kidsStorySchema, structuredKidsStory, type KidsStoryAttempt, type KidsStoryIssue } from "./kidsStoryQuality";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import {
@@ -36,6 +37,7 @@ export type KidsRenderInput = {
   creationType: "children-story" | "children-song";
   script?: string;
   voice?: string;
+  language?: string;
   aspect?: "9:16" | "16:9";
   publishingFormat?: PublishingFormat;
   targetPlatform?: string;
@@ -964,12 +966,17 @@ export async function renderKidsVideo(
   if (!song) voiceArgs.push("-VoicePlanFile", voicePlanPath, "-TimingFile", speechTimingPath);
   if (input.voice && input.voice !== "local-windows-voice") voiceArgs.push("-Voice", input.voice);
   const voiceTimeoutMs = clamp(Math.ceil(60_000 + requestedSeconds * 750), 90_000, 300_000);
+  let studioVoice: Awaited<ReturnType<typeof synthesizeVoiceStudio>> = null;
   try {
     if (song) {
       await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), "-t", String(requestedSeconds), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
-    } else await run(windowsPowerShell, voiceArgs, { timeoutMs: voiceTimeoutMs });
+    } else {
+      if (!input.voice || input.voice === "local-windows-voice") studioVoice = await synthesizeVoiceStudio(captions, narration, input.language);
+      if (!studioVoice) await run(windowsPowerShell, voiceArgs, { timeoutMs: voiceTimeoutMs });
+    }
   } catch (error) {
-    throw new Error(`${song ? "Song audio preparation" : "Windows local voice synthesis"} failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    if (isWritingWaitError(error)) throw error;
+    throw new Error(`${song ? "Song audio preparation" : "Local voice synthesis"} failed: ${error instanceof Error ? error.message : "unknown error"}`);
   }
   const narrationSeconds = await mediaDuration(narration);
   const timing = kidsNarrationTiming(input, narrationSeconds);
@@ -980,7 +987,9 @@ export async function renderKidsVideo(
   // Engine word onsets and visemes share the recording's audio clock. Imported
   // songs retain explicit estimated timing; no claim of forced alignment is made.
   const speechTiming = song ? null : parseSpeechTiming(await fs.readFile(speechTimingPath, "utf8").then(JSON.parse).catch(() => null));
-  const measuredCues = speechTiming ? measuredKidsCaptionCues(captions, speechTiming, narrationSeconds, targetSeconds) : null;
+  const measuredCues = studioVoice
+    ? voiceStudioCues({ source: "voicestudio-phrase-boundaries", cues: studioVoice.cues }, captions, narrationSeconds, targetSeconds)
+    : speechTiming ? measuredKidsCaptionCues(captions, speechTiming, narrationSeconds, targetSeconds) : null;
   const spokenCues = measuredCues || kidsCaptionCues(captions, targetSeconds);
   const cues = mergeBriefKidsCaptions(spokenCues);
   const visualCues = input.sceneNarration?.length
@@ -990,11 +999,12 @@ export async function renderKidsVideo(
   await onProgress(29, song ? "Keeping the supplied singing at its original speed" : `Timing scenes around ${targetSeconds.toFixed(1)} seconds of measured narration`);
   await fs.writeFile(path.join(directory, "audio-timing.json"), JSON.stringify({
     sourceSeconds: narrationSeconds, requestedSeconds, ...timing,
-    captionTiming: measuredCues ? "speech-engine-word-onsets" : "estimated-word-weighted", captionStartSeconds: cues[0].start,
+    captionTiming: studioVoice ? "voicestudio-phrase-boundaries" : measuredCues ? "speech-engine-word-onsets" : "estimated-word-weighted", captionStartSeconds: cues[0].start,
     mouthTiming: performanceFrames ? "speech-engine-visemes" : "unavailable",
-    voices: speechTiming?.voices || [],
+    voices: studioVoice ? [studioVoice.voice] : speechTiming?.voices || [],
     shortCaptionCount: cues.filter(cue => cue.duration < .85).length,
-    note: measuredCues ? "Caption starts follow local speech-engine word events; ends use the next onset. Mouths use measured speech visemes. Review delivery before posting."
+    note: studioVoice ? "Captions follow independently synthesized VoiceStudio phrases. Word/phoneme alignment is not supplied; visual scene timing is estimated when scene boundaries differ. Review delivery before posting."
+      : measuredCues ? "Caption starts follow local speech-engine word events; ends use the next onset. Mouths use measured speech visemes. Review delivery before posting."
       : "Word timing was unavailable or did not match every caption token; timings are explicitly estimated. Review against the audio before posting.",
   }, null, 2), "utf8");
 
@@ -1118,7 +1128,7 @@ export async function renderKidsVideo(
   const visualDescription = animationBackground
     ? `${animationBackground.credits.length} licensed moving Pixabay scenery backgrounds with articulated original characters`
     : "original 2D animation with moving limbs, expressions, and caption-matched action props";
-  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? "Uses supplied audio at its original pitch and speed. " : ""}${measuredCues ? "Caption starts use measured speech-engine word events." : "Caption timings are word-weighted estimates, not measured word alignment."} ${performanceFrames ? "Cast mouths follow the recorded speech visemes." : "Measured mouth events were unavailable."} Needs your visual and listening review.`;
+  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? "Uses supplied audio at its original pitch and speed. " : ""}${studioVoice ? "Caption starts use measured VoiceStudio phrase boundaries." : measuredCues ? "Caption starts use measured speech-engine word events." : "Caption timings are word-weighted estimates, not measured word alignment."} ${performanceFrames ? "Cast mouths follow the recorded speech visemes." : "Measured mouth events were unavailable."} Needs your visual and listening review.`;
   return {
     file: output,
     duration: finalDuration,

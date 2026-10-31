@@ -78,6 +78,7 @@ jobs:
           scripts/test-instagram-hashtag-activity.cjs
           scripts/test-instagram-story-ideas.cjs
           scripts/test-kids-speech-timing.cjs
+          scripts/test-voicestudio.cjs
           scripts/test-local-model-session.cjs
           scripts/test-narration-timing.cjs
           scripts/test-natural-stock.cjs
@@ -176,6 +177,7 @@ jobs:
           src/lib/reelMusic.ts src/lib/postingEvidence.ts
           src/lib/stockProviders.ts src/lib/openStockCatalog.ts
           src/lib/generation.ts
+          src/lib/voiceStudio.ts src/lib/kidsRenderer.ts
           src/app/api/generations/route.ts
           src/lib/stockStoryboard.ts src/lib/stockPreparation.ts src/lib/automaticFootage.ts src/lib/newsVisualPolicy.ts
           src/lib/stockBrief.ts src/lib/stockEditorial.ts src/lib/newsResearch.ts src/lib/timedCaptions.ts

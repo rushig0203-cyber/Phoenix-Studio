@@ -1,5 +1,29 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 VoiceStudio repair and lightweight story narration — verification in progress
+
+- Repaired the official 0.5.7 CPU runtime using its downloaded Python 3.11.16
+  directly, avoiding failed managed-Python discovery through a redirected
+  Windows AppData link. Corrected the bundled Pillow/Gradio incompatibility
+  to Pillow 12.3.0. All 225 installed packages pass compatibility checks; the
+  official runtime import probe and loopback backend health report ready.
+- The owner approved Supertonic-3's OpenRAIL-M model licence. Installed SDK
+  1.3.1 and the pinned model. Isolated English/Hindi synthesis produced real
+  10.03/11.01-second WAVs; the process peaked at 514 MiB without loading Torch.
+- The full desktop wizard enforces an 8 GiB system-RAM floor; this laptop
+  reports 7.3 GiB usable. That guard was not bypassed. The desktop app and its
+  backend were closed after inspection to return RAM.
+- Added an optional one-shot 2D-story adapter using that installed CPU engine.
+  No Electron UI, persistent server, paid provider, model download or concurrent
+  video render is needed. It keeps measured phrase-caption boundaries, checks
+  available RAM, and stops the actual Python child if Phoenix/its venv launcher
+  exits. It does not claim word/phoneme timing, music generation or singing.
+- The actual Phoenix-to-Python bridge produced English/Hindi WAVs and matching
+  phrase evidence; the parent-exit containment check passed. Existing Windows
+  explicit voices and recorded songs retain their paths. General stock-video
+  narration is unchanged. Remote full verification and activation remain open
+  at this entry; source changes alone are not a live release.
+
 ## October 31 one automatic footage workflow — installed and verified live
 
 - Source `a1d94108f99bc07a40092d4cbf7d2854b8cb0619` passed Windows run
