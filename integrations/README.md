@@ -1,5 +1,15 @@
 # MoneyPrinterTurbo local adjustments
 
+The current patch also supports `local-windows-voice` with the exact nullable
+`phoenix_local_voice_protocol: "windows-speech-events-v1"` capability. Phoenix
+retains the local choice instead of translating it into an online Edge voice.
+The launcher sets `PHOENIX_STUDIO_ROOT` to the canonical checkout; the backend
+uses only that trusted root's existing speech adapter, never a client script path.
+Standalone backend launches need that environment variable too. Restart the
+backend after applying the patch. Installed Windows voices create an actual WAV
+and measured word events; missing language voices fail clearly without online
+or paid fallback. VoiceStudio's children's engine is configured separately.
+
 Phoenix's optional stock renderer is the MIT-licensed [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo) project.
 
 This folder preserves the local laptop-safety adjustments without committing credentials, model weights or the entire dependency checkout. The patch is based on commit `3ade9fbc40e18db32a5edb340d49e31ea0dd5528`.

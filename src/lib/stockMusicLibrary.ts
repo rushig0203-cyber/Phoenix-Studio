@@ -13,8 +13,8 @@ export function selectStockRecording(mood: StockReelOptions["mood"], seed: strin
   const history = recent.slice(0, 20), hash = (id: string) => crypto.createHash("sha256").update(`${seed}:${id}`).digest("hex");
   const age = (id: string) => history.includes(id) ? history.indexOf(id) : 100;
   const pool = manifest.recordings.filter(track => !history.slice(0, 3).includes(track.id));
-  const track = (pool.length ? pool : manifest.recordings).slice().sort((a, b) => age(b.id) - age(a.id)
-    || Number(b.moods.includes(mood)) - Number(a.moods.includes(mood)) || hash(a.id).localeCompare(hash(b.id)))[0];
+  const track = (pool.length ? pool : manifest.recordings).slice().sort((a, b) => Number(b.moods.includes(mood)) - Number(a.moods.includes(mood))
+    || age(b.id) - age(a.id) || hash(a.id).localeCompare(hash(b.id)))[0];
   return { library: "cc0-lofi-v1", trackId: track.id, offsetSeconds: Number.parseInt(hash(track.id).slice(0, 2), 16) % 13 };
 }
 

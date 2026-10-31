@@ -189,6 +189,7 @@ try {
     $env:MKL_NUM_THREADS = '1'
     $env:PHOENIX_RENDER_THREADS = '1'
     $env:PHOENIX_TRANSCRIBE_THREADS = '1'
+    $env:PHOENIX_STUDIO_ROOT = $phoenixRoot
 
     if ($phoenixNeedsOllama -and -not (Test-PhoenixServiceHttp 'http://127.0.0.1:11434/api/tags' 'ollama')) {
         $ollamaProcess = $null

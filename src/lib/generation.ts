@@ -16,6 +16,7 @@ import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, stockScriptTargetWords, checkStockScript } from "./stockBrief";
 import { readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
+import { LOCAL_STOCK_VOICE_PROTOCOL, supportsLocalStockVoice } from "./localVoiceProtocol";
 import { getCreativeGuidance } from "./qualityManager";
 import type { CreativeGuidance } from "./managerTypes";
 import { generateWritingModel, withWritingSession, isWritingWaitError, WritingQuotaWaitError, isWriterQuotaWaiting, writerQuotaBackupReady } from "./writingModel";
@@ -379,7 +380,7 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
-export async function requireStockStoryboardRenderer(approvedFootage = false, news = false) {
+export async function requireStockStoryboardRenderer(approvedFootage = false, news = false, localVoice = false) {
   const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
   const api = response.ok ? await response.json() : null;
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
@@ -389,6 +390,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false, ne
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
   if (!supportsNativeStockPlayback(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for original-speed footage. Phoenix will not slow down or freeze clips to fill narration; existing exports are retained.");
   if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for news footage. Phoenix will not let a longer narration silently add unrelated supplemental stock; existing exports are retained.");
+  if (localVoice && !supportsLocalStockVoice(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the stock renderer for offline local narration. The selected local voice will not be replaced with an online voice.");
 }
 
 export async function generatorReachable() {
@@ -1043,7 +1045,7 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
-  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research));
+  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research), input.voice === "local-windows-voice");
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
   const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, duration: saved.duration, requestedDuration: saved.requestedDuration ?? saved.duration, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
@@ -1066,7 +1068,8 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       phoenix_news_visual_policy: prepared.newsVisualPolicy,
       video_language: prepared.language,
       video_aspect: prepared.aspect,
-      voice_name: prepared.voice === "local-windows-voice" ? "en-US-JennyNeural-Female" : prepared.voice,
+      voice_name: prepared.voice,
+      phoenix_local_voice_protocol: prepared.voice === "local-windows-voice" ? LOCAL_STOCK_VOICE_PROTOCOL : undefined,
       voice_rate: stockVoiceRate(script, prepared.duration),
       video_source: "pexels",
       match_materials_to_script: true,

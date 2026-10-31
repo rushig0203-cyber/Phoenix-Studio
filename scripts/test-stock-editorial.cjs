@@ -209,6 +209,24 @@ test('generation re-entry saves its displayed duration together with the concise
   assert.equal(JSON.parse(checkpoint.requestJson).duration,45);
 });
 
+test('stock submission retains the local voice and its measured-speech protocol instead of substituting Edge', async () => {
+  const source=fs.readFileSync(path.join(project,'src/lib/generation.ts'),'utf8');
+  const start=source.slice(source.indexOf('async function startStockJob('),source.indexOf('async function retryOrFail('));
+  const code=require('typescript').transpileModule(start,{compilerOptions:{target:require('typescript').ScriptTarget.ES2022}}).outputText;
+  const updates=[],requests=[],preflights=[],input={topic:'Park path',duration:25,voice:'local-windows-voice',script:'A green path.',storyboard:[{narration:'A green path.',query:'green park',assetId:1}]};
+  const context={
+    existingReadyOutput:async()=>false,generatorReachable:async()=>true,requireStockStoryboardRenderer:async(...args)=>preflights.push(args),
+    prepareStockCreation:async()=>({input}),updateJob:async(_id,update)=>updates.push(update),retainExternalRender:async()=>{},
+    stockSearchTerms:()=>['green park'],stockVoiceRate:()=>1,STOCK_PLAYBACK_POLICY:'native-speed-v1',LOCAL_STOCK_VOICE_PROTOCOL:'windows-speech-events-v1',
+    process:{env:{}},providerUrl:()=>new URL('http://127.0.0.1:8080/api/v1/videos'),providerHeaders:()=>({}),AbortSignal,
+    fetch:async(_url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({data:{task_id:'fixture-local-speech'}})};},
+  };
+  require('node:vm').runInNewContext(code,context);await context.startStockJob({id:'fixture'},input);
+  assert.equal(preflights[0][2],true);assert.equal(requests[0].voice_name,'local-windows-voice');
+  assert.equal(requests[0].phoenix_local_voice_protocol,'windows-speech-events-v1');
+  assert.equal(updates.at(-1).providerTaskId,'fixture-local-speech');
+});
+
 test('provider, configuration and quota errors are never retried as review corrections', async () => {
   const writer = require('../src/lib/writingModel.ts');
   const { WritingWaitError, WritingConfigurationError } = require('../src/lib/groqWriter.ts');

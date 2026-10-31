@@ -27,7 +27,7 @@ index 8c90c58..a3df813 100644
  
      raise HttpException(
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..ebc895e 100644
+index c4d12e1..17d06e2 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -58,18 +58,19 @@ index c4d12e1..ebc895e 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +101,10 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,11 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
 +    phoenix_storyboard: Optional[List[PhoenixStoryBeat]] = Field(default=None, min_length=1, max_length=18)
 +    phoenix_playback_policy: Literal["native-speed-v1"] = "native-speed-v1"
 +    phoenix_artifacts_version: Optional[Literal[1]] = None
++    phoenix_local_voice_protocol: Optional[Literal["windows-speech-events-v1"]] = None
 +    phoenix_news_visual_policy: Optional[Literal["context-only-no-supplement-v1"]] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +141,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +142,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -82,7 +83,7 @@ index c4d12e1..ebc895e 100644
      video_script_prompt: str = Field(default="", max_length=2000)
      custom_system_prompt: str = Field(default="", max_length=8000)
 diff --git a/app/services/task.py b/app/services/task.py
-index a310390..794f201 100644
+index a310390..77895c4 100644
 --- a/app/services/task.py
 +++ b/app/services/task.py
 @@ -13,13 +13,14 @@ from loguru import logger
@@ -101,7 +102,39 @@ index a310390..794f201 100644
      sonilo,
      subtitle,
      task_artifacts,
-@@ -793,7 +794,8 @@ def _record_loomloom_run_reference(
+@@ -522,13 +523,24 @@ def generate_audio(
+             return reusable_preview
+ 
+         logger.info("no custom audio file provided, using TTS to generate audio.")
+-        audio_file = path.join(utils.task_dir(task_id), "audio.mp3")
+-        sub_maker = voice.tts(
+-            text=video_script,
+-            voice_name=voice.parse_voice_name(params.voice_name),
+-            voice_rate=params.voice_rate,
+-            voice_file=audio_file,
+-        )
++        local_voice = params.voice_name == "local-windows-voice"
++        audio_file = path.join(utils.task_dir(task_id), "audio.wav" if local_voice else "audio.mp3")
++        if local_voice:
++            from app.services.phoenix_local_voice import PROTOCOL, synthesize
++            if getattr(params, "phoenix_local_voice_protocol", None) != PROTOCOL:
++                raise ValueError("Phoenix local speech protocol was not supplied; no online voice was substituted.")
++            cues = synthesize(video_script, audio_file, params.voice_rate, getattr(params, "video_language", "English"))
++            sub_maker = voice.SubMaker()
++            for cue in cues:
++                sub_maker.feed({"type": "WordBoundary", "text": cue["text"], "offset": round(cue["start"] * 10_000_000),
++                    "duration": round((cue["end"] - cue["start"]) * 10_000_000)})
++        else:
++            sub_maker = voice.tts(
++                text=video_script,
++                voice_name=voice.parse_voice_name(params.voice_name),
++                voice_rate=params.voice_rate,
++                voice_file=audio_file,
++            )
+         if sub_maker is None:
+             _mark_task_failed(
+                 task_id,
+@@ -793,7 +805,8 @@ def _record_loomloom_run_reference(
  
  
  def generate_final_videos(
@@ -111,7 +144,7 @@ index a310390..794f201 100644
  ):
      final_video_paths = []
      combined_video_paths = []
-@@ -820,18 +822,24 @@ def generate_final_videos(
+@@ -820,18 +833,24 @@ def generate_final_videos(
              utils.task_dir(task_id), f"combined-{index}.mp4"
          )
          logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
@@ -148,7 +181,7 @@ index a310390..794f201 100644
  
          _progress += 50 / params.video_count / 2
          sm.state.update_task(task_id, progress=_progress)
-@@ -1410,13 +1418,33 @@ def _run_pipeline(
+@@ -1410,13 +1429,33 @@ def _run_pipeline(
      sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
  
      # 5. Get video materials
@@ -189,7 +222,7 @@ index a310390..794f201 100644
      if not downloaded_videos:
          return _mark_task_failed(
              task_id,
-@@ -1449,6 +1477,7 @@ def _run_pipeline(
+@@ -1449,6 +1488,7 @@ def _run_pipeline(
              audio_file,
              subtitle_path,
              audio_duration,
@@ -197,7 +230,7 @@ index a310390..794f201 100644
          )
      )
  
-@@ -1466,7 +1495,8 @@ def _run_pipeline(
+@@ -1466,7 +1506,8 @@ def _run_pipeline(
      # 7. 先完成视频生成任务，再按需提交跨平台发布。第三方上传可能耗时
      # 数分钟，不应阻塞视频结果返回，也不能反向影响已经生成的成片。
      cross_post_enabled = (
@@ -207,7 +240,7 @@ index a310390..794f201 100644
          and upload_post.upload_post_service.auto_upload
      )
      platforms = (
-@@ -1493,7 +1523,11 @@ def _run_pipeline(
+@@ -1493,7 +1534,11 @@ def _run_pipeline(
          "cross_post_error": None,
          "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
          "warnings": generation_warnings or None,
@@ -1167,6 +1200,87 @@ index 0000000..37cf817
 +    if result.get("version") != 1:
 +        raise ValueError("Phoenix editing artifacts were not saved.")
 +    return result
+diff --git a/app/services/phoenix_local_voice.py b/app/services/phoenix_local_voice.py
+new file mode 100644
+index 0000000..d9830ef
+--- /dev/null
++++ b/app/services/phoenix_local_voice.py
+@@ -0,0 +1,75 @@
++"""Offline stock narration through Phoenix's existing Windows speech adapter."""
++import json
++import math
++import os
++from pathlib import Path
++import re
++import subprocess
++import unicodedata
++import wave
++
++PROTOCOL = "windows-speech-events-v1"
++
++
++def _words(value):
++    return "".join(re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", value).casefold()))
++
++
++def measured_words(script, timing, seconds):
++    if not isinstance(timing, dict) or timing.get("source") != "windows-speech-events" or timing.get("version") != 1:
++        raise ValueError("Local speech did not return its measured word events.")
++    words = timing.get("words")
++    if not isinstance(words, list) or not 1 <= len(words) <= 6000 or any(not isinstance(word, dict) for word in words) or not math.isfinite(seconds) or not 0 < seconds <= 900:
++        raise ValueError("Local speech has invalid timing or duration.")
++    cues = []
++    for index, word in enumerate(words):
++        text, start = word.get("text"), word.get("seconds")
++        end = words[index + 1].get("seconds") if index + 1 < len(words) else seconds
++        if not isinstance(text, str) or not text.strip() or not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or not all(math.isfinite(v) for v in (start, end)) or not 0 <= start < end <= seconds + .001:
++            raise ValueError("Local speech word events do not fit the actual recording.")
++        cues.append({"text": text, "start": start, "end": min(end, seconds)})
++    if _words(" ".join(cue["text"] for cue in cues)) != _words(script):
++        raise ValueError("Local speech words do not match the complete narration; no guessed subtitles were used.")
++    return cues
++
++
++def synthesize(script, output, rate=1.0, language="English"):
++    if os.name != "nt" or not isinstance(script, str) or not 1 <= len(script.strip()) <= 24000:
++        raise ValueError("Offline Windows narration requires this PC and a bounded, nonempty script.")
++    if not isinstance(rate, (int, float)) or not math.isfinite(rate) or not .8 <= rate <= 1.25:
++        raise ValueError("Offline narration requires a natural supported speech rate.")
++    requested_language = str(language or "English").strip().lower()
++    if re.search(r"[\u0900-\u097f]", script) or requested_language in ("hi", "hi-in", "hindi"):
++        speech_language = "Hindi"
++    elif requested_language in ("en", "english") or requested_language.startswith("en-"):
++        speech_language = "English"
++    else:
++        raise ValueError("This offline stock adapter supports installed English/Hindi voices; it will not substitute English for another language.")
++    # This trusted root is set by the launcher, never accepted from an API request.
++    root = Path(os.environ.get("PHOENIX_STUDIO_ROOT", ""))
++    if not root.is_absolute() or str(root).startswith("\\\\"):
++        raise ValueError("Start the renderer through the current Phoenix shortcut for local narration.")
++    adapter = root / "scripts" / "synthesize-local-voice.ps1"
++    if not adapter.is_file() or adapter.is_symlink():
++        raise ValueError("The installed local speech adapter is unavailable; restore the current Phoenix update.")
++    output = Path(output)
++    if output.suffix.lower() != ".wav":
++        raise ValueError("Local narration must use a real WAV destination.")
++    text = output.with_suffix(".text.txt")
++    sidecar = output.with_suffix(".words.json")
++    text.write_text(script, encoding="utf-8")
++    sidecar.unlink(missing_ok=True)
++    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
++    flags = subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS
++    sapi_rate = max(-3, min(2, round(10 * math.log(rate, 2))))
++    result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(adapter),
++        "-TextFile", str(text), "-OutputFile", str(output), "-TimingFile", str(sidecar), "-Rate", str(sapi_rate),
++        "-Language", speech_language],
++        capture_output=True, timeout=300, creationflags=flags)
++    if result.returncode:
++        raise ValueError("Offline Windows speech failed. Check the installed language voice; no online or paid fallback was used.")
++    if not output.is_file() or output.stat().st_size > 100 * 1024 * 1024 or not sidecar.is_file() or sidecar.stat().st_size > 2 * 1024 * 1024:
++        raise ValueError("Local speech did not produce bounded audio and timing files.")
++    with wave.open(str(output), "rb") as recording:
++        seconds = recording.getnframes() / recording.getframerate()
++    return measured_words(script, json.loads(sidecar.read_text(encoding="utf-8-sig")), seconds)
 diff --git a/test/services/test_phoenix_storyboard.py b/test/services/test_phoenix_storyboard.py
 new file mode 100644
 index 0000000..7d396aa

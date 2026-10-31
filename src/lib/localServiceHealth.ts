@@ -1,6 +1,7 @@
 import { readWritingSettings } from "./writingSettings";
 import { supportsNativeStockPlayback } from "./stockPlayback";
 import { supportsNewsStockVisualPolicy } from "./newsVisualPolicy";
+import { supportsLocalStockVoice } from "./localVoiceProtocol";
 
 export type LocalServiceState = { state: "ready" | "offline" | "blocked" | "configured"; detail: string };
 export type LocalServices = { checkedAt: string; writerProvider: "ollama" | "groq" | "cloudflare"; writer: LocalServiceState; ollama: LocalServiceState; renderer: LocalServiceState };
@@ -31,6 +32,7 @@ export async function probeLocalServices(): Promise<LocalServices> {
         if (!response.ok) return { state: "blocked", detail: `MoneyPrinterTurbo returned HTTP ${response.status}; check its access settings and logs.` };
         const api = await response.json();
         const properties = api?.components?.schemas?.TaskVideoRequest?.properties;
+        if (!supportsLocalStockVoice(properties)) return { state: "blocked", detail: "The stock renderer needs the offline local-speech update and restart; no online voice will stand in for the local choice." };
         return properties?.phoenix_artifacts_version && properties?.phoenix_storyboard && supportsNativeStockPlayback(properties)
           ? { state: "ready", detail: supportsNewsStockVisualPolicy(properties) ? "Compatible local renderer is responding, including the approved-only news footage policy." : "Stock renderer is responding; news videos need the current news integration patch and a restart before they can be accepted." }
           : { state: "blocked", detail: "The renderer needs the current Phoenix integration patch and a restart." };

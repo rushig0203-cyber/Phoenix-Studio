@@ -28,6 +28,16 @@ test('selection avoids the last three recordings, preserves saved choices and ro
   assert.equal(used.size,6);assert.throws(()=>library.selectStockRecording('unknown','reel',[]));
 });
 
+test('an available matching mood wins over an unused but mismatched soundtrack',()=>{
+  const recent=['sweet-you','beach','work','old-saga','love-her'];
+  for(let index=0;index<10;index++){
+    const selection=library.selectStockRecording('reflective',`mood-regression-${index}`,recent);
+    assert.equal(manifest.recordings.find(track=>track.id===selection.trackId).moods.includes('reflective'),true);
+    assert.ok(!recent.slice(0,3).includes(selection.trackId));
+    assert.notEqual(selection.trackId,'standing','Unused journey music must not beat a permitted reflective match');
+  }
+});
+
 test('saved IDs and excerpt bounds never select arbitrary paths or silently change a damaged recording',async()=>{
   const selection={library:'cc0-lofi-v1',trackId:manifest.recordings[0].id,offsetSeconds:0};
   for(const change of [{trackId:'../../private'},{library:'other'},{offsetSeconds:-1},{offsetSeconds:13},{offsetSeconds:NaN}]) assert.throws(()=>library.stockRecordingMetadata({...selection,...change}));

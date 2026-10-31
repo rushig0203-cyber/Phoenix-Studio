@@ -1,5 +1,33 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 stock narration handoff and music priority — source under verification
+
+- The new general-video failure was traced to online Edge TTS timeouts. Although
+  its saved request chose `local-windows-voice`, Phoenix substituted JennyNeural
+  when submitting to MoneyPrinterTurbo. The stock path now retains that local
+  choice and requires an exact nullable offline-speech protocol before admission
+  and submission. Older renderers fail preflight rather than accepting a false
+  local-voice promise. The backend patch carries the matching WAV/word-event path.
+- The launcher supplies its trusted canonical root for the existing speech
+  adapter; an API request cannot choose a script path. The adapter uses installed
+  Windows speech, no online TTS, model, paid plan or voice clone. Language voices
+  must actually be installed; missing voices never silently become English.
+  VoiceStudio remains the separate installed children's narration path.
+- Actual Windows speech testing exposed a clock mismatch at the default WAV
+  format. Explicit mono 16 kHz output now shares the measured word-event clock.
+  A real offline test produced 6.105 seconds of audio, twelve complete measured
+  word events and real SubMaker subtitles ending at the PCM boundary. Malformed,
+  incomplete, changed or unbounded timing is rejected, not replaced with estimates.
+- Music rotation ranked unused recordings above a permitted matching mood.
+  New choices now prioritize the intended mood within the last-three cooldown,
+  then freshness; existing saved tracks stay fixed. This repairs that priority
+  defect, not the larger gap between post-render visual music analysis and the
+  soundtrack selected before rendering. That gap still needs work.
+- Focused tests and the actual offline speech proof have run locally. A full
+  remote build, backend protocol verification and coupled activation are still
+  required before describing this repair as installed. Owner failed jobs have
+  not been retried, and no owner media or credentials were copied into tests.
+
 ## October 31 native-portrait production proof — installed, audio repair next
 
 - Current verified code is `c7c9cff2be52db3f7707a63d4fd63a0f56249ee3`, Windows

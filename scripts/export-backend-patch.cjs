@@ -7,7 +7,7 @@ const project = path.resolve(__dirname, '..');
 const backend = path.resolve(process.env.PHOENIX_MPT_DIR || path.join(project, '..', '..', '..', '..', 'MoneyPrinterTurbo'));
 const base = '3ade9fbc40e18db32a5edb340d49e31ea0dd5528';
 const tracked = ['.gitignore', 'app/controllers/v1/video.py', 'app/models/schema.py', 'app/services/task.py', 'app/services/video.py', 'config.example.toml', 'docker-compose.release.yml', 'main.py', 'test/services/test_schema.py', 'test/services/test_video.py'];
-const additions = ['app/services/phoenix_storyboard.py', 'app/services/phoenix_artifacts.py', 'test/services/test_phoenix_storyboard.py', 'test/services/test_phoenix_artifacts.py'];
+const additions = ['app/services/phoenix_storyboard.py', 'app/services/phoenix_artifacts.py', 'app/services/phoenix_local_voice.py', 'test/services/test_phoenix_storyboard.py', 'test/services/test_phoenix_artifacts.py'];
 const run = (args, differences = false) => {
   const result = spawnSync('git', args, { cwd: backend, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
   if (result.error || (result.status !== 0 && !(differences && result.status === 1))) throw new Error(`Backend patch command failed: ${result.error?.message || result.stderr}`);

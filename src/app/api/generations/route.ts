@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     if (!children && !(await generatorReachable())) {
       return NextResponse.json({ error: "The optional free stock-video service is offline." }, { status: 503 });
     }
-    if (!children) await requireStockStoryboardRenderer(Boolean(data.newsId), Boolean(data.newsId));
+    if (!children) await requireStockStoryboardRenderer(Boolean(data.newsId), Boolean(data.newsId), data.voice === "local-windows-voice");
 
     const baseTopic = children && data.autoIdea
       ? await inventKidsIdea(data.creationType as "children-story" | "children-song")

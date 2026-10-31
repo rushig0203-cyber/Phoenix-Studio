@@ -5,6 +5,7 @@ param(
   [string]$Voice = "",
   [string]$VoicePlanFile = "",
   [string]$TimingFile = "",
+  [string]$Language = "",
   [switch]$Song
 )
 
@@ -21,11 +22,14 @@ try {
   if (-not [string]::IsNullOrWhiteSpace($Voice)) {
     $speaker.SelectVoice($Voice)
   } else {
+    $voiceLanguage = if ($Language -match '^(hi|Hindi)(-|$)' -or $text -match '[\u0900-\u097f]') { 'hi' } else { 'en' }
     $friendlyVoice = $speaker.GetInstalledVoices() |
+      Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq $voiceLanguage } |
+      Sort-Object { $_.VoiceInfo.Gender -ne 'Female' } |
       ForEach-Object { $_.VoiceInfo } |
-      Where-Object { $_.Culture.Name -like "en-*" -and $_.Gender -eq "Female" } |
       Select-Object -First 1
-    if ($friendlyVoice) { $speaker.SelectVoice($friendlyVoice.Name) }
+    if (-not $friendlyVoice) { throw "No installed Windows voice supports '$voiceLanguage'. Install its free speech pack or use the installed VoiceStudio engine; no online voice was substituted." }
+    $speaker.SelectVoice($friendlyVoice.Name)
   }
   $speaker.Rate = [Math]::Max(-3, [Math]::Min(2, $Rate))
   $speaker.Volume = 100
@@ -83,7 +87,9 @@ try {
     $assembler.Dispose()
     $assembler = $null
   } else {
-    $speaker.SetOutputToWaveFile($OutputFile)
+    # Keep SAPI word-event and PCM clocks on the same explicit 16 kHz format.
+    $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+    $speaker.SetOutputToWaveFile($OutputFile, $format)
     $speaker.Speak($text)
   }
   if ($capture) {

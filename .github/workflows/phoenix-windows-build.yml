@@ -53,6 +53,13 @@ jobs:
         run: python scripts/test-transcribe-windows.py
       - name: Verify renderer timed-caption alignment without provider or model imports
         run: python scripts/test-renderer-timed-captions.py
+      - name: Verify offline narration evidence without providers or models
+        run: python scripts/test-renderer-local-voice.py
+      - name: Verify real offline Windows speech and measured subtitle events
+        run: |
+          python -m pip install --disable-pip-version-check --no-input edge-tts==7.2.7
+          if ($LASTEXITCODE -ne 0) { throw 'Speech-event test dependency could not install' }
+          python scripts/verify-offline-stock-voice.py
       - name: Verify news renderer refuses unapproved supplemental stock without models or providers
         run: python -B scripts/test-renderer-news-policy.py
       - name: Verify subtitle placement uses the actual decoded picture size
@@ -131,6 +138,7 @@ jobs:
           scripts/test-service-health.cjs
           scripts/test-stock-editorial.cjs
           scripts/test-stock-playback.cjs
+          scripts/test-local-voice-protocol.cjs
           scripts/test-review-workflows.cjs
           scripts/test-worker-workflows.cjs
           scripts/test-queue-history.cjs
@@ -193,6 +201,7 @@ jobs:
           src/app/api/review-files/[id]/publish/route.ts
           src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockReuse.ts src/lib/stockVisualContinuity.ts src/lib/stockTemporaryCleanup.ts
           src/lib/stockMusicLibrary.ts
+          src/lib/localVoiceProtocol.ts
           src/lib/automaticStockReel.ts src/lib/naturalStock.ts src/lib/sourceProcessing.ts
           src/app/api/stock-reels/route.ts
           src/lib/stockProductionGuidance.ts src/components/StockReels.tsx
