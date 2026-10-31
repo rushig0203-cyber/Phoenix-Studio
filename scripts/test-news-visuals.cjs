@@ -31,6 +31,15 @@ test('government-formation reports permit neutral buildings without substituting
   assert.match(policy.newsStockQueryIssue('sea waves',article),/unrelated/);
 });
 
+test('evacuation context remains usable when the report also mentions unavailable electricity',()=>{
+  const article={...research,title:'Ukrainian evacuees reunite with family after years trapped in Russia-occupied city',summary:'Residents had been without food, water and electricity.',text:'The report concerns evacuees from an occupied city.'};
+  for(const query of ['empty city street','building exterior','empty railway station'])assert.equal(policy.newsStockQueryIssue(query,article),undefined,query);
+  assert.match(policy.newsStockQueryIssue('families reuniting city street',article),/reenact|people/);
+  assert.match(policy.newsStockQueryIssue('city street evacuation',article),/reenact|people/);
+  assert.ok(policy.newsStockQueryIssue('tropical holiday beach',article));
+  assert.match(policy.newsStockVisualInstructions(article),/empty city streets\/building exteriors or transport infrastructure for evacuation/);
+});
+
 test('news renderer capability is the exact policy, never mere field presence or a permissive schema', () => {
   const literal = policy.NEWS_STOCK_VISUAL_POLICY;
   for (const field of [{ const: literal }, { enum: [literal] }, { anyOf: [{ const: literal, type: 'string' }, { type: 'null' }] }]) {

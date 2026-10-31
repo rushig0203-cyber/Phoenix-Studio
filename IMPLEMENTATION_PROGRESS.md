@@ -20,6 +20,10 @@
 - Fixed the reported government-formation planning rejection: neutral government
   buildings are recognized as relevant context, while named-person substitution
   and unrelated scenery remain rejected. No failed owner job was retried.
+- The current evacuation-news failure also exposed an overly narrow electricity
+  context match. Neutral city/building/transport context now remains eligible for
+  evacuation/displacement reports even when power shortages are mentioned.
+  Stock families, reunions and evacuations cannot impersonate the actual people.
 - Focused queue, caption, music and editing checks pass. The complete remote
   Windows release checks, installation and browser proof are still required.
 
