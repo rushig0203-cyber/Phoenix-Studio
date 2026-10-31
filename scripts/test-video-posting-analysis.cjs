@@ -16,6 +16,21 @@ const source=require('../src/lib/sourceProcessing');
 const {WritingWaitError}=require('../src/lib/groqWriter');
 const jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
 const result={observations:[{frame:1,visible:'Water falling over rocks.'}],caption:'Water cascades over a rocky ledge.',hashtags:['#Waterfall','#Nature'],confidence:'clear'};
+
+test('planned-cut evidence completes copy once and keeps the real model, mood and scope',async()=>{
+  const {makeReviewFile,outputPath}=require('../src/lib/reviewFiles');
+  const file=makeReviewFile({id:'planned-cut-evidence',title:'Park',source:{kind:'pexels',filename:'fixture.mp4',licence:'Pexels'},quality:{audio:'local-music-replaced',captions:[],hashtags:[],checks:[]}});
+  file.quality.postingTextOrigin='automatic';file.outputs={instagram:{filename:'instagram.mp4',duration:20,width:720,height:1280}};
+  file.quality.visualSources=Array(4).fill({provider:'pexels',providerMediaId:'1',providerUrl:'https://www.pexels.com/video/1/',creator:'Fixture',licence:'Pexels'});
+  const filename=outputPath(file.id,'instagram');fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,'isolated-output-identity');
+  const accepted={...analysis.parseVisualPosting({...result,musicBrief:{version:1,mood:'calm',energy:'low',reason:'Green trees surround a softly lit clearing.',evidenceFrames:[1]}},true),provider:'groq',model:analysis.VISION_MODEL};
+  await analysis.applyPlannedVisualPosting(file,accepted,[2,10,18]);
+  assert.equal(file.quality.postingAnalysis.status,'COMPLETE');assert.match(file.quality.postingAnalysis.detail,/planned-cut/);
+  assert.match(file.quality.postingAnalysis.fingerprint,/^[a-f0-9]{64}$/);assert.equal(file.quality.postingAnalysis.musicBrief.mood,'calm');
+  assert.equal(file.quality.postCopy,result.caption);assert.equal(calls.length,0,'Reusing evidence must not send another frame request');
+  const owner=makeReviewFile({id:'owner-caption',title:'Owner',source:{kind:'pexels',filename:'fixture.mp4',licence:'Pexels'},quality:{audio:'local-music-replaced',captions:[],hashtags:[],checks:[]}});owner.quality.postingTextOrigin='owner';owner.quality.postCopy='Keep this caption.';
+  await analysis.applyPlannedVisualPosting(owner,accepted,[2,10,18]);assert.equal(owner.quality.postCopy,'Keep this caption.');assert.equal(owner.quality.postingAnalysis,undefined);
+});
 let calls=[];
 beforeEach(()=>{fs.rmSync(path.join(temp,'storage'),{recursive:true,force:true});calls=[];settings.readVideoAnalysisSettings=()=>({...selected});global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});};});
 after(()=>{settings.readVideoAnalysisSettings=originalRead;global.fetch=originalFetch;process.chdir(project);fs.rmSync(temp,{recursive:true,force:true});});

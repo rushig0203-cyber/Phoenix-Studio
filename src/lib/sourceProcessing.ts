@@ -14,8 +14,10 @@ import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from
 import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
-import { selectStockRecording, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, type StockRecordingSelection } from "./stockMusicLibrary";
+import { selectStockRecording, stockRecordingMood, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, type StockRecordingSelection } from "./stockMusicLibrary";
+import { applyPlannedVisualPosting, extractPostingFrame, requestVisualPosting, sampleTimes, visualPostingEnabled, type VisualPostingResult } from "./videoPostingAnalysis";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
+import { stockPostingSamples } from "./stockReel";
 import { stockLicenceName, withStockPostingCredits, type StockLicence, type StockProvider } from "./stockProviders";
 import {
   FFMPEG_ENCODER_RESOURCE_ARGS,
@@ -40,7 +42,9 @@ export type ProcessingMode = "coverage" | "highlights";
 export type ProcessingStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "BLOCKED" | "CANCELLED";
 export type StockReelShot = { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; title: string; sourceFile: string; start: number; end: number; trimMode?: "auto" | "manual"; licence?: StockLicence };
 export type SourceJob = {
-  stockSource?: { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: StockProvider; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"]; licence?: StockLicence; musicRecording?: StockRecordingSelection };
+  stockSource?: { provider: StockProvider; mediaId: string; sourcePage: string; creator: string; requestId: string; caption: string; maxDuration: number; theme?: string; shots?: StockReelShot[]; renderedShots?: Array<{ provider: StockProvider; mediaId: string }>; options?: StockReelOptions; editVersion?: 1 | 2; managerGuidance?: ReviewFile["quality"]["managerGuidance"]; licence?: StockLicence; musicRecording?: StockRecordingSelection;
+    visualMusic?: { version: 1; pictureIdentity?: string; sampledAt?: number[]; result?: VisualPostingResult; detail?: string };
+  };
   id: string;
   title: string;
   sourceFile: string;
@@ -1322,6 +1326,7 @@ export async function createStockReelJob(
         const recording = selectStockRecording(input.options.mood, id, recent);
         await stockRecordingFile(recording);
         job.stockSource!.musicRecording = recording;
+        if (input.options.shotCadence === "adaptive-v3") job.stockSource!.visualMusic = { version: 1 };
       }
       jobs.unshift(job); await saveJobsUnlocked(jobs); return job;
     });
@@ -1470,6 +1475,48 @@ export function stockReelMusicVolume(sections: StockMusicSection[]) {
 }
 
 /** Only Phoenix's already encoded stock assembly may bypass a second encode. */
+/** Preparation is saved once per exact picture plan, before any music is rendered. */
+export async function prepareStockVisualMusic(job: SourceJob, frames: Array<{ filename: string; seconds: number; filter: string }>, pictureIdentity: string, duration: number) {
+  const stock = job.stockSource!;
+  if (!stock.visualMusic || stock.visualMusic.pictureIdentity === pictureIdentity) return stock;
+  if (stock.visualMusic.pictureIdentity) throw new Error("The saved visual soundtrack belongs to different cuts. No analysis or music choice was silently reused.");
+  let result: VisualPostingResult | undefined;
+  let detail = "Visual music checking is not enabled; the queued licensed recording was retained.";
+  if (visualPostingEnabled()) {
+    try {
+      if (frames.length !== 3) throw new Error("Exactly three bounded planned frames are required.");
+      const images: Buffer[] = [];
+      for (const frame of frames) images.push(await extractPostingFrame(frame.filename, frame.seconds, frame.filter));
+      result = await requestVisualPosting(images, "", { sourceCount: stock.shots?.length || 1, duration, managerGuidance: stock.managerGuidance, conciseStockCaption: true });
+      detail = result.musicBrief && result.musicBrief.mood !== "uncertain"
+        ? `Licensed catalogue mood chosen from three planned-cut frames: ${result.musicBrief.mood}. ${result.musicBrief.reason} This is editorial fit, not audio listening, measured tempo or trending music.`
+        : "Visual evidence did not establish a confident music mood; the queued licensed recording was retained.";
+    } catch {
+      // A free-provider outage/quota must not turn a playable source reel into a failed render.
+      detail = "Visual music checking was unavailable; the queued licensed recording was retained. Posting copy can be checked after rendering.";
+    }
+  }
+  return withJobMutation(async () => {
+    const jobs = await readJobsUnlocked(), current = jobs.find(item => item.id === job.id);
+    if (!current?.stockSource || current.archivedAt || current.status === "CANCELLED") throw new JobHistoryConflictError("This reel was removed during preparation. No output was accepted.");
+    if (current.stockSource.visualMusic?.pictureIdentity) {
+      if (current.stockSource.visualMusic.pictureIdentity !== pictureIdentity) throw new Error("The picture plan changed during music preparation.");
+      return current.stockSource;
+    }
+    if (result?.musicBrief && result.musicBrief.mood !== "uncertain") {
+      const recent = jobs.filter(item => item.id !== job.id && !item.archivedAt && item.status !== "CANCELLED").slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .flatMap(item => item.stockSource?.musicRecording ? [item.stockSource.musicRecording.trackId] : []).slice(0, 20);
+      const selected = selectStockRecording(stockRecordingMood(result.musicBrief, stock.options!.mood), job.id, recent);
+      await stockRecordingFile(selected);
+      current.stockSource.musicRecording = selected;
+    }
+    current.stockSource.visualMusic = { version: 1, pictureIdentity, sampledAt: sampleTimes(duration), result, detail };
+    current.updatedAt = new Date().toISOString();
+    await saveJobsUnlocked(jobs);
+    return current.stockSource;
+  });
+}
+
 export function canRemuxStockAssembly(job: Pick<SourceJob, "stockSource">, cues: CaptionCue[], media: MediaInfo, duration: number) {
   return Boolean(job.stockSource?.shots?.length && !cues.length && Number.isFinite(duration) && duration > 0
     && Number.isFinite(media.duration) && Math.abs(media.duration - duration) <= Math.max(.1, 2 / STOCK_REEL_FPS)
@@ -1510,10 +1557,11 @@ async function processStockReel(
   preflight: SourceProcessingPreflight,
   report: (progress: number, stage: string, change?: Partial<SourceJob>) => Promise<unknown>,
 ) {
-  const stock = job.stockSource!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
+  let stock = job.stockSource!;
+  const options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
   if (options.audioMastering !== undefined && (options.audioMastering !== "loudness-v1" || options.audio !== "music")) throw new Error("This saved music-mastering recipe is unsupported. Original sound will not be normalized as music.");
   if (options.musicLibrary !== undefined && (options.musicLibrary !== "cc0-lofi-v1" || options.audio !== "music" || !stock.musicRecording || stock.musicRecording.library !== options.musicLibrary)) throw new Error("This licensed soundtrack recipe is incomplete. No different recording was substituted.");
-  const recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
+  let recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
   const adaptive = options.shotCadence === "adaptive-v2" || options.shotCadence === "adaptive-v3";
   let shots = [...stock.shots!]; // Render order must never rewrite saved source provenance.
   const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
@@ -1624,6 +1672,21 @@ async function processStockReel(
       : "Visual continuity samples incomplete; catalogue order retained without guessing";
   }
   const duration = intervals[intervals.length - 1].outputEnd;
+  if (stock.visualMusic) {
+    const pictureFiles = [];
+    for (const shot of shots) {
+      const stat = await fs.stat(sourcePath(job.id, shot.sourceFile));
+      pictureFiles.push({ file: shot.sourceFile, bytes: stat.size, modified: stat.mtimeMs });
+    }
+    const pictureIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: 1, pictureFiles, intervals, framing: options.framing, background: options.background })).digest("hex");
+    const frames = stockPostingSamples(intervals).map(({ shotIndex, sourceSeconds }) => {
+      return { filename: sourcePath(job.id, shots[shotIndex].sourceFile), seconds: sourceSeconds, filter: stockFraming(infos[shotIndex], options.framing, options.background === "soft-v1").filter };
+    });
+    await report(12, "Checking the planned cuts for soundtrack mood and posting copy · three tiny frames, no local model");
+    stock = await prepareStockVisualMusic(job, frames, pictureIdentity, duration);
+    job = { ...job, stockSource: stock };
+    recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
+  }
   const renderedStock = { ...stock, renderedShots: shots.map(shot => ({ provider: shot.provider, mediaId: shot.mediaId })) };
   const minimumPictureDuration = adaptive ? duration : options.minDuration;
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1", ...(recording ? { musicRecording: stock.musicRecording } : {}) })).digest("hex").slice(0, 24);
@@ -1750,6 +1813,7 @@ async function processStockReel(
     ...(options.openingExperiment ? ["Watch-time opening experiment v1: the opening targets 1.2 rather than 1.6 seconds when genuine picture and the minimum allow it; the chosen subject, measured window and native/bounded playback stay intact. This tests an observational signal, not a proven cause of low watch time"] : []),
     subtitleDecision.reason,
     `Stock plan identity ${planIdentity}`,
+    ...(stock.visualMusic?.detail ? [stock.visualMusic.detail] : []),
     `Pipeline signature ${signature}`,
   ];
   item.quality.postCopy = retainedPosting?.copy ?? stock.caption;
@@ -1798,6 +1862,7 @@ async function processStockReel(
   item.artifacts = { version: 1, renderRevision: `stock-assembly-v${editVersion}`, finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();
+  if (stock.visualMusic?.result && stock.visualMusic.sampledAt) await applyPlannedVisualPosting(item, stock.visualMusic.result, stock.visualMusic.sampledAt);
   await saveReviewFile(item);
   const finished = await updateJob(job.id, { status: "COMPLETED", stockSource: renderedStock, progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
   await cleanupStockTemporaries(job.id);

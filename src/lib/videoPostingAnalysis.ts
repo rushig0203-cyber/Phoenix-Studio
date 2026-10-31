@@ -80,11 +80,11 @@ export function sampleTimes(duration: number) {
   return [0.1, 0.5, 0.9].map(fraction => Math.max(0, Math.min(duration - 0.05, duration * fraction)));
 }
 
-export function extractPostingFrame(filename: string, seconds: number): Promise<Buffer> {
+export function extractPostingFrame(filename: string, seconds: number, pictureFilter?: string): Promise<Buffer> {
   const executable = process.env.PHOENIX_FFMPEG_PATH?.trim() || path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
   return new Promise((resolve, reject) => {
     const child = spawn(executable, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-ss", seconds.toFixed(3), "-i", filename,
-      "-an", "-sn", "-dn", "-vf", "scale=448:448:force_original_aspect_ratio=decrease", "-filter_threads", "1", "-frames:v", "1", "-threads", "1", "-q:v", "8", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+      "-an", "-sn", "-dn", "-vf", `${pictureFilter ? `${pictureFilter},` : ""}scale=448:448:force_original_aspect_ratio=decrease`, "-filter_threads", "1", "-filter_complex_threads", "1", "-frames:v", "1", "-threads", "1", "-q:v", "8", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
     lowerChildProcessPriority(child.pid);
     const chunks: Buffer[] = []; let bytes = 0, failed = false;
     const fail = (message: string) => { if (!failed) { failed = true; child.kill(); reject(new Error(message)); } };
@@ -107,6 +107,9 @@ function cloudflareFallback() {
 }
 function groqAnalysisEnabled(settings: ReturnType<typeof readWritingSettings>) {
   return settings.allowVideoFrames && settings.provider === "groq" && settings.freePlanConfirmed && !!settings.apiKey;
+}
+export function visualPostingEnabled() {
+  return groqAnalysisEnabled(readWritingSettings()) || !!cloudflareFallback();
 }
 async function availableCaptionQuota(settings: ReturnType<typeof readWritingSettings>) {
   const fallback = cloudflareFallback();
@@ -206,6 +209,30 @@ export async function requestVisualPosting(images: Buffer[], transcript: string,
   catch (error) { if (error instanceof GroqVisionQuotaError && fallback) return runCloudflare(); throw error; }
 }
 
+export type VisualPostingResult = Awaited<ReturnType<typeof requestVisualPosting>>;
+
+function postingHashtagActivity(hashtags: string[]) {
+  return analyzeInstagramHashtagActivity(hashtags).catch(() => ({ status: "UNAVAILABLE" as const, checkedAt: new Date().toISOString(), detail: "Instagram activity could not be checked. These are video-relevant suggestions, not verified trends.", samples: [] }));
+}
+
+/** One validated result supplies both soundtrack guidance and the saved posting copy. */
+export function visualPostingQuality(file: ReviewFile, result: VisualPostingResult, state: NonNullable<ReviewFile["quality"]["postingAnalysis"]>, times: number[], history: ReviewFile[], fromPlannedCuts = false) {
+  const concise = usesConciseStockPostingCaption(file) || prefersShortStockPostingCaption(file.quality.managerGuidance);
+  const recent = history.filter(other => other.id !== file.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30).map(other => other.quality.postCopy || "");
+  const chosen = choosePostingCaption(result.caption, result.captionVariants, recent, concise);
+  return { ...file.quality, postingTextOrigin: "automatic" as const, postCopy: visualPostCopy(chosen.caption, file), hashtags: postingHashtags(result.hashtags),
+    postingAnalysis: { ...state, status: "COMPLETE" as const, model: result.model, sampledAt: times, updatedAt: new Date().toISOString(), observations: result.observations.map(item => `Frame ${item.frame}: ${item.visible}`), alignment: result.alignment, alignmentReason: result.alignmentReason, copyPolicy: concise ? "stock-editorial-bank-v2" : "video-grounded-bank-v3", captionVariants: [result.caption, ...result.captionVariants].filter(caption => caption !== chosen.caption).slice(0, 3), musicBrief: result.musicBrief, variation: chosen.variation,
+      detail: result.alignment === "mismatch" ? `Sampled footage may not support the narration: ${result.alignmentReason}` : result.confidence === "clear" ? `Caption and music mood based on three ${fromPlannedCuts ? "planned-cut" : "sampled"} frames via ${result.provider === "cloudflare" ? "Cloudflare" : "Groq"}—not a full-video or audio review. Check before posting.` : "Some visual details were uncertain. Review this restrained caption before posting." } };
+}
+
+export async function applyPlannedVisualPosting(file: ReviewFile, result: VisualPostingResult, times: number[]) {
+  // A saved owner caption or an existing analysis always wins over preparation.
+  if (file.quality.postingTextOrigin === "owner" || file.quality.postingAnalysis) return;
+  const { fingerprint } = await outputIdentity(file);
+  const hashtagActivity = await postingHashtagActivity(postingHashtags(result.hashtags));
+  file.quality = visualPostingQuality(file, result, { status: "COMPLETE", fingerprint, attempts: 1, updatedAt: new Date().toISOString(), detail: "", hashtagActivity }, times, await readReviewFiles(), true);
+}
+
 async function outputIdentity(file: ReviewFile) {
   const target = file.delivery?.platform && file.outputs[file.delivery.platform] ? file.delivery.platform : file.outputs.youtube ? "youtube" : "instagram";
   const output = file.outputs[target]; if (!output) throw new Error("No finished video exists to analyze.");
@@ -300,22 +327,17 @@ export async function processNextPostingAnalysis() {
           const conciseStockCaption = usesConciseStockPostingCaption(latest) || prefersShortStockPostingCaption(latest.quality.managerGuidance);
           const result = await requestVisualPosting(images, latest.quality.captions.join(" "), { sourceCount: latest.quality.visualSources?.length || 1, duration: source.duration, managerGuidance: latest.quality.managerGuidance, conciseStockCaption });
           if ((await outputIdentity(latest)).fingerprint !== fingerprint) throw new PostingAnalysisOutputChangedError("The video changed during analysis. Its current output will be checked automatically.");
-          const captions = files.filter(other => other.id !== file.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30).map(other => other.quality.postCopy || "");
-          const chosen = choosePostingCaption(result.caption, result.captionVariants, captions, conciseStockCaption);
           const hashtags = postingHashtags(result.hashtags);
           // Only relevant hashtag names reach Meta; no frames, narration or history.
           // Public-content access may be unavailable even for a connected uploader.
-          const activity = await analyzeInstagramHashtagActivity(hashtags).catch(() => ({ status: "UNAVAILABLE" as const, checkedAt: new Date().toISOString(), detail: "Instagram activity could not be checked. These are video-relevant suggestions, not verified trends.", samples: [] }));
+          const activity = await postingHashtagActivity(hashtags);
           const afterActivity = await getReviewFile(file.id);
           if (!afterActivity || !postingAnalysisMayApply(afterActivity, latest, state.updatedAt)) return;
           if ((await outputIdentity(afterActivity)).fingerprint !== fingerprint) throw new PostingAnalysisOutputChangedError("The video changed during analysis. Its current output will be checked automatically.");
           await updateReviewFile(file.id, current => {
             // A late analysis must never undo an owner edit, reset or changed output.
             if (!postingAnalysisMayApply(current, latest, state.updatedAt)) return current;
-            return { ...current, updatedAt: new Date().toISOString(), quality: { ...current.quality, postingTextOrigin: "automatic",
-              postCopy: visualPostCopy(chosen.caption, current), hashtags,
-              postingAnalysis: { ...state, status: "COMPLETE", model: result.model, sampledAt: times, updatedAt: new Date().toISOString(), observations: result.observations.map(item => `Frame ${item.frame}: ${item.visible}`), alignment: result.alignment, alignmentReason: result.alignmentReason, hashtagActivity: activity, copyPolicy: conciseStockCaption ? "stock-editorial-bank-v2" : "video-grounded-bank-v3", captionVariants: [result.caption, ...result.captionVariants].filter(caption => caption !== chosen.caption).slice(0, 3), musicBrief: result.musicBrief, variation: chosen.variation, detail: result.alignment === "mismatch" ? `Sampled footage may not support the narration: ${result.alignmentReason}` : result.confidence === "clear" ? `Caption and music mood based on three sampled frames via ${result.provider === "cloudflare" ? "Cloudflare" : "Groq"}—not a full-video or audio review. Check before posting.` : "Some visual details were uncertain. Review this restrained caption before posting." },
-            } };
+            return { ...current, updatedAt: new Date().toISOString(), quality: visualPostingQuality(current, result, { ...state, hashtagActivity: activity }, times, files) };
           });
         } catch (error) {
           const waiting = error instanceof WritingWaitError;

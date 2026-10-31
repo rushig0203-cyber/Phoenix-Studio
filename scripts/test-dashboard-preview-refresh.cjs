@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+require('./mock-css-modules.cjs');
 const Module = require("node:module");
 require("ts-node").register({ transpileOnly: true, compilerOptions: { module: "commonjs", moduleResolution: "node", jsx: "react-jsx" } });
 require("tsconfig-paths").register({ baseUrl: path.resolve(__dirname, ".."), paths: { "@/*": ["src/*"] } });
@@ -33,7 +34,7 @@ function nodes(node, predicate, found = []) {
   }
   return found;
 }
-const text = node => node == null || typeof node === "boolean" ? "" : Array.isArray(node) ? node.map(text).join("")
+const text = node => node == null || typeof node === "boolean" || String(node.props?.["aria-hidden"]) === "true" ? "" : Array.isArray(node) ? node.map(text).join("")
   : typeof node === "object" ? text(node.props?.children) : String(node);
 const changed = (previous, deps) => !previous || !deps || deps.some((value, index) => !Object.is(value, previous.deps?.[index]));
 function hooks(Component, hosts = {}) {

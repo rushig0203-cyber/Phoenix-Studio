@@ -99,6 +99,19 @@ async function main() {
   for (const fixture of fixtures) downloaded.push(await download(fixture)); // One streamed download at a time.
   global.fetch = async () => { throw new Error('Further network/provider calls are forbidden in the isolated render.'); };
   const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks').slice(0, 9)];
+  const posting=require('../src/lib/videoPostingAnalysis.ts'),{extractPostingFrame}=posting;
+  for (const pictureFilter of [planning.stockFraming(downloaded[0], 'auto').filter, planning.stockFraming({width:1920,height:1080}, 'auto', true).filter]) {
+    const jpeg=await extractPostingFrame(downloaded[0].filename,.5,pictureFilter);
+    assert.ok(jpeg.length>=4&&jpeg.length<=120000&&jpeg[0]===255&&jpeg[1]===216,'Planned portrait and soft-backdrop samples must decode as bounded JPEGs.');
+  }
+  // Exercise real cut sampling and result reuse without calling any AI/account.
+  let visualRequests=0,plannedFrames=0;
+  posting.visualPostingEnabled=()=>true;
+  posting.extractPostingFrame=async(...args)=>{plannedFrames++;return extractPostingFrame(...args);};
+  posting.requestVisualPosting=async images=>{
+    visualRequests++;assert.equal(visualRequests,1);assert.equal(images.length,3);
+    return {...posting.parseVisualPosting({observations:[{frame:1,visible:'Green trees beside a park path.'}],caption:'Take a moment for the greenery.',hashtags:['#Parks','#Trees','#Greenery'],confidence:'clear',musicBrief:{version:1,mood:'warm',energy:'low',reason:'Green paths and trees frame this quiet park.',evidenceFrames:[1]}},true),model:'isolated-fixture-no-provider',provider:'groq'};
+  };
   assert.ok(selected.length >= 8 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
   assert.equal(selected.filter(video => video.width === 720 && video.height === 1280).length, 8, 'The actual discovered portrait pool must survive metadata selection.');
   assert.ok(!selected.some(video => [13712406, 36659594, 13439228].includes(video.id)), 'Skyline, roadside and ungrounded city-plaza footage must not pass the chosen green-park setting.');
@@ -116,6 +129,9 @@ async function main() {
   assert.equal(info.width, 720); assert.equal(info.height, 1280); assert.equal(info.frameRate, 24);
   assert.ok(info.videoDuration >= 12 && info.videoDuration <= maximum && info.hasAudio);
   assert.equal(info.frames, Math.round(info.videoDuration * 24)); assert.deepEqual(file.quality.captions, []);
+  assert.equal(visualRequests,1);assert.equal(plannedFrames,3);
+  assert.equal(file.quality.postingAnalysis.model,'isolated-fixture-no-provider');assert.equal(file.quality.postingAnalysis.status,'COMPLETE');
+  assert.equal(file.quality.postCopy,'Take a moment for the greenery.');assert.equal(file.quality.postingAnalysis.musicBrief.mood,'warm');
   assert.ok(file.quality.checks.some(check => /one continuous bed across every shot/.test(check)));
   await tool(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-']);
   const assembly = path.join(reviews.reviewRoot(), 'work', `source-${job.id}`, 'stock-assembly-v2');
@@ -155,6 +171,7 @@ async function main() {
   const retried = await source.getSourceJob(job.id); assert.equal(retried.status, 'COMPLETED'); assert.deepEqual(retried.reviewIds, done.reviewIds);
   assert.deepEqual(retried.stockSource.renderedShots, done.stockSource.renderedShots, 'Retry must retain exact completed usage accounting.');
   assert.equal(hash(output), before, 'Fixture retry must retain the verified output exactly.');
+  assert.equal(visualRequests,1);assert.equal(plannedFrames,3,'Retry must not extract/upload frames again.');
   const edited = path.join(destination, 'coherent-reel.mp4'), contact = path.join(destination, 'after.jpg');
   fs.copyFileSync(output, edited);
   const midpointFrames = intervals.map(interval => Math.floor((interval.outputStart + interval.outputEnd) / 2 * planning.STOCK_REEL_FPS));
@@ -172,6 +189,7 @@ async function main() {
     duration: info.videoDuration, frames: info.frames, order, sourceIntervals: intervals, checks: file.quality.checks, sha256: before,
     contactSheet: { sampling: 'One midpoint frame from every final source interval, in output order', columns, rows, midpointFrames },
     fullyDecoded: true, retryIdempotent: true, ownerJobsRead: 0, ownerMediaUploaded: 0,
+    visualPreparation: {pictureSamples:plannedFrames,requests:visualRequests,result:'Injected fixture result only; no AI provider or owner account was called',copyReused:true},
     note: 'Public licensed source proof only; pixel statistics do not prove semantic continuity or predict audience performance.' }, null, 2));
   assert.deepEqual(fs.readdirSync(destination).sort(), ['after.jpg', 'coherent-reel.mp4', 'proof.json']);
   console.log(JSON.stringify({ publicLicensedFixture: true, duration: info.videoDuration, frames: info.frames, shots: shots.length,

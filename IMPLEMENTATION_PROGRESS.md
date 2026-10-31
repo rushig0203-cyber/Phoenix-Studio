@@ -1,6 +1,29 @@
 # Quality-first implementation — September 16, 2026
 
-## October 31 stock narration handoff and music priority — source under verification
+## November 1 planned-cut music and dashboard depth — awaiting verified installation
+
+- New adaptive recorded-music reels analyze three small frames from their final
+  planned cuts before choosing the soundtrack. The samples follow final order,
+  trim, acceleration and framing, rather than the source file's midpoint. One
+  validated result supplies both the editorial music mood and posting copy;
+  no second image request is required for those captions. Owner text wins.
+- The final recording is reserved under the existing queue lock and persisted
+  with picture identity. A retry keeps its recording and evidence; changed cuts
+  cannot inherit old evidence. Existing recipes are unchanged. Missing consent,
+  free quota or analysis failure retain the queued licensed bed without blocking
+  real video rendering or inventing a successful visual check. This small lofi
+  catalogue is not a claim of perfect music fit, measured tempo or current trends.
+- Dashboard cards now use CSS layers, restrained depth and pointer-hover motion,
+  with reduced-motion support and clearer active navigation. No graphics engine,
+  animation library, model, paid dependency or continuously running effect added.
+  The existing three workflows, inline Jobs and final publishing review remain.
+- Fixed the reported government-formation planning rejection: neutral government
+  buildings are recognized as relevant context, while named-person substitution
+  and unrelated scenery remain rejected. No failed owner job was retried.
+- Focused queue, caption, music and editing checks pass. The complete remote
+  Windows release checks, installation and browser proof are still required.
+
+## October 31 stock narration handoff and music priority — installed and verified
 
 - The new general-video failure was traced to online Edge TTS timeouts. Although
   its saved request chose `local-windows-voice`, Phoenix substituted JennyNeural
@@ -23,10 +46,21 @@
   then freshness; existing saved tracks stay fixed. This repairs that priority
   defect, not the larger gap between post-render visual music analysis and the
   soundtrack selected before rendering. That gap still needs work.
-- Focused tests and the actual offline speech proof have run locally. A full
-  remote build, backend protocol verification and coupled activation are still
-  required before describing this repair as installed. Owner failed jobs have
-  not been retried, and no owner media or credentials were copied into tests.
+- Source `220523be4f509d011614838cd77be7ac8ddbba76` passed Windows run
+  `41226967184`: 1,401 Node tests, 48 Python checks, lint, TypeScript, production
+  build, twelve real music exports, actual offline Windows speech and public
+  portrait/WebM video proofs. Bundle `.next-build-gh-41226967184-1`, build ID
+  `gZ5d2ueJhCMvqXoYEyqSe`, was selected and verified serving. Dashboard returned
+  200, manager/worker were healthy, and the live backend advertised the exact
+  `windows-speech-events-v1` capability after its coupled restart. Five owner
+  media/job stores and the owner's tsconfig were preserved. No local Next build,
+  failed owner-job retry, social test post or credential copy was performed.
+- The new labelled local diagnostic completed through the ordinary durable
+  queue: 36.95 seconds, 720x1280 H.264/AAC, actual offline mono 16 kHz PCM speech,
+  fourteen timed caption cues covering the complete supplied narration, from
+  0.1 seconds through the exact audio end. No online TTS, failed owner-job retry
+  or social test post was used. This verifies the narration/render handoff, not
+  professional voice quality, perfect soundtrack fit or the whole product.
 
 ## October 31 native-portrait production proof — installed, audio repair next
 

@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
+require('./mock-css-modules.cjs');
 const Module = require('node:module');
 const { test } = require('node:test');
 require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node', jsx: 'react-jsx' } });
@@ -85,7 +86,7 @@ Module._load = function (name, parent, ...args) {
 let Dashboard;
 try { Dashboard = require('../src/app/dashboard/DashboardClient').default; }
 finally { Module._load = originalLoad; }
-const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
+const text = node => node == null || typeof node === 'boolean' || String(node.props?.['aria-hidden']) === 'true' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
 function nodes(node, predicate, result = []) {
   if (Array.isArray(node)) node.forEach(child => nodes(child, predicate, result));
   else if (node && typeof node === 'object') { if (predicate(node)) result.push(node); nodes(node.props?.children, predicate, result); }

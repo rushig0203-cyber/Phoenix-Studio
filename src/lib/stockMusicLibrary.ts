@@ -3,6 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import manifest from "../../assets/music/lofi-cc0-v1/manifest.json";
 import type { StockReelOptions } from "./stockReel";
+import type { ReelMusicBrief } from "./reelMusic";
+
+/** Editorial mapping into this small licensed catalogue, never BPM or trend evidence. */
+export function stockRecordingMood(brief: ReelMusicBrief | undefined, fallback: StockReelOptions["mood"]): StockReelOptions["mood"] {
+  if (!brief || brief.mood === "uncertain") return fallback;
+  return brief.mood === "warm" || brief.mood === "playful" ? "warm"
+    : brief.mood === "energetic" || brief.mood === "uplifting" ? "journey" : "reflective";
+}
 
 export type StockRecordingSelection = { library: "cc0-lofi-v1"; trackId: string; offsetSeconds: number };
 export type StockRecordingCredit = { trackId: string; title: string; artist: string; licence: "CC0-1.0"; sourcePage: string; assetSha256: string; originalOffsetSeconds: number };

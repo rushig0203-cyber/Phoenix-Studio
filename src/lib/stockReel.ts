@@ -29,6 +29,21 @@ export type StockReelOptions = {
 };
 
 export const DEFAULT_STOCK_REEL_OPTIONS: StockReelOptions = { audio: "auto", mood: "reflective", transition: "cut", framing: "auto" };
+
+/** Sample the actual selected source time, including cut order and bounded acceleration. */
+export function stockPostingSamples(intervals: StockInterval[]) {
+  const duration = intervals.at(-1)?.outputEnd;
+  if (!duration || !Number.isFinite(duration) || duration <= .05) throw new Error("The planned reel has no valid picture duration.");
+  return [.1, .5, .9].map(fraction => {
+    const outputSeconds = Math.min(duration - .05, duration * fraction);
+    const shotIndex = intervals.findIndex(interval => outputSeconds >= interval.outputStart && outputSeconds < interval.outputEnd);
+    const interval = intervals[shotIndex];
+    if (!interval) throw new Error("A planned visual sample falls outside the selected cuts.");
+    const sourceSeconds = interval.start + (outputSeconds - interval.outputStart) * (interval.speed ?? 1);
+    if (!Number.isFinite(sourceSeconds) || sourceSeconds < interval.start || sourceSeconds >= interval.end) throw new Error("A planned visual sample falls outside its source picture.");
+    return { shotIndex, sourceSeconds, outputSeconds };
+  });
+}
 export const STOCK_REEL_FPS = 24;
 export const MAX_STOCK_SHOTS = 12;
 export const MAX_STOCK_REEL_BYTES = 500 * 1024 * 1024;

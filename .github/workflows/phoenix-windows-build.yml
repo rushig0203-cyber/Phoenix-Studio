@@ -178,6 +178,7 @@ jobs:
           scripts/test-stock-reel-quality.cjs
           scripts/test-stock-reel-audio.cjs
           scripts/test-stock-music-library.cjs
+          scripts/test-stock-visual-music.cjs
           scripts/test-stock-music-variation.cjs
           scripts/test-stock-reel-remux.cjs
       - name: Lint changed production interfaces

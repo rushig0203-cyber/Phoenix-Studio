@@ -24,6 +24,7 @@ import PostingActions from "@/components/PostingActions";
 import { dashboardHasPendingWork, dashboardMonitorReport, fetchDashboardSnapshot, startDashboardPolling } from "@/lib/dashboardMonitor";
 import { refreshInstalledRelease } from "@/lib/releaseRefresh";
 import { JOB_PAGE_SIZE, jobQueuePage, type JobFilter } from "@/lib/dashboardJobs";
+import styles from "./studio.module.css";
 
 
 type SourceJob = {
@@ -327,15 +328,15 @@ export default function DashboardClient() {
   ];
   const pageCopy = { create: ["What will you make today?", ""], library: ["Your video library", ""], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
-    <div className="min-h-screen bg-[#f4f0e7] text-[#1e2719]">
-      <aside className="border-b border-[#dadfce] bg-[#fffdf7] p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6">
-        <a href="#create" className="flex items-center gap-3 text-lg font-semibold tracking-tight"><span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#bfcaa6] text-base font-semibold">P</span>Phoenix Studio</a>
-        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors ${section === id ? "bg-[#34462b] text-white" : "text-[#637155] hover:bg-[#edf1e5]"}`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
+    <div className={`${styles.shell} min-h-screen`}>
+      <aside className={`${styles.sidebar} border-b p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6`}>
+        <a href="#create" className={`${styles.brand} flex items-center gap-3 text-lg font-semibold tracking-tight`}><span aria-hidden="true" className={`${styles.brandMark} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base font-semibold`}>P</span>Phoenix Studio</a>
+        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`${styles.navLink} flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
       </aside>
-      <main className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12">
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-[#dce1d2] pb-6">
-          <div><h1 className="text-3xl font-semibold tracking-tight">{pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p> : null}</div>
-          <a href="#jobs" className="flex items-center gap-2 rounded-full border border-[#d4dcc6] bg-[#fffdf7] px-4 py-2 text-xs font-medium"><span className={`h-2 w-2 rounded-full ${activeCount ? "animate-pulse bg-[#708a43]" : "bg-[#a8b395]"}`} />{activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
+      <main className={`${styles.main} mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12`}>
+        <header className={`${styles.header} flex flex-wrap items-start justify-between gap-4`}>
+          <div><h1 className={`${styles.heading} font-semibold`}>{pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p> : null}</div>
+          <a href="#jobs" className={`${styles.queueBadge} flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium`}><span className={`h-2 w-2 rounded-full ${activeCount ? "bg-[#708a43]" : "bg-[#a8b395]"}`} />{activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
         </header>
         {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
           <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>
@@ -344,22 +345,22 @@ export default function DashboardClient() {
         </div> : null}
         {!offline ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
-        <section aria-label="Creation workflows" className="grid gap-4 xl:grid-cols-3">
-          <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
-            <FileVideo className="h-7 w-7 text-[#536b35]" />
-            <h2 className="mt-4 text-2xl font-semibold">Clip a Video</h2>
-            <Button type="button" onClick={() => { setSourceOpen(open => !open); setAiOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
-              {sourceOpen ? "Close processor" : "Choose a video"}
+        <section aria-label="Creation workflows" className={`${styles.workflows} grid gap-4 lg:grid-cols-3`}>
+          <article className={styles.workflow}>
+            <div className={styles.artwork} aria-hidden="true"><FileVideo /></div>
+            <h2 className="font-semibold">Clip a Video</h2>
+            <Button type="button" aria-expanded={sourceOpen} onClick={() => { setSourceOpen(open => !open); setAiOpen(false); setStockOpen(false); }} className={`${styles.workflowButton} text-white`}>
+              {sourceOpen ? "Close processor" : "Choose a video"}<span aria-hidden="true">→</span>
             </Button>
           </article>
-          <article className="rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5">
-            <Sparkles className="h-7 w-7 text-[#536b35]" />
-            <h2 className="mt-4 text-2xl font-semibold">Create a Video</h2>
-            <Button type="button" onClick={() => { setAiOpen(open => !open); setSourceOpen(false); setStockOpen(false); }} className="mt-5 bg-[#394a2a] text-white">
-              {aiOpen ? "Close creation" : "Create a video"}
+          <article className={`${styles.workflow} ${styles.creation}`}>
+            <div className={styles.artwork} aria-hidden="true"><Sparkles /></div>
+            <h2 className="font-semibold">Create a Video</h2>
+            <Button type="button" aria-expanded={aiOpen} onClick={() => { setAiOpen(open => !open); setSourceOpen(false); setStockOpen(false); }} className={`${styles.workflowButton} text-white`}>
+              {aiOpen ? "Close creation" : "Create a video"}<span aria-hidden="true">→</span>
             </Button>
           </article>
-          <article className="rounded-2xl border border-[#bfcaa6] bg-[#eef3df] p-5"><Film className="h-7 w-7 text-[#536b35]" /><h2 className="mt-4 text-2xl font-semibold">Make a Reel</h2><Button className="mt-5 bg-[#394a2a] text-white" onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}</Button></article>
+          <article className={`${styles.workflow} ${styles.reel}`}><div className={styles.artwork} aria-hidden="true"><Film /></div><h2 className="font-semibold">Make a Reel</h2><Button type="button" aria-expanded={stockOpen} className={`${styles.workflowButton} text-white`} onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}<span aria-hidden="true">→</span></Button></article>
         </section>
         {sourceOpen ? <SourceProcessor active={section === "create" && !offline} onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
@@ -367,7 +368,7 @@ export default function DashboardClient() {
         </fieldset>
         {section === "library" ? <><InstagramPerformance /><ReviewLibrary files={files} loading={loading} onRefresh={load} /></> : null}
         {section === "create" ? <>
-        <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className="mt-5 rounded-xl border border-[#bfcaa6] bg-[#fffdf7] p-3 sm:p-4">
+        <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex items-center gap-2">
               <h2 className="text-base font-semibold">Jobs</h2>

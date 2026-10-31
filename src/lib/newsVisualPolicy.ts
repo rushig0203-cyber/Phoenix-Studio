@@ -30,7 +30,7 @@ const weak = new Set("aerial above around atmosphere background beautiful breath
 const reportContexts: Array<{ report: RegExp; query: RegExp }> = [
   { report: /\b(?:boats?|ships?|ferr(?:y|ies)|maritime|capsiz\w*|drown\w*|coast\w*|seaport|ocean)\b/i, query: /\b(?:boats?|ships?|sea|ocean|coast\w*|shore\w*|beach\w*|wave\w*|horizon|ports?|harbou?r\w*|dock\w*)\b/i },
   { report: /\b(?:doctors?|hospitals?|patients?|surgery|medical|health|disease\w*)\b/i, query: /\b(?:hospital\w*|corridor\w*|medical|laborator\w*)\b/i },
-  { report: /\b(?:execut\w*|prison\w*|court\w*|convict\w*|judg\w*|politic\w*|president\w*|minister\w*|parliament|election\w*)\b/i, query: /\b(?:government|parliament|courthouse\w*|building\w*|border\w*|fence\w*|flag\w*|map\w*)\b/i },
+  { report: /\b(?:execut\w*|prison\w*|court\w*|convict\w*|judg\w*|politic\w*|president\w*|minister\w*|parliament|government|election\w*)\b/i, query: /\b(?:government|parliament|courthouse\w*|building\w*|border\w*|fence\w*|flag\w*|map\w*)\b/i },
   { report: /\b(?:aircraft|airplane\w*|airport\w*|aviation|flight\w*)\b/i, query: /\b(?:aircraft|airplane\w*|airport\w*|runway\w*)\b/i },
   { report: /\b(?:heatwaves?|temperatures?|weather|storms?|rain|snow|drought\w*)\b/i, query: /\b(?:sky|clouds?|sun|city|cities|streets?|fields?|forests?|mountains?|rivers?|lakes?)\b/i },
   { report: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|fridges?|refrigerators?|freezers?|refrigeration)\b/i, query: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|aisles?|shelves|shelf|fridges?|refrigerators?|freezers?|refrigeration)\b/i },

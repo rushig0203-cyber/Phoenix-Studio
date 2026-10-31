@@ -24,6 +24,13 @@ const retailResearch = { ...research, id: 'b'.repeat(32),
   text: 'The report concerns supermarket refrigerators and freezers affected by a cyber attack. It does not identify generic stock as footage of the incident.',
 };
 
+test('government-formation reports permit neutral buildings without substituting footage of named people',()=>{
+  const article={...research,title:'Arab parties discuss unity',summary:'Parties discuss forming the next government.',text:'The report names Netanyahu and Eisenkot in the discussion.'};
+  assert.equal(policy.newsStockQueryIssue('government building exterior',article),undefined);
+  assert.match(policy.newsStockQueryIssue('Netanyahu government building',article),/named people|specific entities/);
+  assert.match(policy.newsStockQueryIssue('sea waves',article),/unrelated/);
+});
+
 test('news renderer capability is the exact policy, never mere field presence or a permissive schema', () => {
   const literal = policy.NEWS_STOCK_VISUAL_POLICY;
   for (const field of [{ const: literal }, { enum: [literal] }, { anyOf: [{ const: literal, type: 'string' }, { type: 'null' }] }]) {
