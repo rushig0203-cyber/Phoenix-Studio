@@ -20,6 +20,8 @@ export type StockReelOptions = {
   reusePolicy?: "four-in-18-months-v1";
   /** New automatic recipes only. Missing keeps the exact saved legacy music. */
   musicVersion?: 2;
+  /** New music-only recipes; absent on saved jobs to preserve their sound. */
+  audioMastering?: "loudness-v1";
 };
 
 export const DEFAULT_STOCK_REEL_OPTIONS: StockReelOptions = { audio: "auto", mood: "reflective", transition: "cut", framing: "auto" };
@@ -29,6 +31,33 @@ export const MAX_STOCK_REEL_BYTES = 500 * 1024 * 1024;
 export const STOCK_REEL_EDIT_VERSION = 2;
 export const AUTOMATIC_STOCK_SHOT_MAX_DURATION = 8;
 export const BRISK_STOCK_SHOT_MAX_DURATION = 6;
+
+export type StockMusicLoudness = { integratedLufs: number; truePeakDb: number; loudnessRangeLu: number };
+export const STOCK_MUSIC_LOUDNESS_FILTER = "loudnorm=I=-16:TP=-2:LRA=7";
+
+/** Read measured sound, never turn silence or a failed FFmpeg scan into a pass. */
+export function stockMusicLoudness(log: string) {
+  const json = log.match(/\{\s*"input_i"\s*:[^{}]*\}/g)?.at(-1);
+  if (!json) throw new Error("Music loudness could not be measured. Check the audio before retrying.");
+  const data = JSON.parse(json);
+  const read = (key: string, minimum: number, maximum: number) => {
+    const raw = data[key], value = typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
+    if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error("Music loudness is invalid or silent. Check the audio before retrying.");
+    return value;
+  };
+  return { integratedLufs: read("input_i", -99, 0), truePeakDb: read("input_tp", -99, 20), loudnessRangeLu: read("input_lra", 0, 99), thresholdLufs: read("input_thresh", -99, 0), offsetDb: read("target_offset", -99, 99) };
+}
+
+export function stockMusicMasteringFilter(measured: ReturnType<typeof stockMusicLoudness>) {
+  if (Object.values(measured).some(value => !Number.isFinite(value))) throw new Error("Music mastering requires finite loudness measurements.");
+  return `${STOCK_MUSIC_LOUDNESS_FILTER}:measured_I=${measured.integratedLufs}:measured_TP=${measured.truePeakDb}:measured_LRA=${measured.loudnessRangeLu}:measured_thresh=${measured.thresholdLufs}:offset=${measured.offsetDb}:linear=true`;
+}
+
+export function assertStockMusicLoudness(measured: StockMusicLoudness) {
+  if (!Number.isFinite(measured.integratedLufs) || Math.abs(measured.integratedLufs + 16) > 1.5 || !Number.isFinite(measured.truePeakDb) || measured.truePeakDb > -1 || !Number.isFinite(measured.loudnessRangeLu) || measured.loudnessRangeLu < 0) {
+    throw new Error("The finished music failed its loudness check. No ready video was saved; retry to repair this export.");
+  }
+}
 
 /** Shared selection/planning targets, not motion analysis or beat matching. */
 export function briskStockShotTarget(index: number, count: number) {
@@ -105,8 +134,8 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
   if (shotCadence === "adaptive-v2" || shotCadence === "adaptive-v3") {
     // Saved v2 jobs retain their exact timing. Only new v3 recipes shorten cuts.
     const compact = shotCadence === "adaptive-v3";
-    if (pacing !== "cinematic" || minDuration !== undefined || maximum < 18 || maximum > 40 || shots.length < 4 || shots.length > 10 || selected.some(shot => !shot.automatic)) {
-      throw new Error("Adaptive cadence requires four to ten automatic cinematic shots, no minimum, and an 18–40-second cap.");
+    if (pacing !== "cinematic" || minDuration !== undefined || maximum < (compact ? 15 : 18) || maximum > 40 || shots.length < 4 || shots.length > 10 || selected.some(shot => !shot.automatic)) {
+      throw new Error(`Adaptive cadence requires four to ten automatic cinematic shots, no minimum, and a ${compact ? "15" : "18"}–40-second cap.`);
     }
     const windows = selected.map((shot, index) => {
       const measured = shots[index].motionWindows;

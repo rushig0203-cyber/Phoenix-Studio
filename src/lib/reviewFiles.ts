@@ -59,6 +59,8 @@ export type ReviewFile = {
     storyboard?: import("./stockStoryboard").StockShot[];
     sourceDuration?: number;
     audio: "natural-audio-preserved" | "local-music-replaced" | "local-narration-music" | "local-narration" | "supplied-song" | "no-audio" | "needs-review";
+    /** Measured from the finished encoded video, not its input music file. */
+    audioMastering?: import("./stockReel").StockMusicLoudness & { version: "loudness-v1" };
     captions: string[];
     hashtags: string[];
     postCopy?: string;

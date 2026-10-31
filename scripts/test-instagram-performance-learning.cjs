@@ -51,6 +51,15 @@ test('zero engagement is measured while absent engagement stays missing', () => 
   assert.equal(result.assessments.find(row => row.videoId === 'absent').label, 'insufficient_data');
 });
 
+test('a fresh verified partial batch can teach without claiming complete account history', () => {
+  const videos = [...peers(), video('winner', { metrics: metric({ likes: 60 }) })];
+  const partial = { ...state(videos), status: 'syncing', historyComplete: false, lastSuccessfulSyncAt: undefined, lastSuccessfulBatchAt: new Date(now).toISOString() };
+  assert.equal(summarize(partial, now).assessments.find(row => row.videoId === 'winner').label, 'stronger');
+  assert.equal(summarize(partial, now).eligibleCount, 4);
+  for (const change of [{ status: 'permission_required' }, { account: undefined }, { lastSuccessfulBatchAt: new Date(now - 49 * hour).toISOString() }]) assert.equal(summarize({ ...partial, ...change }, now).eligibleCount, 0);
+  assert.equal(partial.historyComplete, false);
+});
+
 test('one viral post does not skew a median baseline or generate a topic formula', () => {
   const viral = video('viral', { reviewId: 'local-viral', creationType: 'source', topic: 'mountains', metrics: metric({ likes: 400, saves: 100, shares: 100 }) });
   const result = summarize(state([...peers(), viral]), now);

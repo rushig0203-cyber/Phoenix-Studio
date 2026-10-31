@@ -84,6 +84,7 @@ async function readStore(): Promise<Store | undefined> {
     const seen = new Set<string>(); state.videos = state.videos.filter(video => !seen.has(video.id) && !!seen.add(video.id));
     state.scannedVideos = state.videos.length; state.historyComplete = saved.historyComplete === true;
     state.updatedAt = date(saved.updatedAt); state.lastSuccessfulSyncAt = date(saved.lastSuccessfulSyncAt); state.nextSyncAt = date(saved.nextSyncAt);
+    state.lastSuccessfulBatchAt = date(saved.lastSuccessfulBatchAt);
     state.cycleStartedAt = date(saved.cycleStartedAt);
     state.seenCursors = Array.isArray(saved.seenCursors) ? saved.seenCursors.filter((value): value is string => typeof value === "string" && /^[a-f0-9]{64}$/.test(value)).slice(0, 5000) : [];
     state.cursor = validCursor(saved.cursor) ? saved.cursor : undefined;
@@ -113,8 +114,8 @@ function detailFor(status: InstagramPerformanceState["status"]) {
   return "Collecting all owned Instagram video pages in small, resumable batches, including videos posted outside Phoenix.";
 }
 function publicState(state: Store): InstagramPerformanceState {
-  const { version, account, status, detail, updatedAt, lastSuccessfulSyncAt, nextSyncAt, videos, scannedVideos, historyComplete } = state;
-  return { version, ...(account ? { account } : {}), status, detail, ...(updatedAt ? { updatedAt } : {}), ...(lastSuccessfulSyncAt ? { lastSuccessfulSyncAt } : {}), ...(nextSyncAt ? { nextSyncAt } : {}), videos, scannedVideos, historyComplete };
+  const { version, account, status, detail, updatedAt, lastSuccessfulSyncAt, lastSuccessfulBatchAt, nextSyncAt, videos, scannedVideos, historyComplete } = state;
+  return { version, ...(account ? { account } : {}), status, detail, ...(updatedAt ? { updatedAt } : {}), ...(lastSuccessfulSyncAt ? { lastSuccessfulSyncAt } : {}), ...(lastSuccessfulBatchAt ? { lastSuccessfulBatchAt } : {}), ...(nextSyncAt ? { nextSyncAt } : {}), videos, scannedVideos, historyComplete };
 }
 async function accessFailure(error: unknown): Promise<InstagramPerformanceState> {
   const value = error as { code?: unknown; account?: InstagramPerformanceState["account"] };
@@ -295,6 +296,7 @@ export async function syncInstagramPerformance(force = false): Promise<Instagram
         if (!video) { state.pending.shift(); continue; }
         if (!await collectVideo(access, state, video, budget)) break;
         state.pending.shift();
+        state.lastSuccessfulBatchAt = new Date().toISOString();
       }
       state.historyComplete = !state.pending?.length && !state.cursor;
       if (state.historyComplete) {

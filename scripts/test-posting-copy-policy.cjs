@@ -71,6 +71,11 @@ test('stock-only style restrictions do not change narrated caption selection',()
   const narrated='The video shows how three gears transfer motion.';
   assert.equal(choosePostingCaption(narrated,[],[]).caption,narrated);
 });
+
+test('sample-frame boilerplate never becomes audience-facing stock copy',()=>{
+  for(const ending of ['in these sampled frames','in the sampled frames','in sampled frames','in these frames']) assert.ok(stockPostingCaptionIssue(`Snow-capped peaks rise above the rugged landscape ${ending}.`));
+  assert.equal(choosePostingCaption('Snow-capped peaks rise above the rugged landscape in these sampled frames.',['Snow-capped peaks rise above a rugged landscape.'],[],true).caption,'Snow-capped peaks rise above a rugged landscape.');
+});
 test('case-insensitive tags are bounded and engagement bait is removed',()=>{
   assert.deepEqual(videoHashtags(['#Nature','#nature','#NATURE','#Waterfall','#Viral','#fyp','#Trending','#River','#Rocks','#Outdoors','#Landscape','bad']),['#Nature','#Waterfall','#River','#Rocks','#Outdoors','#Landscape']);
 });

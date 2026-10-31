@@ -28,7 +28,8 @@ export default function QualityManager({ initialReviewId }: { initialReviewId?: 
   return <main className="min-h-screen bg-[#f4f0e7] px-5 py-6 text-[#1e2719]"><div className="mx-auto max-w-3xl">
     <Link href="/dashboard" className="text-sm font-semibold underline">← Back to studio</Link>
     <div className="mt-5 flex items-center justify-between gap-3"><h1 className="text-2xl font-semibold">Quality manager</h1><button className={secondary} disabled={busy} onClick={() => void load()}>{busy ? "Checking…" : "Refresh"}</button></div>
-    <p className="mt-2 text-sm text-[#687657]">Review a finished video. Saved choices guide new matching work; they do not retrain a model or change an existing export.</p>
+    <p className="mt-2 text-sm text-[#687657]">Instagram results feed new matching work automatically when insights access is verified. Your feedback here is optional; final posting approval stays yours.</p>
+    <Link href="/dashboard#library" className="mt-2 inline-block text-sm font-semibold underline">View Instagram results &amp; learned guidance</Link>
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {data && <>
       <p className="mt-3 text-xs text-[#687657]">{data.guidance.feedbackCount} reviewed · {data.queued} queued · {data.running} running · {data.failed} failed</p>

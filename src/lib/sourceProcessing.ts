@@ -11,7 +11,7 @@ import { localMusicWav } from "./kidsRenderer";
 import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
-import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, assertStockReelMinimum, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
+import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
@@ -1272,6 +1272,7 @@ export async function createStockReelJob(
   const previous = await findStockSourceJob(input.requestId);
   if (previous) return previous;
   validateStockReusePolicy(input.options);
+  if (input.options.audioMastering !== undefined && (input.options.audioMastering !== "loudness-v1" || input.options.audio !== "music")) throw new Error("Music mastering is supported only for the continuous music soundtrack.");
   assertStockReuseAvailable(downloads, await readJobsUnlocked());
   planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence);
   await ensure();
@@ -1489,6 +1490,7 @@ async function processStockReel(
   report: (progress: number, stage: string, change?: Partial<SourceJob>) => Promise<unknown>,
 ) {
   const stock = job.stockSource!, options = { ...DEFAULT_STOCK_REEL_OPTIONS, ...stock.options, pacing: stock.options?.pacing };
+  if (options.audioMastering !== undefined && (options.audioMastering !== "loudness-v1" || options.audio !== "music")) throw new Error("This saved music-mastering recipe is unsupported. Original sound will not be normalized as music.");
   const adaptive = options.shotCadence === "adaptive-v2" || options.shotCadence === "adaptive-v3";
   let shots = [...stock.shots!]; // Render order must never rewrite saved source provenance.
   const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
@@ -1604,6 +1606,10 @@ async function processStockReel(
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1" })).digest("hex").slice(0, 24);
   const completed = (await readReviewFiles()).find(file => file.processing?.jobId === job.id && file.status === "READY" && file.processing.status === "COMPLETED" && file.quality.checks.includes(`Stock plan identity ${planIdentity}`));
   if (completed) {
+    if (options.audioMastering) {
+      if (completed.quality.audioMastering?.version !== options.audioMastering) throw new Error("The saved music export has no matching loudness evidence. Check this output before retrying.");
+      assertStockMusicLoudness(completed.quality.audioMastering);
+    }
     const instagram = outputPath(completed.id, "instagram"), youtube = outputPath(completed.id, "youtube");
     let first = await validOutput(instagram, duration, minimumPictureDuration), second = await validOutput(youtube, duration, minimumPictureDuration);
     if (first && !second) { await copyFileAtomically(instagram, youtube); second = await validOutput(youtube, duration, minimumPictureDuration); }
@@ -1684,6 +1690,11 @@ async function processStockReel(
     const args = ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-i", originalAssembly, "-i", music];
     if (anyOriginal) args.push("-filter_complex", `[1:a]${stockReelMusicVolume(musicSections)}[bed];[0:a][bed]amix=inputs=2:duration=longest:dropout_transition=0,volume=2,alimiter=limit=0.97:level=false[a]`, "-map", "0:v:0", "-map", "[a]");
     else args.push("-map", "0:v:0", "-map", "1:a:0");
+    if (options.audioMastering) {
+      await report(50, "Measuring and mastering the continuous soundtrack · one audio process at a time");
+      const measured = stockMusicLoudness(await run(ffmpegPath, ["-hide_banner", "-nostats", ...FFMPEG_FILTER_RESOURCE_ARGS, "-i", music, "-af", `${STOCK_MUSIC_LOUDNESS_FILTER}:print_format=json`, "-f", "null", "-"]));
+      args.push("-af", stockMusicMasteringFilter(measured));
+    }
     args.push("-t", duration.toFixed(6), "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "160k", "-movflags", "+faststart", master);
     await run(ffmpegPath, args);
   } else await copyFileAtomically(originalAssembly, master);
@@ -1751,6 +1762,13 @@ async function processStockReel(
   }
   assertStockReelMinimum(instagramInfo.videoDuration, minimumPictureDuration);
   assertStockReelMinimum(youtubeInfo.videoDuration, minimumPictureDuration);
+  if (options.audioMastering) {
+    await report(98, "Checking actual encoded music loudness before marking this reel ready");
+    const measured = stockMusicLoudness(await run(ffmpegPath, ["-hide_banner", "-nostats", ...FFMPEG_FILTER_RESOURCE_ARGS, "-i", instagram, "-vn", "-af", `${STOCK_MUSIC_LOUDNESS_FILTER}:print_format=json`, "-f", "null", "-"]));
+    assertStockMusicLoudness(measured);
+    item.quality.audioMastering = { version: options.audioMastering, integratedLufs: measured.integratedLufs, truePeakDb: measured.truePeakDb, loudnessRangeLu: measured.loudnessRangeLu };
+    item.quality.checks.push(`Finished encoded music measured ${measured.integratedLufs.toFixed(1)} LUFS integrated, ${measured.truePeakDb.toFixed(1)} dB true peak; mastered toward −16 LUFS with peak headroom`);
+  }
   item.artifacts = { version: 1, renderRevision: `stock-assembly-v${editVersion}`, finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();

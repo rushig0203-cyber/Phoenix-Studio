@@ -28,7 +28,7 @@ export function stockPostingCaptionIssue(copy: string) {
   if (clean.length > STOCK_POSTING_CAPTION_CHARACTER_LIMIT || (clean.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) || []).length > STOCK_POSTING_CAPTION_WORD_LIMIT) return "Use one short sentence focused on one visible subject or action.";
   if ((clean.match(/[^.!?。！？]+[.!?。！？]*/gu) || []).filter(sentence => sentence.trim()).length > 1 || /[\r\n;]/.test(clean)) return "Use one sentence, without a scene list.";
   if (captionHashtags(clean).length) return "Keep hashtags outside the caption.";
-  if (/\b(?:(?:is|are)\s+(?:being\s+)?shown|(?:video|scene)\s+shifts?\b|in\s+(?:these|the\s+sampled)\s+frames)\b/i.test(clean)) return "Describe the visible subject directly, without describing the video or sampled frames.";
+  if (/\b(?:(?:is|are)\s+(?:being\s+)?shown|(?:video|scene)\s+shifts?\b|in\s+(?:(?:these|the)\s+(?:sampled\s+)?|sampled\s+)frames)\b/i.test(clean)) return "Describe the visible subject directly, without describing the video or sampled frames.";
   if (/\b(?:first[\s-]+person (?:view|perspective)|the (?:video|camera|scene)|(?:close[\s-]*up|wide[\s-]*angle|aerial|low[\s-]*angle) (?:view|shot)|shots? of|followed by|cuts? to|from .+ to .+)\b/i.test(clean)) return "Describe the subject naturally, without camera directions or a shot inventory.";
   if (/\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|several|multiple|different|various)(?:[\s-]+(?:distinct|different|separate|brief|successive))*[\s-]+(?:scenes?|shots?|clips?|frames?)\b/i.test(clean)) return "Describe the visible subject, not how many scenes or shots were edited together.";
   return undefined;

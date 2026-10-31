@@ -17,6 +17,7 @@ function functions(filename, names, context = {}) {
   return moduleFixture.exports;
 }
 const gain = functions('src/lib/stockReel.ts', ['stockMusicMixGain']);
+const loudness = functions('src/lib/stockReel.ts', ['stockMusicLoudness', 'stockMusicMasteringFilter', 'assertStockMusicLoudness'], { STOCK_MUSIC_LOUDNESS_FILTER: 'loudnorm=I=-16:TP=-2:LRA=7' });
 const audio = functions('src/lib/sourceProcessing.ts', ['stockReelMusicSections', 'stockReelMusicVolume'], gain);
 const defaults = (() => {
   const filename = path.join(project, 'src/lib/automaticStockReel.ts'), source = fs.readFileSync(filename, 'utf8');
@@ -69,11 +70,26 @@ test('explicit music replacement and all-silent sources keep a full bed through 
 });
 test('new automatic policy keeps the same instrumental level across audible and silent source shots', () => {
   const options = defaults.automaticStockReelOptions('forest'), preserveOriginal = options.audio !== 'music';
+  assert.equal(options.audioMastering, 'loudness-v1');
   assert.equal(preserveOriginal, false);
   const sections = audio.stockReelMusicSections(intervals, states, preserveOriginal, options.audio === 'auto');
   assert.ok(sections.every(section => section.gain === 1 && !section.original));
   const filter = audio.stockReelMusicVolume(sections);
   for (const time of [0, 2.99, 3, 5, 6.99, 7, 9.99, 10]) assert.equal(at(filter, time), 1);
+});
+
+test('mastering uses measured loudness and rejects silent, malformed or nonfinite evidence', () => {
+  const report = { input_i: '-32.67', input_tp: '-19.67', input_lra: '2.2', input_thresh: '-43', target_offset: '-.1' };
+  const measured = loudness.stockMusicLoudness('FFmpeg analysis\n' + JSON.stringify(report));
+  assert.match(loudness.stockMusicMasteringFilter(measured), /measured_I=-32.67:measured_TP=-19.67:measured_LRA=2.2:measured_thresh=-43:offset=-0.1:linear=true$/);
+  for (const bad of ['', '{}', JSON.stringify({ ...report, input_i: '-inf' }), JSON.stringify({ ...report, input_i: '' }), JSON.stringify({ ...report, input_tp: null }), JSON.stringify({ ...report, input_lra: 'NaN' })]) assert.throws(() => loudness.stockMusicLoudness(bad));
+  assert.throws(() => loudness.stockMusicMasteringFilter({ ...measured, truePeakDb: NaN }), /finite/);
+});
+
+test('encoded output must be near its loudness target with true-peak headroom', () => {
+  const good = { integratedLufs: -16.1, truePeakDb: -2.1, loudnessRangeLu: 3 };
+  assert.doesNotThrow(() => loudness.assertStockMusicLoudness(good));
+  for (const bad of [{ integratedLufs: -32 }, { integratedLufs: -10 }, { truePeakDb: .1 }, { integratedLufs: NaN }, { truePeakDb: Infinity }, { loudnessRangeLu: -1 }]) assert.throws(() => loudness.assertStockMusicLoudness({ ...good, ...bad }), /finished music failed/);
 });
 test('automatic sound fills only silent intervals and never adds music over usable original ambience', () => {
   const sections = audio.stockReelMusicSections(intervals, states, true, true), filter = audio.stockReelMusicVolume(sections);

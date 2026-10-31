@@ -33,6 +33,8 @@ export type InstagramPerformanceState = {
   detail: string;
   updatedAt?: string;
   lastSuccessfulSyncAt?: string;
+  /** Current measured rows can teach while older account history is still scanning. */
+  lastSuccessfulBatchAt?: string;
   nextSyncAt?: string;
   videos: InstagramPerformanceVideo[];
   scannedVideos: number;

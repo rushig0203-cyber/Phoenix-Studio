@@ -7,6 +7,7 @@ import { getReviewFile, readReviewFiles, reviewRoot, type ReviewFile } from "./r
 import type { CreativeFeedback, CreativeGuidance, FeedbackDimension, QualityAssessment, QualityManagerState } from "./managerTypes";
 import { FEEDBACK_REQUESTS, type FeedbackRequest } from "./managerTypes";
 import { publishingProfile, inferPublishingFormat } from "./publishingFormats";
+import { assertStockMusicLoudness } from "./stockReel";
 import { GENERATED_CAPTION_FEEDBACK_RULE, STOCK_FEEDBACK_MAX_BYTES, STOCK_FEEDBACK_MAX_RECORDS, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
 import { getInstagramLearningGuidance, mergeInstagramLearningGuidance } from "./instagramLearningGuidance";
 
@@ -104,6 +105,14 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
   }
   if (file.delivery?.creationType === "children-song" && file.quality.audio !== "supplied-song") blockers.push("This song uses spoken narration, not verified singing. Supply a real song recording before treating it as a song.");
   if (["no-audio", "needs-review"].includes(file.quality.audio)) blockers.push("Audio needs repair or confirmation.");
+  if (file.quality.postingAnalysis?.status === "COMPLETE" && file.quality.postingAnalysis.alignment === "mismatch") blockers.push("Sampled visuals do not support this video's narration. Review the actual scenes and repair the mismatch before posting.");
+  if (file.quality.postingAnalysis?.status === "FAILED") checks.push("Automatic posting-copy analysis failed. The video remains available; check its caption and hashtags before posting.");
+  if (file.quality.audioMastering) {
+    try {
+      assertStockMusicLoudness(file.quality.audioMastering);
+      checks.push(`Finished encoded music: ${file.quality.audioMastering.integratedLufs.toFixed(1)} LUFS, ${file.quality.audioMastering.truePeakDb.toFixed(1)} dB true peak. Loudness is measured; musical fit still needs listening.`);
+    } catch { blockers.push("The saved music loudness check is outside its safe export range. Repair this export before posting."); }
+  }
   const narrationLed = (file.delivery && ["children-story", "children-song", "business", "general"].includes(file.delivery.creationType))
     || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio);
   if (!file.quality.captions.some(caption => caption.trim())) {

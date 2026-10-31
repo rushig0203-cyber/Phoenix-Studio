@@ -217,7 +217,10 @@ jobs:
           src/lib/session.ts
           src/components/NewsIdeas.tsx src/lib/rumbleWindow.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
-        run: node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
+        run: |
+          node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
+          node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys
         env:
           PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}

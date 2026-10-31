@@ -63,7 +63,7 @@ test('v3 whole-frame cap, nearby rhythm and measured-window choice retain all re
 
 test('v3 rejects owner trims, forged timing bounds and malformed measurements instead of rewriting them', () => {
   const shots = Array.from({ length: 5 }, () => automatic());
-  for (const [maximum, pacing, minimum] of [[17.99, 'cinematic'], [40.01, 'cinematic'], [40, 'selected'], [40, 'cinematic', 12]]) {
+  for (const [maximum, pacing, minimum] of [[14.99, 'cinematic'], [40.01, 'cinematic'], [40, 'selected'], [40, 'cinematic', 12]]) {
     assert.throws(() => reel.planStockIntervals(shots, maximum, pacing, minimum, 'adaptive-v3'), /Adaptive cadence/);
   }
   assert.throws(() => compact([automatic(), automatic(), automatic(), { duration: 12, start: 1, end: 5, trimMode: 'manual' }]), /Adaptive cadence/);

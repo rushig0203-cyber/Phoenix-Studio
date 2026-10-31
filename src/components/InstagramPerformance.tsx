@@ -87,12 +87,13 @@ export default function InstagramPerformance() {
   return <details className="rounded-xl border border-[#d5ddb8] bg-[#fffdf7] p-4 text-[#1e2719]">
     <summary className="cursor-pointer text-sm font-semibold">Instagram results{data ? ` · ${data.videos.length} videos` : ""}<span className="ml-2 text-xs font-normal text-[#687657]">{data ? statusLabels[data.status] : busy ? "Loading…" : "Unavailable"}</span></summary>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-[#687657]">{data?.account?.name || "Your connected Instagram account"} · Last successful sync: {dateLabel(data?.lastSuccessfulSyncAt)}</p>
+      <p className="text-xs text-[#687657]">{data?.account?.name || "Your connected Instagram account"} · Last measured batch: {dateLabel(data?.lastSuccessfulBatchAt || data?.lastSuccessfulSyncAt)}</p>
       <button type="button" className={secondary} disabled={busy} onClick={() => void load(true)}>{busy ? "Checking…" : "Refresh insights"}</button>
     </div>
     {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
     {data && <>
       <p role="status" className={`mt-2 text-xs ${["error", "permission_required"].includes(data.status) ? "text-red-700" : "text-[#687657]"}`}>{data.detail}</p>
+      {!data.historyComplete && data.lastSuccessfulBatchAt && <p className="mt-1 text-xs text-[#687657]">Guidance uses the current comparable sample. Older history is still incomplete; this is not a ranking of the whole account.</p>}
       {data.status === "permission_required" && <p className="mt-2 text-xs"><a href="/dashboard#settings" className="font-medium underline">Reconnect Instagram in Settings</a> with <code>instagram_manage_insights</code> while keeping your existing publishing permissions.</p>}
       {data.status === "not_connected" && <a href="/dashboard#settings" className="mt-2 inline-block text-xs font-medium underline">Connect Instagram in Settings</a>}
       {data.nextSyncAt && <p className="mt-2 text-xs text-[#687657]">Next automatic check: {dateLabel(data.nextSyncAt)}. Phoenix checks when its manager is running.</p>}

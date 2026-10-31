@@ -60,6 +60,20 @@ test('source guidance describes actual footage policies rather than instructions
   assert.doesNotMatch(value.rules.join(' '),/spoken sentences|private note/);
   assert.equal(manager.guidanceFromFeedback([source],'general').feedbackCount,0);
 });
+
+test('automatic manager checks measured encoded sound without inventing legacy audio evidence',()=>{
+  const audioMastering={version:'loudness-v1',integratedLufs:-16,truePeakDb:-2,loudnessRangeLu:3};
+  assert.match(manager.assessReview({...file,quality:{...file.quality,audioMastering}}).checks.join(' '),/Loudness is measured/);
+  for(const invalid of [{integratedLufs:-32},{truePeakDb:0},{integratedLufs:NaN}]) assert.equal(manager.assessReview({...file,quality:{...file.quality,audioMastering:{...audioMastering,...invalid}}}).decision,'BLOCKED');
+  assert.ok(!manager.assessReview(file).checks.some(check=>/Loudness is measured/.test(check)));
+});
+
+test('automatic manager flags observed narration/visual mismatches without pretending to review unseen footage',()=>{
+  const postingAnalysis={status:'COMPLETE',alignment:'mismatch',updatedAt:new Date().toISOString(),attempts:1,detail:'Fixture'};
+  assert.equal(manager.assessReview({...file,quality:{...file.quality,postingAnalysis}}).decision,'BLOCKED');
+  assert.equal(manager.assessReview({...file,quality:{...file.quality,postingAnalysis:{...postingAnalysis,alignment:'unknown'}}}).decision,'AWAITING_REVIEW');
+  assert.match(manager.assessReview({...file,quality:{...file.quality,postingAnalysis:{...postingAnalysis,status:'FAILED'}}}).checks.join(' '),/posting-copy analysis failed/);
+});
 test('narration-led duration uses the same publishing range as production, not an exact one-second target',()=>{
   const stock={...file,delivery:{...file.delivery,creationType:'general'},outputs:{youtube:{...file.outputs.youtube,duration:69.07}}};
   assert.equal(manager.assessReview(stock).decision,'AWAITING_REVIEW');

@@ -44,9 +44,19 @@ vision provider. Phoenix checks the returned evidence and preserves owner edits;
 quota or invalid evidence is shown rather than disguised as a successful analysis.
 Silent scenic reels do not need invented subtitles.
 
+New Make a Reel music-only exports use two-pass loudness mastering toward
+−16 LUFS, with peak headroom, and measure the actual encoded soundtrack before
+marking it ready. This is an export target, not an Instagram requirement or a
+claim of musical quality. Existing recipes and original-audio mixes keep their
+saved sound; manual edits discard the old measurement until measured again.
+
 Quality ratings supply bounded guidance for matching future work. Supported
 Instagram performance metrics can guide experiments after the necessary insights
-permission is granted. Neither mechanism retrains a model, edits app code by
+permission is granted. Collection runs in small background batches; fresh,
+age/exposure-comparable measured videos can guide experiments while older history
+is still scanning. Incomplete history is labelled, missing metrics remain unknown,
+and disconnected/stale data cannot teach new work. No manual rating is required.
+Neither mechanism retrains a model, edits app code by
 itself, proves causation or guarantees views, monetization or income.
 
 Children's animation is lightweight original 2D, not professional anime/3D.

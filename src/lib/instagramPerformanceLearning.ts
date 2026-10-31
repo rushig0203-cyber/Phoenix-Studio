@@ -20,7 +20,7 @@ type Candidate = { video: InstagramPerformanceVideo; row: InstagramPerformanceAs
 
 /** Observational comparisons only. Missing insights never mean zero or prove why a video performed differently. */
 export function instagramPerformanceSummary(state: InstagramPerformanceState, now = Date.now()): InstagramPerformanceSummary {
-  const successfulAt = Date.parse(state.lastSuccessfulSyncAt || "");
+  const successfulAt = Math.max(Date.parse(state.lastSuccessfulSyncAt || "") || 0, Date.parse(state.lastSuccessfulBatchAt || "") || 0);
   const currentData = !!state.account?.id && !!state.account.connectionRevision
     && !["not_connected", "permission_required"].includes(state.status)
     && Number.isFinite(successfulAt) && successfulAt <= now + 300_000 && now - successfulAt <= FRESHNESS;
@@ -35,7 +35,7 @@ export function instagramPerformanceSummary(state: InstagramPerformanceState, no
   for (const video of videos) {
     const fetchedAt = Date.parse(video.metricsUpdatedAt || ""), publishedAt = Date.parse(video.timestamp || "");
     if (!currentData) {
-      assessments.push(unavailable(video.id, "A verified current account and a successful insights sync within 48 hours are needed. Saved counts are not treated as current performance."));
+      assessments.push(unavailable(video.id, "A verified current account and a successful insights batch within 48 hours are needed. Saved counts are not treated as current performance."));
       continue;
     }
     if (!Number.isFinite(fetchedAt) || fetchedAt > now + 300_000 || now - fetchedAt > FRESHNESS) {

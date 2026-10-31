@@ -1,5 +1,31 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 quality and automatic feedback repair — source prepared, activation pending
+
+- The owner approved adding instagram_manage_insights to studio finalll's five
+  existing permissions and private saving. Verified all six scopes and the known
+  Page-to-@__bitet.hemap identity; real Graph collection returned views, reach,
+  likes, saves, shares and watch times. The first short-lived token expired;
+  the owner separately approved Meta's free long-lived replacement. No social
+  post, ad action or failed owner job was used as a test.
+- Measured four existing footage exports at approximately −28 to −33 LUFS.
+  New music-only recipes now explicitly version two-pass mastering and measure
+  encoded output before READY. Six real FFmpeg/AAC fixtures covering three moods
+  and 12–40 seconds measured −16.00 to −16.01 LUFS, with true peaks below −3 dB.
+  Original sound modes and saved recipes are unchanged; editor copies discard
+  stale loudness evidence. Automatic manager checks use the measured values.
+- Current comparable measured batches can feed automatic guidance before the
+  full historical scan ends, without claiming whole-account coverage. Fixed the
+  renderer's rejection of a valid 15-second learned cap, retaining saved v2
+  timing. The manager flags observed narration/visual mismatch and failed copy
+  analysis; it does not fabricate a visual or listening review.
+- Closed the copy-validation gap that allowed “in these sampled frames” into
+  audience-facing footage captions. Owner text is preserved. Manager feedback
+  controls are explicitly optional and link to automatic Instagram results.
+- Focused audio, guidance, caption, editor, manager and insights fixtures pass;
+  remote Windows verification/build and local activation remain required before
+  these source changes can be called installed. No local Next build ran.
+
 ## October 31 VoiceStudio repair and lightweight story narration — installed and verified
 
 - Repaired the official 0.5.7 CPU runtime using its downloaded Python 3.11.16

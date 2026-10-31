@@ -78,10 +78,18 @@ test('missing permission tells the owner exactly what to reconnect without claim
   assert.match(text(ui.tree()), /Insights permission needed/); assert.match(text(ui.tree()), /instagram_manage_insights/);
   assert.match(text(ui.tree()), /keeping your existing publishing permissions/);
   assert.equal(ui.find('a', 'Reconnect Instagram in Settings').props.href, '/dashboard#settings');
-  assert.match(text(ui.tree()), /Last successful sync: Not yet/);
+  assert.match(text(ui.tree()), /Last measured batch: Not yet/);
   assert.match(text(ui.tree()), /available history is not fully collected yet/);
   assert.doesNotMatch(text(ui.tree()), /older available history is still being collected/);
   assert.doesNotMatch(text(ui.tree()), /Results saved/);
+});
+
+test('partial collection reports its measured batch without claiming whole-account results', async () => {
+  const ui = harness({ fetch: () => response(state([], { status:'syncing', historyComplete:false, lastSuccessfulSyncAt:undefined, lastSuccessfulBatchAt:'2026-10-13T12:00:00Z' })) });
+  await ui.settle();
+  assert.match(text(ui.tree()), /Guidance uses the current comparable sample/);
+  assert.match(text(ui.tree()), /not a ranking of the whole account/);
+  assert.doesNotMatch(text(ui.tree()), /Last measured batch: Not yet/);
 });
 
 test('a video outside the bounded comparison set retains its real metrics without an unavailable claim', async () => {

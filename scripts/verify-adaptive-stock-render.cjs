@@ -57,6 +57,9 @@ async function main() {
   assert.equal(picture.width, 720); assert.equal(picture.height, 1280);
   assert.ok(media.streams.some(stream => stream.codec_type === 'audio'));
   assert.deepEqual(file.quality.captions, []);
+  assert.equal(file.quality.audioMastering?.version, 'loudness-v1');
+  assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 16) <= 1.5);
+  assert.ok(file.quality.audioMastering.truePeakDb <= -1);
   assert.ok(!file.quality.checks.some(check => /1\.25× playback/.test(check)), 'New v3 recipes never reuse the old automatic acceleration rule');
   assert.ok(file.quality.checks.some(check => /1× playback/.test(check)), 'Meaningful movement keeps native speed');
   const checks = file.quality.checks.join(' ');
@@ -76,7 +79,7 @@ async function main() {
   assert.equal(retried.status, 'COMPLETED', retried.error);
   assert.deepEqual(retried.reviewIds, done.reviewIds);
   assert.deepEqual(fs.readFileSync(output), before, 'Retry reuses verified output and stable sampled movement');
-  console.log(JSON.stringify({ syntheticMechanicsOnly: true, duration: Number(picture.duration), frames: Number(picture.nb_read_frames), speedAndAudioVerified: true, retryIdempotent: true, providerCalls: 0 }));
+  console.log(JSON.stringify({ syntheticMechanicsOnly: true, duration: Number(picture.duration), frames: Number(picture.nb_read_frames), audioMastering: file.quality.audioMastering, speedAndAudioVerified: true, retryIdempotent: true, providerCalls: 0 }));
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => {
   process.chdir(project);

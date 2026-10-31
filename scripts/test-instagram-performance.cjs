@@ -102,6 +102,8 @@ test('all paginated videos including manually posted videos eventually sync acro
       paging: { cursors: { after: 'older-page' }, next: `https://graph.facebook.com/v26.0/${account.accountId}/media?after=older-page&access_token=${account.accessToken}` } });
   };
   const first = await collector.syncInstagramPerformance(); assert.equal(first.status, 'syncing'); assert.equal(first.historyComplete, false); assert.equal(calls.length, 5);
+  assert.ok(Number.isFinite(Date.parse(first.lastSuccessfulBatchAt)), 'Fresh measured batches must be available before all older pages finish.');
+  assert.equal(first.lastSuccessfulSyncAt, undefined, 'Partial progress must never claim a full-history sync.');
   const second = await collector.syncInstagramPerformance(true); assert.equal(second.historyComplete, false); assert.equal(calls.length, 6);
   const final = await collector.syncInstagramPerformance(true); assert.equal(final.historyComplete, true); assert.equal(final.videos.length, 6); assert.equal(calls.length, 8);
   const pages = calls.map(call => new URL(call.url)).filter(url => url.pathname.endsWith('/media'));

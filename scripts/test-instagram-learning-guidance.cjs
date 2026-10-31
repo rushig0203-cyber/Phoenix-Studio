@@ -92,6 +92,12 @@ test('qualified shorter-duration experiments cap only new automatic source recip
   cached = state([...winners, ...others]);
   assert.equal((await learning.getInstagramLearningGuidance('source')).maxDuration, 18);
   assert.equal((await stock.getStockProductionGuidance()).performanceMaxDuration, 18);
+  cached = state([...winners.map(item => ({ ...item, durationSeconds: 12 })), ...others]);
+  const learned = await stock.getStockProductionGuidance();
+  assert.equal(learned.performanceMaxDuration, 15);
+  const reel = require('../src/lib/stockReel');
+  const plan = reel.planStockIntervals(Array.from({ length: 8 }, () => ({ duration: 20, trimMode: 'auto' })), learned.performanceMaxDuration, 'cinematic', undefined, 'adaptive-v3');
+  assert.ok(plan.at(-1).outputEnd >= 12 && plan.at(-1).outputEnd <= 15, 'The production planner must accept the shortest evidence-derived cap without padding.');
   cached = state([...winners, ...others].map(value => ({ ...value, creationType: 'children-story' })));
   assert.equal((await learning.getInstagramLearningGuidance('children-story')).maxDuration, undefined);
   assert.doesNotMatch((await learning.getInstagramLearningGuidance('children-story')).rules.join(' '), /version near 18 seconds/);
