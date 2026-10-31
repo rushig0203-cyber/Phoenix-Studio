@@ -1,5 +1,32 @@
 # Quality-first implementation — September 16, 2026
 
+## October 31 native-portrait production proof — installed, audio repair next
+
+- Current verified code is `c7c9cff2be52db3f7707a63d4fd63a0f56249ee3`, Windows
+  run `41223182690`: 1,397 Node and 43 Python checks, lint, actual audio/WebM and
+  public-footage renders, TypeScript and production build all passed. Bundle
+  `.next-build-gh-41223182690-1` / `QCcUmRQbnucYfjh3Zg0e1` is selected and
+  serving; worker/manager are healthy and dashboard returns HTTP 200. Fresh
+  before/after checks preserved all five media/job stores and owner config.
+- A real catalogue check through production search, resolution and selection
+  found eight native 720x1280 park sources after two portrait pages. It created
+  no owner job and downloaded no source video. The isolated remote proof uses
+  those exact public sources plus negative controls, retains eight portrait
+  shots after measured greenery checks and rejects the grey source. Its 404
+  decoded frames last 16.833 seconds, within the 17-second test cap. The saved
+  opening experiment and all eight real source bounds survived final rendering
+  and an idempotent retry. Music measured −16.0 LUFS / −4.1 dB true peak.
+- Follow-up run `41211966407` failed one old message assertion when “original
+  instrumental” became “licensed instrumental.” Corrected that fixture, checked
+  all 81 automatic-reel tests locally and verified the replacement full run above.
+  No failed bundle was installed. Licensed music is not claimed as original.
+- The owner then generated new Dogs/Jellyfish reels, and a general stock-video
+  render failed in speech generation. Logs show repeated online Edge TTS timeouts:
+  the generation path maps the explicit local-voice choice to JennyNeural. That
+  handoff is not repaired by the portrait/music changes. Repair it next, then
+  investigate the owner's reported audio/video mismatch; do not call audio or
+  the whole product finished from loudness, file creation or this one proof.
+
 ## October 31 recorded music, usable feedback and portrait discovery — installed and verified
 
 - New automatic stock recipes use six composer-published CC0 instrumental
@@ -41,7 +68,7 @@
   TypeScript and production build. Superseded run `41203649966` was intentionally
   cancelled when the WebM repair was added; it was not used as release evidence.
 - Verified bundle `.next-build-gh-41203982431-1`, build ID
-  `j0xnpuhC81__I8VAMwX1Q`, is selected and serving. HTTP 200, healthy manager and
+  `j0xnpuhC81__I8VAMwX1Q`, was selected and verified before the follow-up above. HTTP 200, healthy manager and
   worker, five media/job-store hashes and the owner's unchanged config hash were
   verified after activation. No local Next build, owner-job retry or social test
   post was performed. Both Desktop shortcuts still point to the canonical tree.
