@@ -54,7 +54,7 @@ test('new automatic soundtrack uses compact adaptive timing without changing man
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.mood, 'reflective', 'Baseline mood remains unchanged');
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_OPTIONS.continuity, 'visual-v1');
   assert.equal(editing.DEFAULT_STOCK_REEL_OPTIONS.audio, 'auto', 'Manual/legacy defaults still preserve source-only sound when usable');
-  assert.match(automatic.automaticStockReelMessage(8), /one continuous original instrumental across all shots/);
+  assert.match(automatic.automaticStockReelMessage(8), /one continuous licensed instrumental across all shots/);
   assert.match(automatic.automaticStockReelMessage(8, true), /saved timing and sound choices are retained/i);
   assert.doesNotMatch(automatic.automaticStockReelMessage(8, true), /continuous original instrumental/, 'Saved recipes can retain their previous soundtrack policy');
 });
