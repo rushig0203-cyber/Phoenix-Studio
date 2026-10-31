@@ -1,13 +1,16 @@
 # Quality-first implementation — September 16, 2026
 
-## October 31 quality and automatic feedback repair — source prepared, activation pending
+## October 31 quality and automatic feedback repair — installed and verified live
 
 - The owner approved adding instagram_manage_insights to studio finalll's five
   existing permissions and private saving. Verified all six scopes and the known
   Page-to-@__bitet.hemap identity; real Graph collection returned views, reach,
   likes, saves, shares and watch times. The first short-lived token expired;
   the owner separately approved Meta's free long-lived replacement. No social
-  post, ad action or failed owner job was used as a test.
+  post, ad action or failed owner job was used as a test. The approved free
+  long-lived replacement was independently verified against Meta and privately
+  saved with its actual expiry, December 30, 2026. Publishing and all six scopes
+  were retained; no secret was put into Git, chat or a browser address bar.
 - Measured four existing footage exports at approximately −28 to −33 LUFS.
   New music-only recipes now explicitly version two-pass mastering and measure
   encoded output before READY. Six real FFmpeg/AAC fixtures covering three moods
@@ -22,9 +25,28 @@
 - Closed the copy-validation gap that allowed “in these sampled frames” into
   audience-facing footage captions. Owner text is preserved. Manager feedback
   controls are explicitly optional and link to automatic Instagram results.
-- Focused audio, guidance, caption, editor, manager and insights fixtures pass;
-  remote Windows verification/build and local activation remain required before
-  these source changes can be called installed. No local Next build ran.
+- Source d4b0f1359dd5d7a1e674095d0d77752b32b59d88 passed Windows run
+  41198747014: 1,386 Node tests, 43 Python checks, lint, actual six-mood/length
+  audio fixtures, an isolated full synthetic render, public-Pexels rendering,
+  TypeScript and production build. The first run's missing mock loudnorm response
+  was repaired without weakening the real sound check. No local Next build ran.
+- Verified `.next-build-gh-41198747014-1` is selected and serving, with HTTP 200
+  and healthy worker/manager. Its actual synthetic MP4 measured −16.01 LUFS,
+  −3.46 dB true peak and retained exactly the same bytes on retry. The public
+  montage is fully decoded and retry-idempotent; visual fit still needs review.
+- Live owner-account collection and the production source-guidance function
+  confirmed automatic metric-derived rules with zero manual source ratings.
+  The browser displayed real results and learned guidance from 29 comparable
+  videos while older history continued scanning. These sample counts evolve;
+  they do not imply causal understanding or guarantee a better next result.
+- Five saved media/job stores and the pre-existing tsconfig modification retain
+  their before/after SHA-256 hashes. A transient post-restart refresh notice
+  cleared on ordinary polling; normal measured API reads returned HTTP 200.
+  The browser was reloaded to verify the newly installed client bundle.
+- The broader quality goal stays active: local music is still procedural,
+  montage hooks/framing and caption style need further real-output review,
+  and this release does not claim professional animation, singing, or a complete
+  whole-product artistic audit. No owner job was retried or post made.
 
 ## October 31 VoiceStudio repair and lightweight story narration — installed and verified
 
