@@ -241,6 +241,10 @@ test('new automatic reel replaces mixed source sound with one full-length instru
         ] }));
       } else if (args.includes('--check')) child.stdout.end(JSON.stringify({ fasterWhisper: true, modelCached: true }));
       else if (args.includes('volumedetect')) child.stderr.end('mean_volume: -20.0 dB\nmax_volume: -3.0 dB\n');
+      else if (args.some(arg => typeof arg === 'string' && arg.includes('loudnorm=') && arg.includes('print_format=json'))) {
+        const input = args[args.indexOf('-i') + 1], finished = input.endsWith('-instagram.mp4');
+        child.stderr.end(JSON.stringify({ input_i: finished ? '-16.0' : '-32.0', input_tp: finished ? '-3.0' : '-19.0', input_lra: '2.0', input_thresh: finished ? '-26.0' : '-42.0', target_offset: '0.0' }));
+      }
       else {
         assert.ok(!args.includes('--input'), 'Removed source speech must not start transcription');
         if (typeof args.at(-1) === 'string' && args.at(-1).endsWith('.mp4')) {
@@ -266,6 +270,7 @@ test('new automatic reel replaces mixed source sound with one full-length instru
   const done = await source.getSourceJob(job.id); assert.equal(done.status, 'COMPLETED', done.error);
   const file = await reviews.getReviewFile(done.reviewIds[0]);
   assert.equal(file.quality.audio, 'local-music-replaced');
+  assert.deepEqual(file.quality.audioMastering, { version:'loudness-v1', integratedLufs:-16, truePeakDb:-3, loudnessRangeLu:2 });
   assert.deepEqual(file.quality.captions, []); assert.equal(file.quality.subtitles.decision, 'none');
   assert.ok(calls.some(args => args.includes('anullsrc=r=48000:cl=stereo')), 'The fixture includes a silent source alongside audible sources');
   const musicMaster = calls.find(args => path.basename(args.at(-1) || '') === 'editable-master.mp4');
