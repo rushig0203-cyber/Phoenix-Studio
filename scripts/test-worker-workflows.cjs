@@ -137,7 +137,7 @@ function mockedRunner() {
       processNextCreationDraft: run("drafts"), creationDraftWorkflowReady: async () => draftReady },
     "./src/lib/videoPostingAnalysis.ts": { processNextPostingAnalysis: run("posting") },
     "./src/lib/instagramPerformance.ts": { syncInstagramPerformance: async () => { calls.push("instagram-insights"); } },
-    "./src/lib/workerReadiness.ts": { workerHasPendingWork: async key => key === "posting" || pendingWork },
+    "./src/lib/workerReadiness.ts": { workerHasPendingWork: async key => { calls.push(`readiness-${key}`); return key === "posting" || pendingWork; } },
     "./src/lib/renderResources.ts": { heavyWorkStatus: async () => resources,
       reconcileLocalModelWork: async () => { calls.push("model-status"); } },
     "./worker-workflows.cjs": { createWorkerDispatcher: options => {
@@ -186,6 +186,13 @@ test("real runner wiring defers heavy workflows but permits ready Groq text plan
   runner.dispatcher.queue.resume(); await runner.dispatcher.queue.whenIdle();
   assert.ok(runner.calls.includes("generation")); assert.ok(runner.calls.includes("posting"));
   assert.equal(runner.maximum, 1); assert.equal(runner.errors.length, 0);
+});
+
+test("low RAM blocks heavy history inspection while retaining eligible cloud planning and insights",async t=>{
+  const runner=mockedRunner();runner.resources={lease:null,waitingForMemory:true};runner.start();t.after(()=>runner.dispatcher.stop());
+  await runner.dispatcher.queue.whenIdle();runner.timers.tick();await runner.dispatcher.queue.whenIdle();await turn();
+  for(const key of ['source','generation','edits','posting'])assert.ok(!runner.calls.includes(`readiness-${key}`),'Low-RAM admission must precede optional history parsing');
+  assert.ok(runner.calls.includes('readiness-drafts')&&runner.calls.includes('drafts')&&runner.calls.includes('instagram-insights'));
 });
 
 test("real runner shutdown signal clears timers and pending work without killing an active workflow", async t => {

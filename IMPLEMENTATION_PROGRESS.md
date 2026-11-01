@@ -16,7 +16,7 @@
   keeps 512 MiB for legacy source rollback and rejects unknown protocols. Existing
   RAM admission/model/build guards are unchanged. The existing private heartbeat
   records actual heap, RSS and external-memory figures for sustained diagnosis.
-- Eighteen focused readiness/dispatcher/heap checks pass, including a concurrent
+- Nineteen focused readiness/dispatcher/heap checks pass, including a concurrent
   enqueue during inspection and same-size atomic retry. Full Windows checks,
   a CI-only near-limit synthetic-history benchmark, real export and activation
   remain pending. No sustained local RAM improvement is claimed yet.

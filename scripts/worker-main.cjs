@@ -57,8 +57,9 @@ const dispatcher = createWorkerDispatcher({
     const resources = await heavyWorkStatus();
     if (resources.lease) return false; // External work can outlive its submission.
     if (key === "drafts" && !preparationReady) return true; // Bounded store migration only.
+    if (key !== "drafts" && resources.waitingForMemory) return false;
     if (!await workerHasPendingWork(key)) return false;
-    return key === "drafts" ? creationDraftWorkflowReady(resources) : !resources.waitingForMemory;
+    return key === "drafts" ? creationDraftWorkflowReady(resources) : true;
   },
   onError: (key, error) => console.error(`Phoenix ${key} worker:`, error instanceof Error ? error.message : String(error)),
 });
