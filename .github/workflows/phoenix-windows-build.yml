@@ -236,12 +236,12 @@ jobs:
           node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
           node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
-      - name: Verify an edited reel from public licensed Pexels footage, no owner files or keys
+      - name: Compile with existing RAM guard and full TypeScript checks
+        run: npm run build
+      - name: Verify the compiled worker exports public licensed Pexels footage, no owner files or keys
         env:
           PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}
         run: node --max-old-space-size=192 scripts/verify-public-stock-quality.cjs
-      - name: Compile with existing RAM guard and full TypeScript checks
-        run: npm run build
       - name: Package only the verified production bundle
         env:
           PHOENIX_ARTIFACT_DIR: ${{ runner.temp }}/phoenix-bundle-${{ github.run_id }}-${{ github.run_attempt }}

@@ -26,14 +26,17 @@ fs.cpSync(path.join(project,'assets/music/lofi-cc0-v1'),path.join(scratch,'asset
 const ffmpeg = path.join(project, 'node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe');
 const ffprobe = path.join(project, 'node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 process.env.PHOENIX_FFMPEG_PATH = ffmpeg; process.env.PHOENIX_FFPROBE_PATH = ffprobe;
-require('ts-node').register({ project: path.join(project, 'tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });
-const resources = require(path.join(project, 'src/lib/renderResources.ts'));
-const source = require(path.join(project, 'src/lib/sourceProcessing.ts'));
-const reviews = require(path.join(project, 'src/lib/reviewFiles.ts'));
-const automatic = require(path.join(project, 'src/lib/automaticStockReel.ts'));
-const planning = require(path.join(project, 'src/lib/stockReel.ts'));
-const visual = require(path.join(project, 'src/lib/stockVisualContinuity.ts'));
-const movement = require(path.join(project, 'src/lib/stockMotion.ts'));
+const runtime = require('./worker-runtime.cjs').compiledRuntime(project, process.env.PHOENIX_BUILD_DIR);
+const load = runtime.load;
+const resources = load('renderResources');
+const source = load('sourceProcessing');
+const reviews = load('reviewFiles');
+const automatic = load('automaticStockReel');
+const planning = load('stockReel');
+const visual = load('stockVisualContinuity');
+const movement = load('stockMotion');
+const compilerLoaded = () => Object.keys(require.cache).some(filename => /[\\/]node_modules[\\/](?:typescript|ts-node)[\\/]/.test(filename));
+assert.equal(compilerLoaded(), false, 'The shipped worker imports must not load a compiler.');
 const fixtures = [
   // Actual production catalogue selection on October 31: two portrait pages,
   // anchor retained, eight authoritative native-portrait park sources.
@@ -99,7 +102,7 @@ async function main() {
   for (const fixture of fixtures) downloaded.push(await download(fixture)); // One streamed download at a time.
   global.fetch = async () => { throw new Error('Further network/provider calls are forbidden in the isolated render.'); };
   const selected = [downloaded[0], ...automatic.automaticStockCompanions(downloaded[0], downloaded.slice(1), 'Parks').slice(0, 9)];
-  const posting=require('../src/lib/videoPostingAnalysis.ts'),{extractPostingFrame}=posting;
+  const posting=load('videoPostingAnalysis'),{extractPostingFrame}=posting;
   for (const pictureFilter of [planning.stockFraming(downloaded[0], 'auto').filter, planning.stockFraming({width:1920,height:1080}, 'auto', true).filter]) {
     const jpeg=await extractPostingFrame(downloaded[0].filename,.5,pictureFilter);
     assert.ok(jpeg.length>=4&&jpeg.length<=120000&&jpeg[0]===255&&jpeg[1]===216,'Planned portrait and soft-backdrop samples must decode as bounded JPEGs.');
@@ -182,7 +185,8 @@ async function main() {
   await tool(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-vf',
     `select='${midpointSelect}',setpts=N/FRAME_RATE/TB,scale=160:284,tile=${columns}x${rows}:nb_frames=${intervals.length}:padding=2:margin=2`,
     '-frames:v', '1', '-filter_threads', '1', '-q:v', '3', contact]);
-  fs.writeFileSync(path.join(destination, 'proof.json'), JSON.stringify({ publicLicensedFixture: true, licence: 'https://www.pexels.com/license/',
+  assert.equal(compilerLoaded(), false, 'Actual rendering must stay compiler-free.');
+  fs.writeFileSync(path.join(destination, 'proof.json'), JSON.stringify({ publicLicensedFixture: true, compiledWorker: true, compilerLoaded: false, licence: 'https://www.pexels.com/license/',
     selected: selected.map(({ id, title, creator, sourcePage, previewUrl, width, height, duration }) => ({ id, title, creator, sourcePage, previewUrl, width, height, duration })),
     excludedAtSelection: downloaded.filter(video => !selected.includes(video)).map(({ id, title }) => ({ id, title })),
     omittedAtRender, greeneryThreshold: greenery.threshold,
