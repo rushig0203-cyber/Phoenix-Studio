@@ -123,7 +123,7 @@ test("independent diagnostics run without self-overlap during a slow workflow an
 function mockedRunner() {
   const timers = fakeTimers(), calls = [], signals = new Map(), errors = [];
   const hold = deferred(); let dispatcher, heldGeneration = false, active = 0, maximum = 0;
-  let resources = { lease: null, waitingForMemory: false }, draftReady = true;
+  let resources = { lease: null, waitingForMemory: false }, draftReady = true, pendingWork = true;
   const run = key => async () => {
     maximum = Math.max(maximum, ++active); calls.push(key);
     try { if (key === "generation" && heldGeneration) await hold.promise; } finally { active--; }
@@ -137,6 +137,7 @@ function mockedRunner() {
       processNextCreationDraft: run("drafts"), creationDraftWorkflowReady: async () => draftReady },
     "./src/lib/videoPostingAnalysis.ts": { processNextPostingAnalysis: run("posting") },
     "./src/lib/instagramPerformance.ts": { syncInstagramPerformance: async () => { calls.push("instagram-insights"); } },
+    "./src/lib/workerReadiness.ts": { workerHasPendingWork: async key => key === "posting" || pendingWork },
     "./src/lib/renderResources.ts": { heavyWorkStatus: async () => resources,
       reconcileLocalModelWork: async () => { calls.push("model-status"); } },
     "./worker-workflows.cjs": { createWorkerDispatcher: options => {
@@ -156,8 +157,20 @@ function mockedRunner() {
   return { timers, calls, signals, errors, process: mockProcess, start, hold,
     get dispatcher() { return dispatcher; }, get maximum() { return maximum; },
     set resources(value) { resources = value; }, set draftReady(value) { draftReady = value; },
-    set heldGeneration(value) { heldGeneration = value; } };
+    set heldGeneration(value) { heldGeneration = value; }, set pendingWork(value) { pendingWork = value; } };
 }
+
+test("real runner skips unchanged completed histories but keeps diagnostics and newly queued work", async t => {
+  const runner=mockedRunner();runner.pendingWork=false;runner.start();t.after(()=>runner.dispatcher.stop());
+  await runner.dispatcher.queue.whenIdle();
+  for(let index=0;index<10;index++){runner.timers.tick();await runner.dispatcher.queue.whenIdle();await turn();}
+  for(const name of ["source-empty","generation","edits","drafts"])assert.ok(!runner.calls.includes(name));
+  assert.equal(runner.calls.filter(name=>name==="enable").length,1,'Legacy migration still runs once');
+  assert.ok(runner.calls.includes("heartbeat")&&runner.calls.includes("instagram-insights")&&runner.calls.includes("posting"));
+  runner.pendingWork=true;runner.timers.tick();await runner.dispatcher.queue.whenIdle();
+  for(const name of ["source-empty","generation","edits","drafts"])assert.ok(runner.calls.includes(name));
+  assert.equal(runner.maximum,1);
+});
 
 test("real runner wiring defers heavy workflows but permits ready Groq text planning under RAM-only pressure", async t => {
   const runner = mockedRunner(); runner.resources = { lease: null, waitingForMemory: true }; runner.start();

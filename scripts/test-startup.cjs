@@ -111,3 +111,32 @@ test('cold worker startup waits for a matching ready heartbeat, with bounded tim
   assert.match(startupHealth, /function Wait-PhoenixWorker\([^\n]+\[int\]\$Seconds = 90\)/);
   assert.match(launcher, /Wait-PhoenixWorker[^\n]+90/);
 });
+test('compiled desktop workers use the verified smaller heap while legacy rollback keeps its allowance', {skip:process.platform!=='win32'}, () => {
+  const os=require('node:os'),directory=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-worker-heap-'));
+  fs.mkdirSync(path.join(directory,'.next-heap-test'));
+  const code=`
+    $ErrorActionPreference='Stop'
+    . ./scripts/startup-health.ps1
+    $root=$env:PHOENIX_TEST_HEAP_ROOT
+    $file=Join-Path $root '.next-heap-test/required-server-files.json'
+    @{config=@{env=@{PHOENIX_WORKER_RUNTIME='compiled-cjs-v1'}}}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $file
+    if((Get-PhoenixWorkerHeapMiB $root '.next-heap-test') -ne 192){throw 'Compiled worker heap is not bounded'}
+    @{config=@{env=@{}}}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $file
+    if((Get-PhoenixWorkerHeapMiB $root '.next-heap-test') -ne 512){throw 'Legacy rollback heap changed'}
+    foreach($value in @('future-protocol','COMPILED-CJS-V1','',$null,$true)){
+      @{config=@{env=@{PHOENIX_WORKER_RUNTIME=$value}}}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $file
+      $rejected=$false;try{Get-PhoenixWorkerHeapMiB $root '.next-heap-test'}catch{$rejected=$true}
+      if(-not $rejected){throw 'Unknown protocol was accepted'}
+    }
+    $rejected=$false;try{Get-PhoenixWorkerHeapMiB $root '../outside'}catch{$rejected=$true}
+    if(-not $rejected){throw 'Outside build was accepted'}
+    Write-Output 'Worker heap selection verified'
+  `;
+  try {
+    for(const shell of ['powershell.exe','pwsh.exe']){
+      const result=spawnSync(shell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',code],{cwd:project,windowsHide:true,encoding:'utf8',timeout:15000,env:{...process.env,PHOENIX_TEST_HEAP_ROOT:directory}});
+      if(shell==='pwsh.exe'&&result.error?.code==='ENOENT')continue;
+      assert.equal(result.status,0,result.stderr||result.error?.message);assert.match(result.stdout,/Worker heap selection verified/);
+    }
+  } finally {assert.equal(fs.realpathSync(path.dirname(directory)),fs.realpathSync(os.tmpdir()));assert.ok(!fs.lstatSync(directory).isSymbolicLink());fs.rmSync(directory,{recursive:true,force:true});}
+});

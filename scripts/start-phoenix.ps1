@@ -261,7 +261,8 @@ try {
         $_.CommandLine -and ($_.CommandLine.Contains($workerFile) -or ($_.ProcessId -eq $knownWorkerId -and $_.CommandLine -match '\s"?run-worker\.js"?\s*$'))
     })
     if (-not $workers.Count) {
-        $workerStart = @(Start-PhoenixService 'worker' $phoenixNode @('--max-old-space-size=512', ('"' + $workerFile + '"')) $phoenixRoot)
+        $workerHeapMiB = Get-PhoenixWorkerHeapMiB $phoenixRoot (Get-PhoenixSelectedBuild $phoenixRoot)
+        $workerStart = @(Start-PhoenixService 'worker' $phoenixNode @(("--max-old-space-size=" + $workerHeapMiB), ('"' + $workerFile + '"')) $phoenixRoot)
         $workerProcess = $workerStart | Where-Object { $_ -is [Diagnostics.Process] } | Select-Object -Last 1
         if ($workerProcess) {
             Write-Output 'Lumina is loading. Waiting for its ready heartbeat; no duplicate worker will be started.'

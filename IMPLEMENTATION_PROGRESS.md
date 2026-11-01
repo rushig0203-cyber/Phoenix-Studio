@@ -1,5 +1,26 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 sustained worker RAM — source ready, verification pending
+
+- The later 256.8 MiB idle-worker sample contradicted a sustained startup saving.
+  Queue polling repeatedly parses completed histories: source/generation can read
+  a store several times per tick and draft admission reads its history again.
+- The dispatcher now caches only a readiness boolean and physical file version
+  for each of its four job stores. Unchanged terminal histories skip processor
+  polling. Atomic file replacement, timestamps, size and inode changes invalidate
+  the snapshot. Pending work retains normal recovery/quota/lease polling; unknown
+  or corrupt state is delegated to the existing processor. Posting fingerprints,
+  legacy draft migration and independent Instagram collection remain active.
+- Compiled Desktop workers and the manual worker command use a 192 MiB Node
+  heap allowance instead of the launcher's 512 MiB allowance. The Desktop helper
+  keeps 512 MiB for legacy source rollback and rejects unknown protocols. Existing
+  RAM admission/model/build guards are unchanged. The existing private heartbeat
+  records actual heap, RSS and external-memory figures for sustained diagnosis.
+- Eighteen focused readiness/dispatcher/heap checks pass, including a concurrent
+  enqueue during inspection and same-size atomic retry. Full Windows checks,
+  a CI-only near-limit synthetic-history benchmark, real export and activation
+  remain pending. No sustained local RAM improvement is claimed yet.
+
 ## November 1 2D scene/speech timing — installed and verified
 
 - VoiceStudio already supplied measured caption phrase times, but approved

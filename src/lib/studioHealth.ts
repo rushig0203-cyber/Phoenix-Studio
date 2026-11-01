@@ -1,12 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getHeapStatistics } from "node:v8";
 import { writeAtomicJson } from "./atomicJson";
 import { heavyWorkStatus } from "./renderResources";
 import { localServiceHealth } from "./localServiceHealth";
 
 const heartbeatPath = () => path.join(process.cwd(), "storage", "worker-heartbeat.json");
 export async function writeWorkerHeartbeat() {
-  await writeAtomicJson(heartbeatPath(), { pid: process.pid, at: new Date().toISOString() });
+  const { rss, heapTotal, heapUsed, external, arrayBuffers } = process.memoryUsage();
+  await writeAtomicJson(heartbeatPath(), { pid: process.pid, at: new Date().toISOString(),
+    memory: { rss, heapTotal, heapUsed, external, arrayBuffers, heapLimit: getHeapStatistics().heap_size_limit } });
 }
 export async function studioHealth(includeServices = false) {
   let heartbeat: { pid: number; at: string } | undefined;

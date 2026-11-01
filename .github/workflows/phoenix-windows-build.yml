@@ -143,6 +143,7 @@ jobs:
           scripts/test-local-voice-protocol.cjs
           scripts/test-review-workflows.cjs
           scripts/test-worker-workflows.cjs
+          scripts/test-worker-readiness.cjs
           scripts/test-queue-history.cjs
           scripts/test-model-queue-waits.cjs
           scripts/test-render-resources.cjs
@@ -229,7 +230,7 @@ jobs:
           src/app/api/projects/[id]/route.ts src/app/api/projects/[id]/timeline/route.ts src/app/api/projects/[id]/review/route.ts
           src/app/api/stock/used/route.ts src/app/api/settings/publish/route.ts src/app/api/admin/users/route.ts
           src/app/admin/users/page.tsx src/app/dashboard/project/[id]/editor/page.tsx src/app/dashboard/review/[id]/page.tsx
-          src/lib/session.ts
+          src/lib/session.ts src/lib/workerReadiness.ts src/lib/studioHealth.ts
           src/components/NewsIdeas.tsx src/lib/rumbleWindow.ts
       - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
         run: |
@@ -238,6 +239,8 @@ jobs:
           node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
+      - name: Verify compiled idle history scans and bounded heap with synthetic stores
+        run: node --max-old-space-size=96 scripts/verify-worker-idle-memory.cjs
       - name: Verify the compiled worker exports public licensed Pexels footage, no owner files or keys
         env:
           PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}

@@ -2,6 +2,19 @@ function Test-PhoenixNeedsOllama([ValidateSet('ollama', 'groq', 'cloudflare')][s
     return $WriterProvider -eq 'ollama'
 }
 
+function Get-PhoenixWorkerHeapMiB([string]$Root, [string]$Directory) {
+    if ($Directory -cnotmatch '^\.next-[a-z0-9-]+$') { throw 'Invalid worker build directory.' }
+    $filename = Join-Path $Root "$Directory\required-server-files.json"
+    if ((Get-Item -LiteralPath $filename -ErrorAction Stop).Length -gt 1048576) { throw 'Oversized worker build configuration.' }
+    $configuration = Get-Content -LiteralPath $filename -Raw -ErrorAction Stop | ConvertFrom-Json
+    $config = $configuration.PSObject.Properties['config']
+    $environment = if ($config -and $config.Value) { $config.Value.PSObject.Properties['env'] }
+    $protocol = if ($environment -and $environment.Value) { $environment.Value.PSObject.Properties['PHOENIX_WORKER_RUNTIME'] }
+    if ($protocol -and $protocol.Value -is [string] -and $protocol.Value -ceq 'compiled-cjs-v1') { return 192 }
+    if ($protocol) { throw 'Unsupported worker release protocol; apply the matching verified update.' }
+    return 512 # Older source releases still load the TypeScript compiler.
+}
+
 function Test-PhoenixServiceHttp([string]$Url, [string]$Kind) {
     try {
         $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3

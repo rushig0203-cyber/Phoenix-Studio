@@ -183,6 +183,12 @@ overhead, not peak rendering memory or a guarantee about other running apps.
 After roughly 3.5 hours, the worker measured 256.8 MiB with no active render;
 sustained RAM growth remains under investigation. The RAM issue is not solved.
 
+The next worker update checks physical job-file versions before rereading
+unchanged completed histories, without caching mutable jobs. Pending work keeps
+its normal polling. Its compiled worker heap is bounded at 192 MiB; rollback to
+an older source worker retains that release's allowance. Activation and sustained
+local measurements are still pending; RAM admission guards remain unchanged.
+
 Runtime media, originals, editable masters, captions and queue records live in
 `storage/Phoenix Studio Review Files`. Trash is recoverable and still uses disk.
 Temporary shot cleanup follows the saved policy; originals and retry/history

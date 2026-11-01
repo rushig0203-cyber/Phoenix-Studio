@@ -10,11 +10,12 @@ const { processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflow
 const { processNextPostingAnalysis } = load("videoPostingAnalysis");
 const { syncInstagramPerformance } = load("instagramPerformance");
 const { heavyWorkStatus, reconcileLocalModelWork } = load("renderResources");
+const { workerHasPendingWork } = load("workerReadiness");
 const { createWorkerDispatcher } = require("./worker-workflows.cjs");
 
 // Exercise the real loader and every entry point without accepting any work.
 if (process.argv.includes("--preflight")) {
-  for (const entry of [processNextSourceJob, pollGenerationJobs, reconcileRenderResources, writeWorkerHeartbeat, processNextReviewEdit, processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady, processNextPostingAnalysis, syncInstagramPerformance, heavyWorkStatus, reconcileLocalModelWork]) {
+  for (const entry of [processNextSourceJob, pollGenerationJobs, reconcileRenderResources, writeWorkerHeartbeat, processNextReviewEdit, processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady, processNextPostingAnalysis, syncInstagramPerformance, heavyWorkStatus, reconcileLocalModelWork, workerHasPendingWork]) {
     if (typeof entry !== "function") throw new Error("A required worker entry point is unavailable.");
   }
   console.log("Phoenix worker preflight passed: source, generation, edits and drafts loaded.");
@@ -56,6 +57,7 @@ const dispatcher = createWorkerDispatcher({
     const resources = await heavyWorkStatus();
     if (resources.lease) return false; // External work can outlive its submission.
     if (key === "drafts" && !preparationReady) return true; // Bounded store migration only.
+    if (!await workerHasPendingWork(key)) return false;
     return key === "drafts" ? creationDraftWorkflowReady(resources) : !resources.waitingForMemory;
   },
   onError: (key, error) => console.error(`Phoenix ${key} worker:`, error instanceof Error ? error.message : String(error)),

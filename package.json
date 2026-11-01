@@ -9,7 +9,7 @@
     "build": "node --max-old-space-size=256 scripts/build-phoenix.cjs",
     "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-phoenix.ps1 -NoBrowser",
     "lint": "eslint",
-    "worker": "node run-worker.js",
+    "worker": "node --max-old-space-size=192 run-worker.js",
     "owner:create": "node scripts/create-owner.js"
   },
   "dependencies": {
