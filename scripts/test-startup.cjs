@@ -52,7 +52,8 @@ test('normal start and developer start include local dependency startup', () => 
   assert.match(launcher, /PYTHONIOENCODING = 'utf-8'/); assert.match(launcher, /WindowStyle Hidden/);
   assert.match(launcher, /PHOENIX_RENDER_THREADS = '1'/);
   assert.match(launcher, /PHOENIX_TRANSCRIBE_THREADS = '1'/);
-  assert.equal((launcher.match(/--max-old-space-size=512/g)||[]).length,2);
+  assert.equal((launcher.match(/--max-old-space-size=512/g)||[]).length,1,'The website keeps its existing allowance; the worker uses release-aware selection');
+  assert.match(pkg.scripts.worker,/^node --max-old-space-size=192 run-worker\.js$/);
   assert.doesNotMatch(launcher, /^\s*(?:&\s+)?npm(?:\.cmd)?\s+(?:run\s+)?build/m);
 });
 
