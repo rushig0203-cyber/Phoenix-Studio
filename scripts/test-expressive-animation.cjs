@@ -2,11 +2,36 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });
 const sharp = require('sharp');
-const { kidsAnimationSvg, kidsAnimationContact, planKidsAnimationScene, planKidsPerformance } = require('../src/lib/kidsAnimation');
+const { kidsAnimationSvg, kidsAnimationContact, planKidsAnimationScene, planKidsPerformance, prepareKidsAnimation } = require('../src/lib/kidsAnimation');
 const { kidsStoryBeat, kidsPoseBudgets, kidsMouthState, quantizeKidsProgress, KIDS_MAX_UNIQUE_FRAMES } = require('../src/lib/kidsAnimationTimeline');
 const { kidsRigMotion } = require('../src/lib/kidsCharacterRig');
 sharp.concurrency(1); sharp.cache({ memory: 16, files: 0, items: 16 });
 const base = { topic: 'Bunny and Bear share a letter', caption: 'Bunny hands the letter to Bear.', index: 1, cast: ['bunny', 'bear'], castNames: ['Bunny', 'Bear'], aspect: '16:9', frame: 0 };
+
+test('actual animation holds the current scene through silence until the next measured onset',async()=>{
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-scene-gap-test-'));
+  try {
+    await prepareKidsAnimation({directory,topic:'Garden friends',duration:3,aspect:'16:9',cast:['bunny','bear'],castNames:['Bunny','Bear'],song:false,
+      cues:[{text:'Bunny clapped in the garden.',start:0,end:.5},{text:'At night Bear slept.',start:2,end:3}]});
+    const timeline=fs.readFileSync(path.join(directory,'scenes.txt'),'utf8').split('\n').filter(line=>line.startsWith('file ')).map(line=>line.slice(6,-1));
+    assert.equal(timeline[6],timeline[18],'The settled daytime pose must hold through the speech gap');
+    assert.notEqual(timeline[18],timeline[24],'Night begins at the measured next-scene onset');
+    const pixel=async filename=>sharp(path.join(directory,filename)).extract({left:0,top:0,width:1,height:1}).removeAlpha().raw().toBuffer();
+    const day=await pixel(timeline[18]),night=await pixel(timeline[24]);
+    assert.ok(day[0]+day[1]+day[2]>500,'Daylight must remain visible in the actual gap PNG');
+    assert.ok(night[0]+night[1]+night[2]<400,'The actual night PNG must start with its narration');
+  } finally {
+    assert.equal(fs.realpathSync(path.dirname(directory)),fs.realpathSync(os.tmpdir()));assert.ok(!fs.lstatSync(directory).isSymbolicLink());
+    fs.rmSync(directory,{recursive:true,force:true});
+  }
+});
+
+test('invalid or overlapping visual scene evidence is rejected before rasterizing',async()=>{
+  const options={directory:'unused',topic:'Friends',duration:3,aspect:'16:9',cast:['bunny','bear'],song:false};
+  for(const cues of [[null],[{text:'Test',start:-1,end:1}],[{text:'Test',start:0,end:4}],
+    [{text:'First',start:0,end:2},{text:'Second',start:1,end:3}]])await assert.rejects(prepareKidsAnimation({...options,cues}),/valid timed narration scenes/);
+});
 
 test('finite anticipation, action, reaction and settled holds never restart at four seconds', () => {
   assert.deepEqual([0, .3, .7, 1].map(p => kidsStoryBeat(p).stage), ['anticipation', 'action', 'reaction', 'settle']);

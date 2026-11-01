@@ -384,7 +384,8 @@ export type PrepareKidsAnimationOptions = {
 
 export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions) {
   if (!Number.isFinite(options.duration) || options.duration <= 0 || options.duration > 210) throw new Error("Animation duration must be positive and at most 210 seconds.");
-  if (!options.cues.length || options.cues.some(cue => !Number.isFinite(cue.start) || !Number.isFinite(cue.end) || cue.end <= cue.start)) throw new Error("Animation needs valid timed narration scenes.");
+  if (!options.cues.length || options.cues.some((cue, index) => !cue || typeof cue.text !== "string" || !cue.text.trim() || !Number.isFinite(cue.start) || !Number.isFinite(cue.end)
+    || cue.start < 0 || cue.end <= cue.start || cue.end > options.duration + .01 || index > 0 && cue.start < options.cues[index - 1].end)) throw new Error("Animation needs valid timed narration scenes.");
   // Stock/source jobs and pure scene planning do not need the native rasterizer.
   const { default: sharp } = await import("sharp");
   sharp.concurrency(1);
@@ -397,7 +398,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
   const signatures = options.cues.map(() => new Set<string>());
   let cueIndex = 0;
   for (let frame = 0; frame < frames; frame++) {
-    while (cueIndex < options.cues.length - 1 && frame / KIDS_ANIMATION_FPS >= options.cues[cueIndex].end) cueIndex++;
+    while (cueIndex < options.cues.length - 1 && frame / KIDS_ANIMATION_FPS >= options.cues[cueIndex + 1].start) cueIndex++;
     const mouth = kidsMouthState(options.performanceFrames?.[frame], performances[cueIndex].speaker, options.song);
     signatures[cueIndex].add(JSON.stringify([mouth, options.performanceFrames?.[frame]?.active || performances[cueIndex].active]));
   }
@@ -418,7 +419,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
   let lastFile = "";
   for (let frame = 0; frame < frames; frame++) {
     const time = frame / KIDS_ANIMATION_FPS;
-    while (cueIndex < options.cues.length - 1 && time >= options.cues[cueIndex].end) cueIndex++;
+    while (cueIndex < options.cues.length - 1 && time >= options.cues[cueIndex + 1].start) cueIndex++;
     const cue = options.cues[cueIndex], scene = scenes[cueIndex], planned = performances[cueIndex];
     const performance = options.performanceFrames?.[frame];
     const mouth = kidsMouthState(performance, planned.speaker, options.song);

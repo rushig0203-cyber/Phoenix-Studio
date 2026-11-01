@@ -13,7 +13,7 @@ import type { CreativeGuidance } from "./managerTypes";
 import { checkKidsScript } from "./scriptChecks";
 import { childrenStoryDirection } from "./creativeDirection";
 import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief, type CreativeBriefAttempt } from "./creativeBrief";
-import { kidsVoicePlan, parseSpeechTiming, measuredKidsCaptionCues, kidsSpeechPerformance, mergeBriefKidsCaptions } from "./kidsSpeechTiming";
+import { kidsVoicePlan, parseSpeechTiming, measuredKidsCaptionCues, regroupKidsPhraseCues, kidsSpeechPerformance, mergeBriefKidsCaptions } from "./kidsSpeechTiming";
 import { synthesizeVoiceStudio, voiceStudioCues } from "./voiceStudio";
 import { checkKidsStory, kidsStorySchema, structuredKidsStory, type KidsStoryAttempt, type KidsStoryIssue } from "./kidsStoryQuality";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
@@ -944,9 +944,11 @@ export async function renderKidsVideo(
   if (!input.songAudioId && copiedSong.test(script)) throw new Error("The local script safety check rejected copied lyrics.");
   if (!input.songAudioId && !isRelevant(script, input.topic)) throw new Error("The generated script did not match the selected idea.");
   if (!followsEpisodeBeat(script, input)) throw new Error("The generated script did not follow this episode's distinct story beat.");
-  const captions = captionChunks(script, input.creationType,managerGuidance.maxCaptionWords);
   const song = input.creationType === "children-song";
   if (input.sceneNarration?.length && input.sceneNarration.join(" ").replace(/\s+/g, " ") !== script.replace(/\s+/g, " ")) throw new Error("The approved visual scenes do not match the narration. Reopen the draft.");
+  // Keep approved scene boundaries between independently synthesized phrases.
+  const captions = (input.sceneNarration?.length ? input.sceneNarration : [script])
+    .flatMap(scene => captionChunks(scene, input.creationType, managerGuidance.maxCaptionWords));
   await fs.writeFile(path.join(directory, "narration.txt"), script, "utf8");
   const cast = castFor(input.topic);
   const speechTimingPath = path.join(directory, "speech-timing.json");
@@ -992,18 +994,23 @@ export async function renderKidsVideo(
     : speechTiming ? measuredKidsCaptionCues(captions, speechTiming, narrationSeconds, targetSeconds) : null;
   const spokenCues = measuredCues || kidsCaptionCues(captions, targetSeconds);
   const cues = mergeBriefKidsCaptions(spokenCues);
-  const visualCues = input.sceneNarration?.length
-    ? speechTiming && measuredKidsCaptionCues(input.sceneNarration, speechTiming, narrationSeconds, targetSeconds) || kidsCaptionCues(input.sceneNarration, targetSeconds)
-    : spokenCues;
+  const measuredScenes = input.sceneNarration?.length
+    ? speechTiming && measuredKidsCaptionCues(input.sceneNarration, speechTiming, narrationSeconds, targetSeconds)
+      || studioVoice && measuredCues && regroupKidsPhraseCues(input.sceneNarration, measuredCues)
+    : null;
+  const visualCues = input.sceneNarration?.length ? measuredScenes || kidsCaptionCues(input.sceneNarration, targetSeconds) : spokenCues;
+  const visualSceneTiming = (input.sceneNarration?.length ? measuredScenes : measuredCues)
+    ? studioVoice ? "voicestudio-phrase-boundaries" : "speech-engine-word-onsets" : "estimated-word-weighted";
   const performanceFrames = speechTiming?.visemes.length ? kidsSpeechPerformance(speechTiming, narrationSeconds, targetSeconds, OUTPUT_FPS) : undefined;
   await onProgress(29, song ? "Keeping the supplied singing at its original speed" : `Timing scenes around ${targetSeconds.toFixed(1)} seconds of measured narration`);
   await fs.writeFile(path.join(directory, "audio-timing.json"), JSON.stringify({
     sourceSeconds: narrationSeconds, requestedSeconds, ...timing,
     captionTiming: studioVoice ? "voicestudio-phrase-boundaries" : measuredCues ? "speech-engine-word-onsets" : "estimated-word-weighted", captionStartSeconds: cues[0].start,
+    visualSceneTiming,
     mouthTiming: performanceFrames ? "speech-engine-visemes" : "unavailable",
     voices: studioVoice ? [studioVoice.voice] : speechTiming?.voices || [],
     shortCaptionCount: cues.filter(cue => cue.duration < .85).length,
-    note: studioVoice ? "Captions follow independently synthesized VoiceStudio phrases. Word/phoneme alignment is not supplied; visual scene timing is estimated when scene boundaries differ. Review delivery before posting."
+    note: studioVoice ? "Captions follow independently synthesized VoiceStudio phrases; visual scenes use matching whole-phrase boundaries when available. Word/phoneme alignment is not supplied. Review delivery before posting."
       : measuredCues ? "Caption starts follow local speech-engine word events; ends use the next onset. Mouths use measured speech visemes. Review delivery before posting."
       : "Word timing was unavailable or did not match every caption token; timings are explicitly estimated. Review against the audio before posting.",
   }, null, 2), "utf8");

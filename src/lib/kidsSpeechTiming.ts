@@ -11,6 +11,33 @@ export type SpeechTiming = {
 
 type TimedCaption = { text: string; start: number; end: number; duration: number };
 
+/** Regroup whole measured phrases; never invent an onset inside a phrase. */
+export function regroupKidsPhraseCues(scenes: string[], phrases: TimedCaption[]): TimedCaption[] | null {
+  if (!scenes.length || scenes.length > 250 || !phrases.length || phrases.length > 250) return null;
+  const clean = (text: string) => text.normalize("NFC").replace(/\s+/g, " ").trim();
+  let previousEnd = 0;
+  for (const cue of phrases) {
+    if (!cue || typeof cue.text !== "string" || !clean(cue.text) || !Number.isFinite(cue.start) || !Number.isFinite(cue.end)
+      || cue.start < previousEnd || cue.end <= cue.start) return null;
+    previousEnd = cue.end;
+  }
+  let cursor = 0;
+  const result: TimedCaption[] = [];
+  for (const scene of scenes) {
+    if (typeof scene !== "string" || !clean(scene) || cursor >= phrases.length) return null;
+    const expected = clean(scene), start = phrases[cursor].start;
+    let joined = "";
+    do {
+      joined += `${joined ? " " : ""}${clean(phrases[cursor++].text)}`;
+      if (joined !== expected && !expected.startsWith(`${joined} `)) return null;
+    } while (joined !== expected && cursor < phrases.length);
+    if (joined !== expected) return null;
+    const end = phrases[cursor - 1].end;
+    result.push({ text: scene, start, end, duration: end - start });
+  }
+  return cursor === phrases.length ? result : null;
+}
+
 /** Keep brief interjections readable without changing their spoken wording. */
 export function mergeBriefKidsCaptions(cues: TimedCaption[], minimum = .85): TimedCaption[] {
   const result = cues.map(cue => ({ ...cue }));

@@ -223,7 +223,7 @@ jobs:
           src/lib/qualityManager.ts
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
-          src/lib/kidsAnimation.ts
+          src/lib/kidsAnimation.ts src/lib/kidsSpeechTiming.ts
           src/app/api/source-processing/route.ts
           src/app/api/review-files/route.ts src/app/api/review-files/shortcut/route.ts src/app/api/song-audio/route.ts
           src/app/api/projects/[id]/route.ts src/app/api/projects/[id]/timeline/route.ts src/app/api/projects/[id]/review/route.ts

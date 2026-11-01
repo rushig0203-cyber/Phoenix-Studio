@@ -1,5 +1,26 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 2D scene/speech timing — source ready, verification pending
+
+- VoiceStudio already supplied measured caption phrase times, but approved
+  visual scenes still used word-count estimates. A controlled fixture moved
+  scene two to 5.73 seconds instead of its measured 1.0-second onset.
+- Caption chunking now preserves approved scene boundaries, including dialogue
+  ending in quotation marks. Visual scenes regroup whole measured VoiceStudio
+  phrases; changed text or boundaries inside a phrase cannot fabricate onsets.
+  Native speech word timings retain priority. Estimated fallback is identified
+  separately in `audio-timing.json` as `visualSceneTiming`.
+- The animation holds the preceding settled pose during a speech gap and changes
+  scenes at the next measured start, rather than at the preceding phrase's end.
+  Invalid, negative, overlapping or out-of-range scenes are rejected.
+- Eight focused speech/timing checks pass, including the real renderer setup
+  with isolated synthetic PCM/phrase timing and a captured animation boundary.
+  That fixture tests wiring, not VoiceStudio audio quality; the temporary store
+  is asserted before execution and no provider/model is called. Actual raster
+  gap tests and full Windows release verification remain pending.
+- Hindi action/prop interpretation and broader caption/creative quality remain
+  open. Hindi voice support alone does not prove Hindi animation alignment.
+
 ## November 1 soundtrack fit after repeated moods — installed and verified
 
 - A read-only reproduction through the installed compiled worker requested
