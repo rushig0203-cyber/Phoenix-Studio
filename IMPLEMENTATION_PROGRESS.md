@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 narration-to-frame evidence — awaiting verified installation
+## November 1 narration-to-frame evidence — installed and verified
 
 - A read-only check of the real 36.95-second narrated diagnostic found 558
   transcript characters. The old 400-character prompt prefix omitted the speech
@@ -20,9 +20,19 @@
 - Automatic source guidance was independently rechecked from production data:
   34 comparable matched posts, zero manual source ratings, the watch-time opening
   experiment and a 17-second conservative cap. No rating or job was written.
-- Focused narration, quota/fallback, caption, music and manager checks pass. Full
-  remote Windows checks and guarded activation are still required. Rumble
-  automation is the owner's next task, after this repair is installed.
+- Source `72a3abe227bd62bf5b8e2b4688be331f7befc02f` passed Windows run
+  `41272973405`: 1,415 Node checks, 48 Python checks, lint, TypeScript, production
+  build and real speech/music/WebM/public-footage proofs. Selected and serving
+  bundle `.next-build-gh-41272973405-1`, build ID `cOFxxI26b7eSAgmKR0jKH`.
+  Dashboard returns 200 and manager/worker are healthy; fresh five-store checks
+  and the exact owner config hash matched after guarded activation.
+- The explicitly agent-authored, unposted diagnostic was rechecked once through
+  the live analysis queue. It completed with the timed-caption evidence basis,
+  real model `qwen/qwen3.8-27b`, and samples at 3.695, 18.475 and 33.255 seconds.
+  The provider marked these samples consistent. This is limited sampled evidence,
+  not a full-video quality claim. No owner failed job or social post was retried.
+- Current narration verification is complete. The owner's next priority is
+  reducing Rumble publishing to minimum work using supported free access.
 
 ## November 1 planned-cut music and dashboard depth — installed and verified
 
