@@ -56,6 +56,32 @@ test('normal start and developer start include local dependency startup', () => 
   assert.doesNotMatch(launcher, /^\s*(?:&\s+)?npm(?:\.cmd)?\s+(?:run\s+)?build/m);
 });
 
+test('worker readiness preserves UTC for JSON strings and PowerShell DateTime across cultures', {skip:process.platform!=='win32'},()=>{
+  const code=`
+    $ErrorActionPreference='Stop'
+    . ./scripts/startup-health.ps1
+    function Get-Content { param($LiteralPath,[switch]$Raw) return $script:heartbeatJson }
+    foreach($culture in @('en-US','en-GB','hi-IN')) {
+      [Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo($culture)
+      $script:heartbeatJson=@{pid=123;at=[DateTimeOffset]::UtcNow.ToString('o')}|ConvertTo-Json -Compress
+      if(-not (Test-PhoenixWorkerHeartbeat 'fixture' 123)){throw "Fresh UTC worker rejected: $culture"}
+      if(Test-PhoenixWorkerHeartbeat 'fixture' 124){throw 'Wrong PID accepted'}
+      foreach($offset in @(-30,30)) {
+        $script:heartbeatJson=@{pid=123;at=[DateTimeOffset]::UtcNow.AddSeconds($offset).ToString('o')}|ConvertTo-Json -Compress
+        if(Test-PhoenixWorkerHeartbeat 'fixture' 123){throw 'Stale or future heartbeat accepted'}
+      }
+      $script:heartbeatJson='{"pid":123,"at":"not a timestamp"}'
+      if(Test-PhoenixWorkerHeartbeat 'fixture' 123){throw 'Invalid heartbeat accepted'}
+    }
+    'UTC readiness checks passed'
+  `;
+  for(const shell of ['powershell.exe','pwsh.exe']){
+    const result=spawnSync(shell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',code],{cwd:project,windowsHide:true,encoding:'utf8',timeout:15000});
+    if(shell==='pwsh.exe'&&result.error?.code==='ENOENT')continue;
+    assert.equal(result.status,0,result.stderr||result.error?.message);assert.match(result.stdout,/UTC readiness checks passed/);
+  }
+});
+
 test('cold worker startup waits for a matching ready heartbeat, with bounded timeout and exit detection', { skip: process.platform !== 'win32' }, () => {
   const code = `
     $ErrorActionPreference = 'Stop'

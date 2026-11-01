@@ -35,6 +35,33 @@ test('repair documentation cannot match timber logs or explicit unrelated trades
   assert.deepEqual(rankFootage([choice], 'Owner logs repair steps', 10, '9:16', new Set()), []);
 });
 
+test('coffee preparation rejects explicit step swaps but leaves generic metadata unknown', () => {
+  const {stockQueryMismatch}=require('../src/lib/stockStoryboard.ts'),{footageMetadataMismatch}=require('../src/lib/footageSemantics.ts');
+  assert.equal(stockQueryMismatch('This involves using a scale to accurately measure the coffee beans.','Grinding coffee beans'),'grinding coffee');
+  assert.equal(stockQueryMismatch('A grinder is used for this step, producing a consistent grind.','Heating water'),'heating water');
+  assert.equal(stockQueryMismatch('Grind the coffee beans evenly.','Weighing coffee beans'),'measuring coffee');
+  assert.equal(stockQueryMismatch('Measure, grind and heat water to prepare coffee.','Grinding coffee beans'),undefined);
+  assert.equal(stockQueryMismatch('Preparing coffee carefully makes a difference.','Measuring coffee beans'),undefined);
+  assert.equal(footageMetadataMismatch('Woman grinding coffee beans','Heating water'),'heating water');
+  assert.equal(footageMetadataMismatch('Coffee preparation in a kitchen','Grinding coffee beans'),undefined);
+  assert.equal(footageMetadataMismatch('Grinding coffee beans with a grinder','Grinding coffee beans'),undefined);
+  assert.equal(stockQueryMismatch('Measure the project scope.','Heating an industrial furnace'),undefined);
+});
+
+test('step-shifted coffee shots are repaired automatically without moving narration or valid sections', async () => {
+  const realFetch=global.fetch;let calls=0;
+  const narration='Measure coffee beans using a scale. Grind coffee beans evenly. Heat the water in a kettle.';
+  global.fetch=async(_url,init)=>{
+    const prompt=JSON.parse(init.body).prompt;
+    if(++calls===1)return Response.json({response:JSON.stringify({queries:['Grinding coffee beans','Grinding coffee beans','Measuring coffee beans']})});
+    assert.match(prompt,/grinding coffee/i);assert.match(prompt,/Measuring coffee beans/);
+    return Response.json({response:JSON.stringify({queries:['Weighing coffee beans','Heating water in kettle']})});
+  };
+  try{const beats=await createStockStoryboard({topic:'Coffee preparation',script:narration,duration:45});
+    assert.equal(beats.map(beat=>beat.narration).join(' '),narration);assert.deepEqual(beats.map(beat=>beat.query),['Weighing coffee beans','Grinding coffee beans','Heating water in kettle']);assert.equal(calls,2);
+  }finally{global.fetch=realFetch;}
+});
+
 test('a shifted model query gets one local repair without altering narration', async () => {
   const realFetch = global.fetch;
   let calls = 0;

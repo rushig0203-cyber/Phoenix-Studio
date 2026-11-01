@@ -12,7 +12,19 @@ const actions: Array<{ name: string; query: RegExp; evidence: RegExp }> = [
   { name: "reading a recipe", query: /read\w*.*recipe|recipe.*(?:book|screen)/i, evidence: /recipe|cookbook|read/i },
 ];
 
+const coffeeSteps = [
+  { name: "measuring coffee", pattern: /\b(?:measur(?:e|es|ed|ing)|weigh(?:s|ed|ing)?|scales?)\b/i },
+  { name: "grinding coffee", pattern: /\b(?:grind(?:s|ing|ers?)?|ground)\b/i },
+  { name: "heating water", pattern: /\b(?:heat(?:s|ed|ing)?|boil(?:s|ed|ing)?|kettles?|temperatures?|thermometers?)\b/i },
+];
+
 export function actionMismatch(evidence: string, query: string) {
+  // Shared topic words cannot excuse moving a named preparation step ahead.
+  // Generic catalogue titles remain unknown rather than evidence of a wrong step.
+  if (/\b(?:coffee|espresso|cappuccino|beans?|grinders?)\b/i.test(`${evidence} ${query}`) && coffeeSteps.some(step => step.pattern.test(evidence))) {
+    const wrongStep = coffeeSteps.find(step => step.pattern.test(query) && !step.pattern.test(evidence));
+    if (wrongStep) return wrongStep.name;
+  }
   return actions.find(action => action.query.test(query) && !action.evidence.test(evidence))?.name;
 }
 

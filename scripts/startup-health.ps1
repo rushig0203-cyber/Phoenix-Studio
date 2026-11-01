@@ -27,7 +27,8 @@ function Wait-PhoenixService([string]$Url, [string]$Kind, $Process = $null, [int
 function Test-PhoenixWorkerHeartbeat([string]$Path, [int]$WorkerId) {
     try {
         $heartbeat = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-        $age = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($heartbeat.at)).TotalSeconds
+        # PS 7 converts ISO JSON to DateTime; parsing its display text loses UTC/culture.
+        $age = ([DateTimeOffset]::UtcNow - [DateTimeOffset]$heartbeat.at).TotalSeconds
         return $heartbeat.pid -eq $WorkerId -and $age -ge -5 -and $age -lt 20
     } catch { return $false }
 }

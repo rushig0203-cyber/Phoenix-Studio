@@ -1,6 +1,29 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 Rumble saved-file handoff — source ready, not installed
+## November 1 action alignment and startup readiness — source ready, not installed
+
+- A saved coffee video uses a grinding shot during weighing narration and a
+  heating-water shot while the script still discusses grinding. Read-only
+  reproduction confirmed both requests and an explicitly contradictory catalogue
+  title passed the old validator. New checks distinguish named weighing,
+  grinding and heating steps; generic descriptions remain unknown. This is
+  bounded text validation, not proof of frame-level action or full semantic review.
+- New model plans use the existing single repair call for incorrect sections,
+  preserving narration and valid sections. Cached manager-generated mismatches
+  cannot bypass that boundary or silently replace selected assets. Explicit owner
+  briefs keep their existing behavior. No old completed video was re-rendered.
+- The actual installed Rumble button opened the correct folder and copied text,
+  without a second download, but did not select the MP4. Explorer now receives
+  its comma and quoted path in the required command-line form. A second actual
+  selection check is required before calling the handoff verified.
+- Activation also exposed a false offline-manager warning: PowerShell 7 decoded
+  the ISO heartbeat as DateTime, then reparsed its display text with the wrong
+  date/zone. Casting the original value retains the instant. Fresh/stale/future,
+  wrong-PID and malformed checks pass in Windows PowerShell and PowerShell 7
+  across three cultures; the real healthy worker now passes the launcher check.
+- Focused regressions pass; full Windows build and activation are pending.
+
+## November 1 Rumble saved-file handoff — installed, selection correction pending
 
 - Rumble's original support thread was checked through the individually verified
   owner Gmail account. No answer to the website-upload permission request was
@@ -18,8 +41,13 @@
   client-supplied executable/path. Nothing is uploaded or marked Posted.
 - Focused tests cover real isolated files, junction escapes, unavailable outputs,
   process failures, rapid clicks, stale video revisions, popup/clipboard failures
-  and concurrent Instagram polling. Full Windows checks and live activation are
-  still required. No owner failed job was retried or social video posted.
+  and concurrent Instagram polling. Source `4c071ffbea93f6733a782dba3d55f39dc9a8cc9d`
+  passed Windows run `41275880288`: 1,422 Node checks, 48 Python checks, lint,
+  TypeScript, build and actual render proofs. Bundle `.next-build-gh-41275880288-1`
+  (build ID `c1UcvIyYtOqE7GtFKblvs`) is serving with healthy manager/worker.
+  Five saved stores and owner config were preserved. The live check found the
+  selection issue described above, so this is not a completed handoff claim.
+  No owner failed job was retried or social video posted.
 
 ## November 1 narration-to-frame evidence — installed and verified
 

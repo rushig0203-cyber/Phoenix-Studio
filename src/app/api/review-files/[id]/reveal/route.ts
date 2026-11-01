@@ -28,7 +28,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const filename = await resolveArtifact(artifactReference(selected));
     // Explorer is the interactive handoff: reveal the existing MP4, never execute it.
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe"), ["/select,", filename], { detached: true, windowsHide: false, stdio: "ignore" });
+      // Explorer needs its comma and quoted path together, not Node's argument quoting.
+      const child = spawn(path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe"), [`/select,"${filename}"`], { windowsVerbatimArguments: true, detached: true, windowsHide: false, stdio: "ignore" });
       child.once("error", reject);
       child.once("spawn", () => { child.unref(); resolve(); });
     });

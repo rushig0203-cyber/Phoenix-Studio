@@ -101,6 +101,15 @@ test('legacy owner-selected asset IDs are restored without substitution searches
   assert.equal(prepared.input.storyboard[0].assetId,501);assert.equal(prepared.input.script,script);
 });
 
+test('a cached automatic shot mismatch cannot bypass validation or silently replace selected assets',async()=>{
+  const {prepareStockCreation}=require('../src/lib/stockPreparation.ts'),originalScript=generation.createStockScript;
+  const narration='Use a scale to measure the coffee beans.',scenes=[{narration,query:'Grinding coffee beans',footage:{id:501}}];
+  const request={...input(),script:narration,scriptOrigin:'local-model',visualTermsOrigin:'local-model'};
+  const before=structuredClone({request,scenes});generation.createStockScript=async()=>narration;
+  try{await assert.rejects(prepareStockCreation(request,scenes,async()=>{},false),/Saved section 1.*different narrated action/);assert.deepEqual({request,scenes},before);}
+  finally{generation.createStockScript=originalScript;}
+});
+
 test('failed automatic selection retains earlier scenes and retry resumes without duplicate exports', async () => {
   process.env.PEXELS_API_KEY = 'fixture-not-a-real-key';
   let calls = 0;

@@ -1,5 +1,5 @@
 import { createStockScript, type GenerationInput } from "./generation";
-import { createStockStoryboard, repairUnavailableStockQueries } from "./stockStoryboard";
+import { createStockStoryboard, repairUnavailableStockQueries, stockQueryMismatch } from "./stockStoryboard";
 import { selectAutomaticFootage } from "./automaticFootage";
 import type { DraftScene } from "./creationDraftTypes";
 import { selectedFootage } from "./stockCatalog";
@@ -34,6 +34,9 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     if (input.research) {
       const unsafe = scenes.findIndex(scene => newsStockQueryIssue(scene.query, input.research));
       if (unsafe >= 0) throw new Error(`News section ${unsafe + 1}: ${newsStockQueryIssue(scenes[unsafe].query, input.research)}. The saved narration is retained; create a new visual plan instead of rendering this legacy shot.`);
+    } else if (input.visualTermsOrigin === "local-model") {
+      const unsafe = scenes.findIndex(scene => stockQueryMismatch(scene.narration, scene.query));
+      if (unsafe >= 0) throw new Error(`Saved section ${unsafe + 1} has footage for a different narrated action. Create a fresh visual plan; selected assets and saved narration were not replaced.`);
     }
     await save(scenes, "Shot plan saved — checking exact footage");
   });

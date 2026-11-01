@@ -19,7 +19,7 @@ const call=(options={})=>route.POST(new Request(`http://localhost:3000/api/revie
 test('reveals exactly the existing selected MP4 with no shell, file copy or private path in its response',async()=>{
   const before=fs.readFileSync(reviews.outputPath(id,'instagram')),result=await call();assert.equal(result.status,200);assert.deepEqual(await result.json(),{revealed:true});
   assert.equal(launches.length,1);assert.equal(path.basename(launches[0].executable).toLowerCase(),'explorer.exe');
-  assert.deepEqual(launches[0].args,['/select,',fs.realpathSync.native(reviews.outputPath(id,'instagram'))]);assert.equal(launches[0].options.shell,undefined);assert.equal(launches[0].options.stdio,'ignore');
+  assert.deepEqual(launches[0].args,[`/select,"${fs.realpathSync.native(reviews.outputPath(id,'instagram'))}"`]);assert.equal(launches[0].options.windowsVerbatimArguments,true);assert.equal(launches[0].options.shell,undefined);assert.equal(launches[0].options.stdio,'ignore');
   assert.deepEqual(fs.readFileSync(reviews.outputPath(id,'instagram')),before);assert.equal(fs.readdirSync(path.join(reviews.reviewRoot(),'outputs')).length,1);
 });
 test('cross-origin requests, arbitrary IDs, arbitrary formats and request bodies never launch a process',async()=>{
