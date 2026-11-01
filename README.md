@@ -168,6 +168,11 @@ animation are bounded. Local rendering still needs physical RAM. Free cloud
 writers reduce local model memory, not the renderer's needs. No cleanup or Docker
 setting can promise to solve system-wide RAM exhaustion.
 
+The November 1 verified desktop update reduced median idle worker private memory
+from 261.0 to 75.7 MiB across three samples per release (185.2 MiB saved). Its
+compiled queue worker no longer loads TypeScript at runtime. This measures worker
+overhead, not peak rendering memory or a guarantee about other running apps.
+
 Runtime media, originals, editable masters, captions and queue records live in
 `storage/Phoenix Studio Review Files`. Trash is recoverable and still uses disk.
 Temporary shot cleanup follows the saved policy; originals and retry/history

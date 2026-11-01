@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 compiled queue worker — source ready, not installed
+## November 1 compiled queue worker — installed and measured
 
 - The idle worker was measured at roughly 273 MiB private memory while the
   website used 194 MiB. That snapshot is not a promised saving. Production still
@@ -8,7 +8,7 @@
 - Desktop builds now compile the same library modules and dispatcher into the
   fresh verified release, before selection. A compiler-free read-only preflight
   must load every queue/insights entry point before the build can be selected.
-  No local Next build was run for this change; verification will run remotely.
+  No local Next build was run for this change; verification ran remotely.
 - The worker selects its compiled code from the installed bundle. Version,
   BUILD_ID, bounded file hashes, paths and links are checked; a new release with
   missing/corrupt code cannot silently fall back to source. Older verified
@@ -17,8 +17,25 @@
 - The dispatcher logic and independent automatic Instagram insights collector
   remain shared. Focused tests cover imports/aliases/music metadata, missing or
   tampered bundles, output junctions, legacy compatibility and serialized queue
-  behavior. Full Windows checks, activation and actual before/after process
-  measurements remain pending; no RAM improvement is claimed yet.
+  behavior. Source `a0dc6b8e74892f7791ca2b4504119483080b6515` passed Windows
+  run `41298094408`: 1,432 Node checks, 48 Python checks, lint, TypeScript and
+  the production build. A real public-Pexels reel was rendered through the
+  compiled modules: all 404 frames and audio decoded, completed retry retained
+  its output, and neither TypeScript nor ts-node loaded. Visual-provider output
+  in that isolated fixture was injected; it does not prove AI creative quality.
+- Bundle `.next-build-gh-41298094408-1`, build ID `xky7aq7Yhh6mTOVQphNK0`, is
+  selected and serving. Dashboard returns 200; manager/worker are healthy. All
+  five fresh owner video/job store hashes and the exact owner config matched
+  after guarded activation. No owner failed job was retried or social post made.
+- Three identity-verified idle samples before and after activation measured
+  median worker private memory of 261.0 MiB versus 75.7 MiB: 185.2 MiB less
+  (71.0%). This is worker overhead, not a whole-laptop or rendering-peak claim.
+  Other apps still affect free RAM; existing admission safeguards remain active.
+- Automatic Instagram feedback remains scheduled independently of heavy work.
+  The latest saved full scan completed at 10:44 UTC across 62 videos, with 47
+  eligible comparisons and a bounded 17-second editing experiment. Some metrics
+  are unavailable, so status remains limited; unknowns are not treated as zero.
+  Broader caption, animation and audio quality work remains open.
 
 ## November 1 publishing dialog layout — installed and verified
 
@@ -45,9 +62,8 @@
   file selection, clipboard write and uploader-tab reuse were separately verified
   on source `77037b4`. Downloads stayed at 35 MP4s and the diagnostic file hash
   stayed identical. Provider-approved automatic publishing access is still pending.
-- The wider quality/RAM goal remains active. The idle owned-process memory
-  snapshot identifies the TypeScript worker/compiler as a further investigation;
-  compiling that worker remotely has not been implemented or claimed as a saving.
+- The wider quality/RAM goal remains active. The idle owned-process snapshot
+  prompted the compiled-worker work measured in the newer section above.
 
 ## November 1 action alignment and startup readiness — installed and verified
 
