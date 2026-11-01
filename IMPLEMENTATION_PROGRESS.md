@@ -1,5 +1,21 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 soundtrack fit after repeated moods — verification pending
+
+- A read-only reproduction through the installed compiled worker requested
+  reflective music with all three reflective tracks in recent history. The
+  cooldown excluded every match and selected Standing, tagged only journey.
+  No owner job or media was changed for the reproduction.
+- Selection now limits its pool to the chosen visual mood, then applies the
+  cooldown and least-recent ordering within that pool. When every suitable
+  recording is recent, reusing the oldest match takes priority over an unrelated
+  mood. Existing saved choices and deterministic retries retain their recipe.
+- Six focused library checks pass, including 60 consecutive same-mood choices
+  across the three supported moods. Production guidance and README describe the
+  same priority. Full Windows verification and activation remain pending.
+  This fixes selection logic; the six-track editorial catalogue still cannot
+  guarantee musical fit or claim measured tempo/current trends.
+
 ## November 1 compiled queue worker — installed and measured
 
 - The idle worker was measured at roughly 273 MiB private memory while the

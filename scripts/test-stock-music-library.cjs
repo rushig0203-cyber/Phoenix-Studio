@@ -17,15 +17,31 @@ test('six actual licensed recordings remain compact, pinned and independently re
   }
 });
 
-test('selection avoids the last three recordings, preserves saved choices and rotates a bounded library',()=>{
+test('selection prefers fresh matching recordings, preserves saved choices and rotates a bounded library',()=>{
   let recent=[];const used=new Set();
   for(let index=0;index<30;index++){
     const seed=`reel-${index}`,mood=['warm','reflective','journey'][index%3],selection=library.selectStockRecording(mood,seed,recent);
-    assert.ok(!recent.slice(0,3).includes(selection.trackId));
+    const matching=manifest.recordings.filter(track=>track.moods.includes(mood));
+    assert.ok(matching.some(track=>track.id===selection.trackId));
+    if(matching.some(track=>!recent.slice(0,3).includes(track.id)))assert.ok(!recent.slice(0,3).includes(selection.trackId));
     assert.deepEqual(library.selectStockRecording(mood,seed,recent),selection);
     assert.ok(selection.offsetSeconds>=0&&selection.offsetSeconds<=12);used.add(selection.trackId);recent=[selection.trackId,...recent].slice(0,20);
   }
   assert.equal(used.size,6);assert.throws(()=>library.selectStockRecording('unknown','reel',[]));
+});
+
+test('exhausting the cooldown never trades a matching mood for an unrelated unused recording',()=>{
+  for(const mood of ['warm','reflective','journey']){
+    let recent=manifest.recordings.filter(track=>track.moods.includes(mood)).map(track=>track.id);
+    for(let index=0;index<20;index++){
+      const seed=`same-mood-${mood}-${index}`,selection=library.selectStockRecording(mood,seed,recent);
+      assert.ok(manifest.recordings.find(track=>track.id===selection.trackId).moods.includes(mood));
+      assert.notEqual(selection.trackId,recent[0],'Multiple suitable tracks must still rotate without consecutive repeats');
+      assert.deepEqual(library.selectStockRecording(mood,seed,recent),selection,'A saved recipe must remain deterministic');
+      recent=[selection.trackId,...recent].slice(0,20);
+    }
+  }
+  assert.equal(library.selectStockRecording('reflective','matching-mood-exhausted',['old-saga','love-her','work']).trackId,'work');
 });
 
 test('an available matching mood wins over an unused but mismatched soundtrack',()=>{

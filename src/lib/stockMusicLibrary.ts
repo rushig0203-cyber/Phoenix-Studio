@@ -15,14 +15,15 @@ export function stockRecordingMood(brief: ReelMusicBrief | undefined, fallback: 
 export type StockRecordingSelection = { library: "cc0-lofi-v1"; trackId: string; offsetSeconds: number };
 export type StockRecordingCredit = { trackId: string; title: string; artist: string; licence: "CC0-1.0"; sourcePage: string; assetSha256: string; originalOffsetSeconds: number };
 
-/** Prefer fresh recordings and the editorial mood; the saved choice never rotates on retry. */
+/** Match the editorial mood before rotating recordings; saved retries keep their choice. */
 export function selectStockRecording(mood: StockReelOptions["mood"], seed: string, recent: string[]): StockRecordingSelection {
   if (!["reflective", "warm", "journey"].includes(mood) || !seed || seed.length > 256) throw new Error("A supported mood and bounded reel seed are required for recorded music.");
   const history = recent.slice(0, 20), hash = (id: string) => crypto.createHash("sha256").update(`${seed}:${id}`).digest("hex");
   const age = (id: string) => history.includes(id) ? history.indexOf(id) : 100;
-  const pool = manifest.recordings.filter(track => !history.slice(0, 3).includes(track.id));
-  const track = (pool.length ? pool : manifest.recordings).slice().sort((a, b) => Number(b.moods.includes(mood)) - Number(a.moods.includes(mood))
-    || age(b.id) - age(a.id) || hash(a.id).localeCompare(hash(b.id)))[0];
+  const matching = manifest.recordings.filter(track => track.moods.includes(mood));
+  if (!matching.length) throw new Error("No licensed recording matches this reel's selected mood.");
+  const pool = matching.filter(track => !history.slice(0, 3).includes(track.id));
+  const track = (pool.length ? pool : matching).slice().sort((a, b) => age(b.id) - age(a.id) || hash(a.id).localeCompare(hash(b.id)))[0];
   return { library: "cc0-lofi-v1", trackId: track.id, offsetSeconds: Number.parseInt(hash(track.id).slice(0, 2), 16) % 13 };
 }
 

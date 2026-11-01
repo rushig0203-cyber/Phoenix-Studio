@@ -43,7 +43,7 @@ export function stockProductionGuidanceFromFeedback(records: readonly CreativeFe
   const rules = [
     "New automatic reels choose compact, varied cuts and natural duration from bounded movement samples; use native speed or modest acceleration, never slow, loop, freeze or add unrelated filler to meet duration.",
     "Keep the starting video's subject and catalog-described scene context throughout the reel; stock metadata does not verify the same real location or continuous event.",
-    "Use a saved licensed instrumental choice, avoid the last three soundtracks when alternatives exist, and retain rights evidence. Do not copy commercial songs or infer trending status.",
+    "Use a saved licensed instrumental choice matching the visual mood, avoid the last three soundtracks when matching alternatives exist, and retain rights evidence. Do not copy commercial songs or infer trending status.",
     ...(freshness ? ["Prefer suitable footage absent from the last 20 completed reels; keep the chosen starting video and allow related reuse only when suitable fresh alternatives are unavailable."] : []),
     ...(weak("visuals") || requested("matching-visuals") ? ["Prioritize one consistent visible subject and setting over catalog variety; do not switch between sky, water, forest and city merely because they share a broad search term."] : []),
     ...(weak("audio") ? ["Keep a continuous restrained licensed instrumental; the saved soundtrack is a listening-review draft, not a professional-song guarantee."] : []),

@@ -69,6 +69,9 @@ playback speed determine those samples. The same validated evidence supplies
 posting captions; retries retain both the soundtrack and evidence. If free
 analysis is unavailable, the queued recording remains and its unverified fit is
 recorded. The small instrumental library cannot guarantee a perfect soundtrack.
+Within that catalogue, the selected mood takes priority over the repeat cooldown.
+If every suitable track is recent, Phoenix reuses the least recent suitable one
+instead of choosing an unrelated mood. Saved soundtrack recipes stay fixed.
 Commons WebM footage can supply picture duration through its video-stream
 duration tag; a longer audio/container duration is never used to extend picture.
 
