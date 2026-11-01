@@ -23,6 +23,15 @@ beforeEach(()=>{
 });
 after(()=>{global.fetch=originals.fetch;settings.readVideoAnalysisSettings=originals.groq;settings.readCloudflareVideoAnalysisSettings=originals.cloudflare;resources.heavyWorkStatus=originals.status;resources.tryWithLocalRenderSlot=originals.slot;child.spawn=originals.spawn;process.chdir(project);fs.rmSync(temporary,{recursive:true,force:true});});
 function groqQuota(milliseconds=120000){fs.mkdirSync(path.dirname(privateFile('x')),{recursive:true});fs.writeFileSync(privateFile('groq-vision-quota.json'),JSON.stringify({identity:crypto.createHash('sha256').update(`${analysis.VISION_MODEL}:${g.apiKey}`).digest('hex'),until:Date.now()+milliseconds}));}
+
+test('Cloudflare fallback receives the same timed narration and calibrates alignment without extra frames',async()=>{
+  groqQuota();const narrationSamples=analysis.timedNarrationSamples([{start:0,end:12,text:'Water falls over these rocks.'}],[1.2,6,10.8],12);
+  global.fetch=async(url,init)=>{calls.push({url:String(url),init});return Response.json({success:true,result:{response:{...evidence,alignment:'consistent'}}});};
+  const result=await analysis.requestVisualPosting(samples,'Unused prefix',{sourceCount:3,duration:12,narrationSamples});
+  assert.equal(result.provider,'cloudflare');assert.equal(result.alignment,'consistent');assert.equal(result.alignmentBasis,'timed-caption-samples-v1');
+  assert.equal(calls.length,1);const content=JSON.parse(calls[0].init.body).messages[0].content;
+  assert.match(content[0].text,/3@10.8/);assert.doesNotMatch(content[0].text,/Unused prefix/);assert.equal(content.filter(part=>part.type==='image_url').length,3);
+});
 async function fixture(quality={}){await reviews.ensureReviewFolders();fs.writeFileSync(reviews.outputPath(id,'youtube'),'fixture-output');await reviews.saveReviewFile({id,title:'Waterfall',audience:'general',status:'READY',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',source:{kind:'upload',filename:'waterfall.mp4'},outputs:{youtube:{filename:`${id}.mp4`,duration:12,width:720,height:1280}},quality:{audio:'natural-audio-preserved',captions:[],hashtags:[],...quality}});}
 
 test('caption adapter sends one bounded three-frame request only to fixed Cloudflare model',async()=>{
@@ -96,6 +105,27 @@ test('read-only connection probe confirms exact model, never images or inference
 test('quota-waiting copy resumes with configured backup before old nextAttemptAt and saves genuine model identity',async()=>{
   groqQuota();await fixture({postingAnalysis:{status:'WAITING',waitReason:'quota',attempts:0,updatedAt:new Date().toISOString(),nextAttemptAt:new Date(Date.now()+86400000).toISOString(),detail:"Groq's free quota is exhausted."}});
   await analysis.processNextPostingAnalysis();const file=await reviews.getReviewFile(id);assert.equal(file.quality.postingAnalysis.status,'COMPLETE');assert.equal(file.quality.postCopy,evidence.caption);assert.equal(file.quality.postingAnalysis.model,settings.VISION_CLOUDFLARE_MODEL);assert.equal(extractions,3);assert.equal(calls.length,1);
+});
+
+test('the real analysis worker passes current caption windows and saves their alignment basis',async()=>{
+  groqQuota();await fixture({captions:['Early context only']});
+  await reviews.updateReviewFile(id,file=>({...file,captionCues:[{start:0,end:4,text:'Water runs over these rocks.'},{start:4,end:8,text:'Trees border the stream.'},{start:8,end:12,text:'The rocky ledge fills the final view.'}]}));
+  global.fetch=async(url,init)=>{calls.push({url:String(url),init});return Response.json({success:true,result:{response:{...evidence,alignment:'consistent'}}});};
+  await analysis.processNextPostingAnalysis();const file=await reviews.getReviewFile(id),prompt=JSON.parse(calls[0].init.body).messages[0].content[0].text;
+  assert.match(prompt,/3@10.8/);assert.match(prompt,/rocky ledge fills the final view/);assert.doesNotMatch(prompt,/Early context only/);
+  assert.equal(file.quality.postingAnalysis.status,'COMPLETE');assert.equal(file.quality.postingAnalysis.alignmentBasis,'timed-caption-samples-v1');
+  assert.equal(extractions,3);assert.equal(calls.length,1);
+});
+
+test('a late response cannot certify narration whose caption timing changed during analysis',async()=>{
+  groqQuota();await fixture({captions:['Saved narration'],postCopy:'Existing copy'});
+  await reviews.updateReviewFile(id,file=>({...file,captionCues:[{start:0,end:12,text:'Original timed words.'}]}));
+  global.fetch=async()=>{
+    await reviews.updateReviewFile(id,file=>({...file,captionCues:[{start:0,end:12,text:'Changed timed words.'}]}));
+    return Response.json({success:true,result:{response:{...evidence,alignment:'consistent'}}});
+  };
+  await analysis.processNextPostingAnalysis();const file=await reviews.getReviewFile(id);
+  assert.equal(file.captionCues[0].text,'Changed timed words.');assert.equal(file.quality.postCopy,'Existing copy');assert.notEqual(file.quality.postingAnalysis.status,'COMPLETE');
 });
 test('ordinary backoff, explicitly failed analyses and owner captions are not silently retried',async()=>{
   groqQuota();for(const quality of [

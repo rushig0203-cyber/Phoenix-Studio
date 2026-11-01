@@ -47,6 +47,7 @@ export type ReviewFile = {
       waitReason?: "quota" | "retry";
       detail: string; model?: string; sampledAt?: number[]; observations?: string[];
       alignment?: "consistent" | "mismatch" | "unknown"; alignmentReason?: string;
+      alignmentBasis?: "timed-caption-samples-v1" | "unverified";
       copyPolicy?: string; variation?: "distinct" | "similar";
       captionVariants?: string[];
       musicBrief?: import("./reelMusic").ReelMusicBrief;

@@ -1,5 +1,29 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 narration-to-frame evidence — awaiting verified installation
+
+- A read-only check of the real 36.95-second narrated diagnostic found 558
+  transcript characters. The old 400-character prompt prefix omitted the speech
+  at its 90% frame, yet the response marked alignment consistent. New requests
+  pair each of the same three frames with its active saved caption window.
+  Silent gaps never borrow earlier/future speech; malformed, overlapping or
+  out-of-range timing is unverified. Excerpts are bounded after JSON escaping.
+- Both configured free vision paths apply the same calibration: topic overlap
+  without timed speech cannot certify synchronization; partial samples cannot
+  establish overall consistency. A specific supported mismatch is retained.
+  Evidence records its timed/unverified basis; older saved results are unchanged.
+  This compares sampled pictures with saved captions, not full audio listening,
+  every scene or a guarantee of semantic quality. No extra frames or model added.
+- Late responses cannot apply after caption text or timing changes. Worker-level
+  tests verify the timed payload, persisted basis and protection of owner edits.
+  Existing 2,900-character text, 512 KiB request and free-provider guards remain.
+- Automatic source guidance was independently rechecked from production data:
+  34 comparable matched posts, zero manual source ratings, the watch-time opening
+  experiment and a 17-second conservative cap. No rating or job was written.
+- Focused narration, quota/fallback, caption, music and manager checks pass. Full
+  remote Windows checks and guarded activation are still required. Rumble
+  automation is the owner's next task, after this repair is installed.
+
 ## November 1 planned-cut music and dashboard depth — installed and verified
 
 - New adaptive recorded-music reels analyze three small frames from their final

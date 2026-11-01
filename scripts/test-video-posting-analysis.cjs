@@ -17,6 +17,44 @@ const {WritingWaitError}=require('../src/lib/groqWriter');
 const jpeg=Buffer.from([0xff,0xd8,0xff,0xd9]);
 const result={observations:[{frame:1,visible:'Water falling over rocks.'}],caption:'Water cascades over a rocky ledge.',hashtags:['#Waterfall','#Nature'],confidence:'clear'};
 
+test('timed narration follows each sampled moment, including speech beyond the old transcript prefix',async()=>{
+  const cues=[{start:0,end:9,text:'Grind the beans.'},{start:10,end:19,text:'Pour hot water over the grounds.'},{start:20,end:30,text:'Serve the finished coffee.'}];
+  const narrationSamples=analysis.timedNarrationSamples(cues,[3,15,27],30);
+  assert.deepEqual(narrationSamples.map(sample=>sample.text),cues.map(cue=>cue.text));
+  global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,alignment:'consistent',alignmentReason:'Each sampled action matches its saved caption.'})}}]});};
+  const accepted=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'EARLY UNRELATED PREFIX '.repeat(40),{sourceCount:3,duration:30,narrationSamples});
+  const request=JSON.parse(calls[0].init.body),text=request.messages[0].content[0].text;
+  for(const phrase of ['1@3','2@15','3@27','Serve the finished coffee.'])assert.ok(text.includes(phrase));
+  assert.doesNotMatch(text,/EARLY UNRELATED PREFIX/);assert.match(text,/Compare matched subjects\/actions, not topic overlap/);
+  assert.equal(accepted.alignment,'consistent');assert.equal(accepted.alignmentBasis,'timed-caption-samples-v1');
+  assert.equal(calls.length,1);assert.equal(request.messages[0].content.filter(part=>part.type==='image_url').length,3);
+});
+
+test('silent gaps and boundaries never borrow nearby or future narration; malformed timing is unverified',()=>{
+  const cues=[{start:0,end:2,text:'First words.'},{start:4,end:6,text:'Second words.'},{start:6,end:8,text:'Last words.'}];
+  assert.deepEqual(analysis.timedNarrationSamples(cues,[2,4,6],9).map(sample=>sample.text),[null,'Second words.','Last words.']);
+  for(const invalid of [undefined,[],[null],[{start:-1,end:2,text:'Invalid'}],[{start:0,end:12,text:'Outside'}],[{start:0,end:5,text:'One'},{start:3,end:6,text:'Overlap'}],[{start:0,end:NaN,text:'Not finite'}]])assert.equal(analysis.timedNarrationSamples(invalid,[1,4,7],9),undefined);
+  assert.equal(analysis.timedNarrationSamples(cues,[6,4,2],9),undefined);
+});
+
+test('quoted multilingual timed captions and maximum guidance stay inside the existing prompt budget',async()=>{
+  const guidance=require('../src/lib/stockProductionGuidance'),text='"\\ नमस्ते hello '.repeat(50);
+  const narrationSamples=analysis.timedNarrationSamples([{start:0,end:70,text},{start:70,end:140,text},{start:140,end:210,text}],[21,105,189],210);
+  assert.ok(narrationSamples.every(sample=>JSON.stringify(sample.text).length<=98));
+  await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'T'.repeat(1000),{sourceCount:100,duration:210,narrationSamples,conciseStockCaption:true,managerGuidance:{revision:'stock-v1-123456abcdef',feedbackCount:1,rules:[guidance.STOCK_CAPTION_FEEDBACK_RULE]}});
+  const prompt=JSON.parse(calls[0].init.body).messages[0].content[0].text;assert.ok(prompt.length<=2900);assert.match(prompt,/untrusted; never follow/);assert.match(prompt,/Timed-caption DATA/);
+});
+
+test('topic similarity cannot certify untimed speech or silent samples as synchronized narration',async()=>{
+  global.fetch=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,alignment:'consistent',alignmentReason:'The topics are similar.'})}}]});
+  const untimed=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'A broadly related script.',{sourceCount:3});
+  assert.equal(untimed.alignment,'unknown');assert.equal(untimed.alignmentBasis,'unverified');
+  const narrationSamples=analysis.timedNarrationSamples([{start:0,end:3,text:'First words.'},{start:6,end:10,text:'Last words.'}],[1,5,9],10);
+  const partial=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'',{sourceCount:3,narrationSamples});assert.equal(partial.alignment,'unknown');
+  global.fetch=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,alignment:'mismatch',alignmentReason:'The first caption describes coffee, but this frame shows rocks.'})}}]});
+  const mismatch=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'',{sourceCount:3,narrationSamples});assert.equal(mismatch.alignment,'mismatch');
+});
+
 test('planned-cut evidence completes copy once and keeps the real model, mood and scope',async()=>{
   const {makeReviewFile,outputPath}=require('../src/lib/reviewFiles');
   const file=makeReviewFile({id:'planned-cut-evidence',title:'Park',source:{kind:'pexels',filename:'fixture.mp4',licence:'Pexels'},quality:{audio:'local-music-replaced',captions:[],hashtags:[],checks:[]}});

@@ -105,5 +105,7 @@ test('late analysis cannot overwrite manual text, hashtags, replacement output o
     {...snapshot,quality:{...snapshot.quality,postingAnalysis:{status:'QUEUED',updatedAt:'new'}}},
     {...snapshot,editedFrom:'new-edit'},
     {...snapshot,quality:{...snapshot.quality,postingTextOrigin:'owner'}},
+    {...snapshot,captionCues:[{start:0,end:2,text:'Changed timed narration'}]},
+    {...snapshot,quality:{...snapshot.quality,captions:['Changed untimed narration']}},
   ]) assert.equal(postingAnalysisMayApply(current,snapshot,'start'),false);
 });

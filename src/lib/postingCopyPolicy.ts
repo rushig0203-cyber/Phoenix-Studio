@@ -86,5 +86,7 @@ export function postingAnalysisMayApply(current: ReviewFile, snapshot: ReviewFil
     && current.quality.postingAnalysis.updatedAt === startedAt && current.editedFrom === snapshot.editedFrom
     && current.quality.postingTextOrigin === snapshot.quality.postingTextOrigin
     && current.quality.postCopy === snapshot.quality.postCopy && JSON.stringify(current.outputs) === JSON.stringify(snapshot.outputs)
+    && JSON.stringify(current.captionCues) === JSON.stringify(snapshot.captionCues)
+    && JSON.stringify(current.quality.captions) === JSON.stringify(snapshot.quality.captions)
     && JSON.stringify(current.quality.hashtags) === JSON.stringify(snapshot.quality.hashtags);
 }

@@ -43,6 +43,10 @@ With consent, up to three small sampled frames can be sent to a configured free
 vision provider. Phoenix checks the returned evidence and preserves owner edits;
 quota or invalid evidence is shown rather than disguised as a successful analysis.
 Silent scenic reels do not need invented subtitles.
+For narrated videos, sampled frames receive the saved caption window at each
+sample time, including late scenes. Missing timing or silent gaps stay unverified;
+topical similarity alone is not proof of narration-to-picture synchronization.
+These are three limited picture samples, not full-video or audio listening.
 
 New Make a Reel music-only exports use two-pass loudness mastering toward
 −16 LUFS, with peak headroom, and measure the actual encoded soundtrack before
