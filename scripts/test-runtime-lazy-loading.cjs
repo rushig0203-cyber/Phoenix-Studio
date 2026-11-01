@@ -89,6 +89,7 @@ function animationHarness({ failFrame = false } = {}) {
 test('Next avoids eager route preloading while retaining build memory safeguards', () => {
   const configure = evaluate(configModule, name => {
     if(name==='./scripts/next-build-selection.cjs') return {selectNextBuild:()=>'.next-fixture-current'};
+    if(name==='./scripts/worker-runtime.cjs') return {WORKER_RUNTIME:'compiled-cjs-v1'};
     throw new Error(`Unexpected runtime config import: ${name}`);
   }).default;
   const config=configure('phase-production-server');

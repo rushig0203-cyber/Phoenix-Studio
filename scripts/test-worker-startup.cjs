@@ -4,7 +4,7 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 test('the production worker loads all processors without taking a job', () => {
-  const result = spawnSync(process.execPath, ['run-worker.js', '--preflight'], {
+  const result = spawnSync(process.execPath, ['run-worker.js', '--preflight', '--source'], {
     cwd: path.resolve(__dirname, '..'),
     encoding: 'utf8', timeout: 30_000, windowsHide: true,
     env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=384' },

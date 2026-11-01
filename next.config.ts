@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { selectNextBuild } from "./scripts/next-build-selection.cjs";
+import { WORKER_RUNTIME } from "./scripts/worker-runtime.cjs";
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -18,5 +19,5 @@ const nextConfig: NextConfig = {
 
 export default function configureNext(phase: string): NextConfig {
   const directory = selectNextBuild(phase);
-  return { ...nextConfig, distDir: directory, env: { NEXT_PUBLIC_PHOENIX_RELEASE: directory } };
+  return { ...nextConfig, distDir: directory, env: { NEXT_PUBLIC_PHOENIX_RELEASE: directory, PHOENIX_WORKER_RUNTIME: WORKER_RUNTIME } };
 }

@@ -45,6 +45,14 @@ async function runBuild() {
     });
     if (code !== 0) throw new Error(`Build failed (${code}); active bundle unchanged.`);
     await fs.access(path.join(root, directory, 'BUILD_ID'));
+    if (process.env.VERCEL !== '1') {
+      await require('./compile-worker.cjs').compileWorker(root, directory);
+      const workerCode = await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, ['--max-old-space-size=192', path.join(root, 'run-worker.js'), '--preflight', '--build', directory], { cwd: root, windowsHide: true, stdio: 'inherit' });
+        lowerChildProcessPriority(child.pid); child.once('error', reject); child.once('close', code => resolve(code ?? 1));
+      });
+      if (workerCode !== 0) throw new Error('Compiled worker preflight failed; active release unchanged.');
+    }
     await writeAtomicJson(path.join(root, 'storage/active-build.json'), {directory});
     console.log(`Verified build selected: ${directory}. Restart Phoenix to load it; no service was stopped by this build.`);
   }, 'Building Phoenix update');

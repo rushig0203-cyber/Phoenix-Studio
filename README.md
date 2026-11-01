@@ -131,6 +131,10 @@ The older scheduled Rumble/Bilibili access follow-up is paused.
 
 ## Setup and startup (Windows)
 
+Verified desktop releases include a compiled queue worker, so normal startup
+does not need the TypeScript compiler. Development uses the source worker.
+Queue memory safeguards and automatic Instagram feedback remain enabled.
+
 1. Use Node.js **24.19.0** and install the locked packages with
    `npm ci --legacy-peer-deps --no-audit --no-fund`.
 2. Copy `phoenix.env.example` to `.env.local` and fill only the settings needed.

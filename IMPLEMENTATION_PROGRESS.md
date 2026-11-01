@@ -1,5 +1,25 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 compiled queue worker — source ready, not installed
+
+- The idle worker was measured at roughly 273 MiB private memory while the
+  website used 194 MiB. That snapshot is not a promised saving. Production still
+  loaded ts-node/TypeScript simply to import its queue processors.
+- Desktop builds now compile the same library modules and dispatcher into the
+  fresh verified release, before selection. A compiler-free read-only preflight
+  must load every queue/insights entry point before the build can be selected.
+  No local Next build was run for this change; verification will run remotely.
+- The worker selects its compiled code from the installed bundle. Version,
+  BUILD_ID, bounded file hashes, paths and links are checked; a new release with
+  missing/corrupt code cannot silently fall back to source. Older verified
+  releases retain their source loader for compatibility. Development explicitly
+  selects source mode. No dependency, local model or relaxed RAM guard added.
+- The dispatcher logic and independent automatic Instagram insights collector
+  remain shared. Focused tests cover imports/aliases/music metadata, missing or
+  tampered bundles, output junctions, legacy compatibility and serialized queue
+  behavior. Full Windows checks, activation and actual before/after process
+  measurements remain pending; no RAM improvement is claimed yet.
+
 ## November 1 publishing dialog layout — installed and verified
 
 - Actual desktop verification exposed the posting form growing inside a narrow

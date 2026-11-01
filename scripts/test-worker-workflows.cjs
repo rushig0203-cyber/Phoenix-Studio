@@ -129,7 +129,6 @@ function mockedRunner() {
     try { if (key === "generation" && heldGeneration) await hold.promise; } finally { active--; }
   };
   const modules = {
-    "@next/env": { loadEnvConfig() {} }, "ts-node": { register() {} }, "tsconfig-paths/register": {},
     "./src/lib/sourceProcessing.ts": { processNextSourceJob: run("source-empty") },
     "./src/lib/generation.ts": { pollGenerationJobs: run("generation"), reconcileRenderResources: async () => { calls.push("reconcile"); } },
     "./src/lib/studioHealth.ts": { writeWorkerHeartbeat: async () => { calls.push("heartbeat"); } },
@@ -140,17 +139,19 @@ function mockedRunner() {
     "./src/lib/instagramPerformance.ts": { syncInstagramPerformance: async () => { calls.push("instagram-insights"); } },
     "./src/lib/renderResources.ts": { heavyWorkStatus: async () => resources,
       reconcileLocalModelWork: async () => { calls.push("model-status"); } },
-    "./scripts/worker-workflows.cjs": { createWorkerDispatcher: options => {
+    "./worker-workflows.cjs": { createWorkerDispatcher: options => {
       dispatcher = createWorkerDispatcher({ ...options, timers }); return dispatcher;
     } },
   };
   const mockProcess = { argv: ["node", "run-worker.js"], cwd: () => path.resolve(__dirname, ".."),
     once: (signal, handler) => signals.set(signal, handler), exitCode: undefined };
   function start() {
-    const source = fs.readFileSync(path.join(__dirname, "..", "run-worker.js"), "utf8");
+    const source = fs.readFileSync(path.join(__dirname, "worker-main.cjs"), "utf8");
+    const module = { exports: {} };
     vm.runInNewContext(source, { require: name => {
       assert.ok(Object.hasOwn(modules, name), `Unexpected production dependency: ${name}`); return modules[name];
-    }, process: mockProcess, console: { log() {}, error: (...args) => errors.push(args) } });
+    }, module, process: mockProcess, console: { log() {}, error: (...args) => errors.push(args) } });
+    module.exports(name => modules[`./src/lib/${name}.ts`]);
   }
   return { timers, calls, signals, errors, process: mockProcess, start, hold,
     get dispatcher() { return dispatcher; }, get maximum() { return maximum; },

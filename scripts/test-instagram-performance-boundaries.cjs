@@ -97,7 +97,7 @@ test('invalid IDs, corrupt or oversized local indexes cannot trigger path traver
   fs.writeFileSync(path.join(reviews, 'index.json'), Buffer.alloc(8 * 1024 * 1024 + 1)); assert.equal((await matcher.instagramPublishedReviews(accountId)).size, 0);
 });
 test('worker automatically collects bounded read-only insights independently of renderer admission', () => {
-  const worker = fs.readFileSync(path.join(project, 'run-worker.js'), 'utf8');
+  const worker = fs.readFileSync(path.join(project, 'scripts/worker-main.cjs'), 'utf8');
   assert.match(worker, /diagnostics:\s*\{[\s\S]*instagramInsights:\s*\{ run: syncInstagramPerformance, intervalMs: 60_000 \}/);
   assert.ok(worker.indexOf('process.argv.includes("--preflight")') < worker.indexOf('instagramInsights:'));
 });
