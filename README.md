@@ -102,7 +102,8 @@ available; an explicitly selected Windows voice remains authoritative.
 
 ## Posting
 
-Use **Post / export** on a finished video:
+Use **Post / export** on a finished video to open its final-review dialog.
+Close or Escape returns to that video's Post button.
 
 - **Instagram:** verified professional-account access and publishing permission
   are required. Reel/Story support, locations, people tags and catalogue audio

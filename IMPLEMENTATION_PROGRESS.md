@@ -1,15 +1,33 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 publishing dialog layout — source ready, not installed
+## November 1 publishing dialog layout — installed and verified
 
 - Actual desktop verification exposed the posting form growing inside a narrow
   library-grid card, stretching adjacent cards and squeezing the controls. It
   now uses the existing preview's native dialog pattern: viewport width/height
   bounds, independent scrolling, modal keyboard focus and Escape/Close behavior.
   Instagram and Rumble remain together; background upload state stays durable.
-- Secondary Rumble explanations moved into its existing details section. No new
-  service or dependency added. Focused dialog and handoff checks pass; full
-  Windows verification and actual desktop/mobile checks remain pending.
+- Secondary Rumble explanations moved into its existing details section. Close
+  and Escape close the native dialog before React removes it, then explicitly
+  return focus to the exact Post / export trigger. No new service/dependency.
+- Final source `3d9a41d323ceb82770d441df18a0138c71ca6be8` passed Windows run
+  `41294558310`: 1,427 Node checks, 48 Python checks, lint, TypeScript, production
+  build and real render proofs. Selected and serving bundle is
+  `.next-build-gh-41294558310-1`, build ID `EGTACCmp3wZEbDz4Rk3Fa`. Dashboard
+  returns 200; manager/worker are healthy. All five fresh owner video/job store
+  hashes and the exact owner config hash matched after guarded activation.
+- Actual desktop and 375px phone checks kept both platform panels available;
+  the phone dialog measured 326px, without horizontal overflow. Escape and Close
+  returned keyboard focus to Post / export. Screenshots and a bounded live proof
+  are retained outside Git. Temporary viewport sizing was reset. No social post
+  or owner failed-job retry occurred.
+- Rumble remains an assisted handoff, not an API connection: its exact saved
+  file selection, clipboard write and uploader-tab reuse were separately verified
+  on source `77037b4`. Downloads stayed at 35 MP4s and the diagnostic file hash
+  stayed identical. Provider-approved automatic publishing access is still pending.
+- The wider quality/RAM goal remains active. The idle owned-process memory
+  snapshot identifies the TypeScript worker/compiler as a further investigation;
+  compiling that worker remotely has not been implemented or claimed as a saving.
 
 ## November 1 action alignment and startup readiness — installed and verified
 
