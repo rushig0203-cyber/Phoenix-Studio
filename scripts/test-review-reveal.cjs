@@ -26,6 +26,11 @@ test('cross-origin requests, arbitrary IDs, arbitrary formats and request bodies
   for(const [options,status] of [[{origin:'https://evil.example'},403],[{id:'../../private'},404],[{target:'../../private'},400],[{body:'x'.repeat(10000)},400]])assert.equal((await call(options)).status,status);
   assert.equal(launches.length,0);
 });
+test('an empty streamed POST from the Next adapter is accepted without buffering any body',async()=>{
+  const body=new ReadableStream({start(controller){controller.close();}});
+  const result=await route.POST(new Request(`http://localhost:3000/api/review-files/${id}/reveal?target=instagram`,{method:'POST',headers:{origin:'http://localhost:3000'},body,duplex:'half'}),{params:Promise.resolve({id})});
+  assert.equal(result.status,200);assert.equal(launches.length,1);
+});
 test('missing, trashed, unfinished and absent-format outputs cannot reveal another file',async()=>{
   assert.equal((await call({target:'youtube'})).status,404);assert.equal((await call({id:'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'})).status,404);
   await reviews.updateReviewFile(id,file=>({...file,status:'FAILED'}));assert.equal((await call()).status,404);
