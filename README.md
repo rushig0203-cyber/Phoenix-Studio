@@ -94,7 +94,7 @@ Phoenix's hardware guard; narration is not advertised as singing.
 
 The optional VoiceStudio narration adapter uses the separately installed,
 user-approved Supertonic-3 engine (SDK 1.3.1, pinned model revision) for English
-and Hindi 2D stories. Local configuration lives in ignored
+and Hindi speech. Local configuration lives in ignored
 `storage/voicestudio.json`: `enabled`, `licenseAccepted`, absolute `python` and
 `modelDirectory` paths. No model or desktop app is started with the website.
 The voice worker uses one CPU thread, runs offline, exits before rendering and
@@ -102,6 +102,11 @@ retains measured phrase boundaries for captions. It does not provide phoneme
 alignment, singing or music. A low-memory wait preserves the queued request.
 Without this optional configuration, the existing Windows story voice remains
 available; an explicitly selected Windows voice remains authoritative.
+
+Approved visual scenes retain available measured speech boundaries, and the
+animation holds its previous pose through pauses. Estimates remain labelled when
+measurements cannot locate a boundary. Animation action planning currently needs
+English scene text; Hindi speech support alone is not complete Hindi story support.
 
 ## Posting
 
@@ -171,10 +176,12 @@ animation are bounded. Local rendering still needs physical RAM. Free cloud
 writers reduce local model memory, not the renderer's needs. No cleanup or Docker
 setting can promise to solve system-wide RAM exhaustion.
 
-The November 1 verified desktop update reduced median idle worker private memory
+The November 1 verified desktop update reduced median startup worker private memory
 from 261.0 to 75.7 MiB across three samples per release (185.2 MiB saved). Its
 compiled queue worker no longer loads TypeScript at runtime. This measures worker
 overhead, not peak rendering memory or a guarantee about other running apps.
+After roughly 3.5 hours, the worker measured 256.8 MiB with no active render;
+sustained RAM growth remains under investigation. The RAM issue is not solved.
 
 Runtime media, originals, editable masters, captions and queue records live in
 `storage/Phoenix Studio Review Files`. Trash is recoverable and still uses disk.

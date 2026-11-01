@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 2D scene/speech timing — source ready, verification pending
+## November 1 2D scene/speech timing — installed and verified
 
 - VoiceStudio already supplied measured caption phrase times, but approved
   visual scenes still used word-count estimates. A controlled fixture moved
@@ -16,8 +16,18 @@
 - Eight focused speech/timing checks pass, including the real renderer setup
   with isolated synthetic PCM/phrase timing and a captured animation boundary.
   That fixture tests wiring, not VoiceStudio audio quality; the temporary store
-  is asserted before execution and no provider/model is called. Actual raster
-  gap tests and full Windows release verification remain pending.
+  is asserted before execution and no provider/model is called. Actual PNG gap
+  checks also pass: the daylight pose holds through silence, and night appears
+  only at the next scene's onset.
+- Source `c7c895d648baa6fd04979faf1369136f93acbb62` passed Windows run
+  `41316868352`: 1,438 Node tests, 48 Python checks, lint, TypeScript, full build
+  and real public-footage export/decode. Bundle `.next-build-gh-41316868352-1`,
+  build ID `_Lp98G9wjEhbWGRcLvkok`, is selected/serving with healthy manager and
+  worker; dashboard returns 200. Five fresh owner stores and exact owner config
+  matched after activation. The installed-module reproduction now starts the
+  second scene at its measured 1.0 seconds. No owner failed job was retried or
+  social post made. The controlled adapter fixture is not a real VoiceStudio
+  synthesis or evidence of overall narration/animation quality.
 - Hindi action/prop interpretation and broader caption/creative quality remain
   open. Hindi voice support alone does not prove Hindi animation alignment.
 
@@ -71,10 +81,14 @@
   selected and serving. Dashboard returns 200; manager/worker are healthy. All
   five fresh owner video/job store hashes and the exact owner config matched
   after guarded activation. No owner failed job was retried or social post made.
-- Three identity-verified idle samples before and after activation measured
+- Three identity-verified idle startup samples before and after activation measured
   median worker private memory of 261.0 MiB versus 75.7 MiB: 185.2 MiB less
   (71.0%). This is worker overhead, not a whole-laptop or rendering-peak claim.
-  Other apps still affect free RAM; existing admission safeguards remain active.
+  A later identity-verified sample after roughly 3.5 hours measured 256.8 MiB
+  private memory with no active render. Sustained savings are not established;
+  the worker still has a 512 MiB heap allowance and repeatedly parses histories.
+  Further heap/allocation investigation is required. Other apps still affect
+  free RAM; existing admission safeguards remain active.
 - Automatic Instagram feedback remains scheduled independently of heavy work.
   The latest saved full scan completed at 10:44 UTC across 62 videos, with 47
   eligible comparisons and a bounded 17-second editing experiment. Some metrics
