@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 soundtrack fit after repeated moods — verification pending
+## November 1 soundtrack fit after repeated moods — installed and verified
 
 - A read-only reproduction through the installed compiled worker requested
   reflective music with all three reflective tracks in recent history. The
@@ -12,8 +12,15 @@
   mood. Existing saved choices and deterministic retries retain their recipe.
 - Six focused library checks pass, including 60 consecutive same-mood choices
   across the three supported moods. Production guidance and README describe the
-  same priority. Full Windows verification and activation remain pending.
-  This fixes selection logic; the six-track editorial catalogue still cannot
+  same priority. Source `0e308ccb9e706f09b62622cd86f7e7894759bb46` passed
+  Windows run `41299590693`: 1,433 Node tests, 48 Python checks, lint, TypeScript,
+  production build and compiler-free real public-footage export/decode.
+- Selected/serving bundle `.next-build-gh-41299590693-1`, build ID
+  `41LTEuQu5Fec3NBENTOdI`, has healthy manager/worker and dashboard HTTP 200.
+  All five fresh video/job stores and exact owner config survived activation.
+  The same read-only reproduction now selects a reflective match. No owner
+  failed job was retried and no social post was made.
+- This fixes selection logic; the six-track editorial catalogue still cannot
   guarantee musical fit or claim measured tempo/current trends.
 
 ## November 1 compiled queue worker — installed and measured
