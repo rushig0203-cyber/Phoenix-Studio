@@ -165,6 +165,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     finally { if (epoch.current === version) setLoading(false); }
   }
   function close() {
+    postDialog.current?.close();
     rumbleEpoch.current++;
     rumblePreparing.current = false; setRumbleBusy(false);
     epoch.current++; controller.current?.abort(); setChooserOpen(false); setRumbleOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
