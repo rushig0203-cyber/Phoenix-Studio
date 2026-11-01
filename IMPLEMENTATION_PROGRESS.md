@@ -1,6 +1,17 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 action alignment and startup readiness — source ready, not installed
+## November 1 publishing dialog layout — source ready, not installed
+
+- Actual desktop verification exposed the posting form growing inside a narrow
+  library-grid card, stretching adjacent cards and squeezing the controls. It
+  now uses the existing preview's native dialog pattern: viewport width/height
+  bounds, independent scrolling, modal keyboard focus and Escape/Close behavior.
+  Instagram and Rumble remain together; background upload state stays durable.
+- Secondary Rumble explanations moved into its existing details section. No new
+  service or dependency added. Focused dialog and handoff checks pass; full
+  Windows verification and actual desktop/mobile checks remain pending.
+
+## November 1 action alignment and startup readiness — installed and verified
 
 - A saved coffee video uses a grinding shot during weighing narration and a
   heating-water shot while the script still discusses grinding. Read-only
@@ -21,9 +32,18 @@
   date/zone. Casting the original value retains the instant. Fresh/stale/future,
   wrong-PID and malformed checks pass in Windows PowerShell and PowerShell 7
   across three cultures; the real healthy worker now passes the launcher check.
-- Focused regressions pass; full Windows build and activation are pending.
+- Source `77037b44022fc21eaa9640936df0bad00ddad7a2` passed Windows run
+  `41277173060`: 1,426 Node checks, 48 Python checks, lint, TypeScript, full build
+  and real render proofs. Bundle `.next-build-gh-41277173060-1` (build ID
+  `m4j6ISAzGVZgW16I2u94z`) is selected and serving with healthy manager/worker.
+  Startup finished without the false warning. Five fresh owner stores matched.
+- The actual button now highlighted the exact unposted diagnostic MP4 in
+  Explorer, copied text and opened the normal Rumble uploader. A repeat reused
+  the same tab. Both Instagram and Rumble panels remained available. No file was
+  attached, no social post made and no owner failed job retried. The live visual
+  check also exposed the narrow layout addressed in the section above.
 
-## November 1 Rumble saved-file handoff — installed, selection correction pending
+## November 1 Rumble saved-file handoff — initial implementation, superseded
 
 - Rumble's original support thread was checked through the individually verified
   owner Gmail account. No answer to the website-upload permission request was

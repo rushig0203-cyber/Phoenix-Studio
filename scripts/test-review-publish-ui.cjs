@@ -267,6 +267,14 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   assert.equal(h.intervals.size, 0);
 });
 
+test('posting uses a viewport dialog and Escape closes it without submitting',async t=>{
+  const h=uiHarness();t.after(()=>h.unmount());h.choose('Rumble upload');await h.flush();
+  const dialog=nodes(h.tree).find(node=>node.type==='dialog');assert.ok(dialog);assert.equal(dialog.props['aria-label'],'Post or export this video');
+  let prevented=false;dialog.props.onCancel({preventDefault(){prevented=true;}});await h.flush();
+  assert.equal(prevented,true);assert.ok(!nodes(h.tree).some(node=>node.type==='dialog'));assert.equal(h.posts.length,0);assert.equal(h.reveals.length,0);
+  h.click('Post / export');await h.flush();assert.ok(nodes(h.tree).some(node=>node.type==='dialog'));
+});
+
 test('Rumble reveals the existing MP4 and copies its text without downloading or submitting an upload', async t => {
   const file = sampleFile({ quality: { postCopy: 'Light through the trees.\nCredit: source creator.', hashtags: ['#Forest', '#Nature'], captions: [] } });
   const h = uiHarness({ file, onOpenRumble({ copied, downloads }) { assert.equal(copied.length, 1, 'Start clipboard access before the tab takes focus'); assert.equal(downloads.length, 0); } }); t.after(() => h.unmount());

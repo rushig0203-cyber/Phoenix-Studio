@@ -40,6 +40,13 @@ function publicTrackRecommendation(value: unknown): RecommendedInstagramAudio["r
 /** Opening/checking this panel never uploads. Only its final confirmation does. */
 export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [chooserOpen, setChooserOpen] = useState(false);
+  const postDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!chooserOpen) return;
+    const modal = postDialog.current;
+    modal?.showModal();
+    return () => modal?.close();
+  }, [chooserOpen]);
   const [rumbleOpen, setRumbleOpen] = useState(false);
   const [rumbleNotice, setRumbleNotice] = useState("");
   const rumbleEpoch = useRef(0);
@@ -416,7 +423,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
   return <>
     <button type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => setChooserOpen(true)}>Post / export</button>
-    {chooserOpen && <section id={chooserId} aria-label="Post or export this video" className="w-full space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3">
+    {chooserOpen && <dialog ref={postDialog} id={chooserId} aria-label="Post or export this video" onCancel={event => { event.preventDefault(); if (!busy) close(); }} className="fixed inset-0 m-auto max-h-[94dvh] w-[min(940px,94vw)] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-[#bdc7a5] bg-[#fffdf7] p-4 text-[#26331f] shadow-2xl backdrop:bg-black/70">
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post / export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
       <div className="flex flex-wrap gap-2" aria-label="Choose a platform">
         <button type="button" className={button} disabled={busy} aria-pressed={platform === "youtube"} onClick={() => void open("youtube")}>Upload to YouTube</button>
@@ -429,12 +436,12 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         <h6 className="font-semibold">Rumble · assisted upload</h6>
         <p>Opens your existing MP4 in File Explorer and copies the posting text. Drag the video onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
         {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? "Opening saved video…" : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
-        <p>Reuses the Rumble tab opened by Phoenix without resetting an unfinished upload. Separately opened browser tabs cannot be detected.</p>
-        <p>Uses the saved video and audio; Instagram catalogue music is not included. Confirm your destination account on Rumble.</p>
         {!file.quality.postCopy?.trim() && <p role="status">No analyzed posting caption is saved yet. The text below is a draft; review it before posting.</p>}
         <label className="block">Rumble title<input className={input} readOnly value={file.title.slice(0, 100)} /></label>
         <button type="button" className={button} onClick={() => void copyRumbleText(file.title.slice(0, 100), "Rumble title")}>Copy title</button>
         <details><summary className="cursor-pointer">Description, hashtags & download options</summary>
+          <p>Reuses the Rumble tab opened by Phoenix without resetting an unfinished upload. Separately opened browser tabs cannot be detected.</p>
+          <p>Uses the saved video and audio; Instagram catalogue music is not included. Confirm your destination account on Rumble.</p>
           <label className="mt-2 block">Rumble description and hashtags<textarea className={`${input} min-h-24`} readOnly value={postingText(file)} /></label>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className={button} onClick={() => void copyRumbleText(postingText(file), "Rumble description and hashtags")}>Copy Rumble text</button>
@@ -554,6 +561,6 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       {platform === "instagram" && <details className="space-y-2 text-xs"><summary className="cursor-pointer">Everyday Story ideas</summary><p>Optional prompts based on this saved video. Add your own text or poll in Instagram; these ideas are not automatically uploaded and do not guarantee reach.</p><ul className="list-disc space-y-1 pl-4">{instagramStoryIdeas(file).map(idea => <li key={idea}>{idea}</li>)}</ul></details>}
       <p className="text-xs">Closing this panel does not cancel an accepted upload.</p>
       </section>}
-    </section>}
+    </dialog>}
   </>;
 }
