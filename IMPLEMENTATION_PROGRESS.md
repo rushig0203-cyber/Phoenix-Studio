@@ -1,5 +1,26 @@
 # Quality-first implementation — September 16, 2026
 
+## November 1 Rumble saved-file handoff — source ready, not installed
+
+- Rumble's original support thread was checked through the individually verified
+  owner Gmail account. No answer to the website-upload permission request was
+  found; the API-unavailable reply remains the only provider response. Current
+  terms require written permission for automated website access. The public
+  upload API document returned HTTP 421. No supported free upload route or new
+  account grant was established; automatic publishing remains unconnected.
+- The existing assisted action now opens the saved MP4 in Windows File Explorer
+  and copies posting text before focusing Rumble. It does not download another
+  copy. Dragging the file, pasting text and confirming on Rumble remain manual.
+  The remembered Rumble window and simultaneous Instagram upload monitoring stay.
+- The local POST action accepts only a saved review ID and rendered format,
+  requires same-origin loopback access and READY non-trashed media, and checks
+  physical paths inside Review Files. It launches Explorer without a shell or
+  client-supplied executable/path. Nothing is uploaded or marked Posted.
+- Focused tests cover real isolated files, junction escapes, unavailable outputs,
+  process failures, rapid clicks, stale video revisions, popup/clipboard failures
+  and concurrent Instagram polling. Full Windows checks and live activation are
+  still required. No owner failed job was retried or social video posted.
+
 ## November 1 narration-to-frame evidence — installed and verified
 
 - A read-only check of the real 36.95-second narrated diagnostic found 558

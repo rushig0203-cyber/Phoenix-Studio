@@ -112,13 +112,15 @@ Use **Post / export** on a finished video:
   analysis. Instagram catalogue music is not embedded in the downloaded MP4.
 - **YouTube:** complete the channel's OAuth connection in Settings. A channel URL
   or an open upload page alone does not connect it.
-- **Rumble upload:** an assisted handoff. **Download & open Rumble** requests the
-  existing MP4 download, copies its description and opens the official upload
-  page. Copy the title, select the file and review/publish on Rumble. Phoenix does
+- **Rumble upload:** an assisted handoff. **Open Rumble & show saved video**
+  reveals the existing MP4 in Windows File Explorer, copies its description and
+  opens the official upload page. Drag that file onto Rumble, paste the text and
+  review/publish there. No duplicate download is created. Phoenix does
   not claim upload progress or mark this handoff Posted. Its Rumble panel stays
   open alongside Instagram and does not interrupt Instagram's upload monitoring.
   Phoenix reuses the Rumble window it opened where browser policy permits;
-  unrelated manually opened tabs cannot be detected or controlled.
+  unrelated manually opened tabs cannot be detected or controlled. Showing the
+  file requires Phoenix on the same Windows PC; Download MP4 remains available.
 - **Bilibili.tv:** automatic publishing is not connected. No supported free
   account-specific publishing route has been verified.
 

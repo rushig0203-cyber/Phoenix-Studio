@@ -99,6 +99,7 @@ jobs:
           scripts/test-worker-startup.cjs
           scripts/test-review-publishing.cjs
           scripts/test-review-publish-ui.cjs
+          scripts/test-review-reveal.cjs
           scripts/test-review-publication-summary.cjs
           scripts/test-instagram-location-suggestions.cjs
           scripts/test-video-posting-analysis.cjs
@@ -200,6 +201,7 @@ jobs:
           src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
           src/components/ReviewLibrary.tsx
           src/app/api/review-files/[id]/publish/route.ts
+          src/app/api/review-files/[id]/reveal/route.ts
           src/lib/stockReel.ts src/lib/stockMotion.ts src/lib/stockReuse.ts src/lib/stockVisualContinuity.ts src/lib/stockTemporaryCleanup.ts
           src/lib/stockMusicLibrary.ts
           src/lib/localVoiceProtocol.ts

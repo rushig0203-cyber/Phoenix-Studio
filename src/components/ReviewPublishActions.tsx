@@ -43,6 +43,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [rumbleOpen, setRumbleOpen] = useState(false);
   const [rumbleNotice, setRumbleNotice] = useState("");
   const rumbleEpoch = useRef(0);
+  const rumblePreparing = useRef(false);
+  const [rumbleBusy, setRumbleBusy] = useState(false);
   const [platform, setPlatform] = useState<ChannelPlatform | null>(null);
   const [instagramMode, setInstagramMode] = useState<"reel" | "story">("reel");
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
@@ -61,7 +63,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const latestVideoRevision = useRef(videoRevision);
   const [confirmedRevision, setConfirmedRevision] = useState("");
   useEffect(() => {
-    rumbleEpoch.current++; setRumbleNotice("");
+    rumbleEpoch.current++; setRumbleNotice(""); rumblePreparing.current = false; setRumbleBusy(false);
     latestVideoRevision.current = videoRevision; setConfirmedRevision("");
     audioEpoch.current++; audioRequest.current?.abort();
     setAudioBusy(false); setSelectedAudio(null); setAudioCheckedRevision("");
@@ -157,6 +159,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }
   function close() {
     rumbleEpoch.current++;
+    rumblePreparing.current = false; setRumbleBusy(false);
     epoch.current++; controller.current?.abort(); setChooserOpen(false); setRumbleOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
     changeLocationQuery("");
     resetAudio();
@@ -285,28 +288,39 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     try {
       await navigator.clipboard.writeText(value);
       if (rumbleEpoch.current === version && latestVideoRevision.current === revision) setRumbleNotice(`${label} copied. Paste it on Rumble; nothing has been uploaded.`);
+      return true;
     } catch {
       if (rumbleEpoch.current === version && latestVideoRevision.current === revision) setRumbleNotice("Clipboard unavailable. Select and copy the Rumble text below.");
+      return false;
     }
   }
-  function prepareRumble() {
+  async function prepareRumble() {
+    if (rumblePreparing.current) return;
     const saved = postingDownload(file);
     if (!saved) { setRumbleNotice("No finished video is available. Check Library before uploading."); return; }
+    rumblePreparing.current = true; setRumbleBusy(true);
+    const version = rumbleEpoch.current, revision = videoRevision;
     // shortcut: Rumble publishing access is unverified; hand off to its normal
     // upload page until a supported free API or written permission is available.
-    try {
-      const download = document.createElement("a");
-      download.href = saved.url; download.download = `${file.title}-${saved.target}.mp4`;
-      download.click();
-    } catch {
-      setRumbleNotice("The download could not start. Use Download MP4 below, then open Rumble."); return;
-    }
     // Start clipboard access while Phoenix still has focus. Opening a new tab
     // first can make the browser reject an otherwise permitted clipboard write.
-    void copyRumbleText(postingText(file), "Rumble description and hashtags");
+    const copying = copyRumbleText(postingText(file), "Rumble description and hashtags");
     if (!openRumbleUpload()) {
       rumbleEpoch.current++;
-      setRumbleNotice("MP4 download requested, but the browser blocked the Rumble window. Allow popups for Phoenix or open Rumble manually; use Copy Rumble text below if needed.");
+      rumblePreparing.current = false; setRumbleBusy(false);
+      setRumbleNotice("The browser blocked the Rumble window. Allow popups for Phoenix or open Rumble below. No video was uploaded.");
+      return;
+    }
+    try {
+      const response = await fetch(`/api/review-files/${encodeURIComponent(file.id)}/reveal?target=${saved.target}`, { method: "POST", signal: AbortSignal.timeout(15000) });
+      const value = await response.json(), copied = await copying;
+      if (!response.ok || value.revealed !== true) throw new Error(value.error || "The saved video could not be shown. Use Download MP4 below.");
+      if (rumbleEpoch.current === version && latestVideoRevision.current === revision) setRumbleNotice(`Saved video opened in File Explorer. Drag it onto Rumble, then confirm there. ${copied ? "Description and hashtags copied; paste them on Rumble." : "Clipboard unavailable; copy the text below."} No duplicate download or upload was created.`);
+    } catch (cause) {
+      await copying;
+      if (rumbleEpoch.current === version && latestVideoRevision.current === revision) setRumbleNotice(cause instanceof Error ? cause.message : "The saved video could not be shown. Use Download MP4 below.");
+    } finally {
+      if (rumbleEpoch.current === version && latestVideoRevision.current === revision) { rumblePreparing.current = false; setRumbleBusy(false); }
     }
   }
   async function submit(job?: ReviewPublishJob, revise = false, makeStandalone = false) {
@@ -413,8 +427,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       {!platform && !rumbleOpen && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
       {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 rounded-lg border border-[#bdc7a5] p-3 text-xs">
         <h6 className="font-semibold">Rumble · assisted upload</h6>
-        <p>Downloads your finished MP4, copies its description and hashtags, and opens Rumble. Select that file, paste the text, review the licence and publish on Rumble. Automatic publishing is not connected.</p>
-        {rumbleOutput ? <button type="button" className={button} onClick={prepareRumble}>Download & open Rumble ↗</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
+        <p>Opens your existing MP4 in File Explorer and copies the posting text. Drag the video onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
+        {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? "Opening saved video…" : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
         <p>Reuses the Rumble tab opened by Phoenix without resetting an unfinished upload. Separately opened browser tabs cannot be detected.</p>
         <p>Uses the saved video and audio; Instagram catalogue music is not included. Confirm your destination account on Rumble.</p>
         {!file.quality.postCopy?.trim() && <p role="status">No analyzed posting caption is saved yet. The text below is a draft; review it before posting.</p>}
