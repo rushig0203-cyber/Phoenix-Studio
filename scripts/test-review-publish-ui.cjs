@@ -271,8 +271,9 @@ test('posting uses a viewport dialog and Escape closes it without submitting',as
   const h=uiHarness();t.after(()=>h.unmount());h.choose('Rumble upload');await h.flush();
   const dialog=nodes(h.tree).find(node=>node.type==='dialog');assert.ok(dialog);assert.equal(dialog.props['aria-label'],'Post or export this video');
   let nativeClosed=0;dialog.props.ref.current={showModal(){},close(){assert.ok(nodes(h.tree).some(node=>node.type==='dialog'),'Close the native dialog before React removes it so browser focus can return');nativeClosed++;}};
+  let focused=0;h.button('Post / export').props.ref.current={focus(){assert.equal(nativeClosed,1);focused++;}};
   let prevented=false;dialog.props.onCancel({preventDefault(){prevented=true;}});await h.flush();
-  assert.equal(prevented,true);assert.equal(nativeClosed,1);assert.ok(!nodes(h.tree).some(node=>node.type==='dialog'));assert.equal(h.posts.length,0);assert.equal(h.reveals.length,0);
+  assert.equal(prevented,true);assert.equal(nativeClosed,1);assert.equal(focused,1);assert.ok(!nodes(h.tree).some(node=>node.type==='dialog'));assert.equal(h.posts.length,0);assert.equal(h.reveals.length,0);
   h.click('Post / export');await h.flush();assert.ok(nodes(h.tree).some(node=>node.type==='dialog'));
 });
 

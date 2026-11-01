@@ -41,6 +41,7 @@ function publicTrackRecommendation(value: unknown): RecommendedInstagramAudio["r
 export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [chooserOpen, setChooserOpen] = useState(false);
   const postDialog = useRef<HTMLDialogElement>(null);
+  const postButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!chooserOpen) return;
     const modal = postDialog.current;
@@ -166,6 +167,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }
   function close() {
     postDialog.current?.close();
+    postButton.current?.focus();
     rumbleEpoch.current++;
     rumblePreparing.current = false; setRumbleBusy(false);
     epoch.current++; controller.current?.abort(); setChooserOpen(false); setRumbleOpen(false); setPlatform(null); setLoading(false); setConfirmed(false); setSetupChecked(false);
@@ -423,7 +425,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     setCaption(revisableCaption); setConfirmedRevision("");
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
   return <>
-    <button type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => setChooserOpen(true)}>Post / export</button>
+    <button ref={postButton} type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => setChooserOpen(true)}>Post / export</button>
     {chooserOpen && <dialog ref={postDialog} id={chooserId} aria-label="Post or export this video" onCancel={event => { event.preventDefault(); if (!busy) close(); }} className="fixed inset-0 m-auto max-h-[94dvh] w-[min(940px,94vw)] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-[#bdc7a5] bg-[#fffdf7] p-4 text-[#26331f] shadow-2xl backdrop:bg-black/70">
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post / export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
       <div className="flex flex-wrap gap-2" aria-label="Choose a platform">
