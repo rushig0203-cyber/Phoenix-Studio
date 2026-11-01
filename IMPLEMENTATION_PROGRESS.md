@@ -1,6 +1,6 @@
 # Quality-first implementation — September 16, 2026
 
-## November 1 planned-cut music and dashboard depth — awaiting verified installation
+## November 1 planned-cut music and dashboard depth — installed and verified
 
 - New adaptive recorded-music reels analyze three small frames from their final
   planned cuts before choosing the soundtrack. The samples follow final order,
@@ -24,8 +24,25 @@
   context match. Neutral city/building/transport context now remains eligible for
   evacuation/displacement reports even when power shortages are mentioned.
   Stock families, reunions and evacuations cannot impersonate the actual people.
-- Focused queue, caption, music and editing checks pass. The complete remote
-  Windows release checks, installation and browser proof are still required.
+- Source `f8f6eade7c4b2da3ed89927628cad5425b2799c4` passed Windows run
+  `41230866940`: 1,408 Node checks, 48 Python checks, lint, TypeScript, production
+  build, actual music/WebM/offline-speech and public-footage renders. The isolated
+  public fixture decoded all 404 frames, exercised three real planned-frame
+  extractions with an explicitly injected result (no AI account), reused its copy
+  and retained exact output on retry. It does not claim real-provider inference.
+- Bundle `.next-build-gh-41230866940-1`, build ID `TQMD6Mdmi_YImmZdCZnur`, is
+  selected and serving. Manager/worker are healthy and dashboard returns 200.
+  Fresh before/after checks preserved all five owner video/job stores and the
+  exact owner tsconfig. Superseded run `41230600919` was cancelled to include the
+  actual evacuation-news fix and is not release evidence. No local Next build.
+- Actual browser checks at 1280px and 375px confirmed the new layout and all
+  three workflow controls opening/closing without submitting jobs. The normal
+  viewport was restored. Desktop/mobile screenshots are retained outside Git.
+- The controlled local narrated output also received automatic real-provider
+  posting analysis: COMPLETE with sampled alignment marked consistent. This is
+  limited three-frame evidence, not a full-video quality guarantee. Saved Dogs
+  and Jellyfish upload requests contain no Meta-audio override; Phoenix submitted
+  the rendered soundtrack. No failed owner job or social post was used as a test.
 
 ## October 31 stock narration handoff and music priority — installed and verified
 
