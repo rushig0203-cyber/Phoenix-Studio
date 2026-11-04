@@ -5,8 +5,33 @@ const sharp = require('sharp');
 const { kidsAnimationSvg, kidsAnimationContact, planKidsAnimationScene, planKidsPerformance, prepareKidsAnimation } = require('../src/lib/kidsAnimation');
 const { kidsStoryBeat, kidsPoseBudgets, kidsMouthState, quantizeKidsProgress, KIDS_MAX_UNIQUE_FRAMES } = require('../src/lib/kidsAnimationTimeline');
 const { kidsRigMotion } = require('../src/lib/kidsCharacterRig');
+const { krishnaStoryPreset, KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE } = require('../src/lib/krishnaStory');
 sharp.concurrency(1); sharp.cache({ memory: 16, files: 0, items: 16 });
 const base = { topic: 'Bunny and Bear share a letter', caption: 'Bunny hands the letter to Bear.', index: 1, cast: ['bunny', 'bear'], castNames: ['Bunny', 'Bear'], aspect: '16:9', frame: 0 };
+
+test('Krishna starter shows the same pot passed between human characters in either language', async () => {
+  for (const topic of [KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE]) {
+    const preset = krishnaStoryPreset(topic);
+    const scenes = preset.scenes.map((caption, index) => planKidsAnimationScene(topic, caption, index));
+    assert.deepEqual(scenes.map(scene => scene.potAction), ['lift', 'wobble', 'notice', 'offer', 'hold', 'lower', 'smile', 'rest']);
+    assert.ok(scenes.every(scene => scene.prop === 'butter-pot'));
+    assert.equal(scenes[3].objectFrom, 0);
+    assert.equal(scenes[3].objectOwner, 1);
+    assert.equal(scenes[4].objectOwner, 1);
+    assert.equal(scenes.at(-1).objectState, 'grounded');
+    assert.equal(planKidsPerformance(preset.scenes[4], ['krishna', 'meera']).subject, 1);
+    const svg = kidsAnimationSvg({ ...base, topic, caption: preset.scenes[3], scene: scenes[3], sceneProgress: .58, cast: ['krishna', 'meera'] });
+    assert.match(svg, /data-character="krishna"/);
+    assert.match(svg, /data-character="meera"/);
+    assert.match(svg, /data-detail="peacock-feather"/);
+    assert.match(svg, /data-setting="courtyard"/);
+    assert.equal([...svg.matchAll(/data-prop="butter-pot"/g)].length, 1);
+    const result = await sharp(Buffer.from(svg)).png().toBuffer({ resolveWithObject: true });
+    assert.equal(result.info.width, 960);
+    assert.equal(result.info.height, 540);
+    assert.ok(result.data.length > 1000);
+  }
+});
 
 test('actual animation holds the current scene through silence until the next measured onset',async()=>{
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path');

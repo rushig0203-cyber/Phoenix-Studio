@@ -19,6 +19,7 @@ import { assertLocalRequest } from "@/lib/localRequest";
 import { readWritingSettings } from "@/lib/writingSettings";
 import { researchNews } from "@/lib/newsResearch";
 import { buildKidsStorySeries, inventKidsIdea, kidsRendererAvailable } from "@/lib/kidsRenderer";
+import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, krishnaStoryPreset } from "@/lib/krishnaStory";
 import {
   durationFitsPublishingFormat,
   inferPublishingFormat,
@@ -89,6 +90,9 @@ export async function POST(request: Request) {
       }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
+    const studioStory = data.creationType === "children-story" && !data.autoIdea && !data.script?.trim()
+      ? krishnaStoryPreset(data.topic, data.language) : null;
+    if (studioStory && data.batchCount !== 1) return NextResponse.json({ error: "This original Krishna story is one standalone video. Set output quantity to one." }, { status: 400 });
     // Current creation UI uses a bounded plan, not a platform-length selector.
     // Older/manual callers and children's minimums keep their existing contract.
     if (data.autoDuration && !children) {
@@ -96,7 +100,7 @@ export async function POST(request: Request) {
       data.duration = data.script?.trim() ? Math.max(8, Math.min(90, Math.floor(words / 2.7))) : 60;
       data.publishingFormat = "youtube-short";
     }
-    const needsWriter = !data.script?.trim() || (!children && !data.visualTerms?.length);
+    const needsWriter = !studioStory && (!data.script?.trim() || (!children && !data.visualTerms?.length));
     if (needsWriter) {
       const writer = readWritingSettings();
       if (writer.provider === "groq" && (!writer.apiKey || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Groq Free-plan key in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });
@@ -125,7 +129,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    if (children && !(await kidsRendererAvailable(data.creationType !== "children-song" && !data.script?.trim()))) {
+    if (children && !(await kidsRendererAvailable(data.creationType !== "children-song" && needsWriter))) {
       return NextResponse.json({
         error: "The children renderer is unavailable. Check your selected writer, FFmpeg and Windows local voice in Studio health.",
       }, { status: 503 });
@@ -135,7 +139,7 @@ export async function POST(request: Request) {
     }
     if (!children) await requireStockStoryboardRenderer(Boolean(data.newsId), Boolean(data.newsId), data.voice === "local-windows-voice");
 
-    const baseTopic = children && data.autoIdea
+    const baseTopic = studioStory ? (studioStory.language === "Hindi" ? HINDI_KRISHNA_STORY_TITLE : KRISHNA_STORY_TITLE) : children && data.autoIdea
       ? await inventKidsIdea(data.creationType as "children-story" | "children-song")
       : data.topic.trim();
     if (baseTopic.length < 3) {
@@ -151,9 +155,9 @@ export async function POST(request: Request) {
       songStyle: data.songStyle,
       songAudioId: data.songAudioId,
       requestId,
-      language: data.language,
+      language: studioStory?.language || data.language,
       duration: data.duration,
-      autoDuration: data.autoDuration,
+      autoDuration: !!studioStory || data.autoDuration,
       aspect: profile.aspect,
       voice: data.voice,
       subtitleStyle: data.subtitleStyle,
@@ -162,7 +166,7 @@ export async function POST(request: Request) {
       publishingFormat,
       creationType: data.creationType,
       audienceAge: children ? "3-6" : undefined,
-      script: data.script,
+      script: studioStory?.script || data.script,
       scriptOrigin: data.script?.trim() ? "owner" : undefined,
       visualTerms: data.visualTerms,
       visualTermsOrigin: data.visualTerms?.length ? "owner" : undefined,

@@ -9,6 +9,7 @@ import InstagramTopicSuggestions from "@/components/InstagramTopicSuggestions";
 import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
+import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, isKrishnaStoryTopic } from "@/lib/krishnaStory";
 import {
   publishingProfile,
   type PublishingFormat,
@@ -44,6 +45,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const submitInFlight = useRef(false);
   const requestId = useRef(crypto.randomUUID());
   const children = kind.startsWith("Children");
+  const krishnaStarter = isKrishnaStoryTopic(topic) && !narration.trim() && !autoIdea;
   useEffect(() => {
     if (kind !== "Children's song") return;
     const controller = new AbortController();
@@ -55,6 +57,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setSelectedNews(null);
     setTopic(value);
     const nextKind = creationIntent(value);
+    if (isKrishnaStoryTopic(value)) setBatchCount(1);
     if (nextKind !== kind) {
       setKind(nextKind);
       setBatchCount(1);
@@ -225,7 +228,10 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><InstagramTopicSuggestions mode="creation" onChoose={chooseRecommendation} disabled={busy} /><NewsIdeas onChoose={chooseNews} /></> : null}
+              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><InstagramTopicSuggestions mode="creation" onChoose={chooseRecommendation} disabled={busy} /><NewsIdeas onChoose={chooseNews} />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
+                </div></> : null}
             </details>
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}
@@ -263,7 +269,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         </details> : null}
         {kind === "Children's short story" && batchCount === 1 ? <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">Your story (optional)</summary><label className="block text-sm font-semibold">Story text<textarea rows={5} maxLength={20000} value={narration} onChange={event => setNarration(event.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" placeholder="Write your own story, or leave blank for automatic local planning." /></label></details> : null}
 
-        {kind === "Children's short story" && publishingFormat !== "youtube-full" ? (
+        {kind === "Children's short story" && !krishnaStarter && publishingFormat !== "youtube-full" ? (
           <label className="block rounded-xl border border-[#cad7a4] bg-[#f7faef] p-4 text-sm font-semibold">
             Output quantity
             <select

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { reviewRoot } from "./reviewFiles";
 import { requireSongAudio, songAudioPath } from "./songAudio";
 import { preparePixabayAnimationBackground, type PixabayAnimationCredit } from "./pixabayAnimation";
-import { prepareKidsAnimation, KIDS_ANIMATION_FPS } from "./kidsAnimation";
+import { prepareKidsAnimation, KIDS_ANIMATION_FPS, type KidsAnimationKind } from "./kidsAnimation";
+import { isKrishnaStoryTopic, krishnaStoryPreset } from "./krishnaStory";
 import { getCreativeGuidance } from "./qualityManager";
 import { generateWritingModel, withWritingSession, isWritingWaitError, isWritingConfigurationError, writingModelIdentity } from "./writingModel";
 import { readWritingSettings } from "./writingSettings";
@@ -67,8 +68,7 @@ export type KidsRenderResult = {
 };
 
 type Progress = (percent: number, stage: string) => Promise<unknown>;
-type CharacterKind = "dog" | "cat" | "bunny" | "bird" | "bear" | "fox" | "fish";
-type Character = { name: string; kind: CharacterKind };
+type Character = { name: string; kind: KidsAnimationKind };
 type RunOptions = {
   cwd?: string;
   timeoutMs?: number;
@@ -258,6 +258,7 @@ function wordCount(value: string) {
 }
 
 export function castFor(topic: string): [Character, Character] {
+  if (isKrishnaStoryTopic(topic)) return [{ name: "Krishna", kind: "krishna" }, { name: "Meera", kind: "meera" }];
   if (/benny|bunny|rabbit/i.test(topic) || /tika|bird/i.test(topic)) {
     return [{ name: "Benny", kind: "bunny" }, { name: "Tika", kind: "bird" }];
   }
@@ -558,7 +559,7 @@ async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuid
 function captionChunks(script: string, type: KidsRenderInput["creationType"], requestedMaximum=10) {
   const units = type === "children-song"
     ? script.split(/\r?\n/)
-    : script.split(/(?<=[.!?])\s+/);
+    : script.split(/(?<=[.!?।॥])\s+/);
   const chunks: string[] = [];
   const maximumWords = Math.max(5,Math.min(type === "children-song" ? 10 : 12,requestedMaximum));
   const maximumCharacters = type === "children-song" ? 62 : 70;
@@ -766,9 +767,11 @@ function assTimestamp(seconds: number) {
   return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(fraction).padStart(2, "0")}`;
 }
 
-function makeAss(cues: CaptionCue[], width: number, height: number) {
+export function makeKidsCaptionAss(cues: CaptionCue[], width: number, height: number) {
   const fontSize = height > width ? 42 : 36;
   const verticalMargin = height > width ? 76 : 38;
+  const devanagari = cues.some(cue => /\p{Script=Devanagari}/u.test(cue.text));
+  const font = devanagari ? (process.platform === "win32" ? "Nirmala UI" : "Noto Sans Devanagari") : "Arial";
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${width}
@@ -778,7 +781,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Caption,Arial,${fontSize},&H00FFFFFF,&H000000FF,&H00152A3A,&H90000000,-1,0,0,0,100,100,0,0,3,2,0,8,42,42,${verticalMargin},1
+Style: Caption,${font},${fontSize},&H00FFFFFF,&H000000FF,&H00152A3A,&H90000000,-1,0,0,0,100,100,0,0,3,2,0,8,42,42,${verticalMargin},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -951,8 +954,10 @@ export async function renderKidsVideo(
   await fs.writeFile(path.join(directory,"manager-guidance.json"),JSON.stringify(managerGuidance,null,2),"utf8");
   await onProgress(8, input.songAudioId ? "Preparing your recorded song lyrics" : `Planning a story with ${managerGuidance.feedbackCount} owner reviews`);
   const script = await createContent(input,managerGuidance);
+  const preset = input.creationType === "children-story" ? krishnaStoryPreset(input.topic, input.language) : null;
+  const studioStory = preset?.script === script ? preset : null;
   if (!input.songAudioId && copiedSong.test(script)) throw new Error("The local script safety check rejected copied lyrics.");
-  if (!input.songAudioId && !isRelevant(script, input.topic)) throw new Error("The generated script did not match the selected idea.");
+  if (!input.songAudioId && !studioStory && !isRelevant(script, input.topic)) throw new Error("The generated script did not match the selected idea.");
   if (!followsEpisodeBeat(script, input)) throw new Error("The generated script did not follow this episode's distinct story beat.");
   const song = input.creationType === "children-song";
   if (input.sceneNarration?.length && input.sceneNarration.join(" ").replace(/\s+/g, " ") !== script.replace(/\s+/g, " ")) throw new Error("The approved visual scenes do not match the narration. Reopen the draft.");
@@ -984,6 +989,7 @@ export async function renderKidsVideo(
       await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), ...(input.autoDuration ? [] : ["-t", String(requestedSeconds)]), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
     } else {
       if (!input.voice || input.voice === "local-windows-voice") studioVoice = await synthesizeVoiceStudio(captions, narration, input.language);
+      if (!studioVoice && studioStory?.language === "Hindi") throw new Error("Install and enable the free VoiceStudio Hindi voice before rendering this Hindi story.");
       if (!studioVoice) await run(windowsPowerShell, voiceArgs, { timeoutMs: voiceTimeoutMs });
     }
   } catch (error) {
@@ -1029,7 +1035,7 @@ export async function renderKidsVideo(
   try {
     // Original scenery is the coherent default. An explicitly configured stock
     // background remains available without changing any character actions.
-    if (process.env.PHOENIX_KIDS_STOCK_BACKGROUNDS === "1") {
+    if (!studioStory && process.env.PHOENIX_KIDS_STOCK_BACKGROUNDS === "1") {
     animationBackground = await preparePixabayAnimationBackground({
       topic: input.topic,
       directory,
@@ -1060,7 +1066,7 @@ export async function renderKidsVideo(
     },
   });
   await fs.writeFile(path.join(directory, "captions.srt"), makeSrt(cues), "utf8");
-  await fs.writeFile(path.join(directory, "captions.ass"), makeAss(cues, width, height), "utf8");
+  await fs.writeFile(path.join(directory, "captions.ass"), makeKidsCaptionAss(cues, width, height), "utf8");
   await fs.writeFile(path.join(directory, "captions.json"), JSON.stringify(cues, null, 2), "utf8");
   await fs.writeFile(
     path.join(directory, "music.wav"),

@@ -254,6 +254,39 @@ test('generation API always finishes automatically, including older plan-only su
   } finally { kids.kidsRendererAvailable = original; }
 });
 
+test('Krishna starter routes both languages to an authored final-review render without a writing provider', async () => {
+  const kids = require('../src/lib/kidsRenderer');
+  const { creationIntent } = require('../src/lib/creationIntent');
+  const { krishnaStoryPreset, KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE } = require('../src/lib/krishnaStory');
+  const original = kids.kidsRendererAvailable;
+  kids.kidsRendererAvailable = async requireModel => { assert.equal(requireModel, false); return true; };
+  try {
+    const route = require('../src/app/api/generations/route');
+    for (const [topic, title] of [['Krishna 2D', KRISHNA_STORY_TITLE], [HINDI_KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE]]) {
+      assert.equal(creationIntent(topic), "Children's short story");
+      const preset = krishnaStoryPreset(topic);
+      const response = await route.POST(new Request('http://localhost/api/generations', { method: 'POST', headers: { origin: 'http://localhost' },
+        body: JSON.stringify({ ...input(), topic, creationType: 'children-story', script: undefined }) }));
+      assert.equal(response.status, 201);
+      assert.equal((await response.json()).title, title);
+      await drafts.processNextCreationDraft();
+      const saved = read().find(draft => draft.input.topic === title);
+      assert.equal(saved.status, 'APPROVED');
+      const job = (await generation.listGenerationJobs()).find(item => item.id === saved.approvedJobId);
+      const request = JSON.parse(job.requestJson);
+      assert.equal(request.language, preset.language);
+      assert.equal(request.autoDuration, true);
+      assert.equal(request.scriptLocked, true);
+      assert.equal(request.scriptApproved, false);
+      assert.deepEqual(request.sceneNarration, preset.scenes);
+      const ass = kids.makeKidsCaptionAss([{ text: preset.scenes[0], start: 0, end: 3, duration: 3 }], 720, 1280);
+      const font = preset.language === 'Hindi' ? (process.platform === 'win32' ? 'Nirmala UI' : 'Noto Sans Devanagari') : 'Arial';
+      assert.ok(ass.includes(`Style: Caption,${font},`));
+      assert.ok(ass.includes(preset.scenes[0]));
+    }
+  } finally { kids.kidsRendererAvailable = original; }
+});
+
 test('automatic creation estimates owner narration length and retains the same vertical file for both posting targets', async () => {
   const route = require('../src/app/api/generations/route.ts');
   const reachable=generation.generatorReachable, requireRenderer=generation.requireStockStoryboardRenderer;

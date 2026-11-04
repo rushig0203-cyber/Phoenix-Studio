@@ -7,6 +7,7 @@ import { withFileLock } from "./fileLock";
 import { HeavyWorkWaitError, heavyWorkStatus, tryWithLocalRenderSlot } from "./renderResources";
 import { createGenerationJobs, type GenerationInput } from "./generation";
 import { createContent, type KidsRenderInput } from "./kidsRenderer";
+import { krishnaStoryPreset } from "./krishnaStory";
 import { getCreativeGuidance } from "./qualityManager";
 import { narrationBeats } from "./stockStoryboard";
 import { stockNarrationError } from "./stockBrief";
@@ -100,6 +101,8 @@ export function validateDraftScenes(draft: CreationDraft, scenes: DraftScene[], 
       }
     }
   } else if (draft.input.creationType !== "children-song") {
+    const preset = krishnaStoryPreset(draft.input.topic, draft.input.language);
+    if (preset?.script === script) return script;
     const words = script.split(/\s+/).length;
     const minimumWords = draft.input.autoDuration ? 25 : draft.input.duration * 0.8;
     if (words < minimumWords || words > draft.input.duration * 2.8) throw new Error(draft.input.autoDuration ? "Use at least 25 words and a clear, complete story." : "Use roughly 1–2.5 words per second for a clear children's story.");
@@ -255,6 +258,8 @@ export async function processNextCreationDraft() {
     heartbeat.unref();
     try {
       let script = "";
+      const preset = draft.input.creationType === "children-story" ? krishnaStoryPreset(draft.input.topic, draft.input.language) : null;
+      const studioStory = preset?.script === draft.input.script?.trim() ? preset : null;
       // This phase is bounded text and catalogue metadata only: it must never
       // download/decode media, submit singing, or invoke the video renderer.
       const preparePlan = async () => {
@@ -269,12 +274,14 @@ export async function processNextCreationDraft() {
             draft.input = { ...draft.input, creativeBrief: planned.creativeBrief, creativeBriefAttempt: planned.creativeBriefAttempt, kidsStoryAttempt: planned.kidsStoryAttempt };
             await update({ input: draft.input, stage: planned.creativeBriefAttempt ? "Story plan correction saved · checking supported visuals" : planned.kidsStoryAttempt ? "Narration correction saved · checking visible actions and dialogue" : "Original story direction saved · preparing dialogue" });
           });
-          draft.input = { ...draft.input, script, scriptOrigin: draft.input.scriptOrigin || (draft.input.script?.trim() ? "owner" : "local-model") };
+          draft.input = { ...draft.input, script, scriptOrigin: studioStory ? draft.input.scriptOrigin : draft.input.scriptOrigin || (draft.input.script?.trim() ? "owner" : "local-model") };
         }
         await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
       };
-      const writerIdentity = writingModelIdentity();
-      if (isRemoteTextIdentity(writerIdentity)) {
+      const writerIdentity = studioStory ? "" : writingModelIdentity();
+      if (studioStory) {
+        await preparePlan();
+      } else if (isRemoteTextIdentity(writerIdentity)) {
         await withWritingSession(async () => {
           // Recheck inside the pinned session. A concurrent settings change must
           // never turn the remote-only exemption into an unreserved local model.
@@ -299,7 +306,7 @@ export async function processNextCreationDraft() {
         }, "Song audio preparation");
       }
       const scenes = draft.scenes.length ? draft.scenes
-        : (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, 18))
+        : (studioStory?.scenes || (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, 18)))
           .map(narration => ({ narration, query: "" }));
       // Long lyric sheets are grouped without changing a word.
       const grouped = (scenes.length > 18 ? narrationBeats(script.replace(/\s+/g, " "), 18).map(narration => ({ narration, query: "" })) : scenes).map(scene => ({ ...scene, narration: scene.narration.replace(/\s+/g, " ").trim() }));

@@ -1,7 +1,9 @@
 import type { CreationKind } from "./creationRecommendations";
+import { isKrishnaStoryTopic } from "./krishnaStory";
 
 /** Conservative routing, not a claim of semantic understanding. */
 export function creationIntent(topic: string): CreationKind {
+  if (isKrishnaStoryTopic(topic)) return "Children's short story";
   const childAudience = /\b(?:kids?|children|toddlers?|preschool|nursery|bedtime)\b|ages?\s*3\s*[-–]\s*6/i.test(topic);
   if (childAudience && /\b(?:song|sing|rhyme|music)\b/i.test(topic)) return "Children's song";
   if (childAudience && /\b(?:story|tale|animation|animated|cartoon)\b/i.test(topic)) return "Children's short story";

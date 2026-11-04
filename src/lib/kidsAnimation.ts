@@ -2,15 +2,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { kidsCharacterSvg, kidsRigMotion, type KidsRigPose } from "./kidsCharacterRig";
+import { krishnaStoryCue } from "./krishnaStory";
 import { kidsNarratedActions, reportsKiteFlight, reportsKiteResolution } from "./kidsObjectEvents";
 import { kidsMouthState, kidsPoseBudgets, kidsShotFor, kidsStoryBeat, mix, ramp, quantizeKidsProgress, unit, KIDS_MAX_UNIQUE_FRAMES, type KidsAnimationPerformanceFrame, type KidsExpression, type KidsShot, type KidsStoryIntent } from "./kidsAnimationTimeline";
 export type { KidsAnimationPerformanceFrame } from "./kidsAnimationTimeline";
 
 export type KidsAnimationCue = { text: string; start: number; end: number };
-export type KidsAnimationKind = "dog" | "cat" | "bunny" | "bird" | "bear" | "fox" | "fish";
+export type KidsAnimationKind = "dog" | "cat" | "bunny" | "bird" | "bear" | "fox" | "fish" | "krishna" | "meera";
 export type KidsAnimationAction = "clap" | "hop" | "wave" | "march" | "sway" | "flap" | "drum" | "reach" | "sleep" | "listen";
-type Prop = "rain" | "umbrella" | "flower" | "drum" | "kite" | "ball" | "star" | "gift" | "toys" | "bridge" | "letter" | "bus" | "none";
-export type KidsAnimationScene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean; emotion: KidsExpression; emotionFrom?: KidsExpression; kiteState: "tangled" | "held" | "flying"; kiteCaughtHigh: boolean; kiteFrom?: "tangled" | "held" | "flying"; kiteFromHigh?: boolean; intent: KidsStoryIntent; objectState: "grounded" | "held" | "offered" | "received" | "arranged"; objectOwner: 0 | 1; objectFrom?: 0 | 1; shot: KidsShot; focus?: 0 | 1 };
+type Prop = "rain" | "umbrella" | "flower" | "drum" | "kite" | "ball" | "star" | "gift" | "toys" | "bridge" | "letter" | "bus" | "butter-pot" | "none";
+export type KidsAnimationScene = { action: KidsAnimationAction; prop: Prop; theme: "garden" | "night" | "ocean" | "room"; close: boolean; emotion: KidsExpression; emotionFrom?: KidsExpression; kiteState: "tangled" | "held" | "flying"; kiteCaughtHigh: boolean; kiteFrom?: "tangled" | "held" | "flying"; kiteFromHigh?: boolean; intent: KidsStoryIntent; objectState: "grounded" | "held" | "offered" | "received" | "arranged"; objectOwner: 0 | 1; objectFrom?: 0 | 1; shot: KidsShot; focus?: 0 | 1; potAction?: NonNullable<ReturnType<typeof krishnaStoryCue>>["action"] };
 type Scene = KidsAnimationScene;
 type Stage = { width: number; height: number; ground: number; y: number; size: number };
 
@@ -27,6 +28,17 @@ const line = (x1: number, y1: number, x2: number, y2: number, fill: string, widt
   `<path d="M${n(x1)} ${n(y1)} L${n(x2)} ${n(y2)}" stroke="${fill}" stroke-width="${width}" stroke-linecap="round" fill="none"/>`;
 
 export function planKidsAnimationScene(topic: string, text: string, index = 0, previous?: Scene): Scene {
+  const pot = krishnaStoryCue(text);
+  if (pot && /krishna|कृष्ण/iu.test(topic)) {
+    const offer = pot.action === "offer", settled = pot.action === "smile" || pot.action === "rest";
+    const intent = offer ? "offer" : settled || pot.action === "notice" ? "observe" : "explore";
+    const emotion = pot.action === "wobble" ? "worried" : settled ? "happy" : "determined";
+    return { action: settled ? "listen" : "reach", prop: "butter-pot", theme: "garden", close: false,
+      emotion, kiteState: "held", kiteCaughtHigh: false, intent, potAction: pot.action,
+      objectState: settled || pot.action === "lower" ? "grounded" : offer ? "offered" : "held",
+      objectOwner: offer ? 1 : pot.action === "notice" ? 0 : pot.actor,
+      objectFrom: offer ? 0 : undefined, shot: kidsShotFor(intent, index, -1, true) };
+  }
   topic = topic.toLowerCase();
   const words = kidsNarratedActions(text).toLowerCase();
   const theme = /\b(?:underwater|(?:in|into|beneath) (?:the |an? |their )?ocean)\b/.test(words) ? "ocean"
@@ -94,6 +106,12 @@ function narratedKidsAction(words: string, kite = false): KidsAnimationAction | 
 }
 
 export function planKidsPerformance(text: string, cast: [KidsAnimationKind, KidsAnimationKind], names?: [string, string], song = false) {
+  const pot = cast[0] === "krishna" && !song ? krishnaStoryCue(text) : undefined;
+  if (pot) {
+    const action = pot.action === "smile" || pot.action === "rest" ? "listen" : "reach";
+    const actions: Array<KidsAnimationAction | undefined> = pot.actor ? [undefined, action] : [action, undefined];
+    return { active: [pot.actor === 0, pot.actor === 1], actions, subject: pot.actor, speaker: -1 };
+  }
   const lower = text.toLowerCase();
   const narration = kidsNarratedActions(lower);
   const aliases = cast.map((kind, index) => [kind, names?.[index], kind === "bunny" ? "rabbit" : kind === "dog" ? "puppy" : kind === "cat" ? "kitten" : ""].filter(Boolean).map(name => name!.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -252,6 +270,10 @@ function sceneProp(stage: Stage, scene: Scene, phase: number, contact?: { x: num
   if (prop === "flower") return petalFlower(x, contact ? y - 28 : ground - 48, 25, phase * .15, "#e7a4ba");
   if (prop === "umbrella") return `<g transform="translate(${n(contact ? x - 19 : x)} ${n(contact ? y - 98 : y - 25)}) rotate(${n(contact ? 0 : Math.sin(phase) * 9)})"><path d="M-69 0 Q0 -100 69 0 Q45 -14 23 0 Q0 -14 -23 0 Q-45 -14 -69 0Z" fill="#b8a1df" stroke="${ink}" stroke-width="3"/><path d="M0 0 V88 Q0 109 19 98" fill="none" stroke="${ink}" stroke-width="5"/></g>`;
   if (prop === "ball") return `<g data-object-state="${scene.objectState}" transform="translate(${n(x)} ${n(contact ? y : ground - 28)}) rotate(${n((contact?.transfer || 0) * 90)})">${ellipse(0, 0, 28, 28, "#eab674", ink)}<path d="M-28 0 H28 M0 -28 V28" stroke="#fff0d4" stroke-width="5"/></g>`;
+  if (prop === "butter-pot") {
+    const tilt = scene.potAction === "wobble" ? Math.sin(phase * 15) * (1 - phase / (tau * .2)) * 13 : 0;
+    return `<g data-prop="butter-pot" data-object-state="${scene.objectState}" transform="translate(${n(x)} ${n(contact ? y : ground - 29)}) rotate(${n(tilt)})"><path d="M-29 -15 Q-49 -4 -43 15 Q-35 37 0 31 Q35 37 43 15 Q49 -4 29 -15Z" fill="#b76d4f" stroke="#593e37" stroke-width="3"/><path d="M-42 6 Q0 24 42 6 M-33 22 Q0 34 33 22" fill="none" stroke="#f3c88d" stroke-width="3"/>${ellipse(0, -15, 34, 12, "#ce875e", "#593e37")}${ellipse(0, -16, 26, 7, "#6e4338")}<path d="M-23 -16 Q-16 -29 -7 -22 Q5 -36 13 -23 Q24 -26 25 -16 Q4 -6 -23 -16Z" fill="#fff1b8" stroke="#dfb96c" stroke-width="2"/></g>`;
+  }
   if (prop === "kite") {
     const position = kitePosition(stage, scene, phase);
     const branch = scene.kiteCaughtHigh ? `<path d="M${w * .85} ${ground} Q${w * .89} ${position.y} ${position.x + 115} ${position.y - 54} M${position.x + 120} ${position.y - 40} L${position.x - 15} ${position.y - 27}" fill="none" stroke="#997b61" stroke-width="12" stroke-linecap="round"/>` : "";
@@ -274,9 +296,9 @@ export type KidsAnimationSvgOptions = {
 };
 
 /** The same coordinate contacts drive the rig, strings and held objects. */
-export function kidsAnimationContact(aspect: "9:16" | "16:9", progress: number, owner: 0 | 1 = 0, transfer = false) {
+export function kidsAnimationContact(aspect: "9:16" | "16:9", progress: number, owner: 0 | 1 = 0, transfer = false, closeBlocking = transfer) {
   const vertical = aspect === "9:16", width = vertical ? 540 : 960, ground = vertical ? 734 : 442, size = vertical ? 1.12 : 1.04;
-  const positions = [width * (vertical ? .26 : transfer ? .36 : .29), width * (vertical ? .74 : transfer ? .64 : .71)];
+  const positions = [width * (vertical ? .26 : closeBlocking ? .36 : .29), width * (vertical ? .74 : closeBlocking ? .64 : .71)];
   const fromX = positions[owner] + (owner ? -1 : 1) * 86 * size;
   const toX = positions[1 - owner] + (owner ? 1 : -1) * 86 * size;
   const amount = transfer ? ramp(progress, .35, .78) : 0;
@@ -307,13 +329,18 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const beat = kidsStoryBeat(p);
   const visibleScene = scene.prop === "kite" && scene.kiteFrom && p < .58 ? { ...scene, kiteState: scene.kiteFrom, kiteCaughtHigh: !!scene.kiteFromHigh } : scene;
   const colors = scene.theme === "night" ? ["#344875", "#7b90ac"] : scene.theme === "ocean" ? ["#73bdce", "#b5e8e0"] : ["#b4d9da", "#f7ebce"];
-  const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star"].includes(scene.prop);
+  const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star", "butter-pot"].includes(scene.prop);
   const interacting = portable && (scene.action === "reach" || ["held", "offered", "received"].includes(scene.objectState));
   const directSubject = planned.subject === 0 || planned.subject === 1 ? planned.subject : undefined;
   const explicitHolder = scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsNarratedActions(options.caption));
   const owner = (scene.intent === "offer" || explicitHolder) && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
   const transfer = scene.intent === "offer";
-  let contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer) : undefined;
+  const closeBlocking = transfer || scene.prop === "butter-pot";
+  let contact = interacting ? kidsAnimationContact(options.aspect, p, owner, transfer, closeBlocking) : undefined;
+  if (contact && (scene.potAction === "lift" || scene.potAction === "lower")) {
+    const lift = scene.potAction === "lift" ? beat.action : 1 - beat.action;
+    contact = { ...contact, x: mix(w / 2, contact.x, lift), y: mix(ground - 29, contact.y, lift) };
+  }
   let kiteHolder = scene.prop === "kite" ? kidsAnimationContact(options.aspect, p, owner) : undefined;
   const shot = options.scene?.shot || kidsShotFor(scene.intent, options.index, mouth.speaker, scene.prop !== "none");
   const focus = shot === "speaker" ? (scene.focus ?? Math.max(0, planned.speaker, mouth.speaker)) : shot === "reaction" ? (active[0] !== active[1] ? (active[0] ? 1 : 0) : options.index % 2) : -1;
@@ -321,6 +348,10 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const zoom = shot === "wide" ? 1 : shot === "reaction" || shot === "speaker" ? (vertical ? 1.16 : 1.24) : shot === "detail" ? (vertical ? 1.07 : 1.18) : (vertical ? 1.02 : 1.06);
   const camera = { zoom: zoom + (shot === "detail" ? .035 * beat.action : 0), x: mix(w / 2, focusX, .42), y: vertical ? ground - 163 : ground - 132 };
   let world = backdrop(stage, scene, phase * .13, !!options.transparent);
+  if (options.cast[0] === "krishna" && !options.transparent) {
+    const arch = `M${n(w * .34)} ${ground} v-151 a${n(w * .16)} 113 0 0 1 ${n(w * .32)} 0 v151Z`;
+    world += `<g data-setting="courtyard"><path d="M0 ${ground - 138} H${w} V${ground} H0Z" fill="#ddab7c"/><path d="${arch}" fill="#a26250" stroke="#f7d5a5" stroke-width="12"/><path d="M0 ${ground} H${w} V${ground + 31} H0Z" fill="#d5a484"/><path d="M0 ${ground + 14} H${w}" fill="none" stroke="#bd856c" stroke-width="3"/></g>`;
+  }
   if (!interacting && scene.prop !== "drum" && scene.prop !== "bus") world += sceneProp(stage, visibleScene, phase * .2);
   if (scene.prop === "bus") {
     const drive = ramp(p, .16, .72), busX = mix(w * .43, w * .57, drive), busY = ground - 97;
@@ -341,7 +372,7 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
       if (scene.prop === "kite" && i === owner && scene.objectState === "held" && !explicitAction) action = "reach";
       if (scene.prop === "kite" && i !== owner && scene.intent !== "untangle" && action === "reach") action = "listen";
       const travel = action === "march" ? (i ? -1 : 1) * ramp(p, .14, .70) * (vertical ? 18 : 39) : 0;
-      const x = w * (i ? (vertical ? .74 : transfer ? .64 : .71) : (vertical ? .26 : transfer ? .36 : .29)) + travel, y = ground - 176 * size;
+      const x = w * (i ? (vertical ? .74 : closeBlocking ? .64 : .71) : (vertical ? .26 : closeBlocking ? .36 : .29)) + travel, y = ground - 176 * size;
       const rigContact = scene.prop === "kite" && action === "reach" ? kidsAnimationContact(options.aspect, p, scene.intent === "untangle" ? i as 0 | 1 : owner) : contact;
       const pose = actorPose(action, p, scene, i, mouth, rigContact, x, y, size);
       if (transfer && i === owner && pose.handTarget) {
@@ -371,7 +402,8 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   }
   world += foreground(stage, scene, phase * .13);
   // Preserve a caption-safe top region; crop the story world around the actors.
-  const cameraTransform = `translate(${n(w / 2)} ${n(camera.y)}) scale(${n(camera.zoom)}) translate(${n(-camera.x)} ${n(-camera.y)})`;
+  const courtyardPortrait = vertical && scene.prop === "butter-pot";
+  const cameraTransform = `translate(${n(w / 2)} ${n(camera.y - (courtyardPortrait ? 92 : 0))}) scale(${n(courtyardPortrait ? Math.max(1.1, camera.zoom) : camera.zoom)}) translate(${n(-camera.x)} ${n(-camera.y)})`;
   const body = (options.transparent ? "" : `<rect width="${w}" height="${h}" fill="url(#sky)"/>`) + `<g data-shot="${shot}" data-scene-progress="${n(p)}" data-timeline="finite" transform="${cameraTransform}">${world}</g>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient><linearGradient id="leaves" x2=".7" y2="1"><stop stop-color="#bed795"/><stop offset=".5" stop-color="#84b48c"/><stop offset="1" stop-color="#558c7a"/></linearGradient></defs>${body}</svg>`;
 }
