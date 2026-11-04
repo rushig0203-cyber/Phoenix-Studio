@@ -15,6 +15,25 @@ const stockSource = (file: ReviewFile) => file.source.kind !== "upload" || file.
 const footageReview = (file: ReviewFile) => stockSource(file) && !file.delivery?.creationType?.startsWith("children") && !file.audience.startsWith("kids");
 const category = (file: ReviewFile) => file.editedFrom ? "edited" : file.delivery?.creationType?.startsWith("children") || file.audience.startsWith("kids") ? "children" : stockSource(file) ? "stock" : "source";
 const categoryNames: Record<string, string> = { children: "Children’s animation", stock: "Stock video", source: "Source clip", edited: "Edited copy" };
+type LibraryView = "generated" | "posted" | "episodes";
+const viewNames: Record<LibraryView, string> = { generated: "Generated", posted: "Posted", episodes: "Episode clips" };
+const searchText = (file: ReviewFile) => `${file.title} ${file.quality.hashtags.join(" ")} ${file.quality.postCopy || ""}`.toLowerCase();
+
+function episodeOf(file: ReviewFile, byId: Map<string, ReviewFile>) {
+  const visited = new Set<string>();
+  let current: ReviewFile | undefined = file;
+  while (current && !visited.has(current.id)) {
+    if (current.episode) return current.episode;
+    // Older source clips have no folder metadata. Recover their upload identity.
+    if (current.processing && !current.processing.scoreKind && !current.delivery && !stockSource(current) && !current.source.filename.startsWith("local-cartoon-")) {
+      const title = current.source.filename.replace(/\.[^.]+$/, "").replace(/_+/g, " ").trim();
+      return { id: current.processing.jobId, title: title || "Untitled episode", start: current.processing.start };
+    }
+    visited.add(current.id);
+    current = current.editedFrom ? byId.get(current.editedFrom) : undefined;
+  }
+}
+
 const seconds = (value?: number) => {
   if (value === undefined || !Number.isFinite(value)) return "";
   const rounded = Math.max(0, Math.round(value));
@@ -49,7 +68,8 @@ function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
 export default function ReviewLibrary({ files, loading, onRefresh }: { files: ReviewFile[]; loading: boolean; onRefresh: () => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [publicationView, setPublicationView] = useState<"generated" | "posted">("generated");
+  const [view, setView] = useState<LibraryView>("generated");
+  const [episodeId, setEpisodeId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
@@ -101,16 +121,40 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
 
   // An older in-flight poll must not briefly bring a just-deleted card back.
   const available = files.filter(file => !locallyTrashed.has(file.id));
-  const posted = available.filter(file => file.publication?.status === "POSTED" && file.publication.postedTo.length > 0);
-  const generated = available.filter(file => !(file.publication?.status === "POSTED" && file.publication.postedTo.length > 0));
+  const byId = new Map(files.map(file => [file.id, file]));
+  const episodes = new Map<string, { title: string; clips: Array<{ file: ReviewFile; start: number }> }>();
+  const posted: ReviewFile[] = [], generated: ReviewFile[] = [];
+  for (const file of available) {
+    const episode = episodeOf(file, byId);
+    if (episode) {
+      const folder = episodes.get(episode.id) ?? { title: episode.title, clips: [] };
+      folder.clips.push({ file, start: episode.start });
+      if (file.episode) folder.title = file.episode.title;
+      episodes.set(episode.id, folder);
+    } else {
+      (file.publication?.status === "POSTED" && file.publication.postedTo.length ? posted : generated).push(file);
+    }
+  }
   const search = query.trim().toLowerCase();
   const filtered = search !== "" || filter !== "all";
-  const visible = (trashOpen ? trash : publicationView === "posted" ? posted : generated).filter(file => (filter === "all" || category(file) === filter) && `${file.title} ${file.quality.hashtags.join(" ")} ${file.quality.postCopy || ""}`.toLowerCase().includes(search));
-  const pages = Math.max(1, Math.ceil(visible.length / pageSize));
+  const episodeView = !trashOpen && view === "episodes";
+  const openEpisode = episodeView && episodeId ? episodes.get(episodeId) : undefined;
+  const showFolders = episodeView && !openEpisode;
+  const folders = showFolders ? [...episodes].filter(([, folder]) => folder.title.toLowerCase().includes(search) || folder.clips.some(({ file }) => searchText(file).includes(search))) : [];
+  const episodeClips = openEpisode?.clips.sort((a, b) => a.start - b.start).map(clip => clip.file) ?? [];
+  const currentFiles = trashOpen ? trash : episodeView ? episodeClips : view === "posted" ? posted : generated;
+  const visible = currentFiles.filter(file => (filter === "all" || category(file) === filter) && searchText(file).includes(search));
+  const resultCount = showFolders ? folders.length : visible.length;
+  const pages = Math.max(1, Math.ceil(resultCount / pageSize));
   const currentPage = Math.min(page, pages);
   const displayed = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const preview = !trashOpen && files.find(file => file.id === previewId);
+  const preview = !trashOpen && available.find(file => file.id === previewId);
   const undoFile = trash.find(file => file.id === undoId);
+  const viewCounts = { generated: generated.length, posted: posted.length, episodes: episodes.size };
+
+  function openFolder(id: string | null) {
+    setEpisodeId(id); setQuery(""); setFilter("all"); setPage(1); setPreviewId(null);
+  }
 
   return <section id="library" aria-label="Review library" className="mt-8 scroll-mt-5 rounded-2xl border border-[#bfcaa6] bg-[#fffdf7] p-5 sm:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -119,29 +163,40 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
           <summary aria-label="About your video library" title="About your video library" className="flex cursor-pointer list-none rounded-full p-1 hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a] [&::-webkit-details-marker]:hidden"><Info aria-hidden="true" className="h-4 w-4" /></summary>
           <div className="absolute left-0 top-8 z-10 w-64 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-xs leading-5 shadow-lg">
             <p>Preview, edit, then post. Completed rendering still needs your visual and listening review.</p>
-            <p>{publicationView === "posted" ? "Confirmed Instagram Reel or YouTube uploads made through Phoenix. Queued, failed and Story-only uploads are not counted." : "Videos without a confirmed Phoenix post. Downloading or posting outside Phoenix does not move a video to Posted automatically."}</p>
+            <p>{view === "episodes" ? "Open an episode folder to see its uploaded-source clips in timeline order." : view === "posted" ? "Confirmed Instagram Reel or YouTube uploads made through Phoenix. Queued, failed and Story-only uploads are not counted." : "Videos without a confirmed Phoenix post. Downloading or posting outside Phoenix does not move a video to Posted automatically."}</p>
             <p>Only this page’s previews load; paging keeps every saved video available.</p>
           </div>
         </details>
       </div>
-      <div className="flex flex-wrap gap-4 text-sm font-semibold"><button type="button" onClick={() => void shortcut()} className="inline-flex items-center gap-1"><FolderOpen className="h-4 w-4" />Desktop shortcut</button><button type="button" aria-pressed={trashOpen} onClick={() => { if (!trashOpen) void loadTrash(); setTrashOpen(value => !value); setPage(1); setPreviewId(null); }} className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 ${trashOpen ? "bg-[#e8edd7]" : ""}`}><Trash2 className="h-4 w-4" />{trashOpen ? "Back to videos" : "Trash"}</button></div>
+      <div className="flex flex-wrap gap-4 text-sm font-semibold"><button type="button" onClick={() => void shortcut()} className="inline-flex items-center gap-1"><FolderOpen className="h-4 w-4" />Desktop shortcut</button><button type="button" aria-pressed={trashOpen} onClick={() => { if (!trashOpen) void loadTrash(); setTrashOpen(value => !value); setQuery(""); setFilter("all"); setPage(1); setPreviewId(null); }} className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 ${trashOpen ? "bg-[#e8edd7]" : ""}`}><Trash2 className="h-4 w-4" />{trashOpen ? "Back to videos" : "Trash"}</button></div>
     </div>
     {!trashOpen ? <>
-      <nav aria-label="Library posting views" className="mt-4 flex flex-wrap gap-2">
-        {(["generated", "posted"] as const).map(view => <button key={view} type="button" aria-pressed={publicationView === view} onClick={() => { setPublicationView(view); setPage(1); setPreviewId(null); }} className={`rounded-full border border-[#bdc7a5] px-4 py-2 text-sm font-semibold ${publicationView === view ? "bg-[#394a2a] text-white" : "bg-white text-[#394a2a]"}`}>{view === "generated" ? "Generated" : "Posted"} · {view === "generated" ? generated.length : posted.length}</button>)}
+      <nav aria-label="Library views" className="mt-4 flex flex-wrap gap-2">
+        {(["generated", "posted", "episodes"] as const).map(tab => <button key={tab} type="button" aria-pressed={view === tab} onClick={() => { setView(tab); openFolder(null); }} className={`rounded-full border border-[#bdc7a5] px-4 py-2 text-sm font-semibold ${view === tab ? "bg-[#394a2a] text-white" : "bg-white text-[#394a2a]"}`}>{viewNames[tab]} · {viewCounts[tab]}</button>)}
       </nav>
     </> : null}
     <ReviewStorageSummary />
     {trashOpen ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Trash is recoverable. These files still use disk space; nothing here is permanently erased.</p> : null}
+    {openEpisode ? <div className="mt-5">
+      <button type="button" onClick={() => openFolder(null)} className="text-sm font-semibold underline">Back to episode folders</button>
+      <h3 className="mt-2 break-words text-xl font-semibold">{openEpisode.title}</h3>
+    </div> : null}
     <div className="mt-4 flex flex-wrap gap-3">
-      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#bdc7a5] bg-white px-3"><Search className="h-4 w-4 shrink-0" /><input aria-label="Search videos" type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search titles or hashtags" className="w-full min-w-0 bg-transparent py-2.5 text-sm outline-none" /></label>
-      <select aria-label="Video category" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm"><option value="all">All video types</option>{Object.entries(categoryNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#bdc7a5] bg-white px-3"><Search className="h-4 w-4 shrink-0" /><input aria-label={showFolders ? "Search episode folders" : "Search videos"} type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder={showFolders ? "Search episode or clip titles" : "Search titles or hashtags"} className="w-full min-w-0 bg-transparent py-2.5 text-sm outline-none" /></label>
+      {!episodeView ? <select aria-label="Video category" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm"><option value="all">All video types</option>{Object.entries(categoryNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select> : null}
       {filtered ? <button type="button" onClick={() => { setQuery(""); setFilter("all"); setPage(1); }} className="rounded-lg border border-[#bdc7a5] px-3 py-2 text-sm">Clear filters</button> : null}
     </div>
-    {visible.length ? <p className="mt-3 text-xs text-[#687657]">Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} of {visible.length}{filtered ? " matching videos" : " videos"}.</p> : null}
+    {resultCount ? <p className="mt-3 text-xs text-[#687657]">Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, resultCount)} of {resultCount}{filtered ? " matching" : ""} {showFolders ? "folders" : episodeView ? "clips" : "videos"}.</p> : null}
     {notice ? <div role="status" className="mt-3 rounded-lg bg-[#edf3de] p-3 text-sm">{notice} {undoFile ? <button type="button" disabled={busy !== null} onClick={() => void move(undoFile, true)} className="ml-2 font-bold underline">Undo</button> : null}</div> : null}
     {error ? <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
-    {!displayed.length ? <p className="mt-5 rounded-xl border border-dashed p-7 text-center text-sm text-[#687657]">{loading || trashLoading ? "Loading videos…" : filtered ? "No videos match these filters. Clear filters to see videos in this view." : trashOpen ? "Trash is empty." : publicationView === "posted" ? "No confirmed Reel or YouTube posts yet. Story history is in Post / export." : posted.length ? "All current videos have a confirmed post. Open Posted to find them." : "No finished videos yet. Use Create to start a video."}</p> : <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    {!resultCount ? <p className="mt-5 rounded-xl border border-dashed p-7 text-center text-sm text-[#687657]">{loading || trashLoading ? "Loading videos…" : filtered ? showFolders ? "No episode folders match this search." : "No videos match these filters. Clear filters to see videos in this view." : trashOpen ? "Trash is empty." : episodeView ? "No episode clips yet. Process an uploaded video to create a folder here." : view === "posted" ? "No confirmed Reel or YouTube posts yet. Story history is in Post / export." : posted.length ? "Open Posted to find finished videos with confirmed posts." : episodes.size ? "Open Episode clips to find finished clips from your uploads." : "No finished videos yet. Use Create to start a video."}</p> : showFolders ? <ul className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {folders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(([id, folder]) => <li key={id}>
+        <button type="button" onClick={() => openFolder(id)} className="flex w-full items-center gap-3 rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-4 text-left hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-[#394a2a]">
+          <FolderOpen aria-hidden="true" className="h-5 w-5 shrink-0 text-[#687657]" />
+          <span className="min-w-0 break-words text-sm font-semibold">{folder.title}<span className="block text-xs font-normal text-[#687657]">{folder.clips.length} {folder.clips.length === 1 ? "clip" : "clips"}</span></span>
+        </button>
+      </li>)}
+    </ul> : <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {displayed.map(file => {
         const output = file.outputs[reviewTarget(file)];
         return <article key={file.id} className="flex min-w-0 flex-col rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-3">

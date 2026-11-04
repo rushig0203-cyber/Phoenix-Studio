@@ -17,6 +17,8 @@ export type ReviewFile = {
   publication?: import("./reviewPublicationSummary").ReviewPublicationSummary;
   trashedAt?: string;
   editedFrom?: string;
+  /** The original episode folder and source timestamp survive edited exports. */
+  episode?: { id: string; title: string; start: number };
   editableMaster?: boolean;
   artifacts?: import("./reviewArtifacts").ReviewArtifacts;
   captionCues?: Array<{ start: number; end: number; text: string }>;

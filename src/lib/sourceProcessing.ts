@@ -1174,6 +1174,7 @@ function buildReviewItem(
   const audioDecision = part.metrics.audio.usable ? "natural-audio-preserved" as const : "local-music-replaced" as const;
   const item: ReviewFile = makeReviewFile({
     title: clipTitle,
+    episode: job.stockSource ? undefined : { id: job.id, title: job.title, start: part.start },
     targets: ["instagram", "youtube"],
     source: job.stockSource ? { kind: job.stockSource.provider, filename: job.sourceFile, providerUrl: job.stockSource.sourcePage, providerMediaId: job.stockSource.mediaId, licence: `${stockLicenceName(job.stockSource.provider, job.stockSource.licence)} · ${job.stockSource.creator} · verify reuse rights before posting`, stockLicence: job.stockSource.licence, downloadedAt: job.createdAt } : { kind: "upload", filename: job.sourceFile, licence: "Local file supplied by studio owner" },
     audience: "general",

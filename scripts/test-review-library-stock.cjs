@@ -59,7 +59,7 @@ function harness(t, records = files) {
     ref(initial) { const index = position++; if (!(index in hooks)) hooks[index] = { current: initial }; return hooks[index]; },
     render() { position = 0; activeHarness = h; tree = ReviewLibrary({ files: records, loading: false, onRefresh: async () => {} }); return tree; },
     filter(value) { const input = nodes(tree, node => node.props?.['aria-label'] === 'Video category')[0]; input.props.onChange({ target: { value } }); h.render(); },
-    query(value) { const input = nodes(tree, node => node.props?.['aria-label'] === 'Search videos')[0]; input.props.onChange({ target: { value } }); h.render(); },
+    query(value) { const input = nodes(tree, node => node.props?.type === 'search')[0]; input.props.onChange({ target: { value } }); h.render(); },
     button(label) { return nodes(tree, node => typeof node.props?.onClick === 'function' && text(node) === label)[0]; },
     setRecords(value) { records = value; h.render(); },
     titles() { return nodes(tree, node => node.type === 'h3').map(text); },
@@ -156,14 +156,43 @@ test('SSR retains video-specific copy and preview with one collapsed posting and
 test('footage has no scoring/recommendation controls while source-episode ranking remains', t => {
   const processing = { jobId: 'fixture', start: 0, end: 45, format: '9:16', audioDecision: 'preserved', score: 80, rank: 1, reason: 'Fixture score rationale', subtitleDecision: 'none' };
   const h = harness(t, [fixture('stock-score', 'Footage reel', { source: files[0].source, processing }), fixture('episode-score', 'Episode clip', { processing }), fixture('edited-stock-score', 'Edited footage reel', { source: files[0].source, editedFrom: 'stock-score', processing })]);
-  const cards = nodes(h.tree, node => node.type === 'article');
-  assert.equal(cards.length, 3);
-  assert.doesNotMatch(text(cards[0]), /Manager recommendation|Fixture score rationale|Rate this video/);
-  assert.match(text(cards[1]), /Manager recommendation/);
-  assert.match(text(cards[1]), /Fixture score rationale/);
-  assert.match(text(cards[1]), /Rate this video/);
-  assert.match(text(cards[0]), /Posting details & quality notes/);
-  assert.doesNotMatch(text(cards[2]), /Manager recommendation|Fixture score rationale|Rate this video/);
+  const cards = () => nodes(h.tree, node => node.type === 'article');
+  assert.equal(cards().length, 2);
+  for (const card of cards()) assert.doesNotMatch(text(card), /Manager recommendation|Fixture score rationale|Rate this video/);
+  assert.match(text(cards()[0]), /Posting details & quality notes/);
+  h.button('Episode clips · 1').props.onClick(); h.render();
+  h.button('episode1 clip').props.onClick(); h.render();
+  assert.equal(cards().length, 1);
+  assert.match(text(cards()[0]), /Manager recommendation.*Fixture score rationale/);
+  assert.match(text(cards()[0]), /Rate this video/);
+});
+
+test('episode folders recover legacy clips and show posted and edited clips in source order', t => {
+  const processing = { jobId: 'episode-a', start: 140, end: 260, format: '9:16', score: 80, rank: 1 };
+  const source = { kind: 'upload', filename: 'Severance_Season_7_Episode_1.mp4', licence: 'Local file supplied by studio owner' };
+  const legacy = fixture('late', 'Closing scene', { source, processing });
+  const records = [
+    legacy,
+    fixture('edit', 'Edited ending', { source, editedFrom: legacy.id }),
+    fixture('stock', 'Unrelated stock footage', { source: files[0].source, processing }),
+    fixture('early', 'Opening scene', { source, episode: { id: 'episode-a', title: 'Severance Season 7, Episode 1', start: 0 },
+      publication: { status: 'POSTED', postedTo: [{ platform: 'instagram' }] } }),
+    fixture('other', 'Other upload', { source, processing: { ...processing, jobId: 'episode-b' } }),
+  ];
+  const h = harness(t, records);
+  assert.deepEqual(h.titles(), ['Unrelated stock footage']);
+  h.button('Episode clips · 2').props.onClick(); h.render();
+  assert.equal(nodes(h.tree, node => node.type?.name === 'Poster').length, 0);
+  assert.ok(h.button('Severance Season 7, Episode 13 clips'));
+  assert.ok(h.button('Severance Season 7 Episode 11 clip'), 'Same input filename never merges separate uploads');
+  h.query('closing scene');
+  assert.equal(h.button('Severance Season 7 Episode 11 clip'), undefined);
+  h.button('Severance Season 7, Episode 13 clips').props.onClick(); h.render();
+  const clips = nodes(h.tree, node => node.type?.name === 'PostingActions');
+  assert.deepEqual(clips.map(node => node.props.file.id), ['early', 'late', 'edit']);
+  assert.match(text(h.tree), /Posted to Instagram/);
+  h.button('Back to episode folders').props.onClick(); h.render();
+  assert.ok(h.button('Severance Season 7 Episode 11 clip'));
 });
 
 test('a full library mounts only six lazy poster cards and no eager video players while every page remains reachable', t => {
