@@ -40,6 +40,38 @@ class TestLocalVoice(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.adapter["measured_words"]("Thread the needle.", timing, 2)
 
+    def test_duplicate_expanded_number_keeps_first_onset_and_following_boundary(self):
+        # SAPI reports UTF-16 offsets. The emoji before the first number uses two units.
+        text = "🚆 Wait 24 hours or 24 minutes."
+        words = [
+            {"text": "Wait", "seconds": .2, "characterPosition": 3},
+            {"text": "24", "seconds": .8, "characterPosition": 8},
+            {"text": "24", "seconds": 1.1, "characterPosition": 8},
+            {"text": "hours", "seconds": 1.4, "characterPosition": 11},
+            {"text": "or", "seconds": 1.8, "characterPosition": 17},
+            {"text": "24", "seconds": 2, "characterPosition": 20},
+            {"text": "minutes", "seconds": 2.7, "characterPosition": 23},
+        ]
+        timing = {"version": 1, "source": "windows-speech-events", "words": words}
+        before = copy.deepcopy(timing)
+        cues = self.adapter["measured_words"](text, timing, 3.5)
+        self.assertEqual([cue["text"] for cue in cues], ["Wait", "24", "hours", "or", "24", "minutes"])
+        self.assertEqual(cues[1], {"text": "24", "start": .8, "end": 1.4})
+        self.assertEqual(cues[4], {"text": "24", "start": 2, "end": 2.7})
+        self.assertEqual(timing, before)
+
+        # Duplicate text with a different, unproven source position must fail.
+        words[2]["characterPosition"] = 20
+        with self.assertRaisesRegex(ValueError, "complete narration"):
+            self.adapter["measured_words"](text, timing, 3.5)
+        words[1]["characterPosition"] = words[2]["characterPosition"] = 7
+        with self.assertRaisesRegex(ValueError, "complete narration"):
+            self.adapter["measured_words"](text, timing, 3.5)
+        words[1]["characterPosition"] = words[2]["characterPosition"] = 8
+        words[2]["seconds"] = .7
+        with self.assertRaisesRegex(ValueError, "actual recording"):
+            self.adapter["measured_words"](text, timing, 3.5)
+
     def test_malformed_unbounded_and_wrong_clock_evidence_is_rejected(self):
         valid = {"version": 1, "source": "windows-speech-events", "words": [{"text": "Thread", "seconds": .1}]}
         for changed in ({"source": "estimated"}, {"version": 2}, {"words": []}, {"words": [None]},

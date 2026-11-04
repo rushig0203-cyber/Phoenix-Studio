@@ -1202,10 +1202,10 @@ index 0000000..37cf817
 +    return result
 diff --git a/app/services/phoenix_local_voice.py b/app/services/phoenix_local_voice.py
 new file mode 100644
-index 0000000..d9830ef
+index 0000000..8a6b086
 --- /dev/null
 +++ b/app/services/phoenix_local_voice.py
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,92 @@
 +"""Offline stock narration through Phoenix's existing Windows speech adapter."""
 +import json
 +import math
@@ -1236,9 +1236,26 @@ index 0000000..d9830ef
 +        if not isinstance(text, str) or not text.strip() or not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or not all(math.isfinite(v) for v in (start, end)) or not 0 <= start < end <= seconds + .001:
 +            raise ValueError("Local speech word events do not fit the actual recording.")
 +        cues.append({"text": text, "start": start, "end": min(end, seconds)})
-+    if _words(" ".join(cue["text"] for cue in cues)) != _words(script):
++    expected = _words(script)
++    if _words(" ".join(cue["text"] for cue in cues)) == expected:
++        return cues
++    # SAPI can emit multiple spoken parts of one written number or abbreviation.
++    # Fold only repeated events anchored to the very same literal script span.
++    script_bytes = script.encode("utf-16-le")
++    merged = []
++    for index, cue in enumerate(cues):
++        position = words[index].get("characterPosition")
++        text = cue["text"]
++        if (index and type(position) is int and 0 <= position < len(script_bytes) // 2
++                and position == words[index - 1].get("characterPosition") and text == cues[index - 1]["text"]):
++            literal = text.encode("utf-16-le")
++            if script_bytes[position * 2:position * 2 + len(literal)] == literal:
++                merged[-1]["end"] = cue["end"]
++                continue
++        merged.append(cue)
++    if _words(" ".join(cue["text"] for cue in merged)) != expected:
 +        raise ValueError("Local speech words do not match the complete narration; no guessed subtitles were used.")
-+    return cues
++    return merged
 +
 +
 +def synthesize(script, output, rate=1.0, language="English"):
