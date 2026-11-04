@@ -96,7 +96,11 @@ floor still take priority. Existing recipes are never changed by new statistics.
 Neither mechanism retrains a model, edits app code by
 itself, proves causation or guarantees views, monetization or income.
 
-Children's animation is lightweight original 2D, not professional anime/3D.
+Children's animation is lightweight original 2D. Under **Create a Video →
+Explore suggestions**, choose **Krishna and the Butter Pot** or **कृष्ण और
+मक्खन की मटकी** for one original story with eight matched visual beats. It uses
+the local renderer and the Hindi version requires the installed VoiceStudio voice.
+The story starter uses an authored script and skips the writing provider.
 Songs need a real sung recording and matching lyrics on this laptop. The optional
 local ACE-Step adapter does not bundle its engine/models and is disabled below
 Phoenix's hardware guard; narration is not advertised as singing.
@@ -115,7 +119,7 @@ available; an explicitly selected Windows voice remains authoritative.
 Approved visual scenes retain available measured speech boundaries, and the
 animation holds its previous pose through pauses. Estimates remain labelled when
 measurements cannot locate a boundary. Animation action planning currently needs
-English scene text; Hindi speech support alone is not complete Hindi story support.
+English scene text for open-ended prompts. The authored Hindi Krishna starter has its own matched visual beats.
 
 ## Posting
 

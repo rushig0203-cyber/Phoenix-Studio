@@ -1,5 +1,29 @@
 # Quality-first implementation — September 16, 2026
 
+## November 5 episode clips, Create and posting review
+
+- Episode clips have a separate Library view with one folder per upload and
+  source-ordered clips. Existing upload IDs recover folders without moving media.
+- Highlight planning favors confident speech starts and complete lines. A read-only
+  reproduction on a saved 49-minute episode reduced two lead-ins to 0.35 seconds.
+  Full coverage and partially exported plans retain their original contracts.
+- New automatic creation uses measured narration or the complete song recording
+  within output limits. Stock scripts can resolve early and drive a shorter plan.
+  Social copy uses a concise line from the actual narration. The renderer's
+  duplicate SAPI number events at the same verified text offset are folded;
+  replaying the saved 43.585-second narration produced 12 valid timed cues.
+- A rejected report footage plan can fall back to report-supported neutral
+  searches. A read-only replay selected six distinct Pexels assets for the
+  failing report's unchanged narration. This verifies planning, not a finished
+  export or footage of the actual event.
+- Post / export expands in Library with the existing explicit final posting
+  action. The original English/Hindi Krishna starter has eight matched 2D beats
+  and uses the existing local voice and renderer.
+- The running local bundle XT64s3IRaE-fe0VCV_y8v has the same normalized worker
+  dispatcher and readiness code as Windows build 41319806227. Port 3000 and the
+  worker are healthy; the process launches with a 192 MiB Node old-space limit.
+  The new episode/creation/posting changes require a separate verified release.
+
 ## November 1 sustained worker RAM — source ready, verification pending
 
 - The later 256.8 MiB idle-worker sample contradicted a sustained startup saving.
