@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
+const krishna = require('../src/lib/krishnaStory.ts');
 const text = node => Array.isArray(node) ? node.map(text).join(' ') : node && typeof node === 'object' ? text(node.props?.children) : node == null ? '' : String(node);
 const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node && typeof node === 'object' ? [node, ...nodes(node.props?.children)] : [];
 function harness(name, fetch) {
@@ -18,7 +19,8 @@ function harness(name, fetch) {
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
     'lucide-react': {}, '@/components/ui/button': { Button: 'button' }, '@/components/RecommendedIdeas': { default: 'Recommendations' },
     '@/components/NewsIdeas': { default: 'NewsIdeas' }, '@/components/InstagramTopicSuggestions': { default: 'InstagramTopics' },
-    '@/lib/creationRecommendations': {}, '@/lib/creationIntent': { creationIntent: () => 'General video' },
+    '@/lib/creationRecommendations': {}, '@/lib/krishnaStory': krishna,
+    '@/lib/creationIntent': { creationIntent: topic => krishna.isKrishnaStoryTopic(topic) ? "Children's short story" : 'General video' },
     '@/lib/publishingFormats': { publishingProfile: () => ({ defaultDuration: 75 }) } };
   const mod = { exports: {} }, filename = path.join(root, `src/components/${name}.tsx`);
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { fileName: filename,
@@ -47,6 +49,18 @@ test('selected news submits the displayed report once and only accepts a real du
   h.submit(); h.submit(); await h.flush();
   assert.equal(h.requests.length, 1); assert.equal(h.requests[0].url, '/api/generations');
   assert.equal(JSON.parse(h.requests[0].body).newsId, 'a'.repeat(32)); assert.ok(h.requests[0].signal);
+  assert.equal(h.started.length, 1);
+});
+test('choosing the Hindi Krishna starter submits the displayed title and requests natural timing', async () => {
+  const h = harness('AICreation', async () => Response.json({ draftIds: ['12345678-1234-4234-8234-123456789abc'], count: 1 }));
+  nodes(h.tree).find(n => n.type === 'details' && text(n).includes('Explore suggestions')).props.onToggle({ currentTarget: { open: true } }); h.render();
+  nodes(h.tree).find(n => n.type === 'button' && text(n) === krishna.HINDI_KRISHNA_STORY_TITLE).props.onClick(); h.render();
+  assert.match(h.text, new RegExp(krishna.HINDI_KRISHNA_STORY_TITLE));
+  h.submit(); await h.flush();
+  const request = JSON.parse(h.requests[0].body);
+  assert.equal(request.topic, krishna.HINDI_KRISHNA_STORY_TITLE);
+  assert.equal(request.creationType, 'children-story');
+  assert.equal(request.autoDuration, true);
   assert.equal(h.started.length, 1);
 });
 test('creation failures keep the idea visible and never invent a queued job', async () => {
