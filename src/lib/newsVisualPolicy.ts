@@ -27,16 +27,17 @@ const animated = /\b(?:animat\w*|cartoon\w*|illustrat\w*|cgi|render\w*|2d|3d|com
 const seriousReport = /\b(?:evacuees?|evacuat\w*|displac\w*|occupied|drown\w*|capsiz\w*|sink\w*|sinking|dead|death\w*|kill\w*|execut\w*|victim\w*|casualt\w*|injur\w*|refugee\w*|migrant\w*|earthquake\w*|disaster\w*|flood\w*|war|attack\w*)\b/i;
 const leisure = /\b(?:swim\w*|surf\w*|paddleboard\w*|kayak\w*|yacht\w*|cruis\w*|luxury|holiday\w*|vacation\w*|party|parties|pool\w*|bathing|waterfall\w*|wedding\w*|touris\w*)\b/i;
 const weak = new Set("aerial above around atmosphere background beautiful breathtaking calm cinematic clear closeup empty exterior indoor indoors light outdoor outdoors outside panorama panoramic peaceful quiet scenic view views water wide footage scene scenes daytime sunset sunrise morning evening drone busy deserted floating".split(" "));
-const reportContexts: Array<{ report: RegExp; query: RegExp }> = [
-  { report: /\b(?:evacuees?|evacuat\w*|displac\w*|occupied|occupation)\b/i, query: /\b(?:city|cities|towns?|roads?|streets?|buildings?|borders?|fences?|railways?|stations?)\b/i },
-  { report: /\b(?:boats?|ships?|ferr(?:y|ies)|maritime|capsiz\w*|drown\w*|coast\w*|seaport|ocean)\b/i, query: /\b(?:boats?|ships?|sea|ocean|coast\w*|shore\w*|beach\w*|wave\w*|horizon|ports?|harbou?r\w*|dock\w*)\b/i },
-  { report: /\b(?:doctors?|hospitals?|patients?|surgery|medical|health|disease\w*)\b/i, query: /\b(?:hospital\w*|corridor\w*|medical|laborator\w*)\b/i },
-  { report: /\b(?:execut\w*|prison\w*|court\w*|convict\w*|judg\w*|politic\w*|president\w*|minister\w*|parliament|government|election\w*)\b/i, query: /\b(?:government|parliament|courthouse\w*|building\w*|border\w*|fence\w*|flag\w*|map\w*)\b/i },
-  { report: /\b(?:aircraft|airplane\w*|airport\w*|aviation|flight\w*)\b/i, query: /\b(?:aircraft|airplane\w*|airport\w*|runway\w*)\b/i },
+const reportContexts: Array<{ report: RegExp; query: RegExp; searches?: string[] }> = [
+  { report: /\b(?:evacuees?|evacuat\w*|displac\w*|occupied|occupation)\b/i, query: /\b(?:city|cities|towns?|roads?|streets?|buildings?|borders?|fences?|railways?|stations?)\b/i, searches: ["empty city street", "building exterior", "empty railway station"] },
+  { report: /\b(?:boats?|ships?|ferr(?:y|ies)|maritime|capsiz\w*|drown\w*|coast\w*|seaport|ocean)\b/i, query: /\b(?:boats?|ships?|sea|ocean|coast\w*|shore\w*|beach\w*|wave\w*|horizon|ports?|harbou?r\w*|dock\w*)\b/i, searches: ["sea horizon", "harbor boats", "ocean waves"] },
+  { report: /\b(?:doctors?|hospitals?|patients?|surgery|medical|health|disease\w*)\b/i, query: /\b(?:hospital\w*|corridor\w*|medical|laborator\w*)\b/i, searches: ["hospital corridor", "hospital exterior"] },
+  { report: /\b(?:execut\w*|prison\w*|court\w*|convict\w*|judg\w*|jail\w*|pleaded guilty)\b/i, query: /\b(?:government|parliament|courthouse\w*|building\w*|border\w*|fence\w*|flag\w*|map\w*)\b/i, searches: ["courthouse exterior", "courthouse building"] },
+  { report: /\b(?:politic\w*|president\w*|minister\w*|parliament|government|election\w*)\b/i, query: /\b(?:government|parliament|courthouse\w*|building\w*|border\w*|fence\w*|flag\w*|map\w*)\b/i, searches: ["government building", "parliament building"] },
+  { report: /\b(?:aircraft|airplane\w*|airport\w*|aviation|flight\w*)\b/i, query: /\b(?:aircraft|airplane\w*|airport\w*|runway\w*)\b/i, searches: ["airport runway", "airplane runway"] },
   { report: /\b(?:heatwaves?|temperatures?|weather|storms?|rain|snow|drought\w*)\b/i, query: /\b(?:sky|clouds?|sun|city|cities|streets?|fields?|forests?|mountains?|rivers?|lakes?)\b/i },
-  { report: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|fridges?|refrigerators?|freezers?|refrigeration)\b/i, query: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|aisles?|shelves|shelf|fridges?|refrigerators?|freezers?|refrigeration)\b/i },
-  { report: /\b(?:cyber\w*|hack\w*|ransomware|networks?|servers?|computers?|software|internet)\b/i, query: /\b(?:computers?|servers?|racks?|networks?|cables?|routers?|datacent(?:er|re)s?|screens?|keyboards?)\b/i },
-  { report: /\b(?:energy|power|electricity|electrical|substations?|grid|powerlines?|turbines?|solar)\b/i, query: /\b(?:power|electricity|substations?|grid|powerlines?|turbines?|pylons?|solar|stations?|factory|factories|industrial)\b/i },
+  { report: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|fridges?|refrigerators?|freezers?|refrigeration)\b/i, query: /\b(?:supermarkets?|grocery|groceries|stores?|shops?|retail|aisles?|shelves|shelf|fridges?|refrigerators?|freezers?|refrigeration)\b/i, searches: ["supermarket refrigerator", "freezer shelves", "grocery store aisle"] },
+  { report: /\b(?:cyber\w*|hack\w*|ransomware|networks?|servers?|computers?|software|internet)\b/i, query: /\b(?:computers?|servers?|racks?|networks?|cables?|routers?|datacent(?:er|re)s?|screens?|keyboards?)\b/i, searches: ["server racks", "network cables"] },
+  { report: /\b(?:energy|power|electricity|electrical|substations?|grid|powerlines?|turbines?|solar)\b/i, query: /\b(?:power|electricity|substations?|grid|powerlines?|turbines?|pylons?|solar|stations?|factory|factories|industrial)\b/i, searches: ["power station", "electricity substation"] },
 ];
 const aliases: Record<string, string> = {
   sea: "sea", seas: "sea", ocean: "sea", oceans: "sea",
@@ -102,6 +103,15 @@ export function newsFootageMetadataIssue(description: string, query: string, res
   const wanted = newsVisualTerms(query), described = newsVisualTerms(description);
   const matched = wanted.filter(word => described.some(other => other === word || (word.length >= 4 && other.startsWith(word))));
   if (!wanted.length || !described.length || matched.length < Math.min(2, wanted.length) || matched.length / wanted.length < 0.6) return "catalogue metadata does not support the requested news subject and setting";
+}
+
+/** Literal alternatives only for contexts supported by the headline and summary. */
+export function newsContextSearches(research: NewsResearch, narration: string) {
+  return reportContexts
+    .filter(context => context.report.test(`${research.title} ${research.summary}`))
+    .sort((a, b) => Number(b.report.test(narration)) - Number(a.report.test(narration)))
+    .flatMap(context => context.searches ?? [])
+    .filter(query => !newsStockQueryIssue(query, research));
 }
 
 export function newsStockVisualInstructions(research: NewsResearch) {

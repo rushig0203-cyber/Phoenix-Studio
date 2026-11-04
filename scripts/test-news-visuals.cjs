@@ -199,6 +199,32 @@ test('fresh unsafe news queries get one bounded neutral repair without rewriting
   } finally { global.fetch = originalFetch; }
 });
 
+const electionResearch = {
+  ...research, title: 'How America voted in maps and charts',
+  summary: 'Maps and charts show how America voted in the US midterm elections.',
+  text: 'The report examines election results and projections for Congress.',
+};
+
+test('a second off-topic election plan uses report-specific context and keeps the narration', async () => {
+  const originalFetch = global.fetch;
+  const replies = [['government building', 'airport runway'], ['ocean waves']];
+  global.fetch = async () => {
+    assert.ok(replies.length, 'No third writer request');
+    return Response.json({ response: JSON.stringify({ queries: replies.shift() }) });
+  };
+  const script = 'The report explains midterm election results in the Senate. It also describes how individual races shifted.';
+  try {
+    const result = await storyboard.createStockStoryboard({ topic: electionResearch.title, script, duration: 40, research: electionResearch });
+    assert.deepEqual(result.map(beat => beat.query), ['government building', 'parliament building']);
+    assert.equal(result.map(beat => beat.narration).join(' '), script);
+    assert.equal(replies.length, 0);
+    const court = { ...research, title: 'Australian author jailed', summary: 'The author pleaded guilty in May.', text: 'The report concerns an author and court proceedings.' };
+    assert.deepEqual(policy.newsContextSearches(court, 'The court heard the case.'), ['courthouse exterior', 'courthouse building']);
+    const unrelated = { ...research, title: 'A change was reported', summary: 'A report described a change.', text: 'The circumstances remain unclear.' };
+    assert.deepEqual(policy.newsContextSearches(unrelated, 'A hospital is shown.'), [], 'Narration alone cannot establish source context');
+  } finally { global.fetch = originalFetch; }
+});
+
 test('malformed news list repair does not permit a third model request for unsafe visuals', async () => {
   const originalFetch = global.fetch;
   let calls = 0;
@@ -224,7 +250,7 @@ test('unsafe retained plans and explicitly supplied visual terms fail without pr
 test('shared preparation validates legacy saved scenes even without footage selection', async () => {
   // Isolate the shared preparation boundary: no owner storage, writer or asset
   // search is involved in this legacy-cache regression.
-  const module = { exports: {} };
+  const fixtureModule = { exports: {} };
   const imports = {
     './generation': { createStockScript: async value => value.script },
     './stockStoryboard': storyboard, './automaticFootage': footage,
@@ -232,9 +258,9 @@ test('shared preparation validates legacy saved scenes even without footage sele
     './writingModel': { withWritingSession: async work => work() }, './newsVisualPolicy': policy,
   };
   const source = require('typescript').transpileModule(fs.readFileSync(path.join(project, 'src/lib/stockPreparation.ts'), 'utf8'), { compilerOptions: { module: 1, target: 7 } }).outputText;
-  vm.runInNewContext(source, { module, exports: module.exports, require: id => { assert.ok(id in imports, id); return imports[id]; } });
+  vm.runInNewContext(source, { module: fixtureModule, exports: fixtureModule.exports, require: id => { assert.ok(id in imports, id); return imports[id]; } });
   const stages = [];
-  await assert.rejects(module.exports.prepareStockCreation({ ...input, aspect: '9:16' }, [{ narration, query: 'bodies in the water' }], async (saved, scenes, stage) => stages.push({ saved, scenes, stage }), false), /legacy shot/);
+  await assert.rejects(fixtureModule.exports.prepareStockCreation({ ...input, aspect: '9:16' }, [{ narration, query: 'bodies in the water' }], async (saved, scenes, stage) => stages.push({ saved, scenes, stage }), false), /legacy shot/);
   assert.equal(stages[0].saved.script, narration);
   assert.equal(stages.length, 1, 'saved narration survives but unsafe shot is not marked ready');
 });

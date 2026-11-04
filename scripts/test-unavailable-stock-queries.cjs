@@ -150,6 +150,26 @@ test('helper refuses news actors instead of broadening a neutral contextual plan
   assert.equal(h.calls.writer.length, 1);
 });
 
+test('missing news stock tries related alternatives before another writer request, preserving saved shots', async () => {
+  const research = { title: 'How America voted in maps and charts', summary: 'US midterm elections explained.', text: 'The report concerns election outcomes.' };
+  const earlier = { narration: 'Here are the election results.', query: 'government building', footage: footage(50, 'government building') };
+  const plan = [earlier, { narration: 'The results for Congress are projected.', query: 'political map' }];
+  const h = harness({ search: async query => query === 'government building'
+    ? [earlier.footage, footage(51, 'government building with crowds')]
+    : query === 'parliament building' ? [footage(52, 'parliament building'), footage(53, 'parliament building', { duration: 2 })] : [] });
+  const input = { ...base, topic: research.title, script: plan.map(beat => beat.narration).join(' '), research };
+  const result = await h.preparation.prepareStockCreation(input, plan, h.checkpoint);
+  assert.deepEqual(plain(result.scenes[0]), earlier);
+  assert.equal(result.scenes[1].footage.id, 52);
+  assert.equal(result.scenes[1].query, 'parliament building');
+  assert.equal(h.calls.writer.length, 0);
+  assert.equal(h.calls.search.length, 5, 'Three initial lookups and two bounded alternatives');
+  const owner = harness();
+  await assert.rejects(owner.preparation.prepareStockCreation({ ...input, scriptApproved: true }, plan, owner.checkpoint), /Section 2.*no distinct/);
+  assert.equal(owner.calls.writer.length, 0);
+  assert.equal(owner.calls.search.length, 3);
+});
+
 test('normal same-query expanded search that finds suitable footage never invokes repair', async () => {
   const h = harness({ search: async (query, aspect, anyOrientation) => anyOrientation ? [footage(1, 'opening curtains')] : [] });
   const result = await h.automatic.selectAutomaticFootage([{ narration: 'Open the curtains.', query: 'opening curtains' }], 20, '9:16', async () => {}, undefined,

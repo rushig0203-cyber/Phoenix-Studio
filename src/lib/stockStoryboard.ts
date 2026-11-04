@@ -2,7 +2,7 @@ import { actionMismatch } from "./footageSemantics";
 import type { CreativeBrief } from "./creativeBrief";
 import { generateWritingModel, withWritingSession } from "./writingModel";
 import type { NewsResearch } from "./newsResearch";
-import { newsStockQueryIssue, newsStockVisualInstructions } from "./newsVisualPolicy";
+import { newsContextSearches, newsStockQueryIssue, newsStockVisualInstructions } from "./newsVisualPolicy";
 export type StockBeat = { narration: string; query: string; assetId?: number };
 export type StockShot = StockBeat & { start: number; end: number; sourcePage?: string; timing: "subtitle-boundary" | "within-caption-estimate"; playbackRate?: 1; supplementalReason?: string };
 
@@ -88,7 +88,8 @@ export async function createStockStoryboard(input: { topic: string; script: stri
   const payload = await response.json();
   let queries: unknown;
   try { queries = JSON.parse(String(payload.response || "")).queries; } catch { /* Invalid model output is not a usable plan. */ }
-  const invalid = (value: unknown) => !Array.isArray(value) || value.length !== beats.length || value.some(query => typeof query !== "string" || query.trim().length < 3 || query.length > 80 || query.trim().split(/\s+/).length > 8);
+  const invalidQuery = (query: unknown): boolean => typeof query !== "string" || query.trim().length < 3 || query.length > 80 || query.trim().split(/\s+/).length > 8;
+  const invalid = (value: unknown) => !Array.isArray(value) || value.length !== beats.length || value.some(invalidQuery);
   let listRepaired = false;
   if (invalid(queries)) {
     listRepaired = true;
@@ -113,10 +114,18 @@ export async function createStockStoryboard(input: { topic: string; script: stri
       prompt: `Fix these stock footage mismatches. Return JSON {"queries": [strings]} with exactly ${mismatches.length} queries in the listed order. Each query is 2–6 literal English words. Topic: ${input.topic}. ${continuity} ${depiction} Do not anticipate later narration. Do not copy the rejected query. Sections: ${JSON.stringify(mismatches)}` }, { timeoutMs: 120_000 });
     let replacements: unknown;
     if (repaired.ok) { try { replacements = JSON.parse(String((await repaired.json()).response || "")).queries; } catch { /* Report invalid repair below. */ } }
-    if (!Array.isArray(replacements) || replacements.length !== mismatches.length || replacements.some((query, index) => typeof query !== "string" || query.trim().length < 3 || query.length > 80 || query.trim().split(/\s+/).length > 8 || (input.research ? newsStockQueryIssue(query, input.research) : stockQueryMismatch(mismatches[index].narration, query)))) {
-      throw new Error(`Footage plan does not match narration in section ${mismatches[0].section + 1} (${mismatches[0].reason}). Repair failed. Retry or supply a literal visual brief; no mismatched filler was rendered.`);
+    const corrected: unknown[] = Array.isArray(replacements) && replacements.length === mismatches.length ? replacements : [];
+    for (const [index, mismatch] of mismatches.entries()) {
+      const proposed = corrected[index];
+      let query = typeof proposed === "string" && !invalidQuery(proposed) ? proposed.replace(/\s+/g, " ").trim() : undefined;
+      if (query && (input.research ? newsStockQueryIssue(query, input.research) : stockQueryMismatch(mismatch.narration, query))) query = undefined;
+      if (!query && input.research && repaired.ok) {
+        const alternatives = newsContextSearches(input.research, mismatch.narration);
+        query = alternatives.find(term => !planned.some(beat => beat.query === term)) ?? alternatives[0];
+      }
+      if (!query) throw new Error(`Footage plan does not match narration in section ${mismatch.section + 1} (${mismatch.reason}). Repair failed. ${input.research ? "Try another report with available contextual footage." : "Retry or supply a literal visual brief."} No mismatched filler was rendered.`);
+      planned[mismatch.section].query = query;
     }
-    for (const [index, mismatch] of mismatches.entries()) planned[mismatch.section].query = replacements[index].replace(/\s+/g, " ").trim();
   }
   return planned;
   });

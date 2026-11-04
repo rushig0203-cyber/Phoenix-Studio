@@ -3,7 +3,7 @@ import { searchFootage } from "./stockCatalog";
 import { visualWords } from "./stockBrief";
 import { footageMetadataMismatch } from "./footageSemantics";
 import type { NewsResearch } from "./newsResearch";
-import { newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms } from "./newsVisualPolicy";
+import { newsContextSearches, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms } from "./newsVisualPolicy";
 
 const generic = new Set(["person", "people", "woman", "women", "man", "men", "video", "young", "adult", "close", "shot"]);
 const tokens = (value: string) => visualWords(value).filter(word => !generic.has(word)).map(word => word.replace(/(?:ing|es|s)$/, ""));
@@ -66,6 +66,17 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       return best;
     };
     let best = await search();
+    if (!best && research && repairQueries) {
+      const alternatives = newsContextSearches(research, scene.narration).filter(query => query !== scene.query.toLowerCase()).slice(0, 2);
+      for (const query of alternatives) {
+        await onScene(selected, `Checking report context ${index + 1}/${selected.length}: ${query}`);
+        best = rankFootage(await searchFootage(query, aspect, true, 1, 30), query, minimum, aspect, used, selected[index - 1]?.footage, research)[0];
+        if (best) {
+          scene.query = query;
+          break;
+        }
+      }
+    }
     if (!best && repairQueries && !repairAttempted) {
       repairAttempted = true;
       await onScene(selected, `Correcting unavailable visual searches ${index + 1}/${selected.length} — narration and selected clips retained`);
