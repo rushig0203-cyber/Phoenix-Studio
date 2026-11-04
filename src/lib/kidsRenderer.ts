@@ -859,8 +859,8 @@ export function kidsAudioFilter(narrationSeconds: number, targetSeconds: number,
     if (narrationSeconds + 0.15 < targetSeconds) throw new Error("The sung recording is shorter than the video. Choose a video duration within the recording; songs are not stretched or replaced with spoken lyrics.");
     return `[1:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-16:LRA=9:TP=-1.5[a]`;
   }
-  const tempo = boundedNarrationTempo(narrationSeconds, targetSeconds);
-  return `[1:a]${tempo},apad,atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-15:LRA=7:TP=-1.5,apad[n];` +
+  const tempo = narrationSeconds === targetSeconds ? "" : `${boundedNarrationTempo(narrationSeconds, targetSeconds)},`;
+  return `[1:a]${tempo}apad,atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-15:LRA=7:TP=-1.5,apad[n];` +
     `[2:a]atrim=duration=${targetSeconds},asetpts=N/SR/TB,loudnorm=I=-29:LRA=10:TP=-2,apad[m];` +
     // Bundled FFmpeg can discard a short loudnorm branch when amix observes its
     // EOF during buffered-sample flushing. Post-normalization padding keeps both

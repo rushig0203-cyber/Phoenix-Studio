@@ -33,6 +33,7 @@ test('song filter never shifts or stretches supplied singing and story filter us
   assert.doesNotMatch(song, /adelay|atempo|\[2:a\]/);
   assert.match(song, /^\[1:a\]atrim=duration=60,asetpts/);
   assert.throws(() => kidsAudioFilter(45, 60, true), /songs are not stretched/);
+  assert.doesNotMatch(kidsAudioFilter(60, 60, false), /atempo/);
   assert.match(kidsAudioFilter(62, 60, false), /atempo=1\.03333/);
   assert.throws(() => kidsAudioFilter(35, 60, false), /at most 8%/);
 });
