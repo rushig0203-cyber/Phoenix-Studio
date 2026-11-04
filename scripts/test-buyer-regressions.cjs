@@ -21,6 +21,47 @@ const edits = require(path.join(project, 'src/lib/reviewEdits.ts'));
 const { artifactReference } = require(path.join(project, 'src/lib/reviewArtifacts.ts'));
 const video = { provider: 'pixabay', id: 10, title: 'A waterfall in a forest', sourcePage: 'https://pixabay.com/videos/waterfall-10/', creator: 'Fixture', previewUrl: 'https://cdn.pixabay.com/video/fixture.mp4', duration: 4, width: 320, height: 180 };
 
+const episodeLine = (start, end, text, noSpeechProbability = 0.05) => ({
+  start, end, text, avgLogprob: -0.2, noSpeechProbability,
+});
+
+test('episode highlights remove the quiet lead and end on a complete line ahead of a cut-off phrase', () => {
+  const coverage = [{ start: 0, end: 150, boundary: 'target' }, { start: 150, end: 300, boundary: 'target' }];
+  const transcript = [
+    episodeLine(0.5, 2, 'Uncertain intro.', 0.9),
+    episodeLine(12.53, 14, 'I know what happened.'),
+    episodeLine(51, 55, 'They never left.'),
+    episodeLine(136, 142, 'वह वापस आ गया।'),
+    episodeLine(148, 152, 'One other thing happened later.'),
+    episodeLine(154, 157, 'The door was still locked.'),
+    episodeLine(204, 208, 'Only one person had the key.'),
+    episodeLine(278, 290, 'He handed it over.'),
+  ];
+  assert.deepEqual(source.planEpisodeHighlightCuts(coverage, transcript), [
+    { start: 12.18, end: 142.25, boundary: 'transcript' },
+    { start: 153.65, end: 290.25, boundary: 'transcript' },
+  ]);
+  assert.deepEqual(source.planCoverageCuts(300), coverage);
+});
+
+test('episode highlights preserve visual footage without enough reliable speech to guide a trim', () => {
+  const coverage = [{ start: 0, end: 150, boundary: 'target' }];
+  const transcript = [episodeLine(34, 39, 'Music.'), episodeLine(110, 115, 'Uncertain outro.', 0.9)];
+  assert.deepEqual(source.planEpisodeHighlightCuts(coverage, transcript), coverage);
+});
+
+test('highlight ranking rewards an immediate hook over the same words buried later', () => {
+  const coverage = [{ start: 0, end: 150, boundary: 'target' }, { start: 150, end: 300, boundary: 'target' }];
+  const transcript = [
+    episodeLine(12, 15, 'Why did they stay?'),
+    episodeLine(41, 43, 'The door closed.'),
+    episodeLine(150.5, 153.5, 'Why did they stay?'),
+    episodeLine(190, 192, 'The door closed.'),
+  ];
+  const audio = { usable: true, mean: -20, max: -10 };
+  assert.deepEqual(source.rankSourceCutCandidates(coverage, [], transcript, [audio, audio], true).map(cut => cut.rank), [2, 1]);
+});
+
 test('stock API accepts an empty optional description while keeping the provider title only as the job title', async t => {
   let staged;
   const mocks = [

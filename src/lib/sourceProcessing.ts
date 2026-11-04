@@ -68,6 +68,7 @@ export type SourceJob = {
   attempts?: number;
   queuedAt?: string;
   attemptStartedProgress?: number;
+  episodeHighlightPlanVersion?: 1;
 };
 
 export type SourceJobWithTiming = SourceJob & {
@@ -787,17 +788,47 @@ function clipText(part: BaseCut, segments: TranscriptSegment[]) {
   });
 }
 
-function scoreCuts(base: BaseCut[], quiet: Silence[], segments: TranscriptSegment[], audioByCut: AudioState[]) {
+function isReliableSpeech(segment: TranscriptSegment) {
+  return typeof segment.avgLogprob === "number" && segment.avgLogprob >= -0.9
+    && typeof segment.noSpeechProbability === "number" && segment.noSpeechProbability < 0.45
+    && /[\p{L}\p{N}]/u.test(segment.text) && !/^\s*[\[(].*[\])]\s*$/.test(segment.text);
+}
+
+export function planEpisodeHighlightCuts(coverage: BaseCut[], segments: TranscriptSegment[]) {
+  const speech = segments.filter(isReliableSpeech);
+  return coverage.map((part): BaseCut => {
+    const complete = speech.filter(line => line.start >= part.start && line.end <= part.end);
+    // Sparse or uncertain dialogue is weak evidence for trimming visual action.
+    if (complete.length < 3) return part;
+    const first = complete.find(line => !speech.some(other => other.start < line.start && other.end > line.start));
+    if (!first) return part;
+    const crossesOpening = speech.some(line => line.start < part.start && line.end > part.start);
+    const previous = speech.findLast(line => line.start < first.start);
+    const start = crossesOpening || first.start - part.start > 2
+      ? Math.max(part.start, first.start - 0.35, previous?.end ?? 0)
+      : part.start;
+    const minimumEnd = Math.max(start + Math.min(90, part.end - part.start), part.end - 30);
+    if (minimumEnd > part.end) return part;
+    const last = complete.findLast(line => line.end >= minimumEnd
+      && /[.!?。！？।॥]["'”’»)]*$/.test(line.text)
+      && !speech.some(other => other.start < line.end && other.end > line.end));
+    const nextSpeech = last && speech.find(line => line.start >= last.end);
+    const end = last ? Math.min(part.end, last.end + 0.25, nextSpeech?.start ?? part.end) : part.end;
+    return { start, end, boundary: end < part.end ? "transcript" : part.boundary };
+  });
+}
+
+function scoreCuts(base: BaseCut[], quiet: Silence[], segments: TranscriptSegment[], audioByCut: AudioState[], focusOpening = false) {
   const scored = base.map((part, index): Cut => {
     const duration = part.end - part.start;
     const clipSegments = clipText(part, segments);
     const text = clipSegments.map((item) => item.text).join(" ");
     const transcriptWords = text.match(/[\p{L}\p{N}]+/gu)?.length || 0;
     const openingText = clipSegments
-      .filter((item) => (item.start + item.end) / 2 < part.start + 20)
+      .filter((item) => focusOpening ? item.start < part.start + 8 : (item.start + item.end) / 2 < part.start + 20)
       .map((item) => item.text)
       .join(" ");
-    const hookSignals = (text.match(hookPattern)?.length || 0) + (openingText.match(hookPattern)?.length || 0);
+    const hookSignals = (text.match(hookPattern)?.length || 0) + (openingText.match(hookPattern)?.length || 0) * (focusOpening ? 3 : 1);
     const silenceSeconds = quiet.reduce((sum, item) => sum + overlap(part.start, part.end, item), 0);
     const silenceRatio = duration > 0 ? Math.min(1, silenceSeconds / duration) : 1;
     const audio = audioByCut[index] || { usable: false, mean: -99, max: -99 };
@@ -817,8 +848,11 @@ function scoreCuts(base: BaseCut[], quiet: Silence[], segments: TranscriptSegmen
     const transcriptScore = Math.min(23, wordsPerMinute / 9 + transcriptConfidence * 7);
     const silenceScore = Math.max(0, 20 * (1 - silenceRatio * 2.2));
     const audioScore = audio.usable ? Math.max(8, Math.min(20, 20 - Math.abs(-20 - audio.mean) * 0.45)) : 0;
-    const durationScore = Math.max(0, 15 - Math.abs(150 - duration) / 5);
-    const score = Math.max(1, Math.min(100, Math.round(hookScore + transcriptScore + silenceScore + audioScore + durationScore)));
+    const durationPenalty = focusOpening ? Math.max(0, 120 - duration) : Math.abs(150 - duration);
+    const durationScore = Math.max(0, 15 - durationPenalty / 5);
+    const firstSpeech = clipSegments[0];
+    const openingPenalty = focusOpening && firstSpeech ? Math.min(16, Math.max(0, firstSpeech.start - part.start - 1) * 2) : 0;
+    const score = Math.max(1, Math.min(100, Math.round(hookScore + transcriptScore + silenceScore + audioScore + durationScore - openingPenalty)));
     return { ...part, score, rank: 0, metrics: { hookSignals, transcriptWords, transcriptConfidence, silenceRatio, audio } };
   });
   [...scored].sort((a, b) => b.score - a.score || a.start - b.start).forEach((part, index) => {
@@ -833,8 +867,9 @@ export function rankSourceCutCandidates(
   quiet: Silence[],
   segments: TranscriptSegment[],
   audioByCut: AudioState[],
+  focusOpening = false,
 ) {
-  return scoreCuts(base, quiet, segments, audioByCut);
+  return scoreCuts(base, quiet, focusOpening ? segments.filter(isReliableSpeech) : segments, audioByCut, focusOpening);
 }
 
 function chooseCuts(scored: Cut[], mode: ProcessingMode, sourceDuration: number) {
@@ -912,9 +947,7 @@ export function automaticSubtitles(part: BaseCut, segments: TranscriptSegment[],
   if (!audioPreserved) return { cues: [] as CaptionCue[], decision: "none" as const, reason: "No source speech is audible in the output: source audio was absent or replaced with music." };
   if (analysisError) return { cues: [] as CaptionCue[], decision: "uncertain" as const, reason: analysisError };
   const candidates = clipText(part, segments);
-  const reliable = candidates.filter(segment => typeof segment.avgLogprob === "number" && segment.avgLogprob >= -0.9
-    && typeof segment.noSpeechProbability === "number" && segment.noSpeechProbability < 0.45
-    && /[\p{L}\p{N}]/u.test(segment.text) && !/^\s*[\[(].*[\])]\s*$/.test(segment.text));
+  const reliable = candidates.filter(isReliableSpeech);
   const cues = buildCaptionCues(part, reliable);
   return cues.length ? { cues, decision: "speech" as const, reason: "Subtitles added only for locally detected, confidently transcribed speech; check recognition accuracy before posting." }
     : { cues, decision: candidates.length ? "uncertain" as const : "none" as const, reason: candidates.length ? "Speech recognition was uncertain. No guessed subtitles were burned in; review the audio." : "No confident speech was detected in this interval. No subtitles were added." };
@@ -1907,8 +1940,15 @@ async function processClaimedSourceJob(job: SourceJob) {
       try { transcript = await transcribe(source, job.id, info.hasAudio, job.stockSource ? Math.min(info.duration, job.stockSource.maxDuration) : info.duration, (progress, stage) => report(progress, stage), !!job.stockSource); }
       catch (error) { if (!job.stockSource) throw error; subtitleAnalysisError = "Local speech analysis failed. No guessed subtitles were burned in; review the audio."; }
     }
-    await report(32, job.stockSource ? "Keeping the original footage — no AI visuals or generated narration" : "Planning contiguous 2–3 minute coverage intervals");
-    const base = planCoverageCuts(job.stockSource ? Math.min(info.duration, job.stockSource.maxDuration) : info.duration, quiet, transcript);
+    const reviewFiles = await readReviewFiles();
+    // An older interrupted job may have written a review file before saving its review ID.
+    const useHighlightPlan = !job.stockSource && job.mode === "highlights" && (job.episodeHighlightPlanVersion === 1
+      || (!job.reviewIds.length && !reviewFiles.some(file => file.processing?.jobId === job.id)));
+    await report(32, job.stockSource ? "Keeping the original footage — no AI visuals or generated narration"
+      : useHighlightPlan ? "Looking for clear openings and natural dialogue endings" : "Planning contiguous 2–3 minute coverage intervals",
+      useHighlightPlan ? { episodeHighlightPlanVersion: 1 } : {});
+    const coverage = planCoverageCuts(job.stockSource ? Math.min(info.duration, job.stockSource.maxDuration) : info.duration, quiet, transcript);
+    const base = useHighlightPlan ? planEpisodeHighlightCuts(coverage, transcript) : coverage;
     if (!base.length) throw new Error("No usable video interval was found.");
 
     const audioByCut: AudioState[] = [];
@@ -1921,7 +1961,7 @@ async function processClaimedSourceJob(job: SourceJob) {
         audio.usable = stockAudioUsable(info.hasAudio, audio.mean, audio.max);
       }
     }
-    const scored = scoreCuts(base, quiet, transcript, audioByCut);
+    const scored = rankSourceCutCandidates(base, quiet, transcript, audioByCut, useHighlightPlan);
     if (job.stockSource) for (const part of scored) part.score = 0;
     const parts = chooseCuts(scored, job.mode, info.duration);
     await report(48, job.mode === "coverage"
@@ -1929,7 +1969,6 @@ async function processClaimedSourceJob(job: SourceJob) {
       : `Highlight ranking ready · selected ${parts.length} of ${scored.length} candidates`, { totalClips: parts.length });
 
     const format = job.stockSource ? stockFraming(info, job.stockSource.options?.framing) : formatFor(info);
-    const reviewFiles = await readReviewFiles();
     const reviewIds: string[] = [];
     const usedReviewIds = new Set<string>();
     for (let index = 0; index < parts.length; index += 1) {
