@@ -403,7 +403,9 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   world += foreground(stage, scene, phase * .13);
   // Preserve a caption-safe top region; crop the story world around the actors.
   const courtyardPortrait = vertical && scene.prop === "butter-pot";
-  const cameraTransform = `translate(${n(w / 2)} ${n(camera.y - (courtyardPortrait ? 92 : 0))}) scale(${n(courtyardPortrait ? Math.max(1.1, camera.zoom) : camera.zoom)}) translate(${n(-camera.x)} ${n(-camera.y)})`;
+  const zoomAtShot = n(courtyardPortrait ? Math.max(1.14, camera.zoom) : camera.zoom);
+  const rise = courtyardPortrait ? Math.min(92, (h - camera.y) * (zoomAtShot - 1)) : 0;
+  const cameraTransform = `translate(${n(w / 2)} ${n(camera.y - rise)}) scale(${zoomAtShot}) translate(${n(-camera.x)} ${n(-camera.y)})`;
   const body = (options.transparent ? "" : `<rect width="${w}" height="${h}" fill="url(#sky)"/>`) + `<g data-shot="${shot}" data-scene-progress="${n(p)}" data-timeline="finite" transform="${cameraTransform}">${world}</g>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient><linearGradient id="leaves" x2=".7" y2="1"><stop stop-color="#bed795"/><stop offset=".5" stop-color="#84b48c"/><stop offset="1" stop-color="#558c7a"/></linearGradient></defs>${body}</svg>`;
 }
