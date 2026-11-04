@@ -14,6 +14,7 @@ import { automaticInstagramUserTags } from "@/lib/instagramTags";
 import { openRumbleUpload } from "@/lib/rumbleWindow";
 
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
+const platformButton = `${button} aria-pressed:border-[#394a2a] aria-pressed:bg-[#394a2a] aria-pressed:text-white`;
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
 const active = (job: ReviewPublishJob): boolean => ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) || Boolean(job.companionStory && active(job.companionStory));
 const footageMusic = (file: ReviewFile): boolean => ((file.source?.kind && file.source.kind !== "upload") || Boolean(file.quality.visualSources?.length))
@@ -421,11 +422,11 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     <section id={chooserId} aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
       {chooserOpen && <>
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Posting & export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
-      <div className="flex flex-wrap gap-2" aria-label="Choose a platform">
-        <button type="button" className={button} disabled={busy} aria-pressed={platform === "youtube"} onClick={() => void open("youtube")}>Upload to YouTube</button>
-        <button type="button" className={button} disabled={busy} aria-pressed={platform === "instagram" && !storyOnly} onClick={() => void open("instagram")}>Post to Instagram</button>
-        <button type="button" className={button} disabled={busy} aria-pressed={storyOnly} onClick={() => void open("instagram", "story")}>Post Story only</button>
-        <button type="button" className={button} aria-pressed={rumbleOpen} onClick={() => { setRumbleOpen(true); setRumbleNotice(""); }}>Rumble upload</button>
+      <div role="group" className="flex flex-wrap gap-2" aria-label="Choose a platform">
+        <button type="button" className={platformButton} disabled={busy} aria-pressed={platform === "youtube"} onClick={() => void open("youtube")}>Upload to YouTube</button>
+        <button type="button" className={platformButton} disabled={busy} aria-pressed={platform === "instagram" && !storyOnly} onClick={() => void open("instagram")}>Post to Instagram</button>
+        <button type="button" className={platformButton} disabled={busy} aria-pressed={storyOnly} onClick={() => void open("instagram", "story")}>Post Story only</button>
+        <button type="button" className={platformButton} aria-pressed={rumbleOpen} onClick={() => { setRumbleOpen(true); setRumbleNotice(""); }}>Rumble upload</button>
       </div>
       {!platform && !rumbleOpen && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
       {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3 text-xs">

@@ -31,7 +31,7 @@ export async function stageSongAudio(body:ReadableStream<Uint8Array>,filename:st
       child.stdout.on("data",c=>{out=(out+c).slice(-100000);});child.stderr.resume();child.on("error",e=>{clearTimeout(timer);reject(e);});child.on("close",code=>{clearTimeout(timer);if(code===0)resolve(out);else reject(new Error("Choose a playable MP3, WAV, M4A or FLAC song recording."));});
     });
     const info=JSON.parse(result);const duration=Number(info.format?.duration);
-    if(!info.streams?.some((s:{codec_type:string})=>s.codec_type==="audio")||!Number.isFinite(duration)||duration<20||duration>1800)throw new Error("The song must contain playable audio between 20 seconds and 30 minutes.");
+    if(!info.streams?.some((s:{codec_type:string})=>s.codec_type==="audio")||!Number.isFinite(duration)||duration<5||duration>1800)throw new Error("The song must contain playable audio between 5 seconds and 30 minutes.");
     const audio:SongAudio={id,filename:path.basename(filename).slice(0,180),duration,bytes,origin};
     await fs.writeFile(path.join(directory(),`${id}.json`),JSON.stringify(audio),"utf8");return audio;
   }catch(error){await fs.rm(destination,{force:true});throw error;}

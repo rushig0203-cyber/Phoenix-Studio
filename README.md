@@ -10,18 +10,23 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
 [the dashboard](http://localhost:3000/dashboard).
 
 - **Clip a Video:** stream a local episode to disk, select coverage or highlights,
-  and produce real source-video clips. The original footage is not replaced by AI.
+  and produce real source-video clips. Highlights favor a clear speech opening
+  and complete lines when reliable local transcripts are available. Find each
+  upload's clips in its own folder under **Library → Episode clips**.
 - **Create a Video:** describe an idea or choose a recommendation. Narrated stock
   videos and children's 2D stories use separate rendering paths. Planning finishes
-  automatically; review the finished video before posting.
+  automatically. New narration keeps its natural speaking speed and ends when
+  the story or explanation does. New song exports use the complete recording
+  within the chosen format's upper limit. Review the finished video before posting.
 - **Make a Reel:** enter a short, concrete subject, select a starting video and let
   Phoenix assemble related footage. Length follows usable content, not a padded
   duration. Automatic recipes do not slow, loop or freeze shots to fill time.
   Each suggestion batch mixes wildlife, nature, places, movement and everyday
   subjects; it does not scroll through a long country-only block.
 - **Jobs** sits below creation. It retains progress, failures and explicit retry.
-  **Library** separates generated and confirmed posted videos, with previews,
-  posting copy, native editing and recoverable Trash.
+  **Library** has Generated, Posted and Episode clips views with previews,
+  posting copy, native editing and recoverable Trash. Episode folders use the
+  uploaded filename and retain posted clips and edits with their source episode.
 - **Settings** holds private writer/channel setup and content-quality feedback.
 
 Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Commons
@@ -42,7 +47,11 @@ Posting captions and hashtags are separate from burned-in speech subtitles.
 With consent, up to three small sampled frames can be sent to a configured free
 vision provider. Phoenix checks the returned evidence and preserves owner edits;
 quota or invalid evidence is shown rather than disguised as a successful analysis.
-Silent scenic reels do not need invented subtitles.
+Silent scenic reels do not need invented subtitles. New Create captions can
+start with a short, complete line from their own narration or lyrics. Report
+captions retain the source and identify illustrative footage. If a generated
+report shot plan fails its context checks, Phoenix tries relevant neutral
+catalogue searches while preserving the saved narration and selected clips.
 For narrated videos, sampled frames receive the saved caption window at each
 sample time, including late scenes. Missing timing or silent gaps stay unverified;
 topical similarity alone is not proof of narration-to-picture synchronization.
@@ -110,8 +119,9 @@ English scene text; Hindi speech support alone is not complete Hindi story suppo
 
 ## Posting
 
-Use **Post / export** on a finished video to open its final-review dialog.
-Close or Escape returns to that video's Post button.
+Use **Post / export** on a finished video to expand its posting controls in
+Library. Choose a destination, review the caption and posting options, then
+use its final Post or Upload action. **Close** collapses the controls.
 
 - **Instagram:** verified professional-account access and publishing permission
   are required. Reel/Story support, locations, people tags and catalogue audio

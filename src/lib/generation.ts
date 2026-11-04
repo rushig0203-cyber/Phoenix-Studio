@@ -568,12 +568,9 @@ function captionLines(script?: string) {
   return lines.slice(0, 100);
 }
 
-function topicHashtags(topic: string, type?: GenerationInput["creationType"]) {
-  return [
-    "#PhoenixStudio",
-    type === "business" ? "#BusinessTips" : "#LearnSomething",
-    ...topicTerms(topic).map((word) => `#${word[0].toUpperCase()}${word.slice(1)}`),
-  ].slice(0, 9);
+function topicHashtags(topic: string, script: string) {
+  const spoken = new Set(script.toLowerCase().match(/[a-z][a-z0-9]{2,}/g) || []);
+  return topicTerms(topic).filter(word => spoken.has(word)).map(word => `#${word[0].toUpperCase()}${word.slice(1)}`);
 }
 
 function publishingFormatFor(input: GenerationInput) {
@@ -707,14 +704,14 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
       }, { timeoutMs: Math.max(150_000, input.duration * 1_200) });
     if (!response.ok) throw new Error(`The selected writer returned ${response.status}`);
     rawScript = cleanScript(String((await response.json()).response || ""));
-    if (countWords(rawScript) < 40) throw new Error("Local script was incomplete");
+    if (countWords(rawScript) < (input.autoDuration ? 25 : 40)) throw new Error("Local script was incomplete");
     // Persist completed writing before the next admission check. A resource wait
     // in the editor should resume this draft, not ask the writer to replace it.
     input.script = rawScript;
     input.scriptOrigin = "local-model";
     await onStage("Narration saved — preparing the editorial check");
     }
-    if (countWords(rawScript) < 40) throw new Error("Local script was incomplete");
+    if (countWords(rawScript) < (input.autoDuration ? 25 : 40)) throw new Error("Local script was incomplete");
     const { script, editorial } = await editStockNarration({ ...input, script: rawScript, feedbackRevision: guidance.revision, guidanceRules: guidance.rules, briefInstructions: input.creativeBrief ? creativeBriefInstructions(input.creativeBrief) : undefined }, onStage, async attempt => {
       input.editorialAttempts = [...(input.editorialAttempts || []), attempt].slice(-20);
       if (input.script && input.script !== attempt.script) {
@@ -861,6 +858,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   await downloadLocalOutput(videoUrl, destination);
   const media = await probeVideo(destination);
   const { format } = validatePublishingOutput(input, media, true);
+  const textCheck = checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model", input.autoDuration);
   const actualShots = input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined;
   if (input.research) assertNewsStockRender(input.newsVisualPolicy, input.storyboard, actualShots || []);
   const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts, input.script) : undefined;
@@ -873,7 +871,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     quality: {
       audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
       captions: retained ? retained.cues.map(cue => cue.text) : captionLines(input.script),
-      hashtags: topicHashtags(input.topic, input.creationType),
+      hashtags: topicHashtags(input.research?.title || input.topic, input.script || ""),
       postCopy: stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\nIllustrative stock footage; not footage of this event. Single-source summary; verify developments before posting.` : ""),
       research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
       editorial: input.editorial,
@@ -883,7 +881,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       storyboard: actualShots,
       warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
     },
-    processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model").score, scoreKind: "script-checks", rank: 0, reason: checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model").reason, status: "COMPLETED" },
+    processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: textCheck.score, scoreKind: "script-checks", rank: 0, reason: textCheck.reason, status: "COMPLETED" },
     delivery: {
       publishingFormat: format,
       platform: target,

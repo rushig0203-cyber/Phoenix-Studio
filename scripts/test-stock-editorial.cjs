@@ -145,6 +145,18 @@ test('a complete concise generated script with all semantic checks passing gets 
   assert.ok(result.editorial.checks.some(check=>check.includes('final speech duration is measured')));
 });
 
+test('an automatically timed stock creation can keep a coherent shorter story', async () => {
+  const short = 'Choose just one drawer to organize. Move the spoons into a tray, then close that drawer. The clear surface gives you a visible stopping point.';
+  const count = responses([verdict()]);
+  const saved = [];
+  const result = await editor.editStockNarration({ ...brief, duration: 60, autoDuration: true, script: short, scriptOrigin: 'local-model' }, undefined, undefined, async (_checkpoint, completed) => {
+    if (completed) saved.push(completed);
+  });
+  assert.equal(count(), 1);
+  assert.equal(result.script, short);
+  assert.equal(saved[0].duration, Math.ceil(short.split(' ').length / 2.2));
+});
+
 test('concise adaptation cannot override a failed meaning check, incomplete ending, owner approval or children duration', async () => {
   const bad = verdict({ topicAnswer: { passed:false, evidence:'', reason:'The actual opening promise has not been answered.' } });
   let calls = responses([bad, {script}, {script}, bad]);

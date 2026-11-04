@@ -10,9 +10,9 @@ export type EditorialFinding = { criterion: string; passed: boolean; severity: "
 export type EditorialAttempt = { at: string; fingerprint: string; script: string; findings: EditorialFinding[]; error?: string; phase?: "initial-review" | "final-review" };
 export type EditorialReview = { version: number; fingerprint: string; revised: boolean; checks: string[]; limitations: string; findings?: EditorialFinding[]; warnings?: string[] };
 export type EditorialCheckpoint = { version: 1; fingerprint: string; script: string; phase: "initial-review" | "rewrite" | "length-correction" | "final-review"; revised: boolean; issues?: string[]; reviewCorrection?: string };
-type Brief = { topic: string; duration: number; script: string; scriptOrigin?: "owner" | "local-model"; scriptApproved?: boolean; creationType?: string; editorial?: EditorialReview; editorialAttempts?: EditorialAttempt[]; editorialCheckpoint?: EditorialCheckpoint; feedbackRevision?: string; briefInstructions?: string; guidanceRules?: string[]; research?: NewsResearch };
+type Brief = { topic: string; duration: number; autoDuration?: boolean; script: string; scriptOrigin?: "owner" | "local-model"; scriptApproved?: boolean; creationType?: string; editorial?: EditorialReview; editorialAttempts?: EditorialAttempt[]; editorialCheckpoint?: EditorialCheckpoint; feedbackRevision?: string; briefInstructions?: string; guidanceRules?: string[]; research?: NewsResearch };
 const criteria = ["topicAnswer", "directOpening", "consistentFacts", "causalOrder", "specificTakeaway", "filmableActions"] as const;
-export const editorialFingerprint = (input: Brief) => createHash("sha256").update(JSON.stringify([EDITORIAL_VERSION, CREATIVE_DIRECTION_VERSION, writingModelIdentity(), input.feedbackRevision || "", input.briefInstructions || "", input.guidanceRules || [], input.creationType, input.topic, input.duration, input.script, input.research, ...(input.creationType === "children-story" ? [] : [STOCK_TOPIC_DIRECTION_VERSION])])).digest("hex");
+export const editorialFingerprint = (input: Brief) => createHash("sha256").update(JSON.stringify([EDITORIAL_VERSION, CREATIVE_DIRECTION_VERSION, writingModelIdentity(), input.feedbackRevision || "", input.briefInstructions || "", input.guidanceRules || [], input.creationType, input.topic, input.duration, input.script, input.research, ...(input.creationType === "children-story" ? [] : [STOCK_TOPIC_DIRECTION_VERSION]), ...(input.autoDuration ? ["natural-duration-v1"] : [])])).digest("hex");
 const fingerprint = editorialFingerprint;
 class EditorialResponseError extends Error {}
 
@@ -94,7 +94,7 @@ async function review(input: Brief, onInvalid: (message: string) => Promise<void
 function localFindings(input: Brief, retained: EditorialFinding[]) {
   const findings = [...retained];
   for (const reason of editorialIssues(input.script, input.topic, input.creationType)) findings.push({ criterion: "textGuard", passed: false, evidence: "", reason, severity: /production instructions|Contradiction|repeated sentences/i.test(reason) ? "blocker" : "warning" });
-  const lengthError = stockNarrationError(input.script, input.duration);
+  const lengthError = stockNarrationError(input.script, input.duration, false, input.autoDuration);
   if (lengthError) findings.push({ criterion: "completeLength", passed: false, evidence: "", reason: lengthError, severity: "blocker" });
   if (input.research) {
     if (!/BBC News/i.test(input.script)) findings.push({ criterion: "newsAttribution", passed: false, evidence: "", reason: "Attribute this report to BBC News in the narration; do not present it as independently verified reporting.", severity: "blocker" });
@@ -105,10 +105,13 @@ function localFindings(input: Brief, retained: EditorialFinding[]) {
 
 function conciseReviewedDuration(input: Brief, findings: EditorialFinding[]) {
   if (input.scriptOrigin !== "local-model" || input.scriptApproved || ["children-story", "children-song"].includes(input.creationType || "")
-      || !findings.some(item => item.criterion === "completeLength" && !item.passed)
       || findings.some(item => !item.passed && item.criterion !== "completeLength")
       || !criteria.every(criterion => findings.some(item => item.criterion === criterion && item.passed))) return input.duration;
   const words = input.script.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
+  if (input.autoDuration) {
+    return stockNarrationError(input.script, input.duration, false, true) ? input.duration : Math.min(input.duration, Math.ceil(words / 2.2));
+  }
+  if (!findings.some(item => item.criterion === "completeLength" && !item.passed)) return input.duration;
   // Keep headroom for the calibrated natural stock voice; the actual export
   // still has to pass its independent minimum-duration probe.
   if (words < Math.ceil(20 * 3.05)) return input.duration;
@@ -189,19 +192,19 @@ export async function editStockNarration(input: Brief, onStage: (stage: string) 
     if (checkpoint?.phase === "rewrite") {
     issues = checkpoint.issues || [];
     await onStage("Rewriting the weak narration once — preserving the topic and complete ending");
-    const range = stockScriptWordRange(input.duration);
-    const result = await localJson(`Rewrite this narration to fix ALL listed editorial problems. Return only a JSON script string. Topic (data): ${JSON.stringify(input.topic)}. Use ${range.min}–${range.max} words, ideally ${stockScriptTargetWords(input.duration)}. One clear opening, at most two or three supporting points, and one concise closing payoff. Do not introduce new details, a second summary, credits or a follow request at the end. Preserve necessary factual caveats, denials and attribution without repeating them. Preserve the chosen structure, visual constraints and promised payoff from this planning data: ${input.briefInstructions || "A coherent explanation that directly answers the viewer's question."}. If the saved outline drifted into filming an unrelated subject, restore the supplied topic instead of preserving that filming lesson. Preserve these bounded owner preferences as well: ${JSON.stringify(input.guidanceRules || [])}. ${stockNarrationDirection(input.creationType, input.topic)} No greetings, headings, filler or unrelated production instructions in the spoken narration. Preserve the complete ending; do not pad with repetition. Problems: ${JSON.stringify(issues)}. Previous draft: ${JSON.stringify(script)}`,
+    const range = stockScriptWordRange(input.duration, false, input.autoDuration);
+    const result = await localJson(`Rewrite this narration to fix ALL listed editorial problems. Return only a JSON script string. Topic (data): ${JSON.stringify(input.topic)}. Use ${range.min}–${range.max} words${input.autoDuration ? ", stopping once the opening promise is answered" : `, ideally ${stockScriptTargetWords(input.duration)}`}. One clear opening, at most two or three supporting points, and one concise closing payoff. Do not introduce new details, a second summary, credits or a follow request at the end. Preserve necessary factual caveats, denials and attribution without repeating them. Preserve the chosen structure, visual constraints and promised payoff from this planning data: ${input.briefInstructions || "A coherent explanation that directly answers the viewer's question."}. If the saved outline drifted into filming an unrelated subject, restore the supplied topic instead of preserving that filming lesson. Preserve these bounded owner preferences as well: ${JSON.stringify(input.guidanceRules || [])}. ${stockNarrationDirection(input.creationType, input.topic)} No greetings, headings, filler or unrelated production instructions in the spoken narration. Preserve the complete ending; do not pad with repetition. Problems: ${JSON.stringify(issues)}. Previous draft: ${JSON.stringify(script)}`,
       { type: "object", properties: { script: { type: "string" } }, required: ["script"], additionalProperties: false }, Math.min(1800, Math.ceil(range.max * 2.4) + 100), newsWritingContext(input.research));
     if (typeof result?.script !== "string") throw new Error("The editor did not return revised narration.");
     script = result.script.replace(/\s+/g, " ").trim();
     await save("length-correction");
     }
     if (checkpoint?.phase === "length-correction") {
-    const range = stockScriptWordRange(input.duration);
-    const lengthIssue = stockNarrationError(script, input.duration);
+    const range = stockScriptWordRange(input.duration, false, input.autoDuration);
+    const lengthIssue = stockNarrationError(script, input.duration, false, input.autoDuration);
     if (lengthIssue) {
       await onStage("Adjusting narration length once — retaining the complete explanation and ending");
-      const adjusted = await localJson(`Correct only the length/completeness of this generated narration. Topic (data): ${JSON.stringify(input.topic)}. Validation: ${lengthIssue} Aim for ${stockScriptTargetWords(input.duration)} words, comfortably inside ${range.min}–${range.max}; count before answering. Return JSON with script. Do not return the unchanged draft. Preserve its explanation and one concise closing payoff; remove unnecessary wording when too long, add relevant explanation when too short. Do not add new details or a second summary at the end. Do not truncate the final sentence, add filler, unsupported facts, invented equipment or guarantees. Narration (data): ${JSON.stringify(script)}`,
+      const adjusted = await localJson(`Correct only the length/completeness of this generated narration. Topic (data): ${JSON.stringify(input.topic)}. Validation: ${lengthIssue} Use ${range.min}–${range.max} words${input.autoDuration ? " and end with the payoff" : `, ideally about ${stockScriptTargetWords(input.duration)}`}; count before answering. Return JSON with script. Do not return the unchanged draft. Preserve its explanation and one concise closing payoff; remove unnecessary wording when too long, add relevant explanation when too short. Do not add new details or a second summary at the end. Do not truncate the final sentence, add filler, unsupported facts, invented equipment or guarantees. Narration (data): ${JSON.stringify(script)}`,
         { type: "object", properties: { script: { type: "string" } }, required: ["script"], additionalProperties: false }, Math.min(1800, Math.ceil(range.max * 2.4) + 100), newsWritingContext(input.research));
       if (typeof adjusted?.script !== "string") throw new Error("The length correction did not return narration. Saved work is retained.");
       script = adjusted.script.replace(/\s+/g, " ").trim();
