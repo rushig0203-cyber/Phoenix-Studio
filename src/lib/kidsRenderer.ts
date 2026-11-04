@@ -34,6 +34,7 @@ export type KidsRenderInput = {
   songAudioId?: string;
   topic: string;
   duration: number;
+  autoDuration?: boolean;
   creationType: "children-story" | "children-song";
   script?: string;
   voice?: string;
@@ -502,8 +503,8 @@ async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuid
   await onPlanSaved?.(input);
 
   const sentenceCount = clamp(Math.round(input.duration / 5), 5, 42);
-  const format = `a complete warm story in about ${sentenceCount} short sentences with a beginning, small problem, kind solution, and happy ending`;
-  const prompt = `Write only ${format} for children ages 3 to 6 about: "${input.topic}". Aim for ${targetWords} words.${seriesDirection} ${childrenStoryDirection(input.topic)} Name and consistently use the characters and adventure in the idea. Open with action in the first sentence. Use plain grammatical prose, not poetry or forced rhyme. Keep it safe, visual, playful, and easy to narrate. Use only the two main animal characters. This is a limited 2D renderer: use visible actions such as hop, clap, wave, walk, reach, or rest with flowers, stars, ball, kite, drum, toys, bridge or bus. Never copy, name, paraphrase, or imitate an existing franchise or character. No headings, notes, or explanation. Production improvements from owner ratings: ${guidance.rules.join(' ') || 'Use clear visual cause and effect and a specific ending.'}`;
+  const format = `a complete warm story with a beginning, small problem, kind solution, and happy ending. ${input.autoDuration ? "Use only the short lines needed to resolve the problem; end at the payoff." : `Use about ${sentenceCount} short sentences.`}`;
+  const prompt = `Write only ${format} for children ages 3 to 6 about: "${input.topic}". ${input.autoDuration ? `Use at most ${targetWords} words.` : `Aim for ${targetWords} words.`}${seriesDirection} ${childrenStoryDirection(input.topic)} Name and consistently use the characters and adventure in the idea. Open with action in the first sentence. Use plain grammatical prose, not poetry or forced rhyme. Keep it safe, visual, playful, and easy to narrate. Use only the two main animal characters. This is a limited 2D renderer: use visible actions such as hop, clap, wave, walk, reach, or rest with flowers, stars, ball, kite, drum, toys, bridge or bus. Never copy, name, paraphrase, or imitate an existing franchise or character. No headings, notes, or explanation. Production improvements from owner ratings: ${guidance.rules.join(' ') || 'Use clear visual cause and effect and a specific ending.'}`;
   const fingerprint = input.creativeBrief.fingerprint;
   let retained = input.kidsStoryAttempt?.version === 1 && input.kidsStoryAttempt.fingerprint === fingerprint
     ? input.kidsStoryAttempt : undefined;
@@ -530,13 +531,15 @@ async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuid
     }
     const words = wordCount(text);
     if (!response.ok) throw new Error(`Original story writing returned ${response.status}. No other provider was used.`);
-    const basic = words >= Math.round(targetWords * 0.65) &&
-      words <= Math.round(targetWords * 1.55) &&
+    const minimumWords = input.autoDuration ? 25 : Math.round(targetWords * 0.65);
+    const maximumWords = Math.round(targetWords * (input.autoDuration ? 1.15 : 1.55));
+    const basic = words >= minimumWords &&
+      words <= maximumWords &&
       /[.!?]["”']*$/.test(text) &&
       !copiedSong.test(text) &&
       isRelevant(text, input.topic) &&
       followsEpisodeBeat(text, input);
-    if (!basic) issues.push({ code: "story-contract", instruction: `Keep this exact topic/episode in ${Math.round(targetWords * .65)}–${Math.round(targetWords * 1.55)} original words, with complete sentences and no copied song/franchise.`, excerpt: "" });
+    if (!basic) issues.push({ code: "story-contract", instruction: `Keep this exact topic/episode in ${minimumWords}–${maximumWords} original words, with complete sentences and no copied song/franchise.`, excerpt: "" });
     if (text.trim() && !issues.some(issue => issue.code === "dialogue-format")) issues.push(...checkKidsStory(text, castNames).issues);
     if (!issues.length) { input.kidsStoryAttempt = undefined; await onPlanSaved?.(input); return text; }
     retained = { version: 1, fingerprint, candidate: text.slice(0, 8000), issues: issues.slice(0, 8), repairAttempted: repairing };
@@ -816,14 +819,21 @@ export function boundedNarrationTempo(sourceSeconds: number, targetSeconds: numb
 }
 
 /** Duration follows measured speech within the chosen publishing range. */
-export function kidsNarrationTiming(input: Pick<KidsRenderInput, "duration" | "creationType" | "aspect" | "publishingFormat" | "targetPlatform">, sourceSeconds: number) {
+export function kidsNarrationTiming(input: Pick<KidsRenderInput, "duration" | "autoDuration" | "creationType" | "aspect" | "publishingFormat" | "targetPlatform">, sourceSeconds: number) {
   if (!Number.isFinite(sourceSeconds) || sourceSeconds <= 0 || !Number.isFinite(input.duration) || input.duration <= 0) {
     throw new Error("Narration timing needs valid measured audio and target durations.");
   }
-  if (input.creationType === "children-song") {
+  const song = input.creationType === "children-song";
+  if (song && !input.autoDuration) {
     return { targetSeconds: input.duration, tempoFactor: 1, decision: "requested-song-excerpt" as const };
   }
   const profile = publishingProfile(inferPublishingFormat(input));
+  if (input.autoDuration) {
+    if (sourceSeconds < 5 || sourceSeconds > profile.maxDuration) {
+      throw new Error(`The complete ${song ? "song" : "narration"} lasts ${sourceSeconds.toFixed(1)} seconds. This format supports 5–${profile.maxDuration} seconds in Phoenix. The audio was kept at its original speed.`);
+    }
+    return { targetSeconds: sourceSeconds, tempoFactor: 1, decision: song ? "measured-song" as const : "measured-narration" as const };
+  }
   // Legacy/direct render callers can request lengths outside today's creation
   // profiles. Keep their explicit contract rather than silently reclassify them.
   const inProfile = input.duration >= profile.minDuration && input.duration <= profile.maxDuration;
@@ -919,7 +929,7 @@ export async function renderKidsVideo(
   }
   if (!input.topic.trim()) throw new Error("A topic is required for a children's video.");
   if (input.creationType === "children-song") {
-    await requireSongAudio(input.songAudioId, input.duration);
+    await requireSongAudio(input.songAudioId, input.autoDuration ? undefined : input.duration);
     if (!input.script?.trim()) throw new Error("Add the lyrics from the sung recording.");
   }
   if (!(await kidsRendererAvailable(input.creationType !== "children-song" && !input.script?.trim()))) {
@@ -971,7 +981,7 @@ export async function renderKidsVideo(
   let studioVoice: Awaited<ReturnType<typeof synthesizeVoiceStudio>> = null;
   try {
     if (song) {
-      await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), "-t", String(requestedSeconds), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
+      await run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", ...FFMPEG_FILTER_RESOURCE_ARGS, "-threads", "1", "-i", songAudioPath(input.songAudioId!), ...(input.autoDuration ? [] : ["-t", String(requestedSeconds)]), "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", narration], { timeoutMs: voiceTimeoutMs });
     } else {
       if (!input.voice || input.voice === "local-windows-voice") studioVoice = await synthesizeVoiceStudio(captions, narration, input.language);
       if (!studioVoice) await run(windowsPowerShell, voiceArgs, { timeoutMs: voiceTimeoutMs });
@@ -1142,7 +1152,7 @@ export async function renderKidsVideo(
     script,
     captions: cues.map(cue => cue.text),
     hashtags: hashtags(input),
-    postCopy: `${input.topic} — ${input.creationType === "children-song" ? input.songMode === "local-ace" ? "an original locally generated animated song" : "an animated song using your recording" : "an original short story"} for children ages 3–6.`,
+    postCopy: (song ? captions.find(line => line.length >= 15) : script.match(/^[^.!?।]+[.!?।]/u)?.[0])?.trim() || input.topic,
     score: textCheck.score,
     reason,
     width,

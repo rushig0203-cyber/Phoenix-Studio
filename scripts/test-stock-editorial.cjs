@@ -33,6 +33,11 @@ function responses(items) {
 }
 after(() => { global.fetch = originalFetch; if (originalModel === undefined) delete process.env.OLLAMA_MODEL; else process.env.OLLAMA_MODEL = originalModel; process.chdir(originalCwd); fs.rmSync(root, { recursive: true, force: true }); });
 
+test('posting copy uses a complete narration hook and skips generic production notes', () => {
+  assert.equal(editor.stockPostCopy('According to BBC News, the report was published Friday. These visuals are illustrative. Shop owners have two days to clear the market. It starts again next week.', 'Market'), 'Shop owners have two days to clear the market.');
+  assert.equal(editor.stockPostCopy('This video shows a process. Okay.', 'Market'), 'Market');
+});
+
 test('approval retains grounded findings and caches only the same model/policy/feedback', async () => {
   const count = responses([verdict(), verdict()]); const history = [];
   const result = await editor.editStockNarration(brief, async () => {}, async attempt => history.push(attempt));

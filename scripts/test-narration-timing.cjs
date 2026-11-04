@@ -37,6 +37,18 @@ test('song filter never shifts or stretches supplied singing and story filter us
   assert.throws(() => kidsAudioFilter(35, 60, false), /at most 8%/);
 });
 
+test('automatic stories keep measured speech without filling a platform preset or cutting an ending', () => {
+  const input = { creationType: 'children-story', autoDuration: true, duration: 75, publishingFormat: 'youtube-short' };
+  for (const seconds of [17.8, 46.7, 69, 90]) {
+    assert.deepEqual(kidsNarrationTiming(input, seconds), { targetSeconds: seconds, tempoFactor: 1, decision: 'measured-narration' });
+  }
+  assert.throws(() => kidsNarrationTiming(input, 92), /original speed/);
+  assert.throws(() => kidsNarrationTiming(input, 3), /original speed/);
+  assert.deepEqual(kidsNarrationTiming({ ...input, creationType: 'children-song', publishingFormat: 'youtube-full' }, 161.4),
+    { targetSeconds: 161.4, tempoFactor: 1, decision: 'measured-song' });
+  assert.throws(() => kidsNarrationTiming({ ...input, creationType: 'children-song', publishingFormat: 'youtube-full' }, 220), /complete song/);
+});
+
 test('story duration follows measured narration within publishing ranges instead of stretching to a preset', () => {
   const input = { duration: 75, creationType: 'children-story', publishingFormat: 'youtube-short' };
   assert.deepEqual(kidsNarrationTiming(input, 69), { targetSeconds: 69, tempoFactor: 1, decision: 'measured-narration' });

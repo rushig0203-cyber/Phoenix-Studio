@@ -127,7 +127,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           topic,
           autoIdea: children && autoIdea,
           duration,
-          autoDuration: !children,
+          autoDuration: true,
           publishingFormat,
           batchCount,
           visualSource: children ? "local-ai" : "stock",
@@ -252,7 +252,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </p>
         )}
 
-        <p className="text-xs text-[#59634d]">{children ? "Phoenix chooses the format and preserves children's story and song length requirements." : "One vertical video for Instagram and YouTube. Phoenix fits its length to the complete narration—not padded seconds."}</p>
+        <p className="text-xs text-[#59634d]">{children ? "Phoenix chooses the format. Stories end with their narration and songs play through the complete recording." : "One vertical video for Instagram and YouTube. Phoenix fits its length to the complete narration—not padded seconds."}</p>
 
         {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
           <summary className="cursor-pointer font-semibold">Narration & visual brief (optional)</summary>

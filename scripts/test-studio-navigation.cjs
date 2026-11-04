@@ -66,7 +66,7 @@ test('creation embeds six compact mixed recommendations with suitability tooltip
   assert.doesNotMatch(creation, /Publishing format|Length per video/);
   assert.match(creation, /One vertical video for Instagram and YouTube/);
   const source = require('node:fs').readFileSync(path.join(__dirname,'../src/components/AICreation.tsx'),'utf8');
-  assert.match(source,/autoDuration: !children/);
+  assert.match(source,/autoDuration: true/);
   assert.match(source,/open=\{ideaOpen\}/);
   assert.doesNotMatch(source,/open=\{!topic\.trim\(\)\}/,'Typing the first letter must not close the prompt');
 });

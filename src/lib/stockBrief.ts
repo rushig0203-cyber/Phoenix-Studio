@@ -28,9 +28,13 @@ export function stockScriptTargetWords(duration: number) {
   return Math.max(40, Math.min(600, Math.round(duration * 2.2)));
 }
 
-export function stockNarrationError(script: string, duration: number, ownerScript = false) {
+export function stockNarrationError(script: string, duration: number, ownerScript = false, autoDuration = false) {
   const words = script.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-  const range = stockScriptWordRange(duration, ownerScript);
+  const range = ownerScript && autoDuration ? { min: 25, max: 225 } : stockScriptWordRange(duration, ownerScript);
+  if (ownerScript && autoDuration) {
+    return words >= range.min && words <= range.max && /[.!?]["'”’)]*$/.test(script.trim()) ? null
+      : `Use ${range.min}–${range.max} words with a complete ending. Phoenix keeps your complete narration at a natural pace.`;
+  }
   return words < range.min || words > range.max || !/[.!?]["'”’)]*$/.test(script.trim())
     ? `Your narration has ${words} words. Use ${range.min}–${range.max} words and a complete ending for ${duration} seconds, or change the duration. Phoenix will not replace your words.` : null;
 }

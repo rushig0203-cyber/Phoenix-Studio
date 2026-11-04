@@ -87,7 +87,7 @@ export function validateDraftScenes(draft: CreationDraft, scenes: DraftScene[], 
   const script = scenes.map(s => s.narration.trim()).join(" ");
   if (script.length > 20000) throw new Error("The draft is too long.");
   if (isStockDraft(draft)) {
-    const error = stockNarrationError(script, draft.input.duration, draft.input.scriptOrigin !== "local-model");
+    const error = stockNarrationError(script, draft.input.duration, draft.input.scriptOrigin !== "local-model", draft.input.autoDuration);
     if (error) throw new Error(error);
     if (scenes.some(s => s.query.trim().length < 2 || s.query.length > 80)) throw new Error("Each stock section needs a short visual search.");
     if (approval) {
@@ -101,7 +101,8 @@ export function validateDraftScenes(draft: CreationDraft, scenes: DraftScene[], 
     }
   } else if (draft.input.creationType !== "children-song") {
     const words = script.split(/\s+/).length;
-    if (words < draft.input.duration * 0.8 || words > draft.input.duration * 2.8) throw new Error("Use roughly 1–2.5 words per second for a clear children's story.");
+    const minimumWords = draft.input.autoDuration ? 25 : draft.input.duration * 0.8;
+    if (words < minimumWords || words > draft.input.duration * 2.8) throw new Error(draft.input.autoDuration ? "Use at least 25 words and a clear, complete story." : "Use roughly 1–2.5 words per second for a clear children's story.");
     if (!/[.!?]["'”’)]*$/.test(script)) throw new Error("Finish the story with a complete sentence.");
   }
   if (draft.input.creationType === "children-song" && draft.input.songAudioId && script !== draft.input.script?.trim().replace(/\s+/g, " ")) throw new Error("Lyrics must still match the saved song. Start a new song draft to change the recording or lyrics.");
@@ -155,7 +156,7 @@ export async function approveCreationDraft(id: string, version: number) {
   const found = (await listCreationDrafts()).find(d => d.id === id);
   if (found?.status === "APPROVED") return found;
   if (found?.status === "APPROVING") return dispatchApproved(found);
-  if (found?.input.creationType === "children-song") await requireSongAudio(found.input.songAudioId, found.input.duration);
+  if (found?.input.creationType === "children-song") await requireSongAudio(found.input.songAudioId, found.input.autoDuration ? undefined : found.input.duration);
   const draft = await mutate(drafts => {
     const stored = drafts.find(d => d.id === id);
     if (stored && ["APPROVING", "APPROVED"].includes(stored.status)) return stored;
@@ -294,7 +295,7 @@ export async function processNextCreationDraft() {
             draft.input.songAudioId = song.id;
             await update({ input: draft.input });
           }
-          await requireSongAudio(draft.input.songAudioId, draft.input.duration);
+          await requireSongAudio(draft.input.songAudioId, draft.input.autoDuration ? undefined : draft.input.duration);
         }, "Song audio preparation");
       }
       const scenes = draft.scenes.length ? draft.scenes

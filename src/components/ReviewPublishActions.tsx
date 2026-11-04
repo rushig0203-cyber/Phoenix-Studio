@@ -40,14 +40,7 @@ function publicTrackRecommendation(value: unknown): RecommendedInstagramAudio["r
 /** Opening/checking this panel never uploads. Only its final confirmation does. */
 export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   const [chooserOpen, setChooserOpen] = useState(false);
-  const postDialog = useRef<HTMLDialogElement>(null);
   const postButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!chooserOpen) return;
-    const modal = postDialog.current;
-    modal?.showModal();
-    return () => modal?.close();
-  }, [chooserOpen]);
   const [rumbleOpen, setRumbleOpen] = useState(false);
   const [rumbleNotice, setRumbleNotice] = useState("");
   const rumbleEpoch = useRef(0);
@@ -166,7 +159,6 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     finally { if (epoch.current === version) setLoading(false); }
   }
   function close() {
-    postDialog.current?.close();
     postButton.current?.focus();
     rumbleEpoch.current++;
     rumblePreparing.current = false; setRumbleBusy(false);
@@ -425,9 +417,10 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
     setCaption(revisableCaption); setConfirmedRevision("");
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
   return <>
-    <button ref={postButton} type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => setChooserOpen(true)}>Post / export</button>
-    {chooserOpen && <dialog ref={postDialog} id={chooserId} aria-label="Post or export this video" onCancel={event => { event.preventDefault(); if (!busy) close(); }} className="fixed inset-0 m-auto max-h-[94dvh] w-[min(940px,94vw)] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-[#bdc7a5] bg-[#fffdf7] p-4 text-[#26331f] shadow-2xl backdrop:bg-black/70">
-      <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post / export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
+    <button ref={postButton} type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => chooserOpen ? close() : setChooserOpen(true)}>Post / export</button>
+    <section id={chooserId} aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
+      {chooserOpen && <>
+      <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Posting & export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
       <div className="flex flex-wrap gap-2" aria-label="Choose a platform">
         <button type="button" className={button} disabled={busy} aria-pressed={platform === "youtube"} onClick={() => void open("youtube")}>Upload to YouTube</button>
         <button type="button" className={button} disabled={busy} aria-pressed={platform === "instagram" && !storyOnly} onClick={() => void open("instagram")}>Post to Instagram</button>
@@ -435,7 +428,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         <button type="button" className={button} aria-pressed={rumbleOpen} onClick={() => { setRumbleOpen(true); setRumbleNotice(""); }}>Rumble upload</button>
       </div>
       {!platform && !rumbleOpen && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
-      {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 rounded-lg border border-[#bdc7a5] p-3 text-xs">
+      {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3 text-xs">
         <h6 className="font-semibold">Rumble · assisted upload</h6>
         <p>Opens your existing MP4 in File Explorer and copies the posting text. Drag the video onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
         {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? "Opening saved video…" : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
@@ -454,7 +447,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
         </details>
         {rumbleNotice && <p role="status">{rumbleNotice}</p>}
       </section>}
-      {platform && <section aria-label={`${name} upload confirmation`} className="space-y-3 rounded-lg border border-[#bdc7a5] p-3">
+      {platform && <section aria-label={`${name} upload confirmation`} className="space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3">
       <h6 className="font-semibold">{name}{storyOnly ? " Story only" : ""} · final posting review</h6>
       {loading ? <p role="status" className="text-xs">Checking saved account and previous uploads…</p> : <>
         <p className="text-xs">Destination: {channel?.name || "No connected account"}. {publishReady ? "Upload permission verified." : !setupChecked ? "Uploading setup could not be verified. Check status before confirming an upload." : channel?.publishReason || "Connect this account and grant uploading access in Settings."}</p>
@@ -564,6 +557,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
       {platform === "instagram" && <details className="space-y-2 text-xs"><summary className="cursor-pointer">Everyday Story ideas</summary><p>Optional prompts based on this saved video. Add your own text or poll in Instagram; these ideas are not automatically uploaded and do not guarantee reach.</p><ul className="list-disc space-y-1 pl-4">{instagramStoryIdeas(file).map(idea => <li key={idea}>{idea}</li>)}</ul></details>}
       <p className="text-xs">Closing this panel does not cancel an accepted upload.</p>
       </section>}
-    </dialog>}
+      </>}
+    </section>
   </>;
 }

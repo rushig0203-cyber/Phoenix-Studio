@@ -13,10 +13,10 @@ export type SongAudio = { id:string; filename:string; duration:number; bytes:num
 const directory=()=>path.join(reviewRoot(),"song-audio");
 export function songAudioPath(id:string){if(!safeReviewId(id))throw new Error("Invalid song recording.");return path.join(directory(),`${id}.audio`);}
 export async function getSongAudio(id:string):Promise<SongAudio>{const audioPath=songAudioPath(id);const value=JSON.parse(await fs.readFile(path.join(directory(),`${id}.json`),"utf8")) as SongAudio;await fs.access(audioPath);return value;}
-export async function requireSongAudio(id:string|undefined,duration:number){
+export async function requireSongAudio(id:string|undefined,duration?:number){
   if(!id)throw new Error("A song needs a real sung recording. Add a song audio file and its lyrics; Windows narration cannot sing.");
   const audio=await getSongAudio(id).catch(()=>{throw new Error("The selected song recording is missing. Upload it again.");});
-  if(audio.duration+.15<duration)throw new Error(`The song is ${Math.floor(audio.duration)} seconds long. Choose a video length no longer than that recording.`);
+  if(duration !== undefined && audio.duration+.15<duration)throw new Error(`The song is ${Math.floor(audio.duration)} seconds long. Choose a video length no longer than that recording.`);
   return audio;
 }
 export async function stageSongAudio(body:ReadableStream<Uint8Array>,filename:string,origin:SongAudio["origin"]="recording"){

@@ -81,7 +81,11 @@ export async function POST(request: Request) {
         if (!singing.available) return NextResponse.json({ error: singing.reason }, { status: 503 });
       } else {
       if (!data.script?.trim()) return NextResponse.json({ error: "Add the lyrics from your sung recording so the captions match." }, { status: 400 });
-      await requireSongAudio(data.songAudioId, data.duration);
+      const audio = await requireSongAudio(data.songAudioId, data.autoDuration ? undefined : data.duration);
+      const maximum = publishingProfile(selectedFormat(data)).maxDuration;
+      if (data.autoDuration && audio.duration > maximum) {
+        return NextResponse.json({ error: `The full recording exceeds ${maximum} seconds for this format. Choose a shorter complete recording.` }, { status: 400 });
+      }
       }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
     // Older/manual callers and children's minimums keep their existing contract.
     if (data.autoDuration && !children) {
       const words = data.script?.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-      data.duration = data.script?.trim() ? Math.max(20, Math.min(90, Math.floor(words / 2.7))) : 60;
+      data.duration = data.script?.trim() ? Math.max(8, Math.min(90, Math.floor(words / 2.7))) : 60;
       data.publishingFormat = "youtube-short";
     }
     const needsWriter = !data.script?.trim() || (!children && !data.visualTerms?.length);
@@ -99,7 +103,7 @@ export async function POST(request: Request) {
       if (writer.provider === "cloudflare" && (!writer.apiKey || !writer.accountId || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Cloudflare Workers AI token, Account ID and Free-plan confirmation in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });
     }
     if (!children && data.script?.trim()) {
-      const error = stockNarrationError(data.script, data.duration, true);
+      const error = stockNarrationError(data.script, data.duration, true, data.autoDuration);
       if (error) return NextResponse.json({ error }, { status: 400 });
     }
     const publishingFormat = selectedFormat(data);
@@ -149,6 +153,7 @@ export async function POST(request: Request) {
       requestId,
       language: data.language,
       duration: data.duration,
+      autoDuration: data.autoDuration,
       aspect: profile.aspect,
       voice: data.voice,
       subtitleStyle: data.subtitleStyle,

@@ -4,7 +4,6 @@ import { generateWritingModel, withWritingSession, writingModelIdentity, isWriti
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { CREATIVE_DIRECTION_VERSION, STOCK_TOPIC_DIRECTION_VERSION, stockNarrationDirection, stockProductionNarrationIssue, stockTopicDirection } from "./creativeDirection";
 import { WritingOutputValidationError } from "./groqWriter";
-import { prefersShortStockPostingCaption } from "./stockProductionGuidance";
 
 export const EDITORIAL_VERSION = 6;
 export type EditorialFinding = { criterion: string; passed: boolean; severity: "blocker" | "warning"; evidence: string; reason: string };
@@ -235,8 +234,12 @@ export function stockVoiceRate(script: string, duration: number) {
   return Math.round(Math.max(1, Math.min(1.04, words / Math.max(1, duration) / 3.05)) * 100) / 100;
 }
 
-export function stockPostCopy(script: string, topic: string, guidance?: { revision: string; rules: string[]; policyVersion?: number }) {
-  const sentences = script.match(/[^.!?]+[.!?]+["'”’)]*/g)?.map(s => s.trim()) || [];
-  if (prefersShortStockPostingCaption(guidance)) return sentences[0] || topic;
-  return [...new Set([sentences[0], sentences[sentences.length - 1]].filter(Boolean))].join(" ").slice(0, 700) || topic;
+export function stockPostCopy(script: string, topic: string) {
+  const sentences = new Intl.Segmenter("en", { granularity: "sentence" }).segment(script);
+  for (const { segment } of sentences) {
+    const sentence = segment.trim();
+    if (sentence.length >= 24 && sentence.length <= 160 && sentence.split(/\s+/).length >= 5
+        && !/^(?:according to BBC News|BBC News reports|these (?:images|visuals)|(?:this|the) (?:footage|video))\b/i.test(sentence)) return sentence;
+  }
+  return topic;
 }

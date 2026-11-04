@@ -69,6 +69,7 @@ export type GenerationInput = {
   storyboard?: StockBeat[];
   language: string;
   duration: number;
+  autoDuration?: boolean;
   requestedDuration?: number;
   aspect: "9:16" | "16:9";
   voice: string;
@@ -527,7 +528,7 @@ export async function regenerateGenerationJob(id: string) {
     if (jobs[index].status !== "COMPLETED") throw new Error("Only completed AI creations can be regenerated.");
     const input = JSON.parse(jobs[index].requestJson) as GenerationInput;
     if (input.creationType === "children-song") {
-      await requireSongAudio(input.songAudioId, input.duration);
+      await requireSongAudio(input.songAudioId, input.autoDuration ? undefined : input.duration);
       if (!input.script?.trim()) throw new Error("Open AI Creation and add the lyrics from your recording.");
     }
     const requestKey = `regenerate:${id}`;
@@ -587,8 +588,8 @@ export function validatePublishingOutput(input: GenerationInput, media: ProbeRes
   if (!correctAspect) {
     throw new Error(`Rendered video is ${media.width}x${media.height}, but ${profile.label} requires ${profile.aspect}.`);
   }
-  const minimum = stock ? Math.min(20, profile.minDuration) : profile.minDuration;
-  if (media.duration < minimum - 1 || media.duration > profile.maxDuration + 1) {
+  const minimum = input.autoDuration ? 5 : stock ? Math.min(20, profile.minDuration) : profile.minDuration;
+  if (media.duration < minimum - (input.autoDuration ? 0 : 1) || media.duration > profile.maxDuration + 1) {
     throw new Error(`Rendered video is ${media.duration.toFixed(1)} seconds, but ${profile.label} requires ${minimum}–${profile.maxDuration} seconds.`);
   }
   return { format, profile };
@@ -684,7 +685,7 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   const researchContext = newsWritingContext(input.research);
   if (input.script?.trim() && (input.scriptOrigin !== "local-model" || input.scriptApproved)) {
     const script = cleanScript(input.script);
-    const error = stockNarrationError(script, input.duration, input.scriptOrigin !== "local-model");
+    const error = stockNarrationError(script, input.duration, input.scriptOrigin !== "local-model", input.autoDuration);
     if (error) throw new Error(error);
     return script;
   }
@@ -692,7 +693,7 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   const targetWords = stockScriptTargetWords(input.duration);
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\nTarget ${targetWords} words (within 10%). Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
+  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
     if (!rawScript) {
@@ -813,7 +814,7 @@ async function existingReadyOutput(job: LocalGenerationJob, input: GenerationInp
   const target = input.targetPlatform === "YouTube" ? "youtube" : "instagram";
   try {
     const media = await probeVideo(outputPath(review.id, target));
-    validatePublishingOutput(input, media);
+    validatePublishingOutput(input, media, input.visualSource === "stock");
     await updateJob(job.id, {
       status: "COMPLETED",
       progress: 100,
@@ -873,7 +874,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
       captions: retained ? retained.cues.map(cue => cue.text) : captionLines(input.script),
       hashtags: topicHashtags(input.topic, input.creationType),
-      postCopy: stockPostCopy(input.script || "", input.topic, input.managerGuidance) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\nIllustrative stock footage; not footage of this event. Single-source summary; verify developments before posting.` : ""),
+      postCopy: stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\nIllustrative stock footage; not footage of this event. Single-source summary; verify developments before posting.` : ""),
       research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
       editorial: input.editorial,
       managerGuidance: input.managerGuidance,
@@ -930,6 +931,8 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
     songAudioId: input.songAudioId,
     topic: input.topic,
     duration: input.duration,
+    autoDuration: input.autoDuration,
+    language: input.language,
     publishingFormat: input.publishingFormat,
     targetPlatform: input.targetPlatform,
     creationType,
@@ -971,8 +974,8 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
       captions: result.captions,
       hashtags: input.episodeNumber ? [...new Set([...result.hashtags, `#Part${input.episodeNumber}`])].slice(0, 10) : result.hashtags,
       postCopy: input.episodeNumber && input.episodeCount
-        ? `${input.seriesTitle} · Part ${input.episodeNumber} of ${input.episodeCount}. ${result.postCopy}${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`
-        : `${result.postCopy}${accountHandle ? ` Prepared for ${accountHandle}.` : ""}`,
+        ? `${input.seriesTitle} · Part ${input.episodeNumber} of ${input.episodeCount}. ${result.postCopy}`
+        : result.postCopy,
       checks: [
         input.songMode === "local-ace" ? "Approved lyrics sent to local ACE-Step; listen for pronunciation and missing words" : input.songAudioId ? "User-supplied lyrics retained for the recording" : "Original topic-matched script created locally",
         result.visualMode === "pixabay-animation"
@@ -1070,7 +1073,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       video_aspect: prepared.aspect,
       voice_name: prepared.voice,
       phoenix_local_voice_protocol: prepared.voice === "local-windows-voice" ? LOCAL_STOCK_VOICE_PROTOCOL : undefined,
-      voice_rate: stockVoiceRate(script, prepared.duration),
+      voice_rate: prepared.autoDuration ? 1 : stockVoiceRate(script, prepared.duration),
       video_source: "pexels",
       match_materials_to_script: true,
       n_threads: 1,

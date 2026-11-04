@@ -245,7 +245,7 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   const h = uiHarness(); t.after(() => h.unmount());
   await h.flush();
   assert.equal(h.requests.length, 0);
-  assert.equal(nodes(h.tree).filter(node => node.type === 'section').length, 0);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'section' && !node.props.hidden).length, 0);
   assert.deepEqual(nodes(h.tree).filter(node => node.type === 'button').map(text), ['Post / export']);
   h.click('Post / export'); h.render();
   assert.equal(h.requests.length, 0, 'Opening the chooser does not even check accounts until a platform is chosen');
@@ -267,14 +267,20 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   assert.equal(h.intervals.size, 0);
 });
 
-test('posting uses a viewport dialog and Escape closes it without submitting',async t=>{
-  const h=uiHarness();t.after(()=>h.unmount());h.choose('Rumble upload');await h.flush();
-  const dialog=nodes(h.tree).find(node=>node.type==='dialog');assert.ok(dialog);assert.equal(dialog.props['aria-label'],'Post or export this video');
-  let nativeClosed=0;dialog.props.ref.current={showModal(){},close(){assert.ok(nodes(h.tree).some(node=>node.type==='dialog'),'Close the native dialog before React removes it so browser focus can return');nativeClosed++;}};
-  let focused=0;h.button('Post / export').props.ref.current={focus(){assert.equal(nativeClosed,1);focused++;}};
-  let prevented=false;dialog.props.onCancel({preventDefault(){prevented=true;}});await h.flush();
-  assert.equal(prevented,true);assert.equal(nativeClosed,1);assert.equal(focused,1);assert.ok(!nodes(h.tree).some(node=>node.type==='dialog'));assert.equal(h.posts.length,0);assert.equal(h.reveals.length,0);
-  h.click('Post / export');await h.flush();assert.ok(nodes(h.tree).some(node=>node.type==='dialog'));
+test('posting expands inline and can be collapsed without submitting', async t => {
+  const h = uiHarness(); t.after(() => h.unmount());
+  const panel = () => nodes(h.tree).find(node => node.props.id === h.button('Post / export').props['aria-controls']);
+  assert.equal(panel().props.hidden, true);
+  h.choose('Rumble upload'); await h.flush();
+  assert.equal(panel().type, 'section'); assert.equal(panel().props.hidden, false);
+  assert.equal(h.button('Post / export').props['aria-expanded'], true);
+  assert.ok(!nodes(h.tree).some(node => node.type === 'dialog'));
+  let focused = 0; h.button('Post / export').props.ref.current = { focus() { focused++; } };
+  h.click('Close'); await h.flush();
+  assert.equal(panel().props.hidden, true); assert.equal(focused, 1);
+  assert.equal(h.posts.length, 0); assert.equal(h.reveals.length, 0);
+  h.click('Post / export'); await h.flush(); assert.equal(panel().props.hidden, false);
+  h.click('Post / export'); await h.flush(); assert.equal(panel().props.hidden, true);
 });
 
 test('Rumble reveals the existing MP4 and copies its text without downloading or submitting an upload', async t => {
@@ -745,7 +751,7 @@ test('active job polling is read-only, skips hidden pages, avoids overlapping re
   assert.ok(h.cleared.length > 0);
   assert.equal(poll.signal.aborted, true);
   pending.resolve(response({ jobs: [job({ detail: 'Late completed response' })] })); await h.flush();
-  assert.equal(nodes(h.tree).filter(node => node.type === 'section').length, 0);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'section' && !node.props.hidden).length, 0);
   assert.equal(h.posts.length, 0);
 });
 
