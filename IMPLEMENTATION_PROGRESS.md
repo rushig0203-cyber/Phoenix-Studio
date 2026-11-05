@@ -1,4 +1,70 @@
-# Quality-first implementation — September 16, 2026
+# Phoenix Studio implementation and verified releases
+
+## November 6 — current installed release and remaining account work
+
+- Installed application source `529386b48756e34da046ad0f2f8ef1197215b45e`
+  passed Windows run `42086420197`: 1,482 Node tests, 49 Python checks, lint,
+  TypeScript, the production build, compiled-worker memory checks and real
+  isolated FFmpeg/public-footage export and decoding. Both Vercel checks for the
+  preceding release passed; later source deployments must be checked separately.
+- Selected and serving bundle `.next-build-gh-42086420197-1`, build ID
+  `9LwbXwpfvOCULcAxAV8sx`, returns dashboard HTTP 200 with healthy manager/worker
+  and ready renderer. All five fresh owner video/job store hashes and the exact
+  owner configuration bytes matched after guarded activation. A later docs-only
+  commit does not change this application's recorded build source.
+- Browser verification confirms episode folders, source-video playback, immediate
+  caption-preview edits and seek controls. The temporary preview wording was
+  restored without saving or exporting. Post/export now expands across the grid:
+  the desktop panel measured 1,004px instead of approximately 290px. Instagram
+  and Rumble remain open together. At the 375px test size, document and panel
+  widths did not overflow; Close returned focus to the original trigger.
+- Actual visual inspection caught selected platform labels becoming white on the
+  legacy cream background. The final installed CSS now measures white text on
+  `rgb(57, 74, 42)`. Screenshots are retained outside Git. No social post was made.
+- Explicit recovery of old children's render jobs and preparation drafts now
+  upgrades an omitted automatic-duration choice to natural narration length.
+  Saved narration, scenes and checkpoints remain intact. Explicit fixed-duration
+  choices, existing remote renders and completed media retain their contracts.
+- Abandoned posting locks can no longer permanently block the stopped-dependent-
+  Story startup check. Windows recovery validates an old, dead owner's token
+  through an exclusive file handle and deletes that same handle. Live owners,
+  successor locks, links and ambiguous state stay protected. Actual fixtures pass
+  in Windows PowerShell 5.1 and PowerShell 7; records and credentials remain saved.
+  The general shared lock implementation was retained.
+- Renderer-patch verification accepts LF/CRLF checkout differences while retaining
+  all other whitespace, reviewed-file allowlist and reverse-apply checks. The
+  installed separate renderer patch also passed verification before activation.
+- The real Hindi Krishna preview uses all eight measured VoiceStudio phrases and
+  matching original visual beats, ending naturally at 28.67 seconds. Full audio
+  and video decoding passed; sampled reaction shots keep both characters visible.
+  This verifies that authored starter, not arbitrary Hindi scene understanding.
+- The history-readiness/192 MiB old-space worker changes are installed. A previous
+  identity-checked observation of the same dispatcher took 31 samples over about
+  16 minutes; its 29 idle samples used 85.02–95.5 MiB private memory. A 47-second
+  idle interval read about 4.3 MB versus the earlier 95.3 MB. This is sustained
+  idle-worker evidence for that interval, not a whole-laptop/rendering RAM cap.
+- The November 6 read-only check found 68 completed source jobs, 23 approved
+  preparation drafts, 15 completed creations and the same eight historical
+  preparation/render failures. No owner failed job was retried. News returned
+  13 current reports. Automatic Instagram feedback has current measurements for
+  69 videos and 59 eligible comparisons; unavailable metrics stay unknown.
+- Both free writers passed live key/model checks. One tiny synthetic Cloudflare
+  inference returned HTTP 200 and `READY`; settings and all five video/job stores
+  remained unchanged. This proves that request, not unlimited future free quota.
+- YouTube remains unconfigured: Google refused the owner's identity verification
+  needed to enable 2-Step Verification for Cloud setup. No new credentials,
+  permissions, billing or test upload were created. Rumble remains an assisted
+  saved-file handoff and Bilibili automatic publishing is unconnected. A scoped
+  November 5 check found no new provider permission reply; follow-up stays paused.
+- Facebook Page publishing was requested after activation. The existing linked
+  Page/Instagram identity matches, but the token lacks Page publishing permission
+  and Page-token eligibility has not been proved. Implementation/authorization is
+  now in progress; a linked identity alone is not a publishing connection.
+- Broader limits remain: automatic singing needs a real supplied sung recording
+  on this hardware, open-ended animation quality still needs review, source
+  framing does not perform per-clip subject tracking, and the original full
+  49-minute interruption/resume acceptance test is not certified by these checks.
+  Do not describe every earlier product requirement as finished.
 
 ## November 5 episode clips, Create and posting review
 
@@ -19,10 +85,10 @@
 - Post / export expands in Library with the existing explicit final posting
   action. The original English/Hindi Krishna starter has eight matched 2D beats
   and uses the existing local voice and renderer.
-- The running local bundle XT64s3IRaE-fe0VCV_y8v has the same normalized worker
+- At that checkpoint, local bundle XT64s3IRaE-fe0VCV_y8v had the same normalized worker
   dispatcher and readiness code as Windows build 41319806227. Port 3000 and the
   worker are healthy; the process launches with a 192 MiB Node old-space limit.
-  The new episode/creation/posting changes require a separate verified release.
+  The separate verified releases recorded above subsequently installed these changes.
 
 ## November 1 sustained worker RAM — source ready, verification pending
 
