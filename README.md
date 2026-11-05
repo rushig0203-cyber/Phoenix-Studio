@@ -133,8 +133,12 @@ use its final Post or Upload action. **Close** collapses the controls.
   eligible location or music track is not fabricated. Music suggestions use
   sampled visual evidence and catalogue metadata, not audio listening or BPM
   analysis. Instagram catalogue music is not embedded in the downloaded MP4.
-- **YouTube:** complete the channel's OAuth connection in Settings. A channel URL
-  or an open upload page alone does not connect it.
+- **YouTube:** complete the channel's OAuth connection in Settings. The app needs
+  a Google Cloud web OAuth client, YouTube Data API access and its exact callback
+  `http://localhost:3000/api/channels/youtube/callback`. Then authorize the actual
+  channel account. A channel URL or an open upload page alone does not connect it.
+  Google Cloud requires 2-Step Verification; an account-verification rejection
+  must be resolved on Google's side before credential setup can continue.
 - **Rumble upload:** an assisted handoff. **Open Rumble & show saved video**
   reveals the existing MP4 in Windows File Explorer, copies its description and
   opens the official upload page. Drag that file onto Rumble, paste the text and
@@ -190,18 +194,17 @@ animation are bounded. Local rendering still needs physical RAM. Free cloud
 writers reduce local model memory, not the renderer's needs. No cleanup or Docker
 setting can promise to solve system-wide RAM exhaustion.
 
-The November 1 verified desktop update reduced median startup worker private memory
-from 261.0 to 75.7 MiB across three samples per release (185.2 MiB saved). Its
-compiled queue worker no longer loads TypeScript at runtime. This measures worker
-overhead, not peak rendering memory or a guarantee about other running apps.
-After roughly 3.5 hours, the worker measured 256.8 MiB with no active render;
-sustained RAM growth remains under investigation. The RAM issue is not solved.
+The compiled worker avoids loading TypeScript at runtime and checks physical
+job-file versions before rereading unchanged completed histories. Pending work
+keeps its normal polling. Its Node old-space allowance is 192 MiB; this does not
+cap total process or whole-laptop RAM. Existing admission guards remain active.
 
-The next worker update checks physical job-file versions before rereading
-unchanged completed histories, without caching mutable jobs. Pending work keeps
-its normal polling. Its compiled worker heap is bounded at 192 MiB; rollback to
-an older source worker retains that release's allowance. Activation and sustained
-local measurements are still pending; RAM admission guards remain unchanged.
+The first November 1 update reduced startup overhead, but an idle worker later
+grew to 256.8 MiB. After the history-polling fix, a November 5 observation took
+31 identity-checked samples over about 16 minutes: the 29 idle samples used
+85.02–95.5 MiB private memory. A separate 47-second idle interval read about
+4.3 MB instead of the earlier 95.3 MB. This verifies sustained idle-worker
+improvement over that interval; long rendering peaks and other apps still matter.
 
 Runtime media, originals, editable masters, captions and queue records live in
 `storage/Phoenix Studio Review Files`. Trash is recoverable and still uses disk.
