@@ -162,6 +162,8 @@ main input:not([type="range"]):not([type="checkbox"]), main select, main textare
 main input::placeholder, main textarea::placeholder { color: #778269; }
 .shadow-2xl, .shadow-xl { box-shadow: 0 12px 34px rgba(59,73,43,.16); }
 body [class~="bg-white"], body [class*="bg-[#f7f7f5]"], body [class*="bg-[#101114]"], body [class*="bg-[#18191d]"] { background-color: #fffdf7 !important; }
+/* Posting selection must override the legacy neutral-background palette. */
+body [data-posting-panel] button[aria-pressed="true"] { background-color: #394a2a !important; border-color: #394a2a; color: #fff; }
 body [class~="text-slate-900"] { color: #1e2719 !important; }
 body [class~="text-slate-600"], body [class~="text-slate-500"], body [class~="text-slate-400"], body [class~="text-slate-300"] { color: #647052 !important; }
 body [class~="border-slate-200"], body [class~="border-slate-100"], body [class~="border-white/10"] { border-color: #bfcaa6 !important; }
