@@ -4,8 +4,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { withFileLock } from "./fileLock";
 
-export type ChannelPlatform = "youtube" | "instagram";
+export type ChannelPlatform = "youtube" | "instagram" | "facebook";
 export type ChannelLoginType = "youtube" | "facebook" | "instagram";
+export const FACEBOOK_PAGE_GRAPH_VERSION = "v26.0";
 export type ChannelPublishAccess = {
   platform: ChannelPlatform; accountId: string; name: string;
   connectionRevision: string; accessToken: string; loginType: ChannelLoginType;
@@ -25,6 +26,7 @@ type Account = {
   id: string; name: string; profileUrl: string; connectedAt: string;
   verifiedAt: string; error?: string;
   connectionRevision?: string; loginType?: ChannelLoginType; pageId?: string;
+  instagramAccountId?: string; userAccessToken?: string; pageTasks?: string[];
   grantedScopes?: string[]; permissionsVerifiedAt?: string; publishPermissionError?: string;
 };
 type Pending = { platform: ChannelPlatform; stateHash: string; browserHash: string; expiresAt: number; redirectUri: string; verifier: string; claimed?: boolean; mode?: "token"; intent?: "identity" | "upload" };
@@ -35,6 +37,7 @@ export type ChannelStatus = {
   name?: string; profileUrl?: string; verifiedAt?: string; error?: string;
   redirectUri: string; oauthAvailable: boolean; hasClientSecret: boolean; clientId: string;
   accountId?: string; connectionRevision?: string; loginType?: ChannelLoginType; pageId?: string;
+  instagramAccountId?: string;
   publishReady: boolean; publishReason: string;
 };
 const vaultPath = () => path.join(process.env.PHOENIX_CHANNEL_STORAGE || path.join(process.cwd(), "storage", "private"), "channels.enc");
@@ -42,6 +45,8 @@ const hash = (value: string) => crypto.createHash("sha256").update(value).digest
 const youtubeReadScope = "https://www.googleapis.com/auth/youtube.readonly";
 const youtubeUploadScope = "https://www.googleapis.com/auth/youtube.upload";
 const facebookPublishScopes = ["instagram_basic", "instagram_content_publish", "pages_read_engagement"];
+const facebookPagePublishScopes = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
+const canCreatePageContent = (tasks?: string[]) => tasks?.some(task => ["CREATE_CONTENT", "PROFILE_PLUS_CREATE_CONTENT"].includes(task)) === true;
 function revision(account: Account) { return account.connectionRevision || hash(`channel-connection:${account.connectedAt}`); }
 function actualScopes(value: unknown): string[] {
   const values = typeof value === "string" ? value.split(/[\s,]+/) : Array.isArray(value) ? value : [];
@@ -52,6 +57,9 @@ function publishCapability(platform: ChannelPlatform, account?: Account, allowRe
   if (account.error) return { publishReady: false, publishReason: "Check this connection before uploading." };
   if (platform === "youtube") {
     if (account.loginType !== "youtube" || !account.grantedScopes?.includes(youtubeUploadScope)) return { publishReady: false, publishReason: "Enable YouTube uploads and grant upload permission. Channel identity access alone cannot upload videos." };
+  } else if (platform === "facebook") {
+    if (account.loginType !== "facebook" || !/^\d{5,30}$/.test(account.id) || account.pageId !== account.id || !account.instagramAccountId || !/^\d{5,40}$/.test(account.instagramAccountId)) return { publishReady: false, publishReason: "Connect the Facebook Page linked to your verified Instagram account before uploading." };
+    if (!account.permissionsVerifiedAt || !facebookPagePublishScopes.every(scope => account.grantedScopes?.includes(scope)) || !canCreatePageContent(account.pageTasks)) return { publishReady: false, publishReason: "Authorize pages_manage_posts, pages_read_engagement and pages_show_list for this Page, with permission to create content, then reconnect Facebook." };
   } else {
     if (account.loginType === "instagram") return { publishReady: false, publishReason: "Instagram identity verified. Local-file publishing currently requires a Facebook Login token for the linked professional account; direct Instagram Login publishing is not enabled." };
     if (account.loginType !== "facebook" || !account.pageId) return { publishReady: false, publishReason: "Check or reconnect Instagram using a Facebook Login token for its linked professional account." };
@@ -60,7 +68,7 @@ function publishCapability(platform: ChannelPlatform, account?: Account, allowRe
   if (account.expiresAt && account.expiresAt <= Date.now() && !(allowRenewal && platform === "youtube" && account.refreshToken)) return { publishReady: false, publishReason: "Connection expired. Check or reconnect before uploading." };
   return { publishReady: true, publishReason: "Upload permission verified. Each video still requires your final confirmation." };
 }
-export const channelPlatforms: ChannelPlatform[] = ["youtube", "instagram"];
+export const channelPlatforms: ChannelPlatform[] = ["youtube", "instagram", "facebook"];
 export function isChannelPlatform(value: string): value is ChannelPlatform { return channelPlatforms.includes(value as ChannelPlatform); }
 
 // Accept a token copied on its own or from an Authorization header. Validate on
@@ -146,7 +154,7 @@ async function writeVault(value: Vault) {
 
 const withVault = <T>(action: (vault: Vault) => Promise<T>) => withFileLock(`${vaultPath()}.lock`, async () => action(await readVault()));
 function credentials(vault: Vault, platform: ChannelPlatform): Credentials {
-  const saved = vault.credentials?.[platform];
+  const saved = vault.credentials?.[platform] || (platform === "facebook" ? vault.credentials?.instagram : undefined);
   return { clientId: saved?.clientId || process.env[platform === "youtube" ? "YOUTUBE_CLIENT_ID" : "INSTAGRAM_APP_ID"] || "", clientSecret: saved?.clientSecret || process.env[platform === "youtube" ? "YOUTUBE_CLIENT_SECRET" : "INSTAGRAM_APP_SECRET"] || "" };
 }
 
@@ -173,9 +181,9 @@ function status(vault: Vault, platform: ChannelPlatform, origin: string): Channe
     name: account?.name, profileUrl: account?.profileUrl, verifiedAt: account?.verifiedAt,
     error: account?.error || (expired ? "Connection expired. Reconnect this channel." : undefined),
     redirectUri: `${origin}/api/channels/${platform}/callback`,
-    oauthAvailable: platform === "youtube" || origin.startsWith("https://"),
+    oauthAvailable: platform === "youtube" || platform === "instagram" && origin.startsWith("https://"),
     accountId: account?.id, connectionRevision: account ? revision(account) : undefined, pageId: account?.pageId,
-    loginType: account?.loginType, ...publishCapability(platform, account),
+    loginType: account?.loginType, instagramAccountId: account?.instagramAccountId, ...publishCapability(platform, account),
   };
 }
 export async function listChannels(origin: string): Promise<ChannelStatus[]> {
@@ -375,6 +383,7 @@ async function facebookPublishingPermissions(accessToken: string): Promise<Publi
 }
 
 export async function beginChannelOAuth(platform: ChannelPlatform, origin: string, intent: "identity" | "upload" = "identity") {
+  if (platform === "facebook") throw new Error("Connect the verified linked Facebook Page with a Facebook User token. Personal-profile OAuth publishing is not supported.");
   return withVault(async (vault) => {
     const config = credentials(vault, platform);
     if (!config.clientId || !config.clientSecret) throw new Error("Set up this platform's app credentials first.");
@@ -395,6 +404,7 @@ export async function beginChannelOAuth(platform: ChannelPlatform, origin: strin
 }
 
 export async function finishChannelOAuth(platform: ChannelPlatform, origin: string, state: string, browser: string, code: string) {
+  if (platform === "facebook") throw new Error("Facebook Page connections use the verified linked-Page token flow. Start that connection again.");
   const pending = await withVault(async (vault) => {
     const match = vault.pending?.find((item) => item.platform === platform && item.mode !== "token" && !item.claimed && item.stateHash === hash(state) && item.browserHash === hash(browser) && item.expiresAt > Date.now() && item.redirectUri === `${origin}/api/channels/${platform}/callback`);
     if (!state || !browser || !match) throw new Error("The connection request expired or belongs to a different browser. Start Connect again.");
@@ -454,6 +464,64 @@ export async function connectInstagramToken(accessToken: string, pageIdHint?: st
   }
 }
 
+async function facebookPageAccount(userAccessToken: string, pageId: string, instagramAccountId: string) {
+  const graph = `https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}`;
+  const headers = { Authorization: `Bearer ${userAccessToken}` };
+  const grant = await providerJson(`${graph}/me/permissions?fields=permission,status`, { headers });
+  if (!Array.isArray(grant.data)) throw new Error("Meta did not return Facebook Page permission evidence. Check the token and reconnect Facebook.");
+  const permissions: PublishingPermissions = { grantedScopes: actualScopes(grant.data.filter((item: { status?: unknown }) => item?.status === "granted").map((item: { permission?: unknown }) => item.permission)), permissionsVerifiedAt: new Date().toISOString() };
+  if (!permissions.permissionsVerifiedAt || !facebookPagePublishScopes.every(scope => permissions.grantedScopes?.includes(scope))) {
+    throw new Error("Facebook Page publishing needs pages_manage_posts, pages_read_engagement and pages_show_list. Generate a Facebook User token with those permissions and authorize the Page linked to your Instagram account; Instagram posting remains unchanged.");
+  }
+  const linked = await providerJson(`${graph}/${pageId}?fields=id,name,instagram_business_account{id}`, { headers });
+  if (String(linked.id || "") !== pageId || String(linked.instagram_business_account?.id || "") !== instagramAccountId) throw new Error("This Facebook Page is not linked to the verified Instagram account. Phoenix did not connect another Page.");
+  const pages = await providerJson(`${graph}/me/accounts?fields=id,access_token,tasks&limit=100`, { headers });
+  const page = Array.isArray(pages.data) ? pages.data.find((item: { id?: unknown }) => String(item?.id || "") === pageId) : undefined;
+  const tasks = actualScopes(page?.tasks);
+  if (!page || !canCreatePageContent(tasks)) throw new Error("Meta did not return content-creation access for the linked Facebook Page. Select that Page in your app's Facebook permissions and reconnect; Phoenix will not use a different Page.");
+  let accessToken: string;
+  try { accessToken = normalizeInstagramToken(page.access_token); }
+  catch { throw new Error("Meta did not return a valid Page access token. Reauthorize the linked Page and reconnect Facebook."); }
+  const identity = await providerJson(`${graph}/me?fields=id,name,instagram_business_account{id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (String(identity.id || "") !== pageId || String(identity.instagram_business_account?.id || "") !== instagramAccountId || typeof identity.name !== "string" || !identity.name.trim() || identity.name.length > 200 || /[\u0000-\u001f\u007f]/.test(identity.name)) throw new Error("The Page token did not verify the exact linked Facebook Page. No Facebook connection was saved.");
+  return { ...permissions, id: pageId, pageId, instagramAccountId, name: identity.name.trim(),
+    profileUrl: `https://www.facebook.com/${pageId}`, loginType: "facebook" as const, accessToken, userAccessToken, pageTasks: tasks };
+}
+
+/** Explicitly connect only the Page already verified through the owner's Instagram link. */
+export async function connectFacebookPage(accessToken?: string) {
+  const initial = await readVault(), instagram = initial.accounts?.instagram;
+  if (!instagram || instagram.error || instagram.loginType !== "facebook" || !instagram.pageId || !/^\d{5,30}$/.test(instagram.pageId) || !/^\d{5,40}$/.test(instagram.id) || instagram.expiresAt && instagram.expiresAt <= Date.now()) throw new Error("Check the Facebook-linked Instagram connection first. Phoenix connects only its existing linked Page.");
+  let userAccessToken: string;
+  try { userAccessToken = normalizeInstagramToken(accessToken === undefined ? instagram.accessToken : accessToken); }
+  catch { throw new Error("Paste a complete Facebook User access token, not a URL, command or app secret."); }
+  const attempt: Pending = { platform: "facebook", mode: "token", stateHash: hash(crypto.randomUUID()), browserHash: "", expiresAt: Date.now() + 90_000, redirectUri: "", verifier: "", claimed: true };
+  await withVault(async vault => {
+    const current = vault.accounts?.instagram;
+    if (!current || revision(current) !== revision(instagram) || current.accessToken !== instagram.accessToken || current.id !== instagram.id || current.pageId !== instagram.pageId) throw new Error("The linked Instagram account changed. Review the Facebook destination again.");
+    vault.pending = (vault.pending || []).filter(item => item.platform !== "facebook" && item.expiresAt > Date.now());
+    vault.pending.push(attempt); await writeVault(vault);
+  });
+  try {
+    const identity = await facebookPageAccount(userAccessToken, instagram.pageId, instagram.id);
+    await withVault(async vault => {
+      const current = vault.accounts?.instagram;
+      const pending = vault.pending?.find(item => item.platform === "facebook" && item.mode === "token" && item.stateHash === attempt.stateHash && item.expiresAt > Date.now());
+      if (!pending || !current || revision(current) !== revision(instagram) || current.accessToken !== instagram.accessToken || current.id !== instagram.id || current.pageId !== instagram.pageId) throw new Error("The Facebook connection was cancelled or its linked Instagram account changed. Review the destination and connect again.");
+      const now = new Date().toISOString();
+      vault.accounts = { ...vault.accounts, facebook: { ...identity, connectedAt: now, verifiedAt: now, connectionRevision: crypto.randomUUID() } };
+      vault.credentials = { ...vault.credentials, facebook: credentials(initial, "facebook") };
+      vault.pending = vault.pending?.filter(item => item !== pending); await writeVault(vault);
+    });
+  } catch (error) {
+    await withVault(async vault => {
+      if (!vault.pending?.some(item => item.platform === "facebook" && item.stateHash === attempt.stateHash)) return;
+      vault.pending = vault.pending.filter(item => item.stateHash !== attempt.stateHash); await writeVault(vault);
+    });
+    throw error;
+  }
+}
+
 function tokenExpiry(value: unknown) {
   const seconds = Number(value);
   return Date.now() + (Number.isFinite(seconds) && seconds > 0 && seconds <= 366 * 24 * 3600 ? seconds : 3600) * 1000;
@@ -480,6 +548,16 @@ export async function verifyChannel(platform: ChannelPlatform) {
   if (!account) throw new Error("Connect this channel first.");
   const original = account, config = credentials(vault, platform);
   try {
+    if (platform === "facebook") {
+      if (!account.userAccessToken || !account.instagramAccountId || account.pageId !== account.id) throw new Error("Reconnect Facebook with a verified linked-Page publishing token.");
+      const checked = { ...account, ...await facebookPageAccount(account.userAccessToken, account.id, account.instagramAccountId), error: undefined, verifiedAt: new Date().toISOString() };
+      await withVault(async latest => {
+        const current = latest.accounts?.facebook;
+        if (!current || revision(current) !== revision(original) || current.accessToken !== original.accessToken || current.userAccessToken !== original.userAccessToken) return;
+        latest.accounts!.facebook = checked; await writeVault(latest);
+      });
+      return;
+    }
     if (platform === "youtube") account = await renewedYouTubeAccount(account, config);
     const identity = await profile(platform, account.accessToken, platform === "instagram" && account.loginType === "facebook" ? account.pageId : undefined);
     if (identity.id !== original.id) throw new Error("The connection now resolves to a different account. Reconnect and review the destination before uploading.");

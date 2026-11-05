@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  assertLocalChannelRequest, beginChannelOAuth, channelError, connectInstagramToken,
+  assertLocalChannelRequest, beginChannelOAuth, channelError, connectInstagramToken, connectFacebookPage,
   disconnectChannel, isChannelPlatform, listChannels, normalizeInstagramToken, normalizeInstagramPageId, saveChannelCredentials, verifyChannel,
 } from "@/lib/channelConnections";
 
@@ -12,6 +12,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("configure"), clientId: z.string().trim().min(3).max(500), clientSecret: z.string().trim().max(2000).default("") }),
   z.object({ action: z.literal("connect"), intent: z.enum(["identity", "upload"]).default("identity") }),
   z.object({ action: z.literal("verify") }),
+  z.object({ action: z.literal("facebook-page"), accessToken: z.string().max(16000).optional() }).strict(),
   z.object({ action: z.literal("instagram-token"), accessToken: z.string().max(16000).transform((value, context) => {
     try { return normalizeInstagramToken(value); }
     catch { context.addIssue({ code: "custom", message: "Paste the complete Instagram access token, not a URL, command, JSON response, or app secret." }); return z.NEVER; }
@@ -62,6 +63,10 @@ export async function POST(request: Request, context: Context) {
     const data = parsed.data, origin = new URL(request.url).origin;
     if (data.action === "configure") await saveChannelCredentials(platform, data.clientId, data.clientSecret);
     if (data.action === "verify") await verifyChannel(platform);
+    if (data.action === "facebook-page") {
+      if (platform !== "facebook") return NextResponse.json({ error: "This option connects only the linked Facebook Page." }, { status: 400 });
+      await connectFacebookPage(data.accessToken);
+    }
     if (data.action === "instagram-token") {
       if (platform !== "instagram") return NextResponse.json({ error: "This option is for Instagram only." }, { status: 400 });
       await connectInstagramToken(data.accessToken, data.pageId);
