@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FolderOpen, Info, Play, RotateCcw, Search, Trash2 } from "lucide-react";
 import type { ReviewFile } from "@/lib/reviewFiles";
+import { reviewEpisode } from "@/lib/reviewEpisode";
 import ReviewPlayer, { reviewTarget } from "./ReviewPlayer";
 import PostingActions from "./PostingActions";
 import ReviewStorageSummary from "./ReviewStorageSummary";
@@ -18,21 +19,6 @@ const categoryNames: Record<string, string> = { children: "Children’s animatio
 type LibraryView = "generated" | "posted" | "episodes";
 const viewNames: Record<LibraryView, string> = { generated: "Generated", posted: "Posted", episodes: "Episode clips" };
 const searchText = (file: ReviewFile) => `${file.title} ${file.quality.hashtags.join(" ")} ${file.quality.postCopy || ""}`.toLowerCase();
-
-function episodeOf(file: ReviewFile, byId: Map<string, ReviewFile>) {
-  const visited = new Set<string>();
-  let current: ReviewFile | undefined = file;
-  while (current && !visited.has(current.id)) {
-    if (current.episode) return current.episode;
-    // Older source clips have no folder metadata. Recover their upload identity.
-    if (current.processing && !current.processing.scoreKind && !current.delivery && !stockSource(current) && !current.source.filename.startsWith("local-cartoon-")) {
-      const title = current.source.filename.replace(/\.[^.]+$/, "").replace(/_+/g, " ").trim();
-      return { id: current.processing.jobId, title: title || "Untitled episode", start: current.processing.start };
-    }
-    visited.add(current.id);
-    current = current.editedFrom ? byId.get(current.editedFrom) : undefined;
-  }
-}
 
 const seconds = (value?: number) => {
   if (value === undefined || !Number.isFinite(value)) return "";
@@ -125,7 +111,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
   const episodes = new Map<string, { title: string; clips: Array<{ file: ReviewFile; start: number }> }>();
   const posted: ReviewFile[] = [], generated: ReviewFile[] = [];
   for (const file of available) {
-    const episode = episodeOf(file, byId);
+    const episode = reviewEpisode(file, byId);
     if (episode) {
       const folder = episodes.get(episode.id) ?? { title: episode.title, clips: [] };
       folder.clips.push({ file, start: episode.start });

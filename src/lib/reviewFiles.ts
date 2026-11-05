@@ -4,6 +4,7 @@ import path from "node:path";
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import type { StockLicence, StockProvider } from "./stockProviders";
+import { reviewEpisode } from "./reviewEpisode";
 
 export type ReviewTarget = "instagram" | "youtube";
 export type ReviewStatus = "READY" | "NEEDS_RENDERER" | "FAILED";
@@ -186,7 +187,12 @@ export async function saveReviewFile(file: ReviewFile) {
 }
 
 export async function getReviewFile(id: string) {
-  return (await readReviewFiles()).find((file) => file.id === id) || null;
+  const files = await readReviewFiles(true);
+  const file = files.find(item => item.id === id && !item.trashedAt);
+  if (!file) return null;
+  if (file.episode) return file;
+  const episode = reviewEpisode(file, new Map(files.map(item => [item.id, item])));
+  return episode ? { ...file, episode } : file;
 }
 
 /** Update only the intended metadata under the index lock; never resurrect a deleted output. */

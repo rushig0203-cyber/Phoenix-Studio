@@ -48,6 +48,34 @@ test('the library endpoint is read-only instead of buffering legacy multi-gigaby
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(await response.json()));
 });
+
+test('legacy edited clips retain their episode folder after ancestors move to Trash without rewriting history', async () => {
+  file.processing = { jobId: crypto.randomUUID(), start: 140, end: 260, format: '9:16',
+    score: 80, rank: 1, reason: 'Fixture episode', status: 'COMPLETED' };
+  file.source.filename = 'Severance_Season_7_Episode_1.mp4';
+  const firstEdit = { ...file, id: crypto.randomUUID(), title: 'Edited ending', editedFrom: file.id, processing: undefined };
+  const secondEdit = { ...firstEdit, id: crypto.randomUUID(), title: 'Edited ending again', editedFrom: firstEdit.id };
+  await reviews.saveReviewFile(file);
+  await reviews.saveReviewFile(firstEdit);
+  await reviews.saveReviewFile(secondEdit);
+  await reviews.removeReviewFile(file.id);
+  await reviews.removeReviewFile(firstEdit.id);
+  const index = path.join(reviews.reviewRoot(), 'index.json'), before = fs.readFileSync(index, 'utf8');
+  const expected = { id: file.processing.jobId, title: 'Severance Season 7 Episode 1', start: 140 };
+  const response = await route.GET(new Request('http://localhost:3000/api/review-files'));
+  const visible = await response.json();
+  assert.equal(visible.some(item => [file.id, firstEdit.id].includes(item.id)), false);
+  assert.deepEqual(visible.find(item => item.id === secondEdit.id).episode, expected);
+  const editable = await reviews.getReviewFile(secondEdit.id);
+  assert.deepEqual(editable.episode, expected, 'The editor receives folder metadata to retain in its next export');
+  assert.equal(await reviews.getReviewFile(file.id), null, 'Trashed originals remain unavailable for playback and publishing');
+  const trashedResponse = await route.GET(new Request('http://localhost:3000/api/review-files?trash=1'));
+  const trashed = await trashedResponse.json();
+  assert.deepEqual(trashed.find(item => item.id === firstEdit.id).episode, expected);
+  assert.equal(trashed.some(item => item.id === secondEdit.id), false);
+  assert.equal(fs.readFileSync(index, 'utf8'), before, 'Listing and editing-state lookup are read-only');
+  assert.equal(firstEdit.episode, undefined);
+});
 test('only a completed matching parent upload with its exact output fingerprint is Posted', async () => {
   write('instagram', parent('instagram')); write('youtube', parent('youtube'));
   const result = await summaries.reviewPublicationSummary(file.id);

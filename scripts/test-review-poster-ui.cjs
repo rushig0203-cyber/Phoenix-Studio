@@ -21,6 +21,11 @@ new vm.Script(ts.transpileModule(fs.readFileSync(providersFilename, 'utf8'), {
   fileName: providersFilename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, { filename: providersFilename }).runInNewContext({ module: providersModule, exports: providersModule.exports,
   require(name) { assert.fail(`Pure stock-provider metadata must not load ${name}`); } }, { timeout: 1000 });
+const episodeFilename = path.join(project, 'src/lib/reviewEpisode.ts'), episodeModule = { exports: {} };
+new vm.Script(ts.transpileModule(fs.readFileSync(episodeFilename, 'utf8'), {
+  fileName: episodeFilename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText, { filename: episodeFilename }).runInNewContext({ module: episodeModule, exports: episodeModule.exports,
+  require(name) { assert.fail(`Episode identity must not load ${name}`); } }, { timeout: 1000 });
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -98,10 +103,11 @@ function uiHarness() {
     './PostingActions': { __esModule: true, default: MockPostingActions },
     './ReviewStorageSummary': { __esModule: true, default: function MockStorageSummary() { throw new Error('Storage UI must stay inert'); } },
     '@/lib/stockProviders': providersModule.exports,
+    '@/lib/reviewEpisode': episodeModule.exports,
   };
-  const module = { exports: {} };
+  const libraryModule = { exports: {} };
   const context = vm.createContext({
-    module, exports: module.exports, window, document,
+    module: libraryModule, exports: libraryModule.exports, window, document,
     require(name) {
       if (!Object.hasOwn(dependencies, name)) throw new Error(`Unexpected isolated review UI import: ${name}`);
       return dependencies[name];
@@ -134,7 +140,7 @@ function uiHarness() {
     };
   }
   const file = sampleFile();
-  const library = render(module.exports.default, { files: [file], loading: false, onRefresh: async () => {} });
+  const library = render(libraryModule.exports.default, { files: [file], loading: false, onRefresh: async () => {} });
   // Discover the private component through the real library's inert JSX tree.
   // No source rewriting, private export injection or duplicated Poster logic.
   const posterNode = nodes(library.tree).find(node => typeof node.type === 'function' && node.type.name === 'Poster');
