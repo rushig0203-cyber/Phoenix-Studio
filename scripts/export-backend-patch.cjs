@@ -8,8 +8,8 @@ const backend = path.resolve(process.env.PHOENIX_MPT_DIR || path.join(project, '
 const base = '3ade9fbc40e18db32a5edb340d49e31ea0dd5528';
 const tracked = ['.gitignore', 'app/controllers/v1/video.py', 'app/models/schema.py', 'app/services/task.py', 'app/services/video.py', 'config.example.toml', 'docker-compose.release.yml', 'main.py', 'test/services/test_schema.py', 'test/services/test_video.py'];
 const additions = ['app/services/phoenix_storyboard.py', 'app/services/phoenix_artifacts.py', 'app/services/phoenix_local_voice.py', 'test/services/test_phoenix_storyboard.py', 'test/services/test_phoenix_artifacts.py'];
-const run = (args, differences = false) => {
-  const result = spawnSync('git', args, { cwd: backend, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+const run = (args, differences = false, input) => {
+  const result = spawnSync('git', args, { cwd: backend, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024, input });
   if (result.error || (result.status !== 0 && !(differences && result.status === 1))) throw new Error(`Backend patch command failed: ${result.error?.message || result.stderr}`);
   return result.stdout;
 };
@@ -17,8 +17,10 @@ if (run(['rev-parse', 'HEAD']).trim() !== base) throw new Error('Backend base co
 let patch = run(['diff', '--binary', base, '--', ...tracked]);
 for (const filename of additions) patch += run(['diff', '--no-index', '--binary', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filename], true);
 if (!patch.trim()) throw new Error('Backend patch is empty.');
+// Git checkout may change patch-file newlines on Windows; preserve every other byte.
+patch = patch.replace(/\r\n/g, '\n');
 const destination = path.join(project, 'integrations', 'moneyprinterturbo-local.patch');
 if (process.argv.includes('--write')) fs.writeFileSync(destination, patch, 'utf8');
-else if (fs.readFileSync(destination, 'utf8') !== patch) throw new Error('Backend patch differs from the current reviewed files. Run this script with --write after reviewing changes.');
-run(['apply', '--reverse', '--check', destination]);
+else if (fs.readFileSync(destination, 'utf8').replace(/\r\n/g, '\n') !== patch) throw new Error('Backend patch differs from the current reviewed files. Run this script with --write after reviewing changes.');
+run(['apply', '--reverse', '--check', '-'], false, patch);
 console.log('Backend patch matches the reviewed file allowlist and reverse-checks successfully.');
