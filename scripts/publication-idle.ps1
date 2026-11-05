@@ -1,5 +1,5 @@
-# Read-only exception for an untouched matching Story whose Reel failed before
-# transfer. Ordinary queues, ambiguous provider state and every lease stay busy.
+# Exception for an untouched matching Story whose Reel failed before transfer.
+# Only old locks with proved exited owners can recover; saved records stay unchanged.
 function Get-PhoenixPublicationGuardDigest([byte[]]$Bytes) {
     $hash = [Security.Cryptography.SHA256]::Create()
     try { return [BitConverter]::ToString($hash.ComputeHash($Bytes)).Replace('-', '') }
@@ -116,7 +116,11 @@ function Test-PhoenixStoppedDependentStory([string]$Root, [string]$Filename) {
         $vaultPath = Join-Path $Root 'storage\private\channels.enc'
         $locks = @(($storyPath + '.lock'), ($storyPath + '.operation.lock'), ($parentPath + '.lock'), ($parentPath + '.operation.lock'),
             (Join-Path $publications '.publication-stream.lock'), ($vaultPath + '.lock'))
-        if (-not (Test-PhoenixPublicationGuardLocksClear $locks)) { return $false }
+        if (-not (Test-PhoenixPublicationGuardLocksClear $locks)) {
+            $node = (Get-Command node.exe -ErrorAction Stop).Source
+            & $node --max-old-space-size=96 (Join-Path $PSScriptRoot 'recover-publication-locks.cjs') $Root $story.reviewId | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-PhoenixPublicationGuardLocksClear $locks)) { return $false }
+        }
         $vaultBefore = Get-PhoenixPublicationGuardVaultHash $vaultPath
         $sessionIds = @(Get-PhoenixPublicationUploadSessionIds $Root)
         if ($story.id -in $sessionIds -or $parent.id -in $sessionIds) { return $false }

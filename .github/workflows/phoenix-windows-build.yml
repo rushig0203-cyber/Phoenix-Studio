@@ -78,6 +78,7 @@ jobs:
           scripts/test-buyer-regressions.cjs
           scripts/test-local-mutation-boundaries.cjs
           scripts/test-file-lock.cjs
+          scripts/test-publication-lock-recovery.cjs
           scripts/test-runtime-lazy-loading.cjs
           scripts/test-workflow-admission.cjs
           scripts/test-editor-controls.cjs

@@ -6,6 +6,7 @@ type LockOptions = {
   timeoutMs?: number;
   staleMs?: number;
   retryMs?: number;
+  expectedStaleToken?: string;
 };
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -52,7 +53,8 @@ export async function withFileLock<T>(
       try {
         const observedToken = await fs.readFile(lockPath, "utf8");
         const first = await fs.stat(lockPath);
-        if (Date.now() - first.mtimeMs > staleMs) {
+        if (Date.now() - first.mtimeMs > staleMs &&
+            (options.expectedStaleToken === undefined || observedToken === options.expectedStaleToken)) {
           // Recheck both identity and age before trying an atomic quarantine.
           // This avoids unlinking a newer lock that replaced the stale one
           // between the initial stat and cleanup.
@@ -115,4 +117,20 @@ export async function withFileLock<T>(
       }
     }
   }
+}
+
+/** Release only an old lock with an identifiable, exited local owner. */
+export async function recoverAbandonedFileLock(lockPath: string): Promise<boolean> {
+  try {
+    const stat = await fs.lstat(lockPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 64 || Date.now() - stat.mtimeMs <= 60_000) return false;
+    const token = await fs.readFile(lockPath, "utf8");
+    const match = /^([1-9]\d{0,9})-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.exec(token);
+    if (!match) return false;
+    try { process.kill(Number(match[1]), 0); return false; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false; }
+    // A successor can replace this file after the PID check; never reclaim its token.
+    await withFileLock(lockPath, async () => undefined, { expectedStaleToken: token, staleMs: 60_000, timeoutMs: 250, retryMs: 10 });
+    return true;
+  } catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
 }
