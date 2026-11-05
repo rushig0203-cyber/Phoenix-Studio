@@ -33,6 +33,33 @@ test('Krishna starter shows the same pot passed between human characters in eith
   }
 });
 
+test('every Krishna story beat keeps both heads inside the painted viewport', () => {
+  const topic = KRISHNA_STORY_TITLE;
+  for (const aspect of ['9:16', '16:9']) {
+    const width = aspect === '9:16' ? 540 : 960, height = aspect === '9:16' ? 960 : 540;
+    for (const [index, caption] of krishnaStoryPreset(topic).scenes.entries()) {
+      const scene = planKidsAnimationScene(topic, caption, index);
+      for (const sceneProgress of [0, .58, 1]) {
+        const svg = kidsAnimationSvg({ ...base, topic, caption, scene, index, sceneProgress, aspect, cast: ['krishna', 'meera'] });
+        const camera = svg.match(/data-timeline="finite" transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([-\d.]+)\) translate\(([-\d.]+) ([-\d.]+)\)"/);
+        assert.ok(camera);
+        const [, tx, ty, scale, dx, dy] = camera.map(Number);
+        const screenX = x => tx + (x + dx) * scale;
+        const screenY = y => ty + (y + dy) * scale;
+        assert.ok(screenX(0) <= .01 && screenX(width) >= width - .01, `Beat ${index + 1} exposes a horizontal paint edge`);
+        assert.ok(screenY(0) <= .01 && screenY(height) >= height - .01, `Beat ${index + 1} exposes a vertical paint edge`);
+        const actors = [...svg.matchAll(/data-actor="[01]"[^>]*transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([-\d.]+)\)"/g)];
+        assert.equal(actors.length, 2);
+        for (const [, x, y, size] of actors) {
+          assert.ok(screenX(Number(x) - 65 * size) >= 0 && screenX(Number(x) + 65 * size) <= width,
+            `Beat ${index + 1} crops a character's head`);
+          assert.ok(screenY(Number(y) - 115 * size) >= 0, `Beat ${index + 1} crops the feather or head`);
+        }
+      }
+    }
+  }
+});
+
 test('actual animation holds the current scene through silence until the next measured onset',async()=>{
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-scene-gap-test-'));
