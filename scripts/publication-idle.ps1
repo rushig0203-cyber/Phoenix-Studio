@@ -117,9 +117,8 @@ function Test-PhoenixStoppedDependentStory([string]$Root, [string]$Filename) {
         $locks = @(($storyPath + '.lock'), ($storyPath + '.operation.lock'), ($parentPath + '.lock'), ($parentPath + '.operation.lock'),
             (Join-Path $publications '.publication-stream.lock'), ($vaultPath + '.lock'))
         if (-not (Test-PhoenixPublicationGuardLocksClear $locks)) {
-            $node = (Get-Command node.exe -ErrorAction Stop).Source
-            & $node --max-old-space-size=96 (Join-Path $PSScriptRoot 'recover-publication-locks.cjs') $Root $story.reviewId | Out-Null
-            if ($LASTEXITCODE -ne 0 -or -not (Test-PhoenixPublicationGuardLocksClear $locks)) { return $false }
+            . (Join-Path $PSScriptRoot 'recover-publication-locks.ps1')
+            if (-not (Repair-PhoenixAbandonedPublicationLocks $Root $story.reviewId) -or -not (Test-PhoenixPublicationGuardLocksClear $locks)) { return $false }
         }
         $vaultBefore = Get-PhoenixPublicationGuardVaultHash $vaultPath
         $sessionIds = @(Get-PhoenixPublicationUploadSessionIds $Root)

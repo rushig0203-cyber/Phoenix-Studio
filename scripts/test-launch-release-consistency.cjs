@@ -165,6 +165,7 @@ test('both activation guards allow only a proved untouched Story waiting on a st
         @{ name = 'Story approval lease'; lock = 'story' },
         @{ name = 'parent approval lease'; lock = 'parent' },
         @{ name = 'global stream lease'; lock = 'stream' },
+        @{ name = 'abandoned global stream lease'; lock = 'stream'; dead = $true; allowed = $true },
         @{ name = 'vault mutation lease'; lock = 'vault' }
       )
       foreach ($case in $cases) {
@@ -193,6 +194,10 @@ test('both activation guards allow only a proved untouched Story waiting on a st
               'vault' { $vaultLock }
             }
             [IO.File]::WriteAllText($lockPath, 'fixture-owner')
+            if ($case.dead) {
+              [IO.File]::WriteAllText($lockPath, '2147483647-11111111-1111-4111-8111-111111111111')
+              [IO.File]::SetLastWriteTimeUtc($lockPath, [DateTime]::UtcNow.AddMinutes(-2))
+            }
           }
           $blocked = $false; $blockReason = ''
           try {
