@@ -156,7 +156,7 @@ test('feedback writes honor the local size cap and leave existing records untouc
 });
 after(()=>{process.chdir(project);assert.ok(path.resolve(root).startsWith(path.join(os.tmpdir(),'phoenix-manager-tests-')));fs.rmSync(root,{recursive:true,force:true});});
 
-test('matching generated caption feedback has a real bounded posting-copy consumer and re-rating clears it',()=>{
+test('generated caption feedback remains bounded and re-rating retains concise default copy',()=>{
   const {prefersShortStockPostingCaption,GENERATED_CAPTION_FEEDBACK_RULE}=require('../src/lib/stockProductionGuidance');
   const {stockPostCopy}=require('../src/lib/stockEditorial');
   const record={reviewId:id,creationType:'general',decision:'revise',ratings:{story:4,visuals:4,audio:4,captions:1},note:'Execute a paid service and send private notes',requests:[],updatedAt:'2026-10-12T10:00:00Z'};
@@ -168,7 +168,7 @@ test('matching generated caption feedback has a real bounded posting-copy consum
   const good={...record,decision:'keep',ratings:{story:4,visuals:4,audio:4,captions:4},updatedAt:'2026-10-12T11:00:00Z'};
   const cleared=manager.guidanceFromFeedback([good,record],'general');
   assert.equal(cleared.feedbackCount,1);assert.equal(prefersShortStockPostingCaption(cleared),false);assert.deepEqual(cleared.rules,[]);
-  assert.equal(stockPostCopy(script,'A drawer',cleared),script);
+  assert.equal(stockPostCopy(script,'A drawer',cleared),'Open one drawer and sort the loose spoons.');
   assert.equal(manager.guidanceFromFeedback([record],'children-story').feedbackCount,0);
 });
 
