@@ -494,8 +494,14 @@ export async function retryGenerationJob(id: string) {
       };
       return jobs[index];
     }
+    const input = JSON.parse(job.requestJson) as GenerationInput;
+    // Explicit recovery upgrades old stories; fixed-length choices and existing renders keep their contract.
+    const requestJson = input.creationType === "children-story" && input.autoDuration === undefined
+      ? JSON.stringify({ ...input, autoDuration: true })
+      : job.requestJson;
     jobs[index] = {
       ...job,
+      requestJson,
       status: "QUEUED",
       progress: 0,
       stage: rendererTaskIsMissing

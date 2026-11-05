@@ -168,6 +168,79 @@ test("cancelled AI job is hidden, persists, never starts, and cannot be restored
   assert.equal((await aiApi.DELETE(request("generations", queued.id))).status, 200);
 });
 
+test('explicit recovery lets legacy failed stories end at measured speech and preserves saved work', async () => {
+  const { kidsNarrationTiming } = require(path.join(projectRoot, 'src/lib/kidsRenderer.ts'));
+  const savedInput = { ...input, script: 'A bear helps a friend. They carry the kite home.', scriptLocked: true,
+    sceneNarration: ['A bear helps a friend.', 'They carry the kite home.'],
+    kidsStoryAttempt: { repairAttempted: true, script: 'Retained attempt' },
+    creativeBriefAttempt: { repairAttempted: true, source: 'Retained plan' } };
+  const failed = { ...job('FAILED'), requestJson: JSON.stringify(savedInput), retryCount: 3,
+    attempts: [{ at: '2026-11-04T07:37:29.147Z', attempt: 3, error: 'Narration lasts 46.7 seconds but the video requests 60.0 seconds.' }] };
+  write(aiPath, [failed]);
+  const output = path.join(reviewRoot, 'outputs', `${failed.id}-youtube.mp4`);
+  fs.writeFileSync(output, 'retained-video-sentinel');
+  const before = jobStoreSnapshot();
+  await ai.listGenerationJobs();
+  assert.deepEqual(jobStoreSnapshot(), before, 'Merely listing failed jobs cannot change requests or retry them');
+  const response = await aiApi.PATCH(new Request('http://localhost/api/generations', { method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', origin: 'http://localhost' }, body: JSON.stringify({ id: failed.id }) }));
+  assert.equal(response.status, 200);
+  const recovered = await response.json();
+  const nextInput = JSON.parse(recovered.requestJson);
+  assert.deepEqual(nextInput, { ...savedInput, autoDuration: true });
+  assert.equal(recovered.status, 'QUEUED');
+  assert.equal(recovered.retryCount, 0);
+  assert.equal(recovered.manualRetryCount, 1);
+  assert.deepEqual(recovered.attempts, failed.attempts);
+  for (const seconds of [46.7, 53.2]) {
+    assert.deepEqual(kidsNarrationTiming(nextInput, seconds), { targetSeconds: seconds, tempoFactor: 1, decision: 'measured-narration' });
+  }
+  assert.equal(fs.readFileSync(output, 'utf8'), 'retained-video-sentinel');
+  assert.equal(read(aiPath).length, 1);
+  const queued = jobStoreSnapshot();
+  await assert.rejects(ai.retryGenerationJob(failed.id), /Only failed jobs/);
+  assert.deepEqual(jobStoreSnapshot(), queued, 'Repeated recovery cannot duplicate or rewrite the queued job');
+});
+
+test('story recovery preserves explicit duration choices and unrelated legacy workflows', async () => {
+  for (const savedInput of [{ ...input, autoDuration: false }, { ...input, autoDuration: true },
+    { ...input, creationType: 'children-song' }, { ...input, creationType: 'general' }, { ...input, creationType: 'business' }]) {
+    const failed = { ...job('FAILED'), requestJson: JSON.stringify(savedInput) };
+    write(aiPath, [failed]);
+    const recovered = await ai.retryGenerationJob(failed.id);
+    assert.equal(recovered.status, 'QUEUED');
+    assert.equal(recovered.requestJson, failed.requestJson);
+  }
+});
+
+test('reconnecting an existing render retains its exact request while a missing render can recover naturally', async () => {
+  const failed = { ...job('FAILED'), providerTaskId: 'retained-task', error: 'Renderer temporarily unreachable' };
+  write(aiPath, [failed]);
+  const reconnected = await ai.retryGenerationJob(failed.id);
+  assert.equal(reconnected.status, 'RUNNING');
+  assert.equal(reconnected.providerTaskId, failed.providerTaskId);
+  assert.equal(reconnected.requestJson, failed.requestJson);
+  for (const status of ['RUNNING', 'COMPLETED']) {
+    write(aiPath, [{ ...failed, status }]);
+    const before = jobStoreSnapshot();
+    await assert.rejects(ai.retryGenerationJob(failed.id), /Only failed jobs/);
+    assert.deepEqual(jobStoreSnapshot(), before);
+  }
+  write(aiPath, [{ ...failed, error: 'Renderer task no longer exists (404)' }]);
+  const recovered = await ai.retryGenerationJob(failed.id);
+  assert.equal(recovered.status, 'QUEUED');
+  assert.equal(recovered.providerTaskId, undefined);
+  assert.deepEqual(JSON.parse(recovered.requestJson), { ...input, autoDuration: true });
+});
+
+test('malformed saved creation requests stay failed without destructive recovery', async () => {
+  const failed = { ...job('FAILED'), requestJson: '{invalid' };
+  write(aiPath, [failed]);
+  const before = jobStoreSnapshot();
+  await assert.rejects(ai.retryGenerationJob(failed.id), SyntaxError);
+  assert.deepEqual(jobStoreSnapshot(), before);
+});
+
 test("cancelled source job never runs or revives, and its original upload is kept", async () => {
   const queued = job("QUEUED");
   const uploadedPath = path.join(reviewRoot, "sources", `${queued.id}-${queued.sourceFile}`);
