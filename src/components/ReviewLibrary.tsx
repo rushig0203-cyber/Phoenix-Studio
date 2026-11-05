@@ -45,7 +45,7 @@ function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
     document.addEventListener("visibilitychange", retry);
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", retry); };
   }, [failed, attempt, identity]);
-  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className="group relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white">
+  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className="group relative flex aspect-video w-full max-w-lg items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white">
     {!failed ? <Image unoptimized src={`/api/review-files/${file.id}/poster?target=${reviewTarget(file)}&v=${encodeURIComponent(file.updatedAt)}&attempt=${attempt}`} alt="" fill sizes="384px" className="object-contain" loading="lazy" onError={() => setFailed(true)} /> : null}
     <span className="relative flex items-center gap-2 rounded-full bg-black/65 px-4 py-2 text-xs font-semibold transition group-hover:bg-black/85"><Play className="h-4 w-4" />{failed ? "Open video preview" : "Play preview"}</span>
   </button>;
@@ -185,7 +185,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     </ul> : <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {displayed.map(file => {
         const output = file.outputs[reviewTarget(file)];
-        return <article key={file.id} className="flex min-w-0 flex-col rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-3">
+        return <article key={file.id} className="review-library-card flex min-w-0 flex-col rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-3">
           {!trashOpen ? <Poster file={file} onPlay={() => setPreviewId(file.id)} /> : null}
           <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold text-[#687657]"><span>{categoryNames[category(file)]}</span><span>{seconds(output?.duration)} · {file.delivery?.aspect || file.processing?.format || "Original"}</span></div>
           <h3 className="mt-2 text-base font-semibold leading-snug">{file.title}</h3>

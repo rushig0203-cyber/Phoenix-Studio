@@ -140,6 +140,11 @@ test('SSR retains video-specific copy and preview with one collapsed posting and
   assert.match(html, /Preview Quiet woodland stream/);
   assert.match(html, /Copy caption \+ hashtags/);
   assert.match(html, /Post \/ export/);
+  assert.match(html, /<article class="review-library-card /, 'Posting tools are inside the card that expands across the library grid');
+  assert.match(html, /<section[^>]*data-posting-panel="true"[^>]*hidden=""/, 'The collapsed panel does not expand a library card');
+  const css = require('node:fs').readFileSync(path.resolve(__dirname, '../src/app/globals.css'), 'utf8');
+  assert.match(css, /\.review-library-card:has\(\[data-posting-panel\]:not\(\[hidden\]\)\)\s*\{\s*grid-column:\s*1\s*\/\s*-1\s*;/, 'An open posting panel uses the full grid width at every column count');
+  assert.match(html, /aria-label="Preview Quiet woodland stream"[^>]*max-w-lg/, 'Expanded cards retain a bounded preview');
   assert.doesNotMatch(html, /Download for Instagram|Download for YouTube|Copy Instagram text|Copy YouTube text/);
   assert.doesNotMatch(html, />Download<\/a>/);
   assert.doesNotMatch(html, /https:\/\/www\.youtube\.com\/upload|https:\/\/www\.instagram\.com\//);

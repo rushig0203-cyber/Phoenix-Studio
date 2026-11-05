@@ -270,6 +270,7 @@ test('mount is inert and opening or checking a platform only reads accounts and 
 test('posting expands inline and can be collapsed without submitting', async t => {
   const h = uiHarness(); t.after(() => h.unmount());
   const panel = () => nodes(h.tree).find(node => node.props.id === h.button('Post / export').props['aria-controls']);
+  assert.equal(panel().props['data-posting-panel'], true);
   assert.equal(panel().props.hidden, true);
   h.choose('Rumble upload'); await h.flush();
   assert.equal(panel().type, 'section'); assert.equal(panel().props.hidden, false);

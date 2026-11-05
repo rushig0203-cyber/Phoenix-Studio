@@ -152,6 +152,8 @@
 html { scroll-behavior: smooth; }
 body { background: #f4f0e7; color: #1e2719; }
 
+.review-library-card:has([data-posting-panel]:not([hidden])) { grid-column: 1 / -1; }
+
 /* Calm light shell for legacy creator/admin surfaces while video canvases remain dark. */
 .bg-background { background-color: #f4f0e7 !important; }
 .bg-card\/20, .bg-card\/10, .bg-card\/40 { background-color: #fffdf7 !important; }

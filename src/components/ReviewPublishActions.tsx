@@ -419,7 +419,7 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
   return <>
     <button ref={postButton} type="button" className={button} disabled={busy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => chooserOpen ? close() : setChooserOpen(true)}>Post / export</button>
-    <section id={chooserId} aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
+    <section id={chooserId} data-posting-panel aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
       {chooserOpen && <>
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Posting & export</h5><button type="button" className={button} onClick={close} disabled={busy}>Close</button></div>
       <div role="group" className="flex flex-wrap gap-2" aria-label="Choose a platform">
