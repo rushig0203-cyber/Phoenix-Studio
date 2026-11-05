@@ -233,6 +233,57 @@ test('waiting legacy draft can opt into automatic completion without requiring a
   assert.equal(read()[0].status, 'QUEUED');
 });
 
+test('explicit story draft recovery dispatches retained scenes at a natural narration length', async () => {
+  const scenes = [
+    { narration: 'Bram the bear found a kite resting beside the garden gate. He called to his friend and pointed to its string.', query: '' },
+    { narration: 'They carried it carefully into the dry shed, placed it on a shelf, and closed the door together before the rain.', query: '' },
+  ];
+  for (const [index, action] of ['retry', 'finish'].entries()) {
+    const supplied = { ...input(), reviewMode: 'final', creationType: 'children-story', topic: 'Bram the bear brings a kite home',
+      visualSource: 'local-ai', script: scenes.map(scene => scene.narration).join(' '), scriptLocked: true,
+      sceneNarration: scenes.map(scene => scene.narration),
+      kidsStoryAttempt: { repairAttempted: false, script: 'Retained rejected attempt' },
+      creativeBriefAttempt: { repairAttempted: false, source: 'Retained outline' } };
+    const [draft] = await drafts.createCreationDrafts([supplied]);
+    const failed = { ...draft, status: 'FAILED', scenes, error: 'Previous preparation was interrupted.' };
+    write([...read().filter(item => item.id !== draft.id), failed]);
+    await drafts.enableAutomaticCreation();
+    assert.deepEqual(read().find(item => item.id === draft.id), failed, 'Startup cannot silently retry or change a failed final-mode draft');
+    const response = await api.PATCH(new Request('http://localhost/api/creation-drafts', { method: 'PATCH', headers: { origin: 'http://localhost' }, body: JSON.stringify({ id: draft.id, version: draft.version, action }) }));
+    assert.equal(response.status, 200);
+    const recovered = await response.json();
+    assert.equal(recovered.status, 'QUEUED');
+    assert.deepEqual(recovered.input, { ...draft.input, autoDuration: true });
+    assert.deepEqual(recovered.scenes, scenes);
+    assert.equal((await generation.listGenerationJobs()).length, index, 'Recover alone does not run or dispatch a render');
+    await drafts.processNextCreationDraft();
+    const approved = read().find(item => item.id === draft.id);
+    assert.equal(approved.status, 'APPROVED');
+    const jobs = await generation.listGenerationJobs(), request = JSON.parse(jobs.find(job => job.id === approved.approvedJobId).requestJson);
+    assert.equal(jobs.length, index + 1);
+    assert.equal(request.autoDuration, true);
+    assert.equal(request.script, supplied.script);
+    assert.deepEqual(request.sceneNarration, supplied.sceneNarration);
+    assert.deepEqual(request.kidsStoryAttempt, supplied.kidsStoryAttempt);
+    assert.deepEqual(request.creativeBriefAttempt, supplied.creativeBriefAttempt);
+    await drafts.processNextCreationDraft();
+    assert.equal((await generation.listGenerationJobs()).length, index + 1, 'Repeated polling retains the existing dispatched job');
+  }
+});
+
+test('explicit draft recovery keeps fixed duration choices, other workflows and archived inputs', async () => {
+  for (const action of ['retry', 'finish', 'archive']) {
+    for (const extra of [{ creationType: 'children-story', autoDuration: false }, { creationType: 'children-story', autoDuration: true }, { creationType: 'children-song' }, { creationType: 'general' }, { creationType: 'business' }, ...(action === 'archive' ? [{ creationType: 'children-story' }] : [])]) {
+      const [draft] = await drafts.createCreationDrafts([{ ...input(), ...extra }]);
+      const failed = { ...draft, status: 'FAILED' }; write([failed]);
+      const recovered = await drafts.changeDraftStatus(draft.id, draft.version, action);
+      assert.deepEqual(recovered.input, { ...draft.input, ...(action === 'archive' ? {} : { reviewMode: 'final' }) });
+      assert.equal(recovered.status, action === 'archive' ? 'ARCHIVED' : 'QUEUED');
+      assert.equal((await generation.listGenerationJobs()).length, 0);
+    }
+  }
+});
+
 test('generation API always finishes automatically, including older plan-only submissions', async () => {
   const kids = require(path.join(project, 'src/lib/kidsRenderer.ts'));
   const original = kids.kidsRendererAvailable;

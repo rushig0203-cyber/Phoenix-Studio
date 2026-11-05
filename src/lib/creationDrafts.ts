@@ -180,7 +180,10 @@ export async function changeDraftStatus(id: string, version: number, action: "re
     if (["PLANNING", "APPROVING"].includes(draft.status)) throw new DraftConflict("Wait for the current planning step to finish.");
     if (action === "retry" && draft.status !== "FAILED") throw new DraftConflict("Only failed plans can be retried.");
     if (action === "finish" && !["READY", "FAILED"].includes(draft.status)) throw new DraftConflict("Only waiting or failed plans can be finished automatically.");
-    if (action === "finish" || action === "retry") draft.input.reviewMode = "final";
+    if (action === "finish" || action === "retry") {
+      draft.input.reviewMode = "final";
+      if (draft.input.creationType === "children-story" && draft.input.autoDuration === undefined) draft.input.autoDuration = true;
+    }
     if (action === "retry" && draft.input.kidsStoryAttempt?.repairAttempted) draft.input.kidsStoryAttempt.repairAttempted = false;
     if (action === "retry" && draft.input.creativeBriefAttempt?.repairAttempted) draft.input.creativeBriefAttempt.repairAttempted = false;
     if (action === "retry" && isStockDraft(draft) && draft.input.scriptOrigin === "local-model" && !draft.input.scriptApproved && draft.input.editorialCheckpoint?.phase === "final-review") {
