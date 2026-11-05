@@ -21,10 +21,12 @@ function load(relative, dependencies = {}, globals = {}) {
 }
 const local = load('src/lib/localRequest.ts');
 const formats = load('src/lib/publishingFormats.ts');
+const krishnaStory = load('src/lib/krishnaStory.ts');
 function harness() {
   const calls = [], generation = load('src/app/api/generations/route.ts', {
     'node:crypto': require('node:crypto'), 'next/server': { NextResponse: Response }, zod: require('zod'),
     '@/lib/localRequest': local, '@/lib/publishingFormats': formats,
+    '@/lib/krishnaStory': krishnaStory,
     '@/lib/songAudio': {}, '@/lib/stockBrief': {}, '@/lib/localSinging': {},
     '@/lib/writingSettings': {}, '@/lib/newsResearch': {},
     '@/lib/jobHistory': { JobHistoryConflictError: class extends Error {} },

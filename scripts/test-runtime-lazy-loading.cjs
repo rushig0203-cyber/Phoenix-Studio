@@ -27,6 +27,9 @@ function evaluate(compiled, load) {
 }
 const clone = value => JSON.parse(JSON.stringify(value));
 const unit = value => Math.max(0, Math.min(1, value));
+const krishnaStory = evaluate(compile('src/lib/krishnaStory.ts'), name => {
+  throw new Error(`Unexpected isolated story import: ${name}`);
+});
 function animationHarness({ failFrame = false } = {}) {
   const loads = [], cache = [], concurrency = [], frames = [], writes = [], directories = [], progress = [];
   function sharp(input) {
@@ -71,6 +74,7 @@ function animationHarness({ failFrame = false } = {}) {
       reportsKiteResolution: () => false,
     };
     if (name === './kidsAnimationTimeline') return planning;
+    if (name === './krishnaStory') return krishnaStory;
     if (name === 'sharp') return { __esModule: true, default: sharp };
     throw new Error(`Unexpected isolated animation import: ${name}`);
   });
