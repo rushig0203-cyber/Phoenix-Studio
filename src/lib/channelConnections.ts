@@ -155,7 +155,7 @@ async function writeVault(value: Vault) {
 
 const withVault = <T>(action: (vault: Vault) => Promise<T>) => withFileLock(`${vaultPath()}.lock`, async () => action(await readVault()));
 function credentials(vault: Vault, platform: ChannelPlatform): Credentials {
-  const saved = vault.credentials?.[platform] || (platform === "facebook" ? vault.credentials?.instagram : undefined);
+  const saved = vault.credentials?.[platform === "facebook" ? "instagram" : platform];
   return { clientId: saved?.clientId || process.env[platform === "youtube" ? "YOUTUBE_CLIENT_ID" : "INSTAGRAM_APP_ID"] || "", clientSecret: saved?.clientSecret || process.env[platform === "youtube" ? "YOUTUBE_CLIENT_SECRET" : "INSTAGRAM_APP_SECRET"] || "" };
 }
 
@@ -202,6 +202,7 @@ export async function getInstagramHashtagResearchAccess(): Promise<InstagramHash
 }
 
 export async function saveChannelCredentials(platform: ChannelPlatform, clientId: string, clientSecret: string) {
+  if (platform === "facebook") platform = "instagram";
   return withVault(async (vault) => {
     const old = credentials(vault, platform);
     if (!clientId.trim() || (!clientSecret.trim() && !old.clientSecret)) throw new Error("Enter the app client ID and secret from the platform developer console.");
@@ -213,7 +214,12 @@ export async function saveChannelCredentials(platform: ChannelPlatform, clientId
     const addingFacebookApp = platform === "instagram" && !old.clientId && vault.accounts?.instagram?.loginType === "facebook";
     if (old.clientId !== clientId.trim() && !addingFacebookApp && vault.accounts) delete vault.accounts[platform];
     else if (vault.accounts?.[platform] && (old.clientId !== clientId.trim() || old.clientSecret !== vault.credentials[platform]!.clientSecret)) vault.accounts[platform]!.connectionRevision = crypto.randomUUID();
-    vault.pending = vault.pending?.filter((item) => item.platform !== platform);
+    if (platform === "instagram") {
+      delete vault.credentials.facebook;
+      if (old.clientId !== clientId.trim() && vault.accounts) delete vault.accounts.facebook;
+      else if (vault.accounts?.facebook && old.clientSecret !== vault.credentials.instagram!.clientSecret) vault.accounts.facebook.connectionRevision = crypto.randomUUID();
+    }
+    vault.pending = vault.pending?.filter((item) => item.platform !== platform && !(platform === "instagram" && item.platform === "facebook"));
     await writeVault(vault);
   });
 }
@@ -540,7 +546,6 @@ export async function connectFacebookPage(accessToken?: string) {
       if (extended.expiresAt <= Date.now()) throw new Error("The extended Facebook User token already expired. Generate a fresh token for the saved app and reconnect Facebook.");
       const now = new Date().toISOString();
       vault.accounts = { ...vault.accounts, facebook: { ...identity, expiresAt: extended.expiresAt, connectedAt: now, verifiedAt: now, connectionRevision: crypto.randomUUID() } };
-      vault.credentials = { ...vault.credentials, facebook: config };
       vault.pending = vault.pending?.filter(item => item !== pending); await writeVault(vault);
     });
   } catch (error) {

@@ -23,10 +23,10 @@ const instagram = { id: instagramId, name: '@fixture_ig', profileUrl: 'https://w
   loginType: 'facebook', pageId, grantedScopes: scopes, permissionsVerifiedAt: timestamp, connectedAt: timestamp,
   verifiedAt: timestamp, connectionRevision: 'fixture-instagram-revision' };
 const vaultPath = path.join(temporary, 'private/channels.enc');
-function fixture(account = instagram, facebook, app = { clientId: 'fixture-app-id', clientSecret: 'fixture-secret' }) {
+function fixture(account = instagram, facebook, app = { clientId: 'fixture-app-id', clientSecret: 'fixture-secret' }, facebookApp) {
   fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
   const key = crypto.randomBytes(32), iv = crypto.randomBytes(12), cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const vault = { credentials: { instagram: app },
+  const vault = { credentials: { instagram: app, ...(facebookApp ? { facebook: facebookApp } : {}) },
     accounts: { ...(account ? { instagram: account } : {}), ...(facebook ? { facebook } : {}) } };
   const data = Buffer.concat([cipher.update(JSON.stringify(vault), 'utf8'), cipher.final()]);
   fs.writeFileSync(vaultPath + '.key', key);
@@ -37,7 +37,7 @@ const context = platform => ({ params: Promise.resolve({ platform }) });
 const request = (platform, body, origin = 'http://localhost:3000') => new Request('http://localhost:3000/api/channels/' + platform,
   { method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 function provider({ permissions = scopes, linkedId = instagramId, tasks = ['CREATE_CONTENT'], returnedPage = pageId, tokenPage = pageId, beforeIdentity,
-  exchangePayload = { access_token: longUserToken, expires_in: lifetime }, exchangeError, initialUser = userToken, afterExchange } = {}) {
+  exchangePayload = { access_token: longUserToken, expires_in: lifetime }, exchangeError, initialUser = userToken, afterExchange, clientSecret = 'fixture-secret' } = {}) {
   const requests = []; let currentUser = initialUser;
   global.fetch = async (value, options) => {
     const url = new URL(value); requests.push(url.pathname);
@@ -47,7 +47,7 @@ function provider({ permissions = scopes, linkedId = instagramId, tasks = ['CREA
     if (url.pathname === '/v26.0/oauth/access_token') {
       assert.equal(requests.length, 5, 'The exact linked Page, scopes and content task must verify before token extension');
       assert.equal(url.searchParams.get('grant_type'), 'fb_exchange_token'); assert.equal(url.searchParams.get('fb_exchange_token'), userToken);
-      assert.equal(url.searchParams.get('client_id'), 'fixture-app-id'); assert.equal(url.searchParams.get('client_secret'), 'fixture-secret');
+      assert.equal(url.searchParams.get('client_id'), 'fixture-app-id'); assert.equal(url.searchParams.get('client_secret'), clientSecret);
       if (exchangeError) return Response.json({ error: exchangeError }, { status: 400 });
       currentUser = longUserToken; await afterExchange?.();
       return Response.json(exchangePayload);
@@ -89,6 +89,27 @@ test('Facebook connects only the verified linked Page and stores its separate Pa
   }
   const validation = ['/v26.0/me/permissions', '/v26.0/' + pageId, '/v26.0/me/accounts', '/v26.0/me'];
   assert.deepEqual(requests, [...validation, '/v26.0/oauth/access_token', ...validation]);
+});
+
+test('legacy Facebook app copies cannot override the shared Instagram secret during connection or rotation', async () => {
+  fixture(instagram, undefined, undefined, { clientId: 'stale-facebook-app', clientSecret: 'stale-facebook-secret' });
+  assert.equal((await status('facebook')).clientId, 'fixture-app-id');
+  const requests = provider(); await channels.connectFacebookPage();
+  const instagramBefore = await status('instagram'), facebookBefore = await status('facebook');
+  const approved = await channels.getChannelPublishAccess('facebook', facebookBefore.connectionRevision);
+  await channels.saveChannelCredentials('instagram', 'fixture-app-id', 'fixture-rotated-secret');
+  const instagramAfter = await status('instagram'), facebookAfter = await status('facebook');
+  assert.equal(instagramAfter.connected, true); assert.equal(instagramAfter.publishReady, true); assert.equal(instagramAfter.accountId, instagramBefore.accountId);
+  assert.notEqual(instagramAfter.connectionRevision, instagramBefore.connectionRevision);
+  assert.equal((await channels.getChannelPublishAccess('instagram', instagramAfter.connectionRevision)).accessToken, userToken);
+  assert.notEqual(facebookAfter.connectionRevision, facebookBefore.connectionRevision);
+  await assert.rejects(channels.assertChannelPublishAccessCurrent(approved), /changed or disconnected/);
+  await assert.rejects(channels.getChannelPublishAccess('facebook', facebookBefore.connectionRevision), /changed/);
+  assert.equal(requests.length, 9, 'Saving the shared secret never contacts Meta');
+  provider({ clientSecret: 'fixture-rotated-secret' }); await channels.connectFacebookPage();
+  assert.equal((await status('facebook')).publishReady, true); assert.deepEqual(await status('instagram'), instagramAfter);
+  await channels.saveChannelCredentials('instagram', 'replacement-app-id', 'replacement-secret');
+  assert.equal((await status('instagram')).connected, false); assert.equal((await status('facebook')).connected, false);
 });
 
 test('a missing Page publishing grant stays blocked without affecting Instagram', async () => {
@@ -218,6 +239,7 @@ test('Facebook exchange errors and token failures remain secret-free and cannot 
 
 test('an app or linked-account change during Facebook extension cannot save stale credentials', async () => {
   for (const change of [() => channels.disconnectChannel('instagram'),
+    () => channels.saveChannelCredentials('instagram', 'fixture-app-id', 'rotated-during-exchange'),
     () => channels.saveChannelCredentials('facebook', 'replacement-app-id', 'replacement-secret')]) {
     fixture(); provider({ afterExchange: change });
     await assert.rejects(channels.connectFacebookPage(), /cancelled|changed/);
