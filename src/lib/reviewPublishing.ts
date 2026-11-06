@@ -149,12 +149,11 @@ async function assertFacebookReelMedia(filename: string) {
     const fps = rate && Number(rate[2]) > 0 ? Number(rate[1]) / Number(rate[2]) : NaN;
     const seconds = Number(data.format?.duration), width = Number(video?.width), height = Number(video?.height);
     const rotation = Number(video?.tags?.rotate ?? video?.side_data_list?.find(side => side.rotation !== undefined)?.rotation ?? 0);
-    // This intentionally implements Meta's documented sample subset, not unverified newer limits.
-    if (!data.format?.format_name?.split(",").includes("mp4") || !Number.isFinite(seconds) || seconds < 4 || seconds > 60
+    if (!data.format?.format_name?.split(",").includes("mp4") || !Number.isFinite(seconds) || seconds < 3 || seconds > 90
         || !Number.isInteger(width) || !Number.isInteger(height) || width < 540 || height < 960 || width * 16 !== height * 9
-        || !Number.isFinite(fps) || fps < 23 || !Number.isFinite(rotation) || rotation % 360 !== 0
+        || !Number.isFinite(fps) || fps < 24 || fps > 60 || !Number.isFinite(rotation) || rotation % 360 !== 0
         || (video?.sample_aspect_ratio !== undefined && video.sample_aspect_ratio !== "1:1")) {
-      throw problem("This saved output is outside Phoenix's verified Facebook Page Reel support: MP4, 4–60 seconds, vertical 9:16, at least 540×960 and 23 fps. Choose an eligible saved reel or export it for Facebook. Phoenix will not trim, stretch or re-render it automatically.");
+      throw problem("This saved output is outside Phoenix's verified Facebook Page Reel support: MP4, 3–90 seconds, vertical 9:16, at least 540×960 and 24–60 fps. Choose an eligible saved reel or export it for Facebook. Phoenix will not trim, stretch or re-render it automatically.");
     }
   } catch (error) {
     if (error instanceof ReviewPublishingError) throw error;
@@ -956,7 +955,7 @@ async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, ur
       catch { throw problem("The channel connection changed or was disconnected. Uploading stopped before sending the video.", 409); }
       return await providerCall(safeUrl, {
         method: metaUpload ? "POST" : "PUT", body: body as unknown as BodyInit, duplex: "half",
-        headers: metaUpload ? { Authorization: `OAuth ${access.accessToken}`, offset: "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes), "Content-Type": "video/mp4" }
+        headers: metaUpload ? { Authorization: `OAuth ${access.accessToken}`, offset: "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes), "Content-Type": job.platform === "facebook" ? "application/octet-stream" : "video/mp4" }
           : { Authorization: `Bearer ${access.accessToken}`, "Content-Length": String(job.totalBytes - offset), "Content-Type": "video/mp4", "Content-Range": `bytes ${offset}-${job.totalBytes - 1}/${job.totalBytes}` },
       }, true, true);
     } catch (error) {

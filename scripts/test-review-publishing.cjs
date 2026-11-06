@@ -140,8 +140,9 @@ test('Facebook Page posting requires public final approval and rejects Instagram
 test('Facebook eligibility inspects actual MP4 properties before credentials and never alters an ineligible output', async () => {
   const { id } = await fixture('instagram', 256), filename = files.outputPath(id, 'instagram'), original = fs.readFileSync(filename);
   const bad = [
-    { format: { duration: '3.9' } }, { format: { duration: '60.1' } }, { format: { format_name: 'webm' } },
+    { format: { duration: '2.9' } }, { format: { duration: '90.1' } }, { format: { format_name: 'webm' } },
     { video: { width: 1280, height: 720 } }, { video: { width: 360, height: 640 } }, { video: { avg_frame_rate: '22/1' } },
+    { video: { avg_frame_rate: '24000/1001' } }, { video: { avg_frame_rate: '60001/1000' } },
     { video: { avg_frame_rate: '0/0' } }, { video: { tags: { rotate: '90' } } }, { video: { sample_aspect_ratio: '2:1' } },
   ];
   for (const patch of bad) {
@@ -151,6 +152,18 @@ test('Facebook eligibility inspects actual MP4 properties before credentials and
       assert.equal(probes(), 1);
     });
     assert.deepEqual(fs.readFileSync(filename), original); assert.deepEqual(await publishing.listReviewPublishJobs(id), []); assert.equal(accessCalls, 0);
+  }
+});
+
+test('Facebook accepts the current documented duration and frame-rate boundaries without altering saved media', async () => {
+  for (const [duration, avg_frame_rate] of [['3', '24/1'], ['90', '60/1']]) {
+    const { id } = await fixture('instagram', 256), filename = files.outputPath(id, 'instagram'), original = fs.readFileSync(filename);
+    const metadata = facebookMetadata(); metadata.format.duration = duration; metadata.streams[0].avg_frame_rate = avg_frame_rate;
+    await withFacebookProbe(metadata, async probes => {
+      const approved = await publishing.prepareReviewPublication(id, settings('facebook'));
+      assert.equal(approved.dispatch, true); assert.equal(probes(), 1); assert.equal(approved.job.outputTarget, 'instagram');
+    });
+    assert.deepEqual(fs.readFileSync(filename), original);
   }
 });
 
@@ -166,6 +179,7 @@ test('Facebook reuses one saved MP4 with independent durable approval, streamed 
     const parsed = new URL(url); assert.equal(options.redirect, 'error');
     if (parsed.hostname === 'rupload.facebook.com') {
       streams++; assert.equal(String(url), facebookUpload); assert.equal(options.method, 'POST'); assert.equal(options.headers.Authorization, 'OAuth fixture-secret-token'); assert.equal(options.headers.offset, '0');
+      assert.equal(options.headers['Content-Type'], 'application/octet-stream');
       assert.equal(Number(options.headers.file_size), 4 * 1024 * 1024 + 7); await consumeStream(options); return Response.json({ success: true });
     }
     assert.equal(options.headers.Authorization, 'Bearer fixture-secret-token');
