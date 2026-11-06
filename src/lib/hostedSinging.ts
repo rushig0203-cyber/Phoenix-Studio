@@ -149,8 +149,9 @@ export async function prepareHostedSong(input: SongInput, save: Save) {
       throw new Error(`The hosted singer returned HTTP ${response.status}. Submission may be uncertain; Phoenix will not automatically send a duplicate.`);
     }
     const accepted = JSON.parse(await boundedText(response));
-    if (typeof accepted.event_id !== "string" || !eventId.test(accepted.event_id)) throw new Error("The hosted singer did not confirm a valid task ID. Phoenix will not repeat this uncertain submission.");
-    taskId = accepted.event_id;
+    const acceptedTaskId = accepted.event_id;
+    if (typeof acceptedTaskId !== "string" || !eventId.test(acceptedTaskId)) throw new Error("The hosted singer did not confirm a valid task ID. Phoenix will not repeat this uncertain submission.");
+    taskId = acceptedTaskId;
     await save({ songTaskId: taskId, stage: "Hosted singing queued — shared free GPU; exact ETA is not supplied" });
   }
   let output: HostedSongOutput | undefined = input.output;

@@ -363,7 +363,7 @@ export async function processNextPostingAnalysis() {
             });
             return; // No FFmpeg, frames or provider request while a durable wait is known.
           }
-          const state = { status: "ANALYZING" as const, fingerprint, attempts, captionRevision: previous?.captionRevision?.mediaFingerprint === fingerprint ? previous.captionRevision : undefined, updatedAt: new Date().toISOString(), detail: "Analyzing three frames from this video for its own caption and hashtags." };
+          const state = { status: "ANALYZING" as const, fingerprint, attempts, captionRevision: previous?.captionRevision?.mediaFingerprint === fingerprint ? previous?.captionRevision : undefined, updatedAt: new Date().toISOString(), detail: "Analyzing three frames from this video for its own caption and hashtags." };
           startedAt = state.updatedAt;
           const times = sampleTimes(source.duration);
           const admission = await tryWithLocalRenderSlot(async () => {
