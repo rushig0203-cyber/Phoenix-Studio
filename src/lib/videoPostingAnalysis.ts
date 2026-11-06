@@ -359,7 +359,7 @@ export async function processNextPostingAnalysis() {
           if (quotaDelay) {
             await updateReviewFile(file.id, latest => {
               if (!postingInputUnchanged(latest, file)) return latest;
-              return { ...latest, quality: { ...latest.quality, postingAnalysis: { status: "WAITING", waitReason: "quota", fingerprint, attempts: attempts - 1, captionRevision: previous?.captionRevision?.mediaFingerprint === fingerprint ? previous.captionRevision : undefined, updatedAt: new Date().toISOString(), nextAttemptAt: new Date(Date.now() + Math.max(60_000, quotaDelay)).toISOString(), detail: cloudflareFallback() ? "Posting copy is waiting for both providers' free quotas and will resume at the earliest reset. The video remains available." : "Posting copy is waiting for Groq's free quota and will resume automatically. Configure the free Cloudflare caption fallback in Settings to continue sooner." } } };
+              return { ...latest, quality: { ...latest.quality, postingAnalysis: { status: "WAITING", waitReason: "quota", fingerprint, attempts: attempts - 1, captionRevision: previous?.captionRevision?.mediaFingerprint === fingerprint ? previous?.captionRevision : undefined, updatedAt: new Date().toISOString(), nextAttemptAt: new Date(Date.now() + Math.max(60_000, quotaDelay)).toISOString(), detail: cloudflareFallback() ? "Posting copy is waiting for both providers' free quotas and will resume at the earliest reset. The video remains available." : "Posting copy is waiting for Groq's free quota and will resume automatically. Configure the free Cloudflare caption fallback in Settings to continue sooner." } } };
             });
             return; // No FFmpeg, frames or provider request while a durable wait is known.
           }
