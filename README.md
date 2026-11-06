@@ -143,7 +143,12 @@ use its final Post or Upload action. **Close** collapses the controls.
   Instagram account. The same Meta app needs `pages_show_list`,
   `pages_read_engagement` and `pages_manage_posts`, and the authorizing person
   must be able to create Page content. Settings verify this before saving a
-  separate protected Page connection. The saved Meta app credentials exchange
+  separate protected Page connection. For a Page linked to a Meta business
+  account, [Meta also requires](https://developers.facebook.com/docs/graph-api/changelog/version17.0/)
+  `business_management` and a user role on that business for Page discovery.
+  This scope permits broader Business Manager read/write access and needs
+  explicit authorization; Phoenix uses it to identify the linked Page.
+  The saved Meta app credentials exchange
   the User token for up to 60 days; Phoenix records Meta's actual expiry.
   **Post to Facebook Page** reviews the public destination and saved MP4 before
   queuing. Current [Meta Reel specifications](https://developers.facebook.com/documentation/video-api/guides/reels-publishing)

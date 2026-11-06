@@ -45,8 +45,13 @@
   response now confirms all seven requested scopes, but `/me/accounts` still
   returns an empty list. The published linked Page is accessible in Facebook's
   management UI; this does not establish an API Page token or content-creation
-  task. No unverified token was saved. Chrome's normal authorization session
-  needs the owner's Facebook sign-in before continuing Page-access selection.
+  task. No unverified token was saved. Primary Meta documentation confirms that
+  business-linked Pages also require `business_management` and a user role on
+  the linked business to appear in `/me/accounts`. This broader scope is not
+  covered by the existing seven-scope approval. Its plain-language action-time
+  consent question is pending; do not interpret uncertainty as authorization.
+  The existing signed-in Meta session can continue after that consent, without
+  repeating the Chrome login request. No code change is needed for this scope.
   No social test post or failed owner-job retry was performed.
 
 ## Earlier November 6 release evidence and remaining account work
