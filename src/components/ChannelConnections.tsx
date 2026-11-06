@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, Camera, Facebook, Link2, Loader2, RefreshCw, Play } from "lucide-react";
+import { ExternalLink, Camera, Link2, Loader2, RefreshCw, Play } from "lucide-react";
 import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 import { socialHandle } from "@/lib/socialAccounts";
 
@@ -79,7 +79,7 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
     {notice && <p role="status" className="mt-3 rounded-lg border border-[#b6c4a3] bg-[#edf1e5] p-3 text-xs leading-5 text-[#365122]">{notice}</p>}
     {loading ? <p className="mt-4 flex items-center gap-2 text-xs text-[#59634d]"><Loader2 className="h-4 w-4 animate-spin"/>Loading channels…</p> : <div className={`mt-4 grid gap-3 ${compact ? "" : "xl:grid-cols-2"}`}>
       {channels.map((channel) => {
-        const platform = channel.platform, Icon = platform === "youtube" ? Play : platform === "facebook" ? Facebook : Camera;
+        const platform = channel.platform, Icon = platform === "youtube" ? Play : platform === "facebook" ? Link2 : Camera;
         return <div key={platform} className="rounded-xl border border-[#c4cfb5] bg-[#f5f7ef] p-4">
           <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 text-sm font-semibold"><Icon className={`h-4 w-4 ${platform === "youtube" ? "text-[#b32c24]" : "text-[#a72f69]"}`}/>{names[platform]}</span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${channel.connected ? "bg-[#e0f0df] text-[#245b2e]" : "bg-[#fff0ce] text-[#80571b]"}`}>{channel.connected ? "Connected" : channel.state === "needs_attention" ? "Reconnect needed" : "Not connected"}</span></div>
           <p className="mt-2 text-xs text-[#59634d]">{channel.name || (platform === "instagram" ? `Intended account: ${socialHandle("instagram")}` : platform === "facebook" ? "Connect the Page linked to your verified Instagram account" : "Choose your YouTube channel")}</p>
