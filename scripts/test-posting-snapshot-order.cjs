@@ -153,6 +153,34 @@ test('switching output IDs accepts the new file and ignores the old pending poll
   assert.doesNotMatch(h.text, /Wrong old output/);
 });
 
+test('explicit re-analysis confirms automatic manager feedback without claiming a new human rating', async t => {
+  const queued = fixture(0, 'QUEUED', 3);
+  queued.quality.postingAnalysis.captionRevision = { id: 'saved-automatic-signal', savedAt: stamp(3) };
+  const h = harness(t, fixture(0, 'COMPLETE', 1), async () => Response.json(queued));
+  await h.flush(); await h.click('Re-analyze this video');
+  assert.match(h.text, /Caption feedback saved for the manager/);
+  assert.doesNotMatch(h.text, /rating saved|personally reviewed|owner approved/i);
+});
+
+test('a delayed re-analysis response cannot display feedback confirmation on another output', async t => {
+  const response = deferred(), h = harness(t, fixture(0, 'COMPLETE', 1), () => response.promise);
+  await h.flush(); await h.click('Re-analyze this video');
+  const other = fixture(0, undefined, 0, 'Caption for the next output', ['#Another']); other.id = 'output-2';
+  await h.supply(other);
+  const queued = fixture(0, 'QUEUED', 3, 'Old-output copy'); queued.quality.postingAnalysis.captionRevision = { id: 'old-signal' };
+  response.resolve(Response.json(queued)); await h.flush();
+  assert.match(h.text, /Caption for the next output/);
+  assert.doesNotMatch(h.text, /Caption feedback saved|Old-output copy/);
+});
+
+test('a mismatched re-analysis response is rejected instead of confirming another video request', async t => {
+  const queued = fixture(0, 'QUEUED', 3); queued.id = 'output-2';
+  const h = harness(t, fixture(0, 'COMPLETE', 1), async () => Response.json(queued));
+  await h.flush(); await h.click('Re-analyze this video');
+  assert.match(h.text, /response belongs to another video/);
+  assert.doesNotMatch(h.text, /Caption feedback saved/);
+});
+
 test('missing automatic analysis polls saved results without submitting a reanalysis request', async t => {
   const completed = fixture(3, 'COMPLETE', 3, 'Light catches the moss beside this stream.', ['#MossyStream']);
   const h = harness(t, fixture(), async (_url, init) => { assert.equal(init.method, undefined); return Response.json(completed); });

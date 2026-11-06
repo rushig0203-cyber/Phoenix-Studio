@@ -5,6 +5,7 @@ import { z } from "zod";
 import { FEEDBACK_REQUESTS, type CreativeFeedback, type FeedbackDimension, type FeedbackRequest } from "./managerTypes";
 import { reviewRoot } from "./reviewFiles";
 import { getInstagramLearningGuidance, hasBoundedLearningRules, mergeInstagramLearningGuidance } from "./instagramLearningGuidance";
+import { CAPTION_REVISION_RULE, readCaptionRevisionFeedback, withCaptionRevisionGuidance } from "./captionRevisionFeedback";
 
 export const STOCK_FEEDBACK_MAX_BYTES = 512 * 1024;
 export const STOCK_FEEDBACK_MAX_RECORDS = 200;
@@ -22,6 +23,7 @@ export type StockProductionGuidance = {
   revision: string; feedbackCount: number; rules: string[]; historyLimit: 10 | 20;
   policyVersion: 1; shorterPostingCaption: boolean; priorities: FeedbackDimension[]; requests: FeedbackRequest[];
   performanceMaxDuration?: number;
+  automaticCaptionFeedbackCount?: number;
   openingExperiment?: "watch-time-v1";
 };
 
@@ -88,6 +90,8 @@ export async function getStockProductionGuidance(filename?: string): Promise<Sto
   try { base = stockProductionGuidanceFromFeedback(records); }
   catch { throw new Error("Saved source-video ratings or improvement choices are invalid. Preserve the feedback and repair it before continuing content planning."); }
   if (filename !== undefined) return base;
+  base = withCaptionRevisionGuidance(base, await readCaptionRevisionFeedback(), "source");
+  if (base.automaticCaptionFeedbackCount) base = { ...base, shorterPostingCaption: true };
   const learning = await getInstagramLearningGuidance("source"), merged = mergeInstagramLearningGuidance(base, learning);
   return merged !== base ? { ...merged, ...(learning.maxDuration !== undefined ? { performanceMaxDuration: learning.maxDuration } : {}), ...(learning.openingExperiment ? { openingExperiment: learning.openingExperiment } : {}) } : merged;
 }
@@ -96,5 +100,7 @@ export async function getStockProductionGuidance(filename?: string): Promise<Sto
 export function prefersShortStockPostingCaption(guidance?: { revision: string; rules: string[]; policyVersion?: number }) {
   if (!guidance || !Array.isArray(guidance.rules)) return false;
   return /^stock-v1-[a-f0-9]{12}$/.test(guidance.revision) && hasBoundedLearningRules(guidance.rules, 8) && guidance.rules.includes(STOCK_CAPTION_FEEDBACK_RULE)
-    || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision) && hasBoundedLearningRules(guidance.rules, 10) && guidance.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE);
+    || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision) && hasBoundedLearningRules(guidance.rules, 10) && guidance.rules.includes(GENERATED_CAPTION_FEEDBACK_RULE)
+    || (/^stock-v1-[a-f0-9]{12}$/.test(guidance.revision) || guidance.policyVersion === 4 && /^[a-f0-9]{12}$/.test(guidance.revision))
+      && hasBoundedLearningRules(guidance.rules, 11) && guidance.rules.includes(CAPTION_REVISION_RULE);
 }

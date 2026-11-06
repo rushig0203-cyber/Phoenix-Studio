@@ -120,3 +120,16 @@ test('a failed refresh leaves the saved review usable and exposes the request er
   assert.equal(ui.find('a', 'Watch / edit').props.href, '/dashboard/edit/fixture-1');
   assert.equal(ui.find('p', 'Manager store unavailable.').props.role, 'alert');
 });
+
+test('automatic caption signals stay separate from human ratings and hosted singing is disclosed honestly', async () => {
+  const snapshot = state();
+  snapshot.guidance.automaticCaptionFeedbackCount = 2;
+  snapshot.capabilities.singing = 'hosted-ace';
+  const ui = harness({ fetch: () => response(snapshot) });
+  await ui.settle();
+  const content = text(ui.tree());
+  assert.match(content, /0 reviewed · 2 caption revisions/);
+  assert.match(content, /Free hosted ACE-Step singing is integrated/);
+  assert.match(content, /free quotas apply; no local music model is loaded/);
+  assert.doesNotMatch(content, /Automatic singing is not installed/);
+});

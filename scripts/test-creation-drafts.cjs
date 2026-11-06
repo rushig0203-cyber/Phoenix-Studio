@@ -473,6 +473,40 @@ test('singing uses local-only endpoints, single audio output, explicit lyrics an
   assert.equal(singing.localSongDownload('/v1/audio?path=generated.mp3').hostname, '127.0.0.1');
   process.env.PHOENIX_ACE_URL = 'https://paid.example'; assert.throws(() => singing.singingBase(), /hosted or paid/);
 });
+test('singing respects explicit English/Hindi and detects Hindi only when language is absent', () => {
+  const payload = (lyrics, language) => singing.songPayload(lyrics, 150, 'Piano and handclaps', language);
+  for (const language of ['Hindi', ' hi ', 'hi-IN']) assert.equal(payload('Chanda mama door ke', language).vocal_language, 'hi');
+  for (const language of ['English', 'EN', 'en-US']) assert.equal(payload('चंदा मामा दूर के', language).vocal_language, 'en');
+  assert.equal(payload('चंदा मामा दूर के').vocal_language, 'hi');
+  assert.equal(payload('Sunshine in the morning', '  ').vocal_language, 'en');
+  assert.throws(() => payload('Hola', 'Spanish'), /supports English or Hindi/);
+});
+test('new hosted song requests require explicit lyrics transmission consent before any provider call', async () => {
+  const route = require(path.join(project, 'src/app/api/generations/route.ts'));
+  for (const extra of [{ hostedSongConsent: false }, { hostedSongConsent: true, language: 'Hindi', script: '' }]) {
+    const response = await route.POST(new Request('http://localhost:3000/api/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' }, body: JSON.stringify({ topic: 'Original star song', creationType: 'children-song', songMode: 'hosted-ace', ...extra }) }));
+    assert.equal(response.status, 400); assert.match((await response.json()).error, /Allow sending|original Hindi lyrics/);
+  }
+});
+test('explicit generated-song lyrics remain verbatim instead of being replaced by the English lyric bank', async () => {
+  const lyrics = 'नन्हा तारा चमके आज। मीठी धुन में झूमे साज।';
+  assert.equal(await createContent({ topic: 'A gentle star song', duration: 150, creationType: 'children-song', songMode: 'hosted-ace', language: 'Hindi', script: lyrics }, {}), lyrics);
+});
+test('explicit retry replaces only confirmed failed hosted song tasks, retaining uncertain tasks and completed audio', async () => {
+  for (const extra of [{ songTaskFailed: true }, {}, { songTaskFailed: true, songOutput: { path: '/tmp/retained.mp3', url: 'retained' } }, { songTaskFailed: true, audioId: '12345678-1234-4234-8234-123456789abc' }]) {
+    write([]);
+    const [created] = await drafts.createCreationDrafts([{ ...input(), creationType: 'children-song', songMode: 'hosted-ace' }]);
+    const stored = read(); Object.assign(stored[0], { status: 'FAILED', songTaskId: 'a'.repeat(32), songSubmissionStarted: true, songRequestFingerprint: 'b'.repeat(64), ...extra });
+    if (extra.audioId) stored[0].input.songAudioId = extra.audioId;
+    write(stored);
+    const retried = await drafts.changeDraftStatus(created.id, created.version, 'retry');
+    const replaceable = extra.songTaskFailed === true && !extra.songOutput && !extra.audioId;
+    assert.equal(retried.songTaskId, replaceable ? undefined : 'a'.repeat(32));
+    assert.equal(retried.songSubmissionStarted, !replaceable);
+    assert.equal(retried.songRequestFingerprint, replaceable ? undefined : 'b'.repeat(64));
+    assert.equal(retried.input.songAudioId, extra.audioId);
+  }
+});
 test('stock catalog verifies CDN URLs and chooses a laptop-sized MP4 rendition', () => {
   const video = fixture(123); video.video_files.unshift({ file_type: 'video/mp4', width: 2160, height: 3840, link: 'https://videos.pexels.com/4k.mp4' });
   assert.equal(catalog.footageChoice(video).width, 720);
@@ -490,17 +524,18 @@ test('singing adapter follows the documented local protocol and stages real audi
     const parsed = new URL(url); assert.equal(parsed.origin, 'http://127.0.0.1:8001'); calls.push(parsed.pathname); assert.equal(init.redirect, 'error');
     if (parsed.pathname === '/health') return Response.json({ data: { status: 'ok', service: 'ACE-Step API' } });
     if (parsed.pathname === '/v1/models') return Response.json({ data: { models: [{ name: 'acestep-v15-turbo', is_default: true }] } });
-    if (parsed.pathname === '/release_task') { assert.equal(JSON.parse(init.body).batch_size, 1); return Response.json({ data: { task_id: 'song-fixture-123' } }); }
+    if (parsed.pathname === '/release_task') { const body = JSON.parse(init.body); assert.equal(body.batch_size, 1); assert.equal(body.vocal_language, 'hi'); return Response.json({ data: { task_id: 'song-fixture-123' } }); }
     if (parsed.pathname === '/query_result') { assert.deepEqual(JSON.parse(init.body).task_id_list, ['song-fixture-123']); return Response.json({ data: [{ task_id: 'song-fixture-123', status: 1, result: JSON.stringify([{ file: '/v1/audio?path=fixture.mp3' }]) }] }); }
     if (parsed.pathname === '/v1/audio') return new Response('audio-fixture');
     throw new Error('Unknown endpoint');
   };
   try {
-    const result = await singing.prepareLocalSong({ lyrics: 'Original words', duration: 150 }, async change => stages.push(change));
+    const result = await singing.prepareLocalSong({ lyrics: 'Chanda mama door ke', language: 'Hindi', duration: 150 }, async change => stages.push(change));
     assert.equal(result.id, 'fixture-audio');
     assert.deepEqual(calls, ['/health', '/v1/models', '/release_task', '/query_result', '/v1/audio']);
     assert.equal(stages[0].songSubmissionStarted, true);
     assert.equal(stages[1].songTaskId, 'song-fixture-123');
+    await assert.rejects(singing.prepareLocalSong({ lyrics: 'Hola', language: 'Spanish', duration: 150 }, async () => assert.fail('Invalid language must not mark submission started')), /supports English or Hindi/);
     await assert.rejects(singing.prepareLocalSong({ lyrics: 'Original words', duration: 150, submissionStarted: true }, async () => undefined), /could not be confirmed/);
     assert.equal(calls.filter(call => call === '/release_task').length, 1);
   } finally { os.totalmem = total; os.freemem = free; audio.stageSongAudio = originalStage; }

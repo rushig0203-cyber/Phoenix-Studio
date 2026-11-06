@@ -71,6 +71,13 @@ test('stock-only style restrictions do not change narrated caption selection',()
   const narrated='The video shows how three gears transfer motion.';
   assert.equal(choosePostingCaption(narrated,[],[]).caption,narrated);
 });
+test('audience-facing alternatives outrank scene-label boilerplate without creating or rejecting copy',()=>{
+  const plain='A look at a tree-lined path in a quiet park setting.';
+  const audience='The kind of path that makes the long way home tempting.';
+  assert.equal(choosePostingCaption(plain,[audience],[]).caption,audience);
+  assert.equal(choosePostingCaption(plain,[audience],[],true).caption,audience);
+  assert.equal(choosePostingCaption(plain,[],[],true).caption,plain,'Keep a plain valid caption when no grounded alternative was supplied');
+});
 
 test('sample-frame boilerplate never becomes audience-facing stock copy',()=>{
   for(const ending of ['in these sampled frames','in the sampled frames','in sampled frames','in these frames']) assert.ok(stockPostingCaptionIssue(`Snow-capped peaks rise above the rugged landscape ${ending}.`));

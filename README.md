@@ -57,6 +57,12 @@ sample time, including late scenes. Missing timing or silent gaps stay unverifie
 topical similarity alone is not proof of narration-to-picture synchronization.
 These are three limited picture samples, not full-video or audio listening.
 
+Requesting **Re-analyze this video** records a separate, bounded caption
+improvement signal for the manager. It retains your manual reviews, rejects
+the same rejected caption when choosing replacement copy, and guides future
+matching creations toward a natural audience-facing angle. Queue/quota waits
+retain that feedback; initial background analysis does not count as a complaint.
+
 New Make a Reel music-only exports use two-pass loudness mastering toward
 −16 LUFS, with peak headroom, and measure the actual encoded soundtrack before
 marking it ready. This is an export target, not an Instagram requirement or a
@@ -101,9 +107,16 @@ Explore suggestions**, choose **Krishna and the Butter Pot** or **कृष्�
 मक्खन की मटकी** for one original story with eight matched visual beats. It uses
 the local renderer and the Hindi version requires the installed VoiceStudio voice.
 The story starter uses an authored script and skips the writing provider.
-Songs need a real sung recording and matching lyrics on this laptop. The optional
-local ACE-Step adapter does not bundle its engine/models and is disabled below
-Phoenix's hardware guard; narration is not advertised as singing.
+Songs can use an uploaded sung recording or the official free hosted
+[ACE-Step service](https://huggingface.co/spaces/ACE-Step/ACE-Step). Hosted
+generation requires permission to send the description and lyrics; video and
+reference-audio files are not uploaded. It uses shared free GPU access without
+loading a music model on this laptop. Free quotas and service availability still
+apply, with no paid or local-model fallback. Saved task IDs and completed audio
+destinations prevent an uncertain retry from creating another song. English and
+Hindi are supported; Hindi generation requires original Hindi lyrics. Listen
+to the result before posting. The optional local ACE-Step adapter remains
+subject to the existing hardware guard; spoken narration is never a song fallback.
 
 The optional VoiceStudio narration adapter uses the separately installed,
 user-approved Supertonic-3 engine (SDK 1.3.1, pinned model revision) for English

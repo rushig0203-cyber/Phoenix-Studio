@@ -567,27 +567,96 @@ async function probe(file: string): Promise<MediaInfo> {
 
 async function silences(file: string, hasAudio: boolean, duration: number) {
   if (!hasAudio) return [] as Silence[];
-  const raw = await run(ffmpegPath, [
+  const result: Silence[] = [];
+  let start: number | undefined;
+  let pending = "";
+  const consume = (line: string) => {
+    for (const event of line.matchAll(/silence_(start|end):\s*([0-9.]+)/g)) {
+      const value = Math.min(duration, Number(event[2]));
+      if (!Number.isFinite(value)) continue;
+      if (event[1] === "start") start = value;
+      else if (start !== undefined) {
+        if (value > start) result.push({ start, end: value });
+        start = undefined;
+      }
+    }
+  };
+  await run(ffmpegPath, [
     "-hide_banner", "-nostats", ...FFMPEG_FILTER_RESOURCE_ARGS,
     "-threads", "1", "-i", file,
     "-map", "0:a:0", "-vn", "-sn", "-dn",
     "-af", "silencedetect=noise=-34dB:d=0.65",
     "-f", "null",
     "-",
-  ]);
-  const events = [...raw.matchAll(/silence_(start|end):\s*([0-9.]+)/g)];
-  const result: Silence[] = [];
-  let start: number | undefined;
-  for (const event of events) {
-    const value = Number(event[2]);
-    if (event[1] === "start") start = value;
-    else if (start !== undefined) {
-      result.push({ start, end: value });
-      start = undefined;
-    }
-  }
-  if (start !== undefined) result.push({ start, end: duration });
+  ], { onOutput: (chunk, channel) => {
+    if (channel !== "stderr") return;
+    // run() retains only a diagnostic tail; episode boundaries need the whole stream.
+    const lines = (pending + chunk).split(/[\r\n]+/);
+    pending = (lines.pop() || "").slice(-4096);
+    for (const line of lines) consume(line);
+  } });
+  consume(pending);
+  if (start !== undefined && duration > start) result.push({ start, end: duration });
   return result;
+}
+
+type EpisodeAudioAnalysis = {
+  version: 1;
+  identity: string;
+  quiet?: Silence[];
+  cuts: Array<BaseCut & { audio: AudioState }>;
+};
+
+function episodeAnalysisPath(jobId: string) {
+  return path.join(workRoot, `source-${jobId}`, "episode-audio-analysis.json");
+}
+
+async function episodeSourceIdentity(job: SourceJob, source: string, info: MediaInfo) {
+  const stat = await fs.stat(source);
+  return crypto.createHash("sha256").update(JSON.stringify({ version: 1, source: job.sourceFile,
+    size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, inode: stat.ino, device: stat.dev,
+    duration: info.duration, width: info.width, height: info.height, hasAudio: info.hasAudio })).digest("hex");
+}
+
+async function assertEpisodeSourceIdentity(job: SourceJob, source: string, info: MediaInfo, identity: string) {
+  if (await episodeSourceIdentity(job, source, info) !== identity) {
+    throw new Error("The staged episode changed after analysis began. Start a new upload instead of reusing its old transcript or clips; saved files have been retained.");
+  }
+}
+
+async function readEpisodeAudioAnalysis(job: SourceJob, source: string, info: MediaInfo): Promise<EpisodeAudioAnalysis> {
+  const identity = await episodeSourceIdentity(job, source, info);
+  const empty: EpisodeAudioAnalysis = { version: 1, identity, cuts: [] };
+  let saved: EpisodeAudioAnalysis;
+  try {
+    const filename = episodeAnalysisPath(job.id);
+    if ((await fs.stat(filename)).size > 1024 * 1024) return empty;
+    saved = JSON.parse(await fs.readFile(filename, "utf8")) as EpisodeAudioAnalysis;
+  } catch { return empty; }
+  if (!saved || typeof saved !== "object") return empty;
+  if (saved.version === 1 && typeof saved.identity === "string" && /^[a-f0-9]{64}$/.test(saved.identity) && saved.identity !== identity) {
+    throw new Error("The staged episode changed after analysis began. Start a new upload instead of reusing its old transcript or clips; saved files have been retained.");
+  }
+  const interval = (part: BaseCut | Silence) => part && Number.isFinite(part.start) && Number.isFinite(part.end)
+    && part.start >= 0 && part.end > part.start && part.end <= info.duration;
+  if (saved.version !== 1 || saved.identity !== identity || !Array.isArray(saved.cuts)
+    || saved.quiet !== undefined && (!Array.isArray(saved.quiet) || !saved.quiet.every(interval))
+    || !saved.cuts.every(part => interval(part) && part.audio && Number.isFinite(part.audio.mean) && Number.isFinite(part.audio.max)
+      && part.audio.usable === (info.hasAudio && part.audio.mean > -40 && part.audio.max > -24))) return empty;
+  return saved;
+}
+
+async function saveEpisodeAudioAnalysis(jobId: string, analysis: EpisodeAudioAnalysis) {
+  const filename = episodeAnalysisPath(jobId), temporary = `${filename}.${crypto.randomUUID()}.tmp`;
+  try {
+    const value = JSON.stringify(analysis);
+    if (Buffer.byteLength(value) > 1024 * 1024) return;
+    await fs.mkdir(path.dirname(filename), { recursive: true });
+    await fs.writeFile(temporary, value, "utf8");
+    await fs.rename(temporary, filename);
+  } catch {
+    // A missing optional checkpoint must not prevent the actual video export.
+  } finally { await fs.rm(temporary, { force: true }).catch(() => undefined); }
 }
 
 async function audioState(file: string, hasAudio: boolean, start: number, end: number): Promise<AudioState> {
@@ -1930,8 +1999,14 @@ async function processClaimedSourceJob(job: SourceJob) {
       height: info.height,
       hasAudio: info.hasAudio,
     });
-    await report(11, info.hasAudio ? "Mapping silence for natural clip boundaries" : "No source audio · planning visual boundaries and local music");
-    const quiet = job.stockSource ? [] : await silences(source, info.hasAudio, info.duration);
+    const episodeAudio = job.stockSource ? undefined : await readEpisodeAudioAnalysis(job, source, info);
+    await report(11, episodeAudio?.quiet ? "Reusing the saved episode silence scan"
+      : info.hasAudio ? "Mapping silence for natural clip boundaries" : "No source audio · planning visual boundaries and local music");
+    const quiet = episodeAudio?.quiet ?? (job.stockSource ? [] : await silences(source, info.hasAudio, info.duration));
+    if (episodeAudio && !episodeAudio.quiet) {
+      episodeAudio.quiet = quiet;
+      await saveEpisodeAudioAnalysis(job.id, episodeAudio);
+    }
     await report(13, `Natural-boundary scan complete · ${quiet.length} silence interval${quiet.length === 1 ? "" : "s"}`);
     let transcript: TranscriptSegment[] = [];
     let subtitleAnalysisError: string | undefined;
@@ -1955,8 +2030,14 @@ async function processClaimedSourceJob(job: SourceJob) {
     const audioByCut: AudioState[] = [];
     for (let index = 0; index < base.length; index += 1) {
       const part = base[index];
-      await report(34 + (index / base.length) * 12, `Checking audio for candidate ${index + 1} of ${base.length}`);
-      audioByCut.push(await audioState(source, info.hasAudio, part.start, part.end));
+      const cached = episodeAudio?.cuts.find(saved => saved.start === part.start && saved.end === part.end);
+      await report(34 + (index / base.length) * 12, `${cached ? "Reusing saved audio check" : "Checking audio"} for candidate ${index + 1} of ${base.length}`);
+      const measured = cached?.audio ?? await audioState(source, info.hasAudio, part.start, part.end);
+      audioByCut.push({ ...measured });
+      if (episodeAudio && !cached) {
+        episodeAudio.cuts.push({ ...part, audio: measured });
+        await saveEpisodeAudioAnalysis(job.id, episodeAudio);
+      }
       if (job.stockSource) {
         const audio = audioByCut[audioByCut.length - 1];
         audio.usable = stockAudioUsable(info.hasAudio, audio.mean, audio.max);
@@ -1973,6 +2054,7 @@ async function processClaimedSourceJob(job: SourceJob) {
     const reviewIds: string[] = [];
     const usedReviewIds = new Set<string>();
     for (let index = 0; index < parts.length; index += 1) {
+      if (episodeAudio) await assertEpisodeSourceIdentity(job, source, info, episodeAudio.identity);
       const part = parts[index];
       const subtitles = automaticSubtitles(part, transcript, part.metrics.audio.usable, subtitleAnalysisError);
       const cues = subtitles.cues;
@@ -2028,6 +2110,7 @@ async function processClaimedSourceJob(job: SourceJob) {
         ),
         job.stockSource ? { mood: job.stockSource.options?.mood || "reflective", seed: job.id } : undefined,
       );
+      if (episodeAudio) await assertEpisodeSourceIdentity(job, source, info, episodeAudio.identity);
       instagramInfo = rendered.instagramInfo;
       youtubeInfo = rendered.youtubeInfo;
       item.outputs = {

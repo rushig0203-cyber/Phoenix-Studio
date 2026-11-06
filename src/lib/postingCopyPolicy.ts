@@ -58,13 +58,19 @@ function similarity(left: string, right: string) {
   return overlap / Math.max(x.size, y.size);
 }
 
+/** A soft editorial preference, not a factual rejection when every option is plain. */
+export function hasPostingCaptionBoilerplate(copy: string) {
+  return /\b(?:scenes?|setting)\b|\ba look at\b/i.test(copy);
+}
+
 /** Keep the model's preference unless a valid supplied alternative avoids a near-exact recent repeat. */
-export function choosePostingCaption(caption: string, alternatives: string[], previousCopies: string[], conciseStockCaption = false) {
+export function choosePostingCaption(caption: string, alternatives: string[], previousCopies: string[], conciseStockCaption = false, rejectedCaption?: string) {
   const candidates = [...new Set([caption, ...alternatives].map(text => text.trim()).filter(Boolean))].slice(0, 4)
-    .filter(text => !conciseStockCaption || !stockPostingCaptionIssue(text));
-  if (!candidates.length) throw new Error("No grounded posting caption was supplied.");
+    .filter(text => (!conciseStockCaption || !stockPostingCaptionIssue(text)) && (!rejectedCaption || similarity(text, rejectedCaption) !== 1));
+  if (!candidates.length) throw new Error(rejectedCaption ? "The analysis repeated the caption you asked to replace; no new grounded alternative was supplied." : "No grounded posting caption was supplied.");
+  const editorial = candidates.filter(text => !hasPostingCaptionBoilerplate(text));
   const history = previousCopies.map(postingCaptionOnly).filter(Boolean).slice(0, 30);
-  const scored = candidates.map(text => ({ text, similarity: Math.max(0, ...history.map(old => similarity(text, old))) }));
+  const scored = (editorial.length ? editorial : candidates).map(text => ({ text, similarity: Math.max(0, ...history.map(old => similarity(text, old))) }));
   const preferred = scored[0];
   const chosen = preferred.similarity >= 0.8 ? scored.find(candidate => candidate.similarity < 0.8) || preferred : preferred;
   return { caption: chosen.text, variation: chosen.similarity >= 0.8 ? "similar" as const : "distinct" as const };
@@ -82,7 +88,7 @@ export function videoHashtags(tags: string[]) {
 }
 
 export function postingAnalysisMayApply(current: ReviewFile, snapshot: ReviewFile, startedAt: string) {
-  return current.status === "READY" && current.quality.postingAnalysis?.status === "ANALYZING"
+  return current.id === snapshot.id && current.status === "READY" && current.quality.postingAnalysis?.status === "ANALYZING"
     && current.quality.postingAnalysis.updatedAt === startedAt && current.editedFrom === snapshot.editedFrom
     && current.quality.postingTextOrigin === snapshot.quality.postingTextOrigin
     && current.quality.postCopy === snapshot.quality.postCopy && JSON.stringify(current.outputs) === JSON.stringify(snapshot.outputs)

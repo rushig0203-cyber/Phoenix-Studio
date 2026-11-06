@@ -70,6 +70,7 @@ function animationHarness({ failFrame = false } = {}) {
     };
     if (name === './kidsObjectEvents') return {
       kidsNarratedActions: text => text,
+      kidsReportedActions: text => text,
       reportsKiteFlight: () => false,
       reportsKiteResolution: () => false,
     };

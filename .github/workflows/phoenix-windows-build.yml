@@ -107,6 +107,7 @@ jobs:
           scripts/test-instagram-location-suggestions.cjs
           scripts/test-video-posting-analysis.cjs
           scripts/test-posting-copy-policy.cjs
+          scripts/test-caption-revision-feedback.cjs
           scripts/test-reel-music.cjs
           scripts/test-instagram-audio.cjs
           scripts/test-instagram-tags.cjs
@@ -161,6 +162,9 @@ jobs:
           scripts/test-kids-writing-direction.cjs
           scripts/test-kids-story-quality.cjs
           scripts/test-expressive-animation.cjs
+          scripts/test-kids-action-alignment.cjs
+          scripts/test-episode-resume.cjs
+          scripts/test-hosted-singing.cjs
           scripts/test-animation-and-delete.cjs
           scripts/test-writing-settings.cjs
           scripts/test-writing-settings-ui.cjs
@@ -194,6 +198,8 @@ jobs:
           src/lib/stockProviders.ts src/lib/openStockCatalog.ts
           src/lib/generation.ts
           src/lib/voiceStudio.ts src/lib/kidsRenderer.ts
+          src/lib/localSinging.ts src/lib/hostedSinging.ts src/lib/songAudio.ts
+          src/lib/creationDraftTypes.ts
           src/app/api/generations/route.ts
           src/lib/stockStoryboard.ts src/lib/stockPreparation.ts src/lib/automaticFootage.ts src/lib/newsVisualPolicy.ts src/lib/footageSemantics.ts
           src/lib/stockBrief.ts src/lib/stockEditorial.ts src/lib/newsResearch.ts src/lib/timedCaptions.ts
@@ -226,9 +232,11 @@ jobs:
           src/components/QualityManager.tsx src/components/ChannelConnections.tsx
           src/app/dashboard/settings/page.tsx src/lib/stockFootageSuggestions.ts src/lib/creationRecommendations.ts
           src/lib/qualityManager.ts
+          src/lib/captionRevisionFeedback.ts src/lib/managerTypes.ts
           src/components/ReviewPlayer.tsx src/components/SourceProcessor.tsx
           src/lib/dashboardMonitor.ts src/lib/creationDrafts.ts src/lib/kidsRenderer.ts
           src/lib/kidsAnimation.ts src/lib/kidsSpeechTiming.ts
+          src/lib/kidsObjectEvents.ts
           src/app/api/source-processing/route.ts
           src/app/api/review-files/route.ts src/app/api/review-files/shortcut/route.ts src/app/api/song-audio/route.ts
           src/app/api/projects/[id]/route.ts src/app/api/projects/[id]/timeline/route.ts src/app/api/projects/[id]/review/route.ts
@@ -243,6 +251,8 @@ jobs:
           node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
+      - name: Verify a real synthetic 49-minute episode survives interruption
+        run: node --max-old-space-size=192 scripts/verify-episode-resume.cjs
       - name: Verify compiled idle history scans and bounded heap with synthetic stores
         run: node --max-old-space-size=96 scripts/verify-worker-idle-memory.cjs
       - name: Verify the compiled worker exports public licensed Pexels footage, no owner files or keys

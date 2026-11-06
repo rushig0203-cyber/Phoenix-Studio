@@ -31,7 +31,7 @@ export type KidsRenderInput = {
   scriptApproved?: boolean;
   scriptLocked?: boolean;
   sceneNarration?: string[];
-  songMode?: "recording" | "local-ace";
+  songMode?: "recording" | "local-ace" | "hosted-ace";
   songAudioId?: string;
   topic: string;
   duration: number;
@@ -460,7 +460,7 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
   }
   // Uploaded song lyrics must remain verbatim; rewriting them makes the
   // subtitles unrelated to the actual singing in the recording.
-  if (input.creationType === "children-song" && input.songAudioId) return (input.script || "").trim();
+  if (input.creationType === "children-song" && (input.songAudioId || ((input.songMode === "local-ace" || input.songMode === "hosted-ace") && input.script?.trim()))) return (input.script || "").trim();
   const targetWords = clamp(Math.round(input.duration * guidance.wordsPerSecond), 40, 500);
   const supplied = cleanModelText(input.script || "");
   const suppliedWords = wordCount(supplied);
@@ -951,8 +951,9 @@ export async function renderKidsVideo(
   await fs.rm(output, { force: true });
 
   const managerGuidance=await getCreativeGuidance(input.creationType);
+  const generatedSong = input.songMode === "local-ace" || input.songMode === "hosted-ace";
   await fs.writeFile(path.join(directory,"manager-guidance.json"),JSON.stringify(managerGuidance,null,2),"utf8");
-  await onProgress(8, input.songAudioId ? "Preparing your recorded song lyrics" : `Planning a story with ${managerGuidance.feedbackCount} owner reviews`);
+  await onProgress(8, input.songAudioId ? generatedSong ? "Preparing lyrics for the generated song" : "Preparing your recorded song lyrics" : `Planning a story with ${managerGuidance.feedbackCount} owner reviews`);
   const script = await createContent(input,managerGuidance);
   const preset = input.creationType === "children-story" ? krishnaStoryPreset(input.topic, input.language) : null;
   const studioStory = preset?.script === script ? preset : null;
@@ -972,7 +973,7 @@ export async function renderKidsVideo(
   // A resumed render must not mistake an older sidecar for this voice recording.
   await fs.rm(speechTimingPath, { force: true });
 
-  await onProgress(24, song ? "Preparing the supplied sung recording at its original pitch" : "Creating a friendly local narration");
+  await onProgress(24, song ? generatedSong ? "Preparing the generated song audio at its original pitch" : "Preparing the supplied sung recording at its original pitch" : "Creating a friendly local narration");
   const narration = path.join(directory, "narration.wav");
   const voiceArgs = [
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", voiceScript,
@@ -1018,7 +1019,7 @@ export async function renderKidsVideo(
   const visualSceneTiming = (input.sceneNarration?.length ? measuredScenes : measuredCues)
     ? studioVoice ? "voicestudio-phrase-boundaries" : "speech-engine-word-onsets" : "estimated-word-weighted";
   const performanceFrames = speechTiming?.visemes.length ? kidsSpeechPerformance(speechTiming, narrationSeconds, targetSeconds, OUTPUT_FPS) : undefined;
-  await onProgress(29, song ? "Keeping the supplied singing at its original speed" : `Timing scenes around ${targetSeconds.toFixed(1)} seconds of measured narration`);
+  await onProgress(29, song ? "Keeping the song audio at its original speed" : `Timing scenes around ${targetSeconds.toFixed(1)} seconds of measured narration`);
   await fs.writeFile(path.join(directory, "audio-timing.json"), JSON.stringify({
     sourceSeconds: narrationSeconds, requestedSeconds, ...timing,
     captionTiming: studioVoice ? "voicestudio-phrase-boundaries" : measuredCues ? "speech-engine-word-onsets" : "estimated-word-weighted", captionStartSeconds: cues[0].start,
@@ -1151,7 +1152,7 @@ export async function renderKidsVideo(
   const visualDescription = animationBackground
     ? `${animationBackground.credits.length} licensed moving Pixabay scenery backgrounds with articulated original characters`
     : "original 2D animation with moving limbs, expressions, and caption-matched action props";
-  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? "Uses supplied audio at its original pitch and speed. " : ""}${studioVoice ? "Caption starts use measured VoiceStudio phrase boundaries." : measuredCues ? "Caption starts use measured speech-engine word events." : "Caption timings are word-weighted estimates, not measured word alignment."} ${performanceFrames ? "Cast mouths follow the recorded speech visemes." : "Measured mouth events were unavailable."} Needs your visual and listening review.`;
+  const reason = `${textCheck.reason} Render: ${visualDescription}, ${finalDuration.toFixed(1)}-second ${rendered.video.codec_name}/${rendered.audio.codec_name} MP4. ${song ? generatedSong ? "Uses generated audio at its original pitch and speed. " : "Uses supplied audio at its original pitch and speed. " : ""}${studioVoice ? "Caption starts use measured VoiceStudio phrase boundaries." : measuredCues ? "Caption starts use measured speech-engine word events." : "Caption timings are word-weighted estimates, not measured word alignment."} ${performanceFrames ? "Cast mouths follow the recorded speech visemes." : "Measured mouth events were unavailable."} Needs your visual and listening review.`;
   return {
     file: output,
     duration: finalDuration,

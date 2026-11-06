@@ -15,11 +15,12 @@ const local = require('../src/lib/localModelSession.ts');
 const resources = require('../src/lib/renderResources.ts');
 const preparation = require('../src/lib/stockPreparation.ts');
 const singing = require('../src/lib/localSinging.ts');
+const hosted = require('../src/lib/hostedSinging.ts');
 const writer = require('../src/lib/writingModel.ts');
 const { WritingWaitError } = require('../src/lib/groqWriter.ts');
 const drafts = require('../src/lib/creationDrafts.ts');
 const generation = require('../src/lib/generation.ts');
-const original = { read: settings.readWritingSettings, slot: resources.withLocalRenderSlot, trySlot: resources.tryWithLocalRenderSlot, session: local.withLocalWritingSession, writingSession: writer.withWritingSession, prepare: preparation.prepareStockCreation, singing: singing.prepareLocalSong, fetch: global.fetch, free: os.freemem, pexels: process.env.PEXELS_API_KEY, spawn: childProcess.spawn, execFile: childProcess.execFile };
+const original = { read: settings.readWritingSettings, slot: resources.withLocalRenderSlot, trySlot: resources.tryWithLocalRenderSlot, session: local.withLocalWritingSession, writingSession: writer.withWritingSession, prepare: preparation.prepareStockCreation, singing: singing.prepareLocalSong, hosted: hosted.prepareHostedSong, fetch: global.fetch, free: os.freemem, pexels: process.env.PEXELS_API_KEY, spawn: childProcess.spawn, execFile: childProcess.execFile };
 const root = path.join(temporary, 'storage', 'Phoenix Studio Review Files');
 assert.equal(path.resolve(require('../src/lib/reviewFiles.ts').reviewRoot()), path.resolve(root),
   'Refusing to run fixtures outside the isolated temporary review store');
@@ -46,6 +47,7 @@ beforeEach(() => {
   childProcess.execFile = () => assert.fail('Planning must not execute a renderer, decoder or model');
   preparation.prepareStockCreation = original.prepare;
   singing.prepareLocalSong = async () => assert.fail('No actual song submission is allowed in these tests');
+  hosted.prepareHostedSong = async () => assert.fail('No real hosted song submission is allowed in these tests');
   slotCalls = 0; remoteCalls = 0;
   os.freemem = () => 128 * 1024 * 1024;
   process.env.PEXELS_API_KEY = 'fixture-only';
@@ -60,7 +62,7 @@ after(() => {
   resources.tryWithLocalRenderSlot = original.trySlot; writer.withWritingSession = original.writingSession;
   childProcess.spawn = original.spawn; childProcess.execFile = original.execFile;
   local.withLocalWritingSession = original.session; preparation.prepareStockCreation = original.prepare;
-  singing.prepareLocalSong = original.singing; global.fetch = original.fetch; os.freemem = original.free;
+  singing.prepareLocalSong = original.singing; hosted.prepareHostedSong = original.hosted; global.fetch = original.fetch; os.freemem = original.free;
   if (original.pexels === undefined) delete process.env.PEXELS_API_KEY; else process.env.PEXELS_API_KEY = original.pexels;
   process.chdir(project); fs.rmSync(temporary, { recursive: true, force: true });
 });
@@ -168,6 +170,34 @@ test('Cloudflare memory exemption excludes songs and does not bypass render/edit
   assert.equal(slotCalls, 2); assert.equal(remoteCalls, 0);
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'source-processing-jobs.json'), 'utf8'))[0].status, 'QUEUED');
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'review-edit-jobs.json'), 'utf8'))[0].status, 'QUEUED');
+});
+
+test('hosted singing keeps original Hindi lyrics and uses no local writer/model/render slot below the render floor', async () => {
+  active = { provider: 'ollama', model: 'fixture:local', freePlanConfirmed: false };
+  const lyrics = 'नन्हा तारा चमके आज। मीठी धुन में झूमे साज।';
+  const songId = '12345678-1234-4234-8234-123456789abc';
+  hosted.prepareHostedSong = async (request, update) => {
+    assert.equal(request.lyrics, lyrics); assert.equal(request.language, 'Hindi'); assert.equal(request.consent, true);
+    await update({ songTaskId: 'a'.repeat(32), songSubmissionStarted: true });
+    const dir = path.join(root, 'song-audio'); fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${songId}.audio`), 'isolated already-probed song fixture');
+    fs.writeFileSync(path.join(dir, `${songId}.json`), JSON.stringify({ id: songId, duration: 20, bytes: 1, filename: 'fixture.mp3', origin: 'hosted-ace' }));
+    return { id: songId, duration: 20 };
+  };
+  await drafts.createCreationDrafts([input({ reviewMode: 'storyboard', creationType: 'children-song', songMode: 'hosted-ace', hostedSongConsent: true, language: 'Hindi', script: lyrics, autoDuration: true })]);
+  assert.equal(await drafts.creationDraftWorkflowReady({ waitingForMemory: true }), true);
+  await drafts.processNextCreationDraft();
+  const [saved] = read(); assert.equal(saved.status, 'READY', saved.error); assert.equal(saved.input.script, lyrics); assert.equal(saved.input.songAudioId, songId);
+  assert.equal(slotCalls, 0); assert.equal(remoteCalls, 0); assert.equal((await generation.listGenerationJobs()).length, 0);
+});
+
+test('hosted singing quota preserves lyrics and schedules its own free retry without writer rotation', async () => {
+  hosted.prepareHostedSong = async () => { throw new hosted.HostedSingingWaitError(); };
+  await drafts.createCreationDrafts([input({ creationType: 'children-song', songMode: 'hosted-ace', hostedSongConsent: true })]);
+  await drafts.processNextCreationDraft();
+  const [saved] = read(); assert.equal(saved.status, 'QUEUED'); assert.match(saved.stage, /hosted singing.*free quota/); assert.equal(saved.input.script, script);
+  assert.equal(saved.writerQuotaWait, false); assert.ok(Date.parse(saved.nextAttemptAt) > Date.now() + 23 * 3600_000);
+  await drafts.processNextCreationDraft(); assert.equal(slotCalls, 0); assert.equal(remoteCalls, 0);
 });
 
 test('remote planning remains serialized and existing failed drafts are untouched', async () => {

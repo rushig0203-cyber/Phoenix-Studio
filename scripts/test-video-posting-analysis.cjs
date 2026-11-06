@@ -116,9 +116,10 @@ test('social captions use an editorial voice without turning evidence into inven
   assert.equal(accepted.caption,caption);assert.deepEqual(accepted.captionVariants,variants);
   assert.match(text,/observations literal factual evidence, separate from audience-facing captions/);
   assert.match(text,/not image alt text or a bare subject label/);
-  assert.match(text,/2–3 different phrasings of that SAME anchor, not descriptions of different shots/);
-  assert.match(text,/Editorial invitation or contrast is welcome when grounded in visible detail/);
-  assert.match(text,/never invented subject feelings/);assert.match(text,/No shot inventory, generic cliches/);
+  assert.match(text,/2–3 distinct audience angles on that SAME anchor, not word-reordered descriptions/);
+  assert.match(text,/Audience POV, editorial invitation or contrast is allowed/);
+  assert.match(text,/Visible path example: 'The kind of path that makes the long way home tempting\.'/);
+  assert.match(text,/never invent subject feelings/);assert.match(text,/No shot inventory, generic cliches/);
   assert.match(text,/Never invent identity, precise geography, events, motives\/emotions, continuity across shots, motion\/speed/);
   assert.match(text,/stills do not prove motion\/change/);assert.match(text,/max 24 words\/160 chars/);
   assert.ok(text.length<=2900);assert.equal(calls.length,1);assert.equal(request.max_completion_tokens,900);
@@ -134,6 +135,17 @@ test('stock validation selects a supplied concise alternative without truncating
   assert.equal(accepted.caption,concise);assert.deepEqual(accepted.captionVariants,[]);
   assert.equal(value.caption,verbose,'Original response is not rewritten');
   assert.throws(()=>analysis.parseVisualPosting({...value,captionVariants:[]},true),/No concise/);
+});
+test('plain scene/setting labels prefer a supplied audience angle without rejecting usable copy when every option is plain',()=>{
+  const labels=['Quiet park scenes with green lawns and tree-lined paths.','Green lawns and tree-lined paths in a quiet park setting.','A look at the green spaces and pathways of a local park.'];
+  const audience='The kind of path that makes the long way home tempting.';
+  for(const caption of labels){
+    const value={...result,caption,captionVariants:[audience]};
+    assert.equal(analysis.parseVisualPosting(value,true).caption,audience);
+    assert.equal(value.caption,caption,'The model response is not rewritten or fabricated');
+  }
+  const plain=analysis.parseVisualPosting({...result,caption:labels[0],captionVariants:labels.slice(1)},true);
+  assert.equal(plain.caption,labels[0]);assert.deepEqual(plain.captionVariants,labels.slice(1),'Style alone must not fail an otherwise valid job');
 });
 test('worst-case bounded transcript, stock rules and saved guidance keep safeguards inside the text budget',async()=>{
   const guidance=require('../src/lib/stockProductionGuidance');

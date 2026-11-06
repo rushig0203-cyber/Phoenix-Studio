@@ -48,7 +48,8 @@ export type GenerationInput = {
   scriptLocked?: boolean;
   scriptApproved?: boolean;
   sceneNarration?: string[];
-  songMode?: "recording" | "local-ace";
+  songMode?: "recording" | "local-ace" | "hosted-ace";
+  hostedSongConsent?: boolean;
   songStyle?: string;
   songAudioId?: string;
   requestId?: string;
@@ -970,7 +971,7 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
           licence: "Pixabay Content License backgrounds transformed with original Phoenix characters, script, vocals, music, captions, and editing",
           downloadedAt: new Date().toISOString(),
         }
-      : { kind: "upload", filename: safeFilename(`local-cartoon-${job.id}.mp4`), licence: input.songMode === "local-ace" ? "Original local animation with ACE-Step generated music and singing; review audio originality before publishing" : input.songAudioId ? "Original local animation with user-supplied song audio; user must hold audio rights" : "Original local cartoon rendered with Ollama, Windows voice, and FFmpeg" },
+      : { kind: "upload", filename: safeFilename(`local-cartoon-${job.id}.mp4`), licence: input.songMode === "hosted-ace" ? "Original local animation with official hosted ACE-Step generated audio; review singing, music and originality before publishing" : input.songMode === "local-ace" ? "Original local animation with ACE-Step generated music and singing; review audio originality before publishing" : input.songAudioId ? "Original local animation with user-supplied song audio; user must hold audio rights" : "Original local cartoon rendered with Ollama, Windows voice, and FFmpeg" },
     audience: "kids-3-6",
     quality: {
       audio: input.songAudioId ? "supplied-song" : "local-narration-music",
@@ -981,14 +982,14 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
         ? `${input.seriesTitle} · Part ${input.episodeNumber} of ${input.episodeCount}. ${result.postCopy}`
         : result.postCopy,
       checks: [
-        input.songMode === "local-ace" ? "Approved lyrics sent to local ACE-Step; listen for pronunciation and missing words" : input.songAudioId ? "User-supplied lyrics retained for the recording" : "Original topic-matched script created locally",
+        input.songMode === "hosted-ace" ? "Consented original lyrics sent to official hosted ACE-Step; listen for pronunciation and missing words" : input.songMode === "local-ace" ? "Approved lyrics sent to local ACE-Step; listen for pronunciation and missing words" : input.songAudioId ? "User-supplied lyrics retained for the recording" : "Original topic-matched script created locally",
         result.visualMode === "pixabay-animation"
           ? `${result.visualSources.length} free licensed Pixabay animation backgrounds transformed with original recurring character and story overlays`
           : "Consistent topic-matched 2D cartoon characters and scenes created locally",
-        input.songMode === "local-ace" ? "Local ACE-Step audio preserved at original pitch; singing quality requires owner review" : input.songAudioId ? "Owner-supplied sung recording preserved at its original pitch" : "Local spoken narration with original background music",
+        input.songMode === "hosted-ace" ? "Free hosted ACE-Step audio preserved at original pitch; singing quality requires owner listening review" : input.songMode === "local-ace" ? "Local ACE-Step audio preserved at original pitch; singing quality requires owner review" : input.songAudioId ? "Owner-supplied sung recording preserved at its original pitch" : "Local spoken narration with original background music",
         input.songAudioId ? "Lyrics burned in with estimated timing; adjust synchronization in Edit video" : "Short captions timed and burned into the video",
         "Duration, picture, and audio validated before review",
-        input.songAudioId ? "No paid API used; review rights to your supplied song before posting" : "No paid API or unlicensed footage used",
+        input.songMode === "hosted-ace" ? "Anonymous free hosted quota only; no token, paid plan or local music-model fallback" : input.songAudioId ? "No paid API used; review rights to your supplied song before posting" : "No paid API or unlicensed footage used",
       ],
       visualSources: result.visualSources.map((source) => ({
         provider: "pixabay" as const,
@@ -1025,8 +1026,8 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
     monetizationReview: {
       status: tooSimilarToEarlierPart ? "NEEDS_CHANGES" : "NOT_REVIEWED",
       madeForKids: true,
-      originality: input.songMode === "local-ace" ? "original-local" : input.songAudioId ? "owner-supplied" : result.visualMode === "pixabay-animation" ? "licensed-transformed" : "original-local",
-      rightsBasis: input.songMode === "local-ace" ? "Locally generated ACE-Step music and singing with approved lyrics and original 2D animation. Review for recognizable copied music and verify model/lyric rights before publishing." : input.songAudioId ? "User-supplied recording and lyrics with local animation. Confirm permission for commercial use of both music and lyrics." : result.visualMode === "pixabay-animation"
+      originality: input.songMode === "hosted-ace" ? "original-generated" : input.songMode === "local-ace" ? "original-local" : input.songAudioId ? "owner-supplied" : result.visualMode === "pixabay-animation" ? "licensed-transformed" : "original-local",
+      rightsBasis: input.songMode === "hosted-ace" ? "Official hosted ACE-Step audio generated from consented original lyrics, with original local 2D animation. The model is Apache-2.0 licensed; inspect singing, lyric accuracy and recognizable copied music before publishing. Hosted access is quota-limited, not guaranteed." : input.songMode === "local-ace" ? "Locally generated ACE-Step music and singing with approved lyrics and original 2D animation. Review for recognizable copied music and verify model/lyric rights before publishing." : input.songAudioId ? "User-supplied recording and lyrics with local animation. Confirm permission for commercial use of both music and lyrics." : result.visualMode === "pixabay-animation"
         ? "Free Pixabay animation backgrounds transformed with original recurring characters, story props, local script, rhythmic vocals, original music, captions, and editing."
         : "Original local script, procedural cartoon scenes, local synthetic voice, and locally generated accompaniment.",
       checks: ["Confirm the story, lyrics, melody, characters, and title do not copy a reference", "Watch for caption, pronunciation, identity, and audio problems", "Set the upload audience to made for kids", "Review the platform synthetic-content disclosure before upload"],

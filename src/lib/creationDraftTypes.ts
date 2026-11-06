@@ -1,4 +1,5 @@
 import type { GenerationInput } from "./generation";
+import type { HostedSongOutput } from "./hostedSinging";
 
 export type FootageChoice = {
   id: number;
@@ -29,4 +30,7 @@ export type CreationDraft = {
   approvedJobId?: string;
   songTaskId?: string;
   songSubmissionStarted?: boolean;
+  songOutput?: HostedSongOutput;
+  songRequestFingerprint?: string;
+  songTaskFailed?: boolean;
 };

@@ -37,9 +37,14 @@ export async function localSingingStatus() {
   } catch (error) { return { available: false, reason: error instanceof Error ? error.message : "Local ACE-Step singing engine is not running.", engine: "ACE-Step 1.5", localOnly: true }; }
 }
 
-export function songPayload(lyrics: string, duration: number, style: string) {
+export function songPayload(lyrics: string, duration: number, style: string, language?: string) {
+  const requested = language?.trim();
+  const vocalLanguage = requested
+    ? /^(?:hi(?:[-_][a-z]{2})?|hindi)$/i.test(requested) ? "hi" : /^(?:en(?:[-_][a-z]{2})?|english)$/i.test(requested) ? "en" : undefined
+    : /[\u0900-\u097f]/u.test(lyrics) ? "hi" : "en";
+  if (!vocalLanguage) throw new Error("Local singing supports English or Hindi. Choose one of those languages before generating a song.");
   return { prompt: `Original children's song for ages 3–6. Clear melodic singing with audible acoustic accompaniment, warm adult singer, complete musical ending. ${style}`,
-    lyrics, audio_duration: duration, vocal_language: "en", audio_format: "mp3", task_type: "text2music", batch_size: 1,
+    lyrics, audio_duration: duration, vocal_language: vocalLanguage, audio_format: "mp3", task_type: "text2music", batch_size: 1,
     inference_steps: 8, thinking: false, use_format: false, sample_mode: false, use_cot_caption: false, use_cot_language: false,
     bpm: 108, key_scale: "C Major", time_signature: "4", use_random_seed: true,
   };
@@ -51,14 +56,15 @@ export function localSongDownload(value: string) {
   return url;
 }
 
-export async function prepareLocalSong(input: { lyrics: string; duration: number; style?: string; taskId?: string; submissionStarted?: boolean }, save: (change: { songTaskId?: string; songSubmissionStarted?: boolean; stage?: string }) => Promise<unknown>) {
+export async function prepareLocalSong(input: { lyrics: string; duration: number; style?: string; language?: string; taskId?: string; submissionStarted?: boolean }, save: (change: { songTaskId?: string; songSubmissionStarted?: boolean; stage?: string }) => Promise<unknown>) {
   const health = await localSingingStatus();
   if (!health.available) throw new Error(health.reason);
   let taskId = input.taskId;
   if (!taskId) {
     if (input.submissionStarted) throw new Error("The previous song submission could not be confirmed. Check ACE-Step before starting another draft; Phoenix will not silently submit a duplicate song.");
+    const payload = songPayload(input.lyrics, input.duration, input.style || "Acoustic guitar, glockenspiel, handclaps and a catchy singable chorus.", input.language);
     await save({ songSubmissionStarted: true, stage: "Submitting lyrics to the local singing engine" });
-    const result = await api("/release_task", songPayload(input.lyrics, input.duration, input.style || "Acoustic guitar, glockenspiel, handclaps and a catchy singable chorus."));
+    const result = await api("/release_task", payload);
     if (typeof result?.task_id !== "string" || !/^[\w-]{1,100}$/.test(result.task_id)) throw new Error("Local singing submission did not return a valid task ID.");
     taskId = result.task_id;
     await save({ songTaskId: taskId });

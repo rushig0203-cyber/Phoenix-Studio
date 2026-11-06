@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { kidsCharacterSvg, kidsRigMotion, type KidsRigPose } from "./kidsCharacterRig";
 import { krishnaStoryCue } from "./krishnaStory";
-import { kidsNarratedActions, reportsKiteFlight, reportsKiteResolution } from "./kidsObjectEvents";
+import { kidsReportedActions, reportsKiteFlight, reportsKiteResolution } from "./kidsObjectEvents";
 import { kidsMouthState, kidsPoseBudgets, kidsShotFor, kidsStoryBeat, mix, ramp, quantizeKidsProgress, unit, KIDS_MAX_UNIQUE_FRAMES, type KidsAnimationPerformanceFrame, type KidsExpression, type KidsShot, type KidsStoryIntent } from "./kidsAnimationTimeline";
 export type { KidsAnimationPerformanceFrame } from "./kidsAnimationTimeline";
 
@@ -40,7 +40,7 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
       objectFrom: offer ? 0 : undefined, shot: kidsShotFor(intent, index, -1, true) };
   }
   topic = topic.toLowerCase();
-  const words = kidsNarratedActions(text).toLowerCase();
+  const words = kidsReportedActions(text);
   const theme = /\b(?:underwater|(?:in|into|beneath) (?:the |an? |their )?ocean)\b/.test(words) ? "ocean"
     : /\b(?:at night|during the night|after dark)\b/.test(words) ? "night"
     : /\b(?:in|into|inside) (?:the |an? |their )?(?:room|playroom)\b/.test(words) ? "room"
@@ -113,7 +113,7 @@ export function planKidsPerformance(text: string, cast: [KidsAnimationKind, Kids
     return { active: [pot.actor === 0, pot.actor === 1], actions, subject: pot.actor, speaker: -1 };
   }
   const lower = text.toLowerCase();
-  const narration = kidsNarratedActions(lower);
+  const narration = kidsReportedActions(lower);
   const aliases = cast.map((kind, index) => [kind, names?.[index], kind === "bunny" ? "rabbit" : kind === "dog" ? "puppy" : kind === "cat" ? "kitten" : ""].filter(Boolean).map(name => name!.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   const mentioned = aliases.map(values => values.some(name => new RegExp(`\\b${name}\\b`).test(lower)));
   const subjects = aliases.map(values => values.flatMap(name => [...narration.matchAll(new RegExp(`\\b${name}\\s+(?:(?:quietly|carefully|gently|slowly|kindly|patiently|just)\\s+)?([a-z]+)\\b`, "g"))]).filter(match => narratedKidsAction(match[1])).sort((a, b) => a.index! - b.index!));
@@ -122,8 +122,12 @@ export function planKidsPerformance(text: string, cast: [KidsAnimationKind, Kids
   const giving = objectActions.filter(item => /^(?:gives?|gave|giving|passes|pass|passed|passing|offers?|offered|offering|shares?|shared|sharing|hands?|handed|handing)$/.test(item.match[1]));
   const subject = (giving.length ? giving : objectActions).sort((a, b) => a.match.index! - b.match.index!)[0]?.index ?? -1;
   const observing = actions.map(action => action === "listen");
-  const shared = song || /\b(?:together|both|they|friends)\b/.test(lower) || !mentioned.some(Boolean);
-  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value)), actions, subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
+  const collective = [...narration.matchAll(/\b(?:together(?:\s+they)?|they(?:\s+both)?|both(?:\s+friends)?|(?:the\s+)?(?:two\s+)?friends)\s+(?:(?:quietly|carefully|gently|slowly|kindly|patiently|just)\s+)?([a-z]+)\b/g)].some(match => narratedKidsAction(match[1]));
+  const paired = aliases[0].some(first => aliases[1].some(second =>
+    [...narration.matchAll(new RegExp(`\\b(?:${first}\\s+and\\s+${second}|${second}\\s+and\\s+${first})\\s+([a-z]+)\\b`, "g"))].some(match => narratedKidsAction(match[1]))));
+  const shared = song || collective || paired || !mentioned.some(Boolean);
+  const explicit = actions.some(Boolean);
+  return { active: mentioned.map((value, index) => song || !observing[index] && (shared || value && (!explicit || !!actions[index]))), actions, subject, speaker: song ? -1 : /[“"]/.test(text) ? Math.max(0, mentioned.indexOf(true)) : -1 };
 }
 
 function kitePosition(stage: Stage, scene: Scene, phase: number) {
@@ -332,7 +336,7 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const portable = ["letter", "gift", "ball", "flower", "toys", "umbrella", "star", "butter-pot"].includes(scene.prop);
   const interacting = portable && (scene.action === "reach" || ["held", "offered", "received"].includes(scene.objectState));
   const directSubject = planned.subject === 0 || planned.subject === 1 ? planned.subject : undefined;
-  const explicitHolder = scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsNarratedActions(options.caption));
+  const explicitHolder = scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsReportedActions(options.caption));
   const owner = (scene.intent === "offer" || explicitHolder) && directSubject !== undefined ? directSubject : scene.objectFrom ?? (scene.objectState === "grounded" && active[0] !== active[1] ? (active[1] ? 1 : 0) : scene.objectOwner);
   const transfer = scene.intent === "offer";
   const closeBlocking = transfer || scene.prop === "butter-pot";
@@ -443,7 +447,7 @@ export async function prepareKidsAnimation(options: PrepareKidsAnimationOptions)
     const active = performances[index].active;
     const subject = performances[index].subject;
     const actor = subject === 0 || subject === 1 ? subject : active[0] !== active[1] ? (active[1] ? 1 : 0) : undefined;
-    if (scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsNarratedActions(cue.text)) && actor !== undefined && (subject >= 0 || !/[“"]/.test(cue.text))) scene.objectOwner = actor;
+    if (scene.objectState === "held" && /\b(?:holds?|holding|held|carry|carries|carrying|carried|picks?|picked|picking|lifts?|lifted|lifting)\b/i.test(kidsReportedActions(cue.text)) && actor !== undefined && (subject >= 0 || !/[“"]/.test(cue.text))) scene.objectOwner = actor;
     if (scene.intent === "offer" && actor !== undefined) { scene.objectFrom = actor; scene.objectOwner = actor ? 0 : 1; }
     const speaking = options.performanceFrames?.slice(Math.floor(cue.start * KIDS_ANIMATION_FPS), Math.ceil(cue.end * KIDS_ANIMATION_FPS)).find(value => (value.speaker ?? -1) >= 0)?.speaker ?? performances[index].speaker;
     scene.shot = kidsShotFor(scene.intent, index, speaking, scene.prop !== "none");

@@ -53,6 +53,7 @@ export type ReviewFile = {
       alignmentBasis?: "timed-caption-samples-v1" | "unverified";
       copyPolicy?: string; variation?: "distinct" | "similar";
       captionVariants?: string[];
+      captionRevision?: import("./managerTypes").CaptionRevisionRequest;
       musicBrief?: import("./reelMusic").ReelMusicBrief;
       hashtagActivity?: import("./instagramHashtagActivity").HashtagActivity;
     };
@@ -111,7 +112,7 @@ export type ReviewFile = {
   monetizationReview?: {
     status: MonetizationReviewStatus;
     madeForKids: boolean;
-    originality: "original-local" | "licensed-transformed" | "owner-supplied";
+    originality: "original-local" | "original-generated" | "licensed-transformed" | "owner-supplied";
     rightsBasis: string;
     checks: string[];
     manualReviewRequired?: boolean;
@@ -196,12 +197,12 @@ export async function getReviewFile(id: string) {
 }
 
 /** Update only the intended metadata under the index lock; never resurrect a deleted output. */
-export async function updateReviewFile(id: string, change: (file: ReviewFile) => ReviewFile) {
+export async function updateReviewFile(id: string, change: (file: ReviewFile) => ReviewFile | Promise<ReviewFile>) {
   return withFileLock(indexLockPath, async () => {
     const files = await readReviewFiles(true);
     const index = files.findIndex(file => file.id === id && !file.trashedAt);
     if (index < 0) return null;
-    files[index] = change(files[index]);
+    files[index] = await change(files[index]);
     await writeReviewFilesUnlocked(files);
     return files[index];
   });

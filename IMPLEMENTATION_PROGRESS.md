@@ -1,5 +1,37 @@
 # Phoenix Studio implementation and verified releases
 
+## November 6 — caption, episode and singing changes awaiting release verification
+
+- Explicit caption reanalysis now saves a separate bounded automatic-feedback
+  record, without fabricating or replacing human review ratings. It retains the
+  complaint through quota waits, avoids the rejected copy and guides matching
+  future work. Initial background analysis is not recorded as a complaint.
+  Focused caption/feedback/provider/UI checks pass; actual editorial quality
+  remains subject to the saved public-footage smoke and final owner review.
+- General 2D action planning no longer treats quoted wishes, hypothetical or
+  negated actions as completed events, or makes a listening character copy the
+  actor's movement. Focused action, raster and continuity checks pass. This is
+  bounded English action parsing, not full arbitrary Hindi scene understanding.
+- Episode silence boundaries are parsed across the complete diagnostic stream.
+  Source-bound silence and per-cut audio checkpoints avoid repeated scans, and
+  a changed staged source stops safely before old transcripts/clips are reused.
+  The isolated 49-minute queue regression retains three finished clips after
+  interruption and resumes to 20 non-overlapping clips without duplicating them.
+  A separate real-FFmpeg 49-minute synthetic proof is added to remote Windows
+  verification; it has not yet certified actual owner speech or subject tracking.
+- With the owner's explicit lyrics/description consent, the official stable
+  ACE-Step hosted API produced real 15-second original English and Hindi MP3s.
+  Download, duration and full decode were verified outside owner job stores. The newer
+  demo returned an unspecified error and is not used by the production adapter.
+  Hosted generation retains accepted tasks and completed audio metadata;
+  free-quota waits never invoke a paid service or local music model. This proves
+  the small test, not unlimited free access or professional singing quality.
+- Google again rejected Mapbite's identity verification for enabling 2-Step
+  Verification. YouTube is still unconfigured; no password, OAuth client or
+  channel-upload access was bypassed. Facebook and Instagram remain connected.
+- These source changes are not installed yet. Keep the verified release below
+  serving until full remote checks pass and guarded idle activation completes.
+
 ## November 6 — installed Facebook Page release; linked Page connected
 
 - Installed source `094b7c9208d4a3bf54d924fb8ca8f989ebdf207c` passed Windows

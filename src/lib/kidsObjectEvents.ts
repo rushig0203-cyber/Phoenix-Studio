@@ -1,8 +1,12 @@
 /** Shared finite-event vocabulary for the story checker and lightweight renderer. */
 export function kidsNarratedActions(words: string) { return words.replace(/[“"]([^”"]*)[”"]/g, ""); }
 function reportedClauses(words: string) {
-  return kidsNarratedActions(words).toLowerCase().split(/[.!?;]|,\s*(?:but|then)\s+|\bbut\b|\bthen\b/).filter(clause =>
+  return kidsNarratedActions(words).toLowerCase().split(/[.!?;]|,\s*(?:but|then)\s+|\b(?:but|then|while)\b/).filter(clause =>
     !/\b(?:want\w*|wish\w*|hope\w*|dream\w*|would|could|can|should|might|may|will|if|plan\w*|try|tries|tried|trying)\b|\bgoing to\b/.test(clause));
+}
+/** Draw reported actions, not a quoted proposal, wish, attempt or negated event. */
+export function kidsReportedActions(words: string) {
+  return reportedClauses(words).filter(clause => !/\b(?:not|never|didn't|doesn't|wasn't|isn't|hadn't|hasn't|haven't|weren't|cannot|can't|won't|wouldn't|couldn't)\b/.test(clause)).join(". ");
 }
 export function reportsKiteFlight(words: string) {
   return reportedClauses(words).some(clause => !/\b(?:not|never|didn't|doesn't|wasn't|isn't)\b/.test(clause) && (

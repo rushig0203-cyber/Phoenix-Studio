@@ -32,7 +32,7 @@ export default function QualityManager({ initialReviewId }: { initialReviewId?: 
     <Link href="/dashboard#library" className="mt-2 inline-block text-sm font-semibold underline">View Instagram results &amp; learned guidance</Link>
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {data && <>
-      <p className="mt-3 text-xs text-[#687657]">{data.guidance.feedbackCount} reviewed · {data.queued} queued · {data.running} running · {data.failed} failed</p>
+      <p className="mt-3 text-xs text-[#687657]">{data.guidance.feedbackCount} reviewed{data.guidance.automaticCaptionFeedbackCount ? ` · ${data.guidance.automaticCaptionFeedbackCount} caption revisions` : ""} · {data.queued} queued · {data.running} running · {data.failed} failed</p>
       <section className="mt-4 rounded-xl border border-[#d5ddb8] bg-[#fffdf7] p-4">
         <h2 className="text-sm font-semibold">Videos · newest first</h2>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">{data.assessments.slice(page * pageSize, (page + 1) * pageSize).map(item => <button key={item.reviewId} type="button" aria-pressed={assessment?.reviewId === item.reviewId} className={`rounded-lg border p-2 text-left text-sm ${assessment?.reviewId === item.reviewId ? "border-[#394a2a] bg-[#edf1e5]" : "border-[#d5ddb8]"}`} onClick={() => setSelected(item.reviewId)}><span className="block truncate font-medium">{item.title}</span><span className="mt-1 block text-xs text-[#687657]">{dateLabel(item.createdAt)} · {labels[item.decision]}</span></button>)}</div>
@@ -49,7 +49,7 @@ export default function QualityManager({ initialReviewId }: { initialReviewId?: 
         <p className="mt-2 leading-5">{data.capabilities.learning}</p>
         {data.guidance.rules.length ? <ul className="mt-2 list-disc space-y-1 pl-4">{data.guidance.rules.map(rule => <li key={rule}>{rule}</li>)}</ul> : <p className="mt-2">No improvement priorities saved yet.</p>}
         <p className="mt-2">Caption ratings guide posting copy for new matching work and shorter subtitle groups for 2D exports. Narrated stock subtitle grouping is unchanged. Notes are saved for reference, never used as commands.</p>
-        <p className="mt-2">Automatic singing is not installed: song videos need your sung recording and lyrics. {data.capabilities.animation}. Watch and listen; these checks do not prove professional animation, good singing or future views.</p>
+        <p className="mt-2">{data.capabilities.singing === "hosted-ace" ? "Free hosted ACE-Step singing is integrated. Lyrics permission, shared-GPU availability and free quotas apply; no local music model is loaded." : "Song videos need a sung recording and matching lyrics."} {data.capabilities.animation}. Watch and listen; these checks do not prove professional animation, good singing or future views.</p>
         <p className="mt-2 text-[#687657]">Guidance revision: {data.guidance.revision}. No paid service or automatic posting.</p>
       </details>
     </>}

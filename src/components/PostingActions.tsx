@@ -47,8 +47,10 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
   const [file, setFile] = useState(supplied);
   const [busy, setBusy] = useState(false);
   const requesting = useRef(false);
+  const currentOutputId = useRef(supplied.id);
   const copyDetails = useRef<HTMLDetailsElement>(null);
   useEffect(() => { setFile(current => current.id === supplied.id ? mergePostingSnapshot(current, supplied) : supplied); }, [supplied]);
+  useEffect(() => { currentOutputId.current = supplied.id; setNotice(""); }, [supplied.id]);
   const analysis = file.quality.postingAnalysis;
   const automaticCopy = file.quality.postingTextOrigin !== "owner" && (!file.editedFrom || file.quality.postingTextOrigin === "automatic" || !!analysis);
   useEffect(() => {
@@ -68,12 +70,16 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
   if (!postingDownload(file)) return null;
   async function analyze() {
     if (requesting.current) return;
+    const requestedId = file.id;
     requesting.current = true; setBusy(true); setNotice("");
     try {
-      const response = await fetch(`/api/review-files/${encodeURIComponent(file.id)}/posting-analysis`, { method: "POST", signal: AbortSignal.timeout(15000) });
+      const response = await fetch(`/api/review-files/${encodeURIComponent(requestedId)}/posting-analysis`, { method: "POST", signal: AbortSignal.timeout(15000) });
       const value = await response.json(); if (!response.ok) throw new Error(value.error || "Could not queue analysis.");
-      setFile(current => current.id === file.id ? mergePostingSnapshot(current, value) : current); setNotice("Queued to analyze this video's frames. The finished video stays available.");
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not queue video analysis."); }
+      if (currentOutputId.current !== requestedId) return;
+      if (value.id !== requestedId) throw new Error("The analysis response belongs to another video. Refresh this output before retrying.");
+      setFile(current => current.id === requestedId ? mergePostingSnapshot(current, value) : current);
+      setNotice(value.quality?.postingAnalysis?.captionRevision ? "Caption feedback saved for the manager. A new video-specific caption is queued; the finished video stays available." : "Queued to analyze this video's frames. The finished video stays available.");
+    } catch (error) { if (currentOutputId.current === requestedId) setNotice(error instanceof Error ? error.message : "Could not queue video analysis."); }
     finally { requesting.current = false; setBusy(false); }
   }
   async function copy() {

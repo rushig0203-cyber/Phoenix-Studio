@@ -21,6 +21,8 @@ export type CreativeFeedback = {
 };
 export type CreativeGuidance = {
   feedbackCount: number;
+  /** Explicit caption re-analysis requests, separate from human review ratings. */
+  automaticCaptionFeedbackCount?: number;
   revision: string;
   priorities: FeedbackDimension[];
   rules: string[];
@@ -29,6 +31,11 @@ export type CreativeGuidance = {
   policyVersion?: number;
   requests?: FeedbackRequest[];
 };
+export type CaptionRevisionFeedback = {
+  version: 1; id: string; reviewId: string; creationType: string;
+  mediaFingerprint: string; rejectedCaptionHash: string; savedAt: string;
+};
+export type CaptionRevisionRequest = CaptionRevisionFeedback & { previousCaption: string };
 export type QualityAssessment = {
   reviewId: string;
   title: string;
@@ -48,5 +55,5 @@ export type QualityManagerState = {
   reviewReady: number;
   guidance: CreativeGuidance;
   assessments: QualityAssessment[];
-  capabilities: { singing: false; animation: string; learning: string; paidServices: false };
+  capabilities: { singing: "hosted-ace" | false; animation: string; learning: string; paidServices: false };
 };

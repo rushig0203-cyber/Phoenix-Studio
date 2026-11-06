@@ -9,7 +9,7 @@ import { reviewRoot, safeReviewId } from "./reviewFiles";
 import { lowerChildProcessPriority } from "./renderResources";
 
 const maximumBytes=100*1024*1024;
-export type SongAudio = { id:string; filename:string; duration:number; bytes:number; origin?: "recording" | "local-ace" };
+export type SongAudio = { id:string; filename:string; duration:number; bytes:number; origin?: "recording" | "local-ace" | "hosted-ace" };
 const directory=()=>path.join(reviewRoot(),"song-audio");
 export function songAudioPath(id:string){if(!safeReviewId(id))throw new Error("Invalid song recording.");return path.join(directory(),`${id}.audio`);}
 export async function getSongAudio(id:string):Promise<SongAudio>{const audioPath=songAudioPath(id);const value=JSON.parse(await fs.readFile(path.join(directory(),`${id}.json`),"utf8")) as SongAudio;await fs.access(audioPath);return value;}

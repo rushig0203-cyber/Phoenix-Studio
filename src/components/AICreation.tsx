@@ -32,7 +32,9 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [error, setError] = useState("");
   const [songAudio, setSongAudio] = useState<{id:string;filename:string;duration:number}|null>(null);
   const [lyrics, setLyrics] = useState("");
-  const [songMode, setSongMode] = useState<"recording" | "local-ace">("recording");
+  const [songMode, setSongMode] = useState<"recording" | "local-ace" | "hosted-ace">("hosted-ace");
+  const [hostedSongConsent, setHostedSongConsent] = useState(false);
+  const [songLanguage, setSongLanguage] = useState<"English" | "Hindi">("English");
   const [singing, setSinging] = useState<{ available: boolean; reason: string } | null>(null);
   const [songStyle, setSongStyle] = useState("Acoustic guitar, glockenspiel, handclaps, a cheerful melody and a memorable chorus.");
   const [narration, setNarration] = useState("");
@@ -122,6 +124,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           newsId: selectedNews?.id,
           planOnly: false,
           songMode,
+          hostedSongConsent: songMode === "hosted-ace" && hostedSongConsent,
           songStyle,
           requestId: requestId.current,
           songAudioId: kind === "Children's song" && songMode === "recording" ? songAudio?.id : undefined,
@@ -135,7 +138,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           batchCount,
           visualSource: children ? "local-ai" : "stock",
           creationType,
-          language: "English",
+          language: kind === "Children's song" ? songLanguage : "English",
           voice: "local-windows-voice",
           subtitleStyle: "clear-bold",
           audienceAge: children ? "3-6" : undefined,
@@ -190,7 +193,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </p>
           <p className="mt-1 text-xs leading-5 text-[#647451]">
             {children
-              ? "Ages 3–6 by default. Phoenix plans the story and renders original 2D characters automatically. This is illustrated animation, not studio-quality 3D or anime. Songs use a sung recording or an available local singing engine."
+              ? "Ages 3–6 by default. Phoenix plans the story and renders original 2D characters automatically. This is illustrated animation, not studio-quality 3D or anime. Songs use free hosted generation, your sung recording, or an available local singing engine."
               : "Your selected writer plans the narration, or you supply it below. Phoenix selects real Pexels footage by the shot brief, duration and format, then renders locally. You review only the finished video. Groq writing sends text only; video files stay on this PC."}
             {" "}No paid AI provider or automatic posting is used.
             {" "}Laptop-safe rendering runs one Phoenix export at a time with at most two CPU threads.
@@ -201,11 +204,14 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <h4 className="font-semibold">Real singing + music</h4>
           <label className="block text-sm font-semibold">Song source<select value={songMode} onChange={event => setSongMode(event.target.value as typeof songMode)} className="mt-1 w-full rounded-lg border bg-white p-2">
             <option value="recording">Use my sung recording · free</option>
+            <option value="hosted-ace">Generate with free hosted ACE-Step · limited daily quota</option>
             <option value="local-ace" disabled={!singing?.available}>Generate with local ACE-Step · {singing?.available ? "ready" : "unavailable on this PC"}</option>
           </select></label>
-          <p className="text-xs leading-5 text-[#647451]">{singing?.reason || "Checking the free local singing engine…"} Phoenix never substitutes spoken narration for singing. <a className="underline" href="https://github.com/ace-step/ACE-Step-1.5" target="_blank" rel="noreferrer">Free engine documentation</a></p>
+          <label className="block text-sm font-semibold">Song language<select value={songLanguage} onChange={event => setSongLanguage(event.target.value as typeof songLanguage)} className="mt-1 w-full rounded-lg border bg-white p-2"><option>English</option><option>Hindi</option></select></label>
+          <p className="text-xs leading-5 text-[#647451]">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason || "Checking the free local singing engine…"} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
+          {songMode === "hosted-ace" ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={hostedSongConsent} onChange={event => setHostedSongConsent(event.target.checked)} className="mt-1"/><span>Allow this song&apos;s description and lyrics to be sent to official hosted ACE-Step on Hugging Face. Video files and recordings stay on this PC. No account, token or paid plan is used.</span></label> : null}
           {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<p role="status" className="text-sm">Saving and checking song recording…</p>:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}</> : <label className="block text-sm font-semibold">Musical direction<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label>}
-          <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>setLyrics(e.target.value)} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording"}/></label>
+          <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>setLyrics(e.target.value)} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : songLanguage === "Hindi" ? "Enter your original Hindi lyrics" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording" || songLanguage === "Hindi"}/></label>
           <p className="text-xs text-[#647451]">Listen to the complete finished video before posting. Caption timing is an estimate; adjust it in Edit video if needed. Use only audio and lyrics you have permission to publish.</p>
         </section> : null}
 
@@ -293,7 +299,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         </div>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
-        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !lyrics.trim() : !singing?.available))} className="bg-[#26331f] px-5 text-white">
+        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !lyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent || (songLanguage === "Hindi" && !lyrics.trim()) : !singing?.available))} className="bg-[#26331f] px-5 text-white">
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {busy
             ? selectedNews ? "Reading the report and checking creation…" : "Queuing your video…"

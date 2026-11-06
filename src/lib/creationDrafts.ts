@@ -14,6 +14,7 @@ import { stockNarrationError } from "./stockBrief";
 import { requireSongAudio } from "./songAudio";
 import { selectedFootage } from "./stockCatalog";
 import { prepareLocalSong } from "./localSinging";
+import { HostedSingingWaitError, prepareHostedSong } from "./hostedSinging";
 import { prepareStockCreation } from "./stockPreparation";
 import type { CreationDraft, DraftScene } from "./creationDraftTypes";
 import { isWritingWaitError, withWritingSession, writingModelIdentity, WritingQuotaWaitError, isWriterQuotaWaiting as quotaWaiting, writerQuotaBackupReady as quotaBackupReady } from "./writingModel";
@@ -186,6 +187,11 @@ export async function changeDraftStatus(id: string, version: number, action: "re
     }
     if (action === "retry" && draft.input.kidsStoryAttempt?.repairAttempted) draft.input.kidsStoryAttempt.repairAttempted = false;
     if (action === "retry" && draft.input.creativeBriefAttempt?.repairAttempted) draft.input.creativeBriefAttempt.repairAttempted = false;
+    if (action === "retry" && draft.input.songMode === "hosted-ace" && draft.songTaskFailed === true && !draft.input.songAudioId && !draft.songOutput) {
+      // Only an explicit retry can replace a provider-confirmed failed song.
+      draft.songTaskId = undefined; draft.songSubmissionStarted = false;
+      draft.songRequestFingerprint = undefined; draft.songTaskFailed = undefined;
+    }
     if (action === "retry" && isStockDraft(draft) && draft.input.scriptOrigin === "local-model" && !draft.input.scriptApproved && draft.input.editorialCheckpoint?.phase === "final-review") {
       const rejected = draft.input.editorialCheckpoint;
       // An unchanged repair may have older passing findings; invalidate both caches, not their history.
@@ -204,7 +210,7 @@ let planning = false;
 const readyToPlan = (draft: CreationDraft) => (draft.status === "QUEUED" && (!draft.nextAttemptAt || Date.parse(draft.nextAttemptAt) <= Date.now())) || (draft.status === "PLANNING" && (draft.leaseUntil || 0) < Date.now());
 const isRemoteTextIdentity = (identity: string) => identity.startsWith("groq:") || identity.startsWith("cloudflare:");
 const readyForPlanningResources = (draft: CreationDraft, resources: { waitingForMemory: boolean }, quotaReady = false) => (readyToPlan(draft) || quotaReady && quotaWaiting(draft))
-  && (!resources.waitingForMemory || (isRemoteTextIdentity(writingModelIdentity()) && draft.input.creationType !== "children-song"));
+  && (!resources.waitingForMemory || (draft.input.creationType === "children-song" && draft.input.songMode === "hosted-ace") || (isRemoteTextIdentity(writingModelIdentity()) && draft.input.creationType !== "children-song"));
 
 /** Bounded cloud text planning may run while local media work awaits RAM. */
 export async function creationDraftWorkflowReady(resources: { waitingForMemory: boolean }) {
@@ -281,8 +287,10 @@ export async function processNextCreationDraft() {
         }
         await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
       };
-      const writerIdentity = studioStory ? "" : writingModelIdentity();
-      if (studioStory) {
+      // Hosted songs use exact supplied lyrics or the existing local lyric bank.
+      const hostedSong = draft.input.creationType === "children-song" && draft.input.songMode === "hosted-ace";
+      const writerIdentity = studioStory || hostedSong ? "" : writingModelIdentity();
+      if (studioStory || hostedSong) {
         await preparePlan();
       } else if (isRemoteTextIdentity(writerIdentity)) {
         await withWritingSession(async () => {
@@ -297,16 +305,24 @@ export async function processNextCreationDraft() {
         await attemptPlanningSlot(() => withWritingSession(preparePlan), "Creation planning");
       }
       if (draft.input.creationType === "children-song") {
-        // Singing generates/stages actual audio and is never RAM-exempt, even
-        // when the lyrics were prepared remotely. Its own stricter guard stays.
-        await attemptPlanningSlot(async () => {
-          if (draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
-            const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
+        if (draft.input.songMode === "hosted-ace") {
+          if (!draft.input.songAudioId) {
+            const song = await prepareHostedSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, language: draft.input.language, consent: draft.input.hostedSongConsent, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted, output: draft.songOutput, requestFingerprint: draft.songRequestFingerprint }, update);
             draft.input.songAudioId = song.id;
             await update({ input: draft.input });
           }
           await requireSongAudio(draft.input.songAudioId, draft.input.autoDuration ? undefined : draft.input.duration);
-        }, "Song audio preparation");
+        } else {
+          // Local singing retains its stricter RAM guard and heavy-work slot.
+          await attemptPlanningSlot(async () => {
+            if (draft.input.songMode === "local-ace" && !draft.input.songAudioId) {
+              const song = await prepareLocalSong({ lyrics: script, duration: draft.input.duration, style: draft.input.songStyle, language: draft.input.language, taskId: draft.songTaskId, submissionStarted: draft.songSubmissionStarted }, update);
+              draft.input.songAudioId = song.id;
+              await update({ input: draft.input });
+            }
+            await requireSongAudio(draft.input.songAudioId, draft.input.autoDuration ? undefined : draft.input.duration);
+          }, "Song audio preparation");
+        }
       }
       const scenes = draft.scenes.length ? draft.scenes
         : (studioStory?.scenes || (draft.input.creationType === "children-song" ? script.split(/\n+/).map(s => s.trim()).filter(Boolean) : narrationBeats(script, 18)))
@@ -327,7 +343,7 @@ export async function processNextCreationDraft() {
       await mutate(drafts => {
         const current = drafts.find(d => d.id === draft.id);
         if (!current || current.leaseOwner !== leaseOwner || !["PLANNING", "APPROVING"].includes(current.status)) return;
-        if (isWritingWaitError(error)) {
+        if (isWritingWaitError(error) || error instanceof HostedSingingWaitError) {
           Object.assign(current, { status: "QUEUED", stage: error.message, error: undefined, writerQuotaWait: error instanceof WritingQuotaWaitError, nextAttemptAt: new Date(Date.now() + error.retryAfterMs).toISOString(), version: current.version + 1, updatedAt: new Date().toISOString(), leaseUntil: undefined, leaseOwner: undefined });
           return;
         }

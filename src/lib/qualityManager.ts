@@ -10,6 +10,7 @@ import { publishingProfile, inferPublishingFormat } from "./publishingFormats";
 import { assertStockMusicLoudness } from "./stockReel";
 import { GENERATED_CAPTION_FEEDBACK_RULE, STOCK_FEEDBACK_MAX_BYTES, STOCK_FEEDBACK_MAX_RECORDS, readBoundedManagerFeedback, stockProductionGuidanceFromFeedback } from "./stockProductionGuidance";
 import { getInstagramLearningGuidance, mergeInstagramLearningGuidance } from "./instagramLearningGuidance";
+import { readCaptionRevisionFeedback, withCaptionRevisionGuidance } from "./captionRevisionFeedback";
 
 const feedbackPath = () => path.join(reviewRoot(), "manager-feedback.json");
 const rating = z.number().int().min(1).max(5);
@@ -84,7 +85,8 @@ export function guidanceFromFeedback(records: CreativeFeedback[], creationType?:
   return { feedbackCount: relevant.length, revision, policyVersion, requests, priorities, rules: [...priorities.map(dimension => rules[dimension]), ...(creationType?.startsWith("children") && priorities.includes("captions") ? ["Use shorter subtitle groups, preserve the spoken words and leave time to read. Human synchronization review is still required."] : []), ...requests.map(request => specificRules[request])], maxCaptionWords: priorities.includes("captions") ? 7 : 10, wordsPerSecond: priorities.includes("audio") || priorities.includes("story") ? 1.7 : 1.95 };
 }
 export async function getCreativeGuidance(creationType?: string) {
-  const base = guidanceFromFeedback(await readCreativeFeedback(), creationType);
+  const [feedback, captionFeedback] = await Promise.all([readCreativeFeedback(), readCaptionRevisionFeedback()]);
+  const base = withCaptionRevisionGuidance(guidanceFromFeedback(feedback, creationType), captionFeedback, creationType);
   return mergeInstagramLearningGuidance(base, await getInstagramLearningGuidance(creationType));
 }
 
@@ -120,7 +122,7 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
     else checks.push(file.quality.subtitles?.decision === "none" ? "Subtitles intentionally omitted: no confidently detected speech requires them. Posting copy is separate." : "No subtitles are saved for this source footage. Check audible speech before posting; do not invent subtitles for music or scenery.");
   }
   if (file.quality.audio === "local-music-replaced") checks.push("Original audio was replaced. Confirm no important dialogue was lost.");
-  if (file.quality.audio === "supplied-song") checks.push("User-supplied audio is present; singing, music quality and lyric synchronization still need a listening review.");
+  if (file.quality.audio === "supplied-song") checks.push("A song audio file is present; singing, music quality and lyric synchronization still need a listening review.");
   if (file.delivery?.creationType.startsWith("children")) checks.push("Limited 2D character animation. Anatomy, action matching and lip synchronization need visual review; this is not a professional-animation score.");
   const weak = feedback && dimensions.filter(dimension => feedback.ratings[dimension] <= 2);
   if (weak?.length) checks.push(`Your review requests improvement in: ${weak.join(", ")}.`);
@@ -130,19 +132,20 @@ export function assessReview(file: ReviewFile, feedback?: CreativeFeedback): Qua
 }
 
 export async function getQualityManagerState(): Promise<QualityManagerState> {
-  const [files, feedback, ai, source, edits, drafts] = await Promise.all([
+  const [files, feedback, ai, source, edits, drafts, captionFeedback] = await Promise.all([
     readReviewFiles(), readCreativeFeedback(),
     readArray<{status:string;archivedAt?:string}>(path.join(reviewRoot(),"ai-creation-jobs.json")),
     readArray<{status:string;archivedAt?:string}>(path.join(reviewRoot(),"source-processing-jobs.json")),
     readArray<{status:string;archivedAt?:string}>(path.join(reviewRoot(),"review-edit-jobs.json")),
     readArray<{status:string;archivedAt?:string}>(path.join(reviewRoot(),"creation-drafts.json")),
+    readCaptionRevisionFeedback(),
   ]);
   const jobs = [...ai,...source,...edits,...drafts.filter(draft => !["ARCHIVED", "APPROVED"].includes(draft.status))].filter(job => !job.archivedAt);
   const map = new Map(feedback.map(item => [item.reviewId,item]));
   const assessments = files.filter(file => file.status === "READY").sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).map(file => assessReview(file,map.get(file.id)));
-  const guidance = mergeInstagramLearningGuidance(guidanceFromFeedback(feedback), await getInstagramLearningGuidance());
+  const guidance = mergeInstagramLearningGuidance(withCaptionRevisionGuidance(guidanceFromFeedback(feedback), captionFeedback), await getInstagramLearningGuidance());
   return { mode:"local-feedback", checkedAt:new Date().toISOString(), queued:jobs.filter(job=>job.status==="QUEUED").length, running:jobs.filter(job=>["RUNNING","PROCESSING","PLANNING","APPROVING"].includes(job.status)).length, failed:jobs.filter(job=>["FAILED","BLOCKED"].includes(job.status)).length, reviewReady:assessments.length, guidance, assessments,
-    capabilities:{singing:false,animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Structured reviews guide matching children's briefs and business/general writing with the configured writer. Caption feedback requests shorter grounded posting copy, and 2D renders use shorter subtitle groups. New automatic stock reels snapshot bounded source-review rules. Fresh Instagram insights from exactly matched published videos can suggest type-specific opening/watch-time tests and a conservative automatic-stock duration cap when enough comparable evidence exists. Human review choices stay first; metrics show associations, not causes or guaranteed reach. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code or automatic posting.",paidServices:false} };
+    capabilities:{singing:"hosted-ace",animation:"Limited 2D · 720p · 12 fps · one local render at a time",learning:"Structured reviews guide matching children's briefs and business/general writing with the configured writer. Caption feedback requests shorter grounded posting copy, and 2D renders use shorter subtitle groups. New automatic stock reels snapshot bounded source-review rules. Fresh Instagram insights from exactly matched published videos can suggest type-specific opening/watch-time tests and a conservative automatic-stock duration cap when enough comparable evidence exists. Human review choices stay first; metrics show associations, not causes or guaranteed reach. Free-text notes remain review records. No model retraining, automatic chat reading, self-modifying code or automatic posting.",paidServices:false} };
 }
 
 export function assertLocalManagerRequest(request: Request, mutation=false) {
