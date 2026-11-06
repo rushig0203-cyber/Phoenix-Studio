@@ -60,6 +60,7 @@ function publishCapability(platform: ChannelPlatform, account?: Account, allowRe
   } else if (platform === "facebook") {
     if (account.loginType !== "facebook" || !/^\d{5,30}$/.test(account.id) || account.pageId !== account.id || !account.instagramAccountId || !/^\d{5,40}$/.test(account.instagramAccountId)) return { publishReady: false, publishReason: "Connect the Facebook Page linked to your verified Instagram account before uploading." };
     if (!account.permissionsVerifiedAt || !facebookPagePublishScopes.every(scope => account.grantedScopes?.includes(scope)) || !canCreatePageContent(account.pageTasks)) return { publishReady: false, publishReason: "Authorize pages_manage_posts, pages_read_engagement and pages_show_list for this Page, with permission to create content, then reconnect Facebook." };
+    if (typeof account.expiresAt !== "number" || !Number.isFinite(account.expiresAt) || account.expiresAt <= 0) return { publishReady: false, publishReason: "Reconnect Facebook to verify its token lifetime using the saved app client ID and App Secret." };
   } else {
     if (account.loginType === "instagram") return { publishReady: false, publishReason: "Instagram identity verified. Local-file publishing currently requires a Facebook Login token for the linked professional account; direct Instagram Login publishing is not enabled." };
     if (account.loginType !== "facebook" || !account.pageId) return { publishReady: false, publishReason: "Check or reconnect Instagram using a Facebook Login token for its linked professional account." };
@@ -488,14 +489,41 @@ async function facebookPageAccount(userAccessToken: string, pageId: string, inst
     profileUrl: `https://www.facebook.com/${pageId}`, loginType: "facebook" as const, accessToken, userAccessToken, pageTasks: tasks };
 }
 
+async function longLivedFacebookUserToken(accessToken: string, config: Credentials) {
+  const query = new URLSearchParams({ grant_type: "fb_exchange_token", client_id: config.clientId, client_secret: config.clientSecret, fb_exchange_token: accessToken });
+  const requestedAt = Date.now();
+  let data;
+  try { data = await providerJson(`https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}/oauth/access_token?${query}`); }
+  catch (error) {
+    if (error instanceof ProviderRequestError && ["configuration", "authorization", "request"].includes(error.kind)) throw new Error("Meta could not extend this Facebook User token. Use a fresh User token generated for the saved app ID, check its App Secret, and reconnect Facebook.");
+    throw error;
+  }
+  const seconds = data.expires_in;
+  if (typeof seconds !== "number" || !Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 60 * 24 * 3600 + 300) throw new Error("Meta did not return a verified Facebook token lifetime. Generate a fresh User token for the saved app and reconnect; no Facebook connection was saved.");
+  let token: string;
+  try { token = normalizeInstagramToken(data.access_token); }
+  catch { throw new Error("Meta did not return a valid extended Facebook User token. Generate a fresh token for the saved app and reconnect Facebook."); }
+  // The User token is also retained for Page checks; use its actual lifetime,
+  // even when the derived Page token might have no expiration date.
+  return { accessToken: token, expiresAt: requestedAt + seconds * 1000 };
+}
+
 /** Explicitly connect only the Page already verified through the owner's Instagram link. */
 export async function connectFacebookPage(accessToken?: string) {
   const initial = await readVault(), instagram = initial.accounts?.instagram;
   if (!instagram || instagram.error || instagram.loginType !== "facebook" || !instagram.pageId || !/^\d{5,30}$/.test(instagram.pageId) || !/^\d{5,40}$/.test(instagram.id) || instagram.expiresAt && instagram.expiresAt <= Date.now()) throw new Error("Check the Facebook-linked Instagram connection first. Phoenix connects only its existing linked Page.");
+  const config = credentials(initial, "facebook");
+  if (!config.clientId.trim() || !config.clientSecret.trim()) throw new Error("Save the Facebook app client ID and App Secret before connecting its Page. Phoenix needs them to verify and extend the User token's lifetime.");
   let userAccessToken: string;
   try { userAccessToken = normalizeInstagramToken(accessToken === undefined ? instagram.accessToken : accessToken); }
   catch { throw new Error("Paste a complete Facebook User access token, not a URL, command or app secret."); }
   const attempt: Pending = { platform: "facebook", mode: "token", stateHash: hash(crypto.randomUUID()), browserHash: "", expiresAt: Date.now() + 90_000, redirectUri: "", verifier: "", claimed: true };
+  const assertPending = (vault: Vault) => {
+    const current = vault.accounts?.instagram, currentConfig = credentials(vault, "facebook");
+    const pending = vault.pending?.find(item => item.platform === "facebook" && item.mode === "token" && item.stateHash === attempt.stateHash && item.expiresAt > Date.now());
+    if (!pending || !current || revision(current) !== revision(instagram) || current.accessToken !== instagram.accessToken || current.id !== instagram.id || current.pageId !== instagram.pageId || currentConfig.clientId !== config.clientId || currentConfig.clientSecret !== config.clientSecret) throw new Error("The Facebook connection was cancelled, its app credentials changed, or its linked Instagram account changed. Review the destination and connect again.");
+    return pending;
+  };
   await withVault(async vault => {
     const current = vault.accounts?.instagram;
     if (!current || revision(current) !== revision(instagram) || current.accessToken !== instagram.accessToken || current.id !== instagram.id || current.pageId !== instagram.pageId) throw new Error("The linked Instagram account changed. Review the Facebook destination again.");
@@ -503,14 +531,16 @@ export async function connectFacebookPage(accessToken?: string) {
     vault.pending.push(attempt); await writeVault(vault);
   });
   try {
-    const identity = await facebookPageAccount(userAccessToken, instagram.pageId, instagram.id);
+    await facebookPageAccount(userAccessToken, instagram.pageId, instagram.id);
+    assertPending(await readVault());
+    const extended = await longLivedFacebookUserToken(userAccessToken, config);
+    const identity = await facebookPageAccount(extended.accessToken, instagram.pageId, instagram.id);
     await withVault(async vault => {
-      const current = vault.accounts?.instagram;
-      const pending = vault.pending?.find(item => item.platform === "facebook" && item.mode === "token" && item.stateHash === attempt.stateHash && item.expiresAt > Date.now());
-      if (!pending || !current || revision(current) !== revision(instagram) || current.accessToken !== instagram.accessToken || current.id !== instagram.id || current.pageId !== instagram.pageId) throw new Error("The Facebook connection was cancelled or its linked Instagram account changed. Review the destination and connect again.");
+      const pending = assertPending(vault);
+      if (extended.expiresAt <= Date.now()) throw new Error("The extended Facebook User token already expired. Generate a fresh token for the saved app and reconnect Facebook.");
       const now = new Date().toISOString();
-      vault.accounts = { ...vault.accounts, facebook: { ...identity, connectedAt: now, verifiedAt: now, connectionRevision: crypto.randomUUID() } };
-      vault.credentials = { ...vault.credentials, facebook: credentials(initial, "facebook") };
+      vault.accounts = { ...vault.accounts, facebook: { ...identity, expiresAt: extended.expiresAt, connectedAt: now, verifiedAt: now, connectionRevision: crypto.randomUUID() } };
+      vault.credentials = { ...vault.credentials, facebook: config };
       vault.pending = vault.pending?.filter(item => item !== pending); await writeVault(vault);
     });
   } catch (error) {

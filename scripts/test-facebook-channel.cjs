@@ -14,6 +14,8 @@ require('tsconfig-paths').register({ baseUrl: project, paths: { '@/*': ['src/*']
 const channels = require('../src/lib/channelConnections.ts');
 const route = require('../src/app/api/channels/[platform]/route.ts');
 const realFetch = global.fetch, userToken = 'EAA_fixture_user_not_real_123456789', pageToken = 'EAA_fixture_page_not_real_987654321';
+const longUserToken = 'EAA_fixture_long_user_not_real_135792468', lifetime = 60 * 24 * 3600;
+for (const key of ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET']) delete process.env[key];
 const pageId = '1234567890123456', instagramId = '17841400000000001';
 const timestamp = new Date().toISOString();
 const scopes = ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts'];
@@ -21,10 +23,10 @@ const instagram = { id: instagramId, name: '@fixture_ig', profileUrl: 'https://w
   loginType: 'facebook', pageId, grantedScopes: scopes, permissionsVerifiedAt: timestamp, connectedAt: timestamp,
   verifiedAt: timestamp, connectionRevision: 'fixture-instagram-revision' };
 const vaultPath = path.join(temporary, 'private/channels.enc');
-function fixture(account = instagram, facebook) {
+function fixture(account = instagram, facebook, app = { clientId: 'fixture-app-id', clientSecret: 'fixture-secret' }) {
   fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
   const key = crypto.randomBytes(32), iv = crypto.randomBytes(12), cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const vault = { credentials: { instagram: { clientId: 'fixture-app-id', clientSecret: 'fixture-secret' } },
+  const vault = { credentials: { instagram: app },
     accounts: { ...(account ? { instagram: account } : {}), ...(facebook ? { facebook } : {}) } };
   const data = Buffer.concat([cipher.update(JSON.stringify(vault), 'utf8'), cipher.final()]);
   fs.writeFileSync(vaultPath + '.key', key);
@@ -34,14 +36,23 @@ const status = async platform => (await channels.listChannels('http://localhost:
 const context = platform => ({ params: Promise.resolve({ platform }) });
 const request = (platform, body, origin = 'http://localhost:3000') => new Request('http://localhost:3000/api/channels/' + platform,
   { method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-function provider({ permissions = scopes, linkedId = instagramId, tasks = ['CREATE_CONTENT'], returnedPage = pageId, tokenPage = pageId, beforeIdentity } = {}) {
-  const requests = [];
+function provider({ permissions = scopes, linkedId = instagramId, tasks = ['CREATE_CONTENT'], returnedPage = pageId, tokenPage = pageId, beforeIdentity,
+  exchangePayload = { access_token: longUserToken, expires_in: lifetime }, exchangeError, initialUser = userToken, afterExchange } = {}) {
+  const requests = []; let currentUser = initialUser;
   global.fetch = async (value, options) => {
     const url = new URL(value); requests.push(url.pathname);
     assert.equal(url.origin, 'https://graph.facebook.com');
     assert.equal(url.searchParams.has('access_token'), false);
     assert.equal(options.redirect, 'error'); assert.equal(options.cache, 'no-store'); assert.ok(options.signal);
-    const expected = url.pathname === '/v26.0/me' ? pageToken : userToken;
+    if (url.pathname === '/v26.0/oauth/access_token') {
+      assert.equal(requests.length, 5, 'The exact linked Page, scopes and content task must verify before token extension');
+      assert.equal(url.searchParams.get('grant_type'), 'fb_exchange_token'); assert.equal(url.searchParams.get('fb_exchange_token'), userToken);
+      assert.equal(url.searchParams.get('client_id'), 'fixture-app-id'); assert.equal(url.searchParams.get('client_secret'), 'fixture-secret');
+      if (exchangeError) return Response.json({ error: exchangeError }, { status: 400 });
+      currentUser = longUserToken; await afterExchange?.();
+      return Response.json(exchangePayload);
+    }
+    const expected = url.pathname === '/v26.0/me' ? pageToken : currentUser;
     assert.equal(options.headers.Authorization, `Bearer ${expected}`);
     if (url.pathname === '/v26.0/me/permissions') return Response.json({ data: permissions.map(permission => ({ permission, status: 'granted' })) });
     if (url.pathname === '/v26.0/' + pageId) return Response.json({ id: pageId, name: 'Fixture Page', instagram_business_account: { id: linkedId } });
@@ -73,10 +84,11 @@ test('Facebook connects only the verified linked Page and stores its separate Pa
   assert.deepEqual(await status('instagram'), before);
   assert.equal((await channels.getChannelPublishAccess('facebook', facebook.connectionRevision)).accessToken, pageToken);
   assert.equal((await channels.getChannelPublishAccess('instagram', before.connectionRevision)).accessToken, userToken);
-  for (const secret of [userToken, pageToken, 'fixture-secret']) {
+  for (const secret of [userToken, longUserToken, pageToken, 'fixture-secret']) {
     assert.ok(!JSON.stringify(body).includes(secret)); assert.ok(!fs.readFileSync(vaultPath, 'utf8').includes(secret));
   }
-  assert.deepEqual(requests, ['/v26.0/me/permissions', '/v26.0/' + pageId, '/v26.0/me/accounts', '/v26.0/me']);
+  const validation = ['/v26.0/me/permissions', '/v26.0/' + pageId, '/v26.0/me/accounts', '/v26.0/me'];
+  assert.deepEqual(requests, [...validation, '/v26.0/oauth/access_token', ...validation]);
 });
 
 test('a missing Page publishing grant stays blocked without affecting Instagram', async () => {
@@ -140,7 +152,7 @@ test('Facebook access checks retain Page identity and stop after disconnect or g
   await channels.verifyChannel('facebook');
   assert.equal((await status('facebook')).connectionRevision, initial.connectionRevision);
   await channels.assertChannelPublishAccessCurrent(access);
-  provider({ permissions: scopes.filter(scope => scope !== 'pages_manage_posts') });
+  provider({ initialUser: longUserToken, permissions: scopes.filter(scope => scope !== 'pages_manage_posts') });
   await assert.rejects(channels.verifyChannel('facebook'), /pages_manage_posts/);
   assert.equal((await status('facebook')).publishReady, false);
   await assert.rejects(channels.getChannelPublishAccess('facebook'), /Check this connection/);
@@ -158,4 +170,65 @@ test('cached Page identity alone never fabricates publishing capability', async 
     assert.equal((await status('facebook')).publishReady, false);
     await assert.rejects(channels.getChannelPublishAccess('facebook'), /Authorize pages_manage_posts/);
   }
+});
+
+test('Facebook records the actual extended User token lifetime and blocks access when it expires', async () => {
+  const before = await status('instagram'), clock = Date.now, started = clock();
+  provider({ exchangePayload: { access_token: longUserToken, expires_in: 7200 } });
+  await channels.connectFacebookPage();
+  const access = await channels.getChannelPublishAccess('facebook');
+  try {
+    Date.now = () => started + 7100 * 1000;
+    assert.equal((await status('facebook')).publishReady, true);
+    Date.now = () => started + 7300 * 1000;
+    assert.equal((await status('facebook')).publishReady, false);
+    assert.equal((await status('facebook')).state, 'needs_attention');
+    await assert.rejects(channels.getChannelPublishAccess('facebook'), /expired/);
+    await assert.rejects(channels.assertChannelPublishAccessCurrent(access), /expired/);
+    assert.deepEqual(await status('instagram'), before);
+  } finally { Date.now = clock; }
+});
+
+test('Facebook extension requires configured app credentials and an actual bounded expiry without changing Instagram', async () => {
+  for (const app of [{ clientId: '', clientSecret: 'fixture-secret' }, { clientId: 'fixture-app-id', clientSecret: '' }]) {
+    fixture(instagram, undefined, app); const before = fs.readFileSync(vaultPath), instagramBefore = await status('instagram');
+    await assert.rejects(channels.connectFacebookPage(), /client ID and App Secret/);
+    assert.deepEqual(fs.readFileSync(vaultPath), before); assert.deepEqual(await status('instagram'), instagramBefore);
+  }
+  for (const expires_in of [undefined, null, '5184000', 0, -1, 1.5, 60 * 24 * 3600 + 301, Number.MAX_SAFE_INTEGER]) {
+    fixture(); const before = await status('instagram'), requests = provider({ exchangePayload: { access_token: longUserToken, expires_in } });
+    await assert.rejects(channels.connectFacebookPage(), /verified Facebook token lifetime/);
+    assert.equal(requests.length, 5); assert.equal((await status('facebook')).connected, false); assert.deepEqual(await status('instagram'), before);
+  }
+});
+
+test('Facebook exchange errors and token failures remain secret-free and cannot save a connection', async () => {
+  for (const options of [
+    { exchangeError: { code: 190, message: 'Expired private ' + userToken } },
+    { exchangeError: { code: 100, message: 'Wrong app private fixture-secret' } },
+    { exchangePayload: { access_token: 'invalid token ' + longUserToken, expires_in: lifetime } },
+  ]) {
+    fixture(); const before = await status('instagram'); provider(options);
+    const response = await route.POST(request('facebook', { action: 'facebook-page' }), context('facebook'));
+    assert.equal(response.status, 400); const body = await response.json(); assert.match(body.error, /fresh|saved app/);
+    for (const secret of [userToken, longUserToken, pageToken, 'fixture-secret']) assert.ok(!JSON.stringify(body).includes(secret));
+    assert.equal((await status('facebook')).connected, false); assert.deepEqual(await status('instagram'), before);
+  }
+});
+
+test('an app or linked-account change during Facebook extension cannot save stale credentials', async () => {
+  for (const change of [() => channels.disconnectChannel('instagram'),
+    () => channels.saveChannelCredentials('facebook', 'replacement-app-id', 'replacement-secret')]) {
+    fixture(); provider({ afterExchange: change });
+    await assert.rejects(channels.connectFacebookPage(), /cancelled|changed/);
+    assert.equal((await status('facebook')).connected, false);
+  }
+});
+
+test('legacy Facebook credentials without verified lifetime cannot upload indefinitely', async () => {
+  fixture(instagram, { id: pageId, pageId, instagramAccountId: instagramId, name: 'Fixture Page', loginType: 'facebook', accessToken: pageToken,
+    connectedAt: timestamp, verifiedAt: timestamp, permissionsVerifiedAt: timestamp, grantedScopes: scopes, pageTasks: ['CREATE_CONTENT'] });
+  assert.equal((await status('facebook')).publishReady, false);
+  await assert.rejects(channels.getChannelPublishAccess('facebook'), /verify its token lifetime/);
+  assert.equal((await status('instagram')).publishReady, true);
 });
