@@ -25,6 +25,13 @@
   The owner's existing token lacks `pages_manage_posts`. New permission must be
   approved at the Meta consent step and the exact Page verified before reporting
   Facebook connected. No social test post or failed owner-job retry is allowed.
+- The first Facebook package passed Windows run `42205221774`: 1,522 Node
+  tests, 49 Python checks, lint, TypeScript, memory verification and actual
+  video export/decoding. Both Vercel deployments passed. Activation then found
+  an older untouched matching Story waiting on an Instagram Reel already in
+  `NEEDS_CHECK`. The restart guard needs to recognize that stopped dependency
+  without changing records or dispatching either upload; this launcher fix must
+  pass verification before activation is reported complete.
 
 ## November 6 — current installed release and remaining account work
 
