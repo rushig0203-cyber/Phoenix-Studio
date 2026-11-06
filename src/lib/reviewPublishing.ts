@@ -905,6 +905,7 @@ async function completeYoutube(job: StoredJob, result: ProviderResult) {
 
 async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, url: string, offset: number, metaUpload = false) {
   const safeUrl = validateReviewUploadUrl(url, job.platform);
+  if (job.platform === "facebook" && new URL(safeUrl).pathname.split("/").filter(Boolean).at(-1) !== job.containerId) throw problem("The private Facebook upload destination identifies a different video. No video bytes were sent.", 409, true);
   const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
   if (job.kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Publishing was stopped.");
   let handle: Awaited<ReturnType<typeof fs.open>>;
@@ -955,7 +956,7 @@ async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, ur
       catch { throw problem("The channel connection changed or was disconnected. Uploading stopped before sending the video.", 409); }
       return await providerCall(safeUrl, {
         method: metaUpload ? "POST" : "PUT", body: body as unknown as BodyInit, duplex: "half",
-        headers: metaUpload ? { Authorization: `OAuth ${access.accessToken}`, offset: "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes), "Content-Type": job.platform === "facebook" ? "application/octet-stream" : "video/mp4" }
+        headers: metaUpload ? { Authorization: `OAuth ${access.accessToken}`, offset: job.platform === "facebook" ? String(offset) : "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes - (job.platform === "facebook" ? offset : 0)), "Content-Type": job.platform === "facebook" ? "application/octet-stream" : "video/mp4" }
           : { Authorization: `Bearer ${access.accessToken}`, "Content-Length": String(job.totalBytes - offset), "Content-Type": "video/mp4", "Content-Range": `bytes ${offset}-${job.totalBytes - 1}/${job.totalBytes}` },
       }, true, true);
     } catch (error) {
@@ -1029,7 +1030,7 @@ async function facebook(job: StoredJob, access: ChannelPublishAccess) {
   for (let attempt = 0; attempt < 12; attempt++) {
     await assertCurrent(access);
     const checked = await providerCall(`${FACEBOOK_GRAPH}/${job.containerId}?fields=status`, { headers: { Authorization: `Bearer ${access.accessToken}` } });
-    const state = checked.json.status as { video_status?: unknown; uploading_phase?: { status?: unknown }; processing_phase?: { status?: unknown }; publishing_phase?: { status?: unknown; publish_status?: unknown } } | undefined;
+    const state = checked.json.status as { video_status?: unknown; uploading_phase?: { status?: unknown; bytes_transfered?: unknown }; processing_phase?: { status?: unknown }; publishing_phase?: { status?: unknown; publish_status?: unknown } } | undefined;
     const phases = [state?.uploading_phase?.status, state?.processing_phase?.status, state?.publishing_phase?.status];
     if (checked.json.id !== job.containerId || !state || !["uploading", "upload_complete", "processing", "ready", "error", "upload_failed", "expired"].includes(String(state.video_status))
         || !phases.every(phase => ["not_started", "in_progress", "complete", "error"].includes(String(phase)))) {
@@ -1057,6 +1058,20 @@ async function facebook(job: StoredJob, access: ChannelPublishAccess) {
     }
     if (!checkOnly && (publishing.status === "in_progress" || publishing.status === "complete")) {
       checkOnly = true; job.phase = "publish_unknown"; await persist(job);
+    }
+    if (!checkOnly && job.phase === "sending" && publishing.status === "not_started" && state.uploading_phase!.status !== "complete") {
+      const offset = state.uploading_phase!.bytes_transfered;
+      if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || offset > job.totalBytes) throw problem("Facebook did not confirm a safe byte offset for this interrupted transfer. Continue only checks the same video; no bytes were resent.", 502, true);
+      job.bytesUploaded = offset; job.percent = Math.min(95, Math.floor(offset / job.totalBytes * 95));
+      if (offset < job.totalBytes) {
+        const session = await getChannelUploadSession(job.id);
+        if (!session) throw problem("The private Facebook Reel upload session is unavailable. Check the Page before continuing.", 409, true);
+        const uploaded = await streamSavedVideo(job, access, session, offset, true);
+        if (uploaded.json.success !== true) throw problem("Facebook has not acknowledged the resumed video transfer. Continue checks this same video and its confirmed byte offset.", 502, true);
+        job.phase = "processing"; job.status = "PROCESSING"; job.percent = 96;
+        job.detail = "Facebook acknowledged the resumed video transfer. Checking processing and publishing status.";
+      }
+      await persist(job);
     }
     if (!checkOnly && state.uploading_phase!.status === "complete" && publishing.status === "not_started") {
       const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);

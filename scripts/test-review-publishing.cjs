@@ -265,6 +265,110 @@ test('interrupted Facebook transfer checks its existing video and never blindly 
   assert.equal(uploads, 1); assert.equal(finishes, 1);
 }));
 
+test('Facebook resumes only the provider-confirmed missing suffix on the same saved upload', async () => withFacebookProbe(facebookMetadata(), async () => {
+  const size = 256 * 1024 + 3, { id } = await fixture('instagram', size), filename = files.outputPath(id, 'instagram');
+  const bytes = Buffer.alloc(size); for (let i = 0; i < size; i++) bytes[i] = i % 251;
+  fs.writeFileSync(filename, bytes);
+  const { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+  let starts = 0, uploads = 0, finishes = 0, checks = 0, acknowledged = 0;
+  global.fetch = async (url, options) => {
+    if (new URL(url).hostname === 'rupload.facebook.com') {
+      uploads++; assert.equal(String(url), facebookUpload); assert.equal(options.headers.file_size, String(size));
+      assert.equal(options.headers['Content-Type'], 'application/octet-stream'); assert.equal(options.headers.Authorization, 'OAuth fixture-secret-token');
+      if (uploads === 1) {
+        const first = await options.body[Symbol.asyncIterator]().next();
+        acknowledged = first.value.length; assert.ok(acknowledged > 0 && acknowledged < size);
+        throw new Error('fixture transfer interrupted after an acknowledged prefix');
+      }
+      assert.equal(checks, 1, 'Provider status must precede resumed bytes');
+      assert.equal(options.headers.offset, String(acknowledged)); assert.equal(Number(options.headers['Content-Length']), size - acknowledged);
+      let received = 0;
+      for await (const chunk of options.body) {
+        assert.deepEqual(chunk, bytes.subarray(acknowledged + received, acknowledged + received + chunk.length)); received += chunk.length;
+      }
+      assert.equal(received, size - acknowledged); return Response.json({ success: true });
+    }
+    if (options.method === 'POST') {
+      if (options.body.get('upload_phase') === 'start') { starts++; return Response.json({ video_id: facebookVideo, upload_url: facebookUpload }); }
+      finishes++; assert.equal(options.body.get('video_id'), facebookVideo); return Response.json({ success: true });
+    }
+    if (String(url).includes('permalink_url')) return Response.json({});
+    checks++;
+    if (checks === 2) { const saved = readStored(id, 'facebook'); assert.equal(saved.phase, 'processing'); assert.equal(saved.status, 'PROCESSING'); assert.equal(saved.percent, 96); }
+    return Response.json(checks === 1 ? facebookStatus('not_started', { video_status: 'uploading', uploading_phase: { status: 'in_progress', bytes_transfered: acknowledged } })
+      : facebookStatus(finishes ? 'complete' : 'not_started'));
+  };
+  await publishing.runReviewPublication(id, job.id);
+  assert.equal(readStored(id, 'facebook').phase, 'sending'); assert.equal(checks, 0);
+  await publishing.prepareReviewPublication(id, { action: 'continue', jobId: job.id, confirm: true });
+  await publishing.runReviewPublication(id, job.id);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'COMPLETE');
+  assert.deepEqual([starts, uploads, finishes], [1, 2, 1]); assert.deepEqual(fs.readFileSync(filename), bytes);
+}));
+
+test('Facebook rejects missing or unsafe resume offsets before any bytes or publish request', async () => withFacebookProbe(facebookMetadata(), async () => {
+  for (const bytes_transfered of [undefined, null, '50', -1, 1.5, 101, Number.MAX_SAFE_INTEGER]) {
+    const { id } = await fixture('instagram', 100), { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+    alterStored(id, value => { value.phase = 'sending'; value.containerId = facebookVideo; }, 'facebook');
+    sessions.set(job.id, facebookUpload); let calls = 0;
+    global.fetch = async (_url, options) => {
+      calls++; assert.notEqual(options.method, 'POST');
+      return Response.json(facebookStatus('not_started', { video_status: 'uploading', uploading_phase: { status: 'in_progress', bytes_transfered } }));
+    };
+    await publishing.runReviewPublication(id, job.id);
+    const [status] = await publishing.listReviewPublishJobs(id);
+    assert.equal(calls, 1); assert.equal(status.status, 'NEEDS_CHECK'); assert.equal(status.canContinue, true); assert.match(status.detail, /safe byte offset/);
+  }
+}));
+
+test('Facebook cannot resume a different video session or an output changed after its status check', async () => withFacebookProbe(facebookMetadata(), async () => {
+  for (const change of ['session', 'output']) {
+    const { id } = await fixture('instagram', 100), { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+    alterStored(id, value => { value.phase = 'sending'; value.containerId = facebookVideo; }, 'facebook');
+    sessions.set(job.id, change === 'session' ? facebookUpload.replace(facebookVideo, '123') : facebookUpload); let calls = 0;
+    global.fetch = async (_url, options) => {
+      calls++; assert.notEqual(options.method, 'POST');
+      if (change === 'output') fs.appendFileSync(files.outputPath(id, 'instagram'), 'changed');
+      return Response.json(facebookStatus('not_started', { video_status: 'uploading', uploading_phase: { status: 'in_progress', bytes_transfered: 50 } }));
+    };
+    await publishing.runReviewPublication(id, job.id);
+    assert.equal(calls, 1); assert.match((await publishing.listReviewPublishJobs(id))[0].detail, change === 'session' ? /different video/ : /changed after confirmation/);
+  }
+}));
+
+test('Facebook can resume at confirmed zero, while a fully acknowledged file is never transferred again', async () => withFacebookProbe(facebookMetadata(), async () => {
+  for (const offset of [0, 100]) {
+    const { id } = await fixture('instagram', 100), { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+    alterStored(id, value => { value.phase = 'sending'; value.containerId = facebookVideo; }, 'facebook');
+    sessions.set(job.id, facebookUpload); let uploads = 0, finishes = 0, checks = 0;
+    global.fetch = async (url, options) => {
+      if (new URL(url).hostname === 'rupload.facebook.com') { uploads++; assert.equal(options.headers.offset, '0'); await consumeStream(options); return Response.json({ success: true }); }
+      if (options.method === 'POST') { finishes++; return Response.json({ success: true }); }
+      if (String(url).includes('permalink_url')) return Response.json({});
+      checks++;
+      return Response.json(checks === 1 ? facebookStatus('not_started', { video_status: 'uploading', uploading_phase: { status: 'in_progress', bytes_transfered: offset } })
+        : facebookStatus(finishes ? 'complete' : 'not_started'));
+    };
+    await publishing.runReviewPublication(id, job.id);
+    assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'COMPLETE'); assert.equal(uploads, offset === 0 ? 1 : 0); assert.equal(finishes, 1);
+  }
+}));
+
+test('accepted or uncertain Facebook publishing can never resume bytes even when status reports a partial upload', async () => withFacebookProbe(facebookMetadata(), async () => {
+  for (const saved of [{ phase: 'publish_unknown' }, { phase: 'publishing' }, { phase: 'processing', facebookFinishAccepted: true }]) {
+    const { id } = await fixture('instagram', 100), { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+    alterStored(id, value => { Object.assign(value, saved, { containerId: facebookVideo }); }, 'facebook');
+    sessions.set(job.id, facebookUpload); let calls = 0;
+    global.fetch = async (_url, options) => {
+      calls++; assert.notEqual(options.method, 'POST');
+      return Response.json(facebookStatus('not_started', { video_status: 'uploading', uploading_phase: { status: 'in_progress', bytes_transfered: 50 } }));
+    };
+    await publishing.runReviewPublication(id, job.id);
+    const [status] = await publishing.listReviewPublishJobs(id);
+    assert.equal(calls, 12); assert.equal(status.status, 'NEEDS_CHECK'); assert.equal(status.remoteId, undefined);
+  }
+}));
+
 test('Facebook cannot attach credentials to an unsafe or mismatched returned upload destination', async () => withFacebookProbe(facebookMetadata(), async () => {
   for (const upload_url of ['https://evil.example/video-upload/v26.0/123', instagramLocation, facebookUpload.replace(facebookVideo, '123'), facebookUpload + '?access_token=secret']) {
     const { id } = await fixture('instagram', 100); const { job } = await publishing.prepareReviewPublication(id, settings('facebook')); let calls = 0;
