@@ -1,5 +1,28 @@
 # Phoenix Studio implementation and verified releases
 
+## November 6 — Facebook Page source update awaiting release verification
+
+- Facebook destination support is implemented across channel setup, the durable
+  posting queue, inline final review and Library publication summaries. It uses
+  only the already verified Instagram-linked Page; personal profiles and
+  arbitrary other Pages cannot be selected. Instagram publishing is separate.
+- Page connection requires proven scopes, exact linked Page/Instagram identity,
+  a Page token and a content-creation task. The explicit connection uses saved
+  Meta app credentials for the free long-lived User token exchange, records
+  Meta's actual returned expiry and rejects missing or ambiguous lifetime.
+- The current official Meta guide, checked November 6, specifies 3–90 second
+  portrait Reels, at least 540 × 960 and 24–60 fps. Earlier official examples
+  used narrower limits. This release probes the saved file before accepting a
+  job and streams it from disk without re-rendering or a whole-video buffer.
+- Publishing keeps one durable video ID and its protected upload destination.
+  An uncertain finish is checked rather than repeated, and only confirmed
+  publishing completion moves the output to Posted. Instagram music, location,
+  people tags and companion Story options are not sent to Facebook.
+- These are source changes, not yet an installed or account-connected result.
+  The owner's existing token lacks `pages_manage_posts`. New permission must be
+  approved at the Meta consent step and the exact Page verified before reporting
+  Facebook connected. No social test post or failed owner-job retry is allowed.
+
 ## November 6 — current installed release and remaining account work
 
 - Installed application source `529386b48756e34da046ad0f2f8ef1197215b45e`

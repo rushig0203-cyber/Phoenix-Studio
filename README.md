@@ -139,6 +139,21 @@ use its final Post or Upload action. **Close** collapses the controls.
   channel account. A channel URL or an open upload page alone does not connect it.
   Google Cloud requires 2-Step Verification; an account-verification rejection
   must be resolved on Google's side before credential setup can continue.
+- **Facebook Page:** connect only the Page already verified as linked to your
+  Instagram account. The same Meta app needs `pages_show_list`,
+  `pages_read_engagement` and `pages_manage_posts`, and the authorizing person
+  must be able to create Page content. Settings verify this before saving a
+  separate protected Page connection. The saved Meta app credentials exchange
+  the User token for up to 60 days; Phoenix records Meta's actual expiry.
+  **Post to Facebook Page** reviews the public destination and saved MP4 before
+  queuing. Current [Meta Reel specifications](https://developers.facebook.com/documentation/video-api/guides/reels-publishing)
+  require portrait 9:16, 3–90 seconds, at least 540 × 960 and 24–60 fps.
+  Phoenix probes the file before accepting it; incompatible files are not
+  silently trimmed or stretched. Its saved audio is used, without Instagram
+  catalogue music, people tags, location or companion Story settings. Uploads
+  stream from disk, and interrupted or uncertain publishing checks the retained
+  video ID instead of creating a duplicate. A returned finish acknowledgement
+  does not count as Posted until Meta confirms publishing completion.
 - **Rumble upload:** an assisted handoff. **Open Rumble & show saved video**
   reveals the existing MP4 in Windows File Explorer, copies its description and
   opens the official upload page. Drag that file onto Rumble, paste the text and
