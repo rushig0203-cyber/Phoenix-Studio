@@ -1,6 +1,15 @@
 # Phoenix Studio implementation and verified releases
 
-## November 6 — Facebook Page source update awaiting release verification
+## November 6 — installed Facebook Page release; account authorization unfinished
+
+- Installed source `094b7c9208d4a3bf54d924fb8ca8f989ebdf207c` passed Windows
+  run `42208346550`: 1,524 Node tests, 49 Python checks, lint, TypeScript,
+  compiled-worker memory verification and real FFmpeg/public-footage exports
+  and decoding. Both Vercel deployments passed for this source.
+- Selected and serving bundle `.next-build-gh-42208346550-1`, build ID
+  `KX1uR7u_1Xgx2WXhXL4KX`, returns dashboard HTTP 200 with healthy manager,
+  worker and renderer. All five owner video/job stores and the owner's exact
+  configuration bytes matched after guarded activation. Builds ran remotely.
 
 - Facebook destination support is implemented across channel setup, the durable
   posting queue, inline final review and Library publication summaries. It uses
@@ -21,27 +30,34 @@
   An uncertain finish is checked rather than repeated, and only confirmed
   publishing completion moves the output to Posted. Instagram music, location,
   people tags and companion Story options are not sent to Facebook.
-- These are source changes, not yet an installed or account-connected result.
-  The owner's existing token lacks `pages_manage_posts`. New permission must be
-  approved at the Meta consent step and the exact Page verified before reporting
-  Facebook connected. No social test post or failed owner-job retry is allowed.
-- The first Facebook package passed Windows run `42205221774`: 1,522 Node
-  tests, 49 Python checks, lint, TypeScript, memory verification and actual
-  video export/decoding. Both Vercel deployments passed. Activation then found
-  an older untouched matching Story waiting on an Instagram Reel already in
-  `NEEDS_CHECK`. The restart guard needs to recognize that stopped dependency
-  without changing records or dispatching either upload; this launcher fix must
-  pass verification before activation is reported complete.
+- Live browser review confirms the new inline Facebook destination, saved-file
+  metadata, caption/hashtag editor and public-post disclosure. The selected
+  platform remains readable, with white text on `rgb(57, 74, 42)`; Instagram
+  audio and people-tag controls are absent from the Facebook form. Posting is
+  disabled while the Facebook account connection is unverified.
+- The restart guard now recognizes an untouched matching Story waiting on a
+  stopped, container-backed `NEEDS_CHECK` Reel. Both Windows PowerShell engines
+  pass a 44-case synthetic matrix, including live-lock and malformed-state
+  rejection. The actual saved pair passed without changing either record or the
+  protected vault; activation did not retry or dispatch either upload.
+- Facebook is NOT connected yet. The owner approved adding `pages_manage_posts`
+  and privately saving verified access for up to 60 days. Meta's permission
+  response now confirms all seven requested scopes, but `/me/accounts` still
+  returns an empty list. The published linked Page is accessible in Facebook's
+  management UI; this does not establish an API Page token or content-creation
+  task. No unverified token was saved. Chrome's normal authorization session
+  needs the owner's Facebook sign-in before continuing Page-access selection.
+  No social test post or failed owner-job retry was performed.
 
-## November 6 — current installed release and remaining account work
+## Earlier November 6 release evidence and remaining account work
 
 - Installed application source `529386b48756e34da046ad0f2f8ef1197215b45e`
   passed Windows run `42086420197`: 1,482 Node tests, 49 Python checks, lint,
   TypeScript, the production build, compiled-worker memory checks and real
   isolated FFmpeg/public-footage export and decoding. Both Vercel checks for the
   preceding release passed; later source deployments must be checked separately.
-- Selected and serving bundle `.next-build-gh-42086420197-1`, build ID
-  `9LwbXwpfvOCULcAxAV8sx`, returns dashboard HTTP 200 with healthy manager/worker
+- The earlier bundle `.next-build-gh-42086420197-1`, build ID
+  `9LwbXwpfvOCULcAxAV8sx`, returned dashboard HTTP 200 with healthy manager/worker
   and ready renderer. All five fresh owner video/job store hashes and the exact
   owner configuration bytes matched after guarded activation. A later docs-only
   commit does not change this application's recorded build source.
