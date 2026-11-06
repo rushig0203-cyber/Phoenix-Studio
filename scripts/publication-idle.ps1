@@ -1,4 +1,4 @@
-# Exception for an untouched matching Story whose Reel failed before transfer.
+# Exception for an untouched matching Story whose Reel is stopped.
 # Only old locks with proved exited owners can recover; saved records stay unchanged.
 function Get-PhoenixPublicationGuardDigest([byte[]]$Bytes) {
     $hash = [Security.Cryptography.SHA256]::Create()
@@ -98,10 +98,18 @@ function Test-PhoenixStoppedDependentStory([string]$Root, [string]$Filename) {
         $parent = $parentSnapshot.record
         if ($parent.version -ne 1 -or $parent.id -cne $story.parentReelId -or $parent.reviewId -cne $story.reviewId -or $parent.platform -cne 'instagram' -or
             $null -ne $parent.kind -or $null -ne $parent.parentReelId -or $null -ne $parent.standaloneStory -or $null -ne $parent.detachedFromReelId -or
-            $parent.companionStoryApproved -ne $true -or $parent.status -cne 'FAILED' -or $parent.phase -cne 'created' -or
-            $parent.bytesUploaded -ne 0 -or $parent.percent -ne 0 -or $parent.containerId -or $parent.remoteId -or $parent.remoteUrl) { return $false }
+            $parent.companionStoryApproved -ne $true -or $parent.remoteId -or $parent.remoteUrl) { return $false }
         if (-not (Test-PhoenixPublicationGuardNumber $parent.version -Integer) -or -not (Test-PhoenixPublicationGuardNumber $parent.bytesUploaded -Integer) -or
             -not (Test-PhoenixPublicationGuardNumber $parent.percent -Integer) -or $parent.companionStoryApproved -isnot [bool]) { return $false }
+        $failedBeforeTransfer = $parent.status -ceq 'FAILED' -and $parent.phase -ceq 'created' -and $parent.bytesUploaded -eq 0 -and $parent.percent -eq 0 -and -not $parent.containerId
+        $stoppedContainer = $parent.status -is [string] -and $parent.status -ceq 'NEEDS_CHECK' -and $parent.phase -is [string] -and $parent.phase -cin @('session', 'sending', 'processing', 'publishing', 'publish_unknown') -and
+            $parent.containerId -is [string] -and $parent.containerId -cmatch '^[0-9]{1,40}$' -and $parent.percent -lt 100
+        if (-not $failedBeforeTransfer -and -not $stoppedContainer) { return $false }
+        if ($stoppedContainer -and (($parent.queuedAt -isnot [long] -and $parent.queuedAt -isnot [int]) -or $parent.queuedAt -le 0 -or $now - $parent.queuedAt -lt 30000)) { return $false }
+        if ($stoppedContainer -and ($parent.id -isnot [string] -or $parent.reviewId -isnot [string] -or $parent.platform -isnot [string] -or
+            $parent.accountId -isnot [string] -or $parent.connectionRevision -isnot [string] -or $parent.renderTarget -isnot [string] -or
+            $story.status -isnot [string] -or $story.phase -isnot [string] -or $story.platform -isnot [string] -or $story.kind -isnot [string] -or $story.renderTarget -isnot [string] -or
+            $parent.fingerprint -isnot [pscustomobject] -or $story.fingerprint -isnot [pscustomobject] -or $null -ne $parent.remoteId -or $null -ne $parent.remoteUrl)) { return $false }
         if ($story.accountId -isnot [string] -or -not $story.accountId -or $story.accountId.Length -gt 200 -or $parent.accountId -cne $story.accountId -or
             $story.connectionRevision -isnot [string] -or -not $story.connectionRevision -or $story.connectionRevision.Length -gt 200 -or $parent.connectionRevision -cne $story.connectionRevision -or
             $story.renderTarget -cnotin @('instagram', 'youtube') -or $parent.renderTarget -cne $story.renderTarget) { return $false }
@@ -112,7 +120,8 @@ function Test-PhoenixStoppedDependentStory([string]$Root, [string]$Filename) {
                 $parent.fingerprint.$name -ne $value) { return $false }
         }
         if ($story.fingerprint.size -le 0 -or $story.totalBytes -gt 9007199254740991 -or -not (Test-PhoenixPublicationGuardNumber $story.totalBytes -Integer) -or
-            -not (Test-PhoenixPublicationGuardNumber $parent.totalBytes -Integer) -or $story.totalBytes -ne $story.fingerprint.size -or $parent.totalBytes -ne $story.totalBytes) { return $false }
+            -not (Test-PhoenixPublicationGuardNumber $parent.totalBytes -Integer) -or $story.totalBytes -ne $story.fingerprint.size -or $parent.totalBytes -ne $story.totalBytes -or
+            $parent.bytesUploaded -gt $parent.totalBytes) { return $false }
         $vaultPath = Join-Path $Root 'storage\private\channels.enc'
         $locks = @(($storyPath + '.lock'), ($storyPath + '.operation.lock'), ($parentPath + '.lock'), ($parentPath + '.operation.lock'),
             (Join-Path $publications '.publication-stream.lock'), ($vaultPath + '.lock'))
@@ -122,7 +131,8 @@ function Test-PhoenixStoppedDependentStory([string]$Root, [string]$Filename) {
         }
         $vaultBefore = Get-PhoenixPublicationGuardVaultHash $vaultPath
         $sessionIds = @(Get-PhoenixPublicationUploadSessionIds $Root)
-        if ($story.id -in $sessionIds -or $parent.id -in $sessionIds) { return $false }
+        # A stopped Reel resumes only after explicit continuation; its untouched Story has no provider session.
+        if ($story.id -in $sessionIds -or (-not $stoppedContainer -and $parent.id -in $sessionIds)) { return $false }
         $vaultAfter = Get-PhoenixPublicationGuardVaultHash $vaultPath
         if ($vaultBefore -ne $vaultAfter -or (Read-PhoenixPublicationGuardRecord $storyPath).sha256 -ne $snapshot.sha256 -or
             (Read-PhoenixPublicationGuardRecord $parentPath).sha256 -ne $parentSnapshot.sha256 -or
