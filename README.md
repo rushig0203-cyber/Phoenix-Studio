@@ -152,7 +152,8 @@ use its final Post or Upload action. **Close** collapses the controls.
   silently trimmed or stretched. Its saved audio is used, without Instagram
   catalogue music, people tags, location or companion Story settings. Uploads
   stream from disk, and interrupted or uncertain publishing checks the retained
-  video ID instead of creating a duplicate. A returned finish acknowledgement
+  video ID instead of creating a duplicate. An interrupted transfer resumes only
+  at the byte offset Meta confirms for that same upload. A returned finish acknowledgement
   does not count as Posted until Meta confirms publishing completion.
 - **Rumble upload:** an assisted handoff. **Open Rumble & show saved video**
   reveals the existing MP4 in Windows File Explorer, copies its description and

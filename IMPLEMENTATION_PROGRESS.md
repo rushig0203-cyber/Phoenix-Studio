@@ -15,6 +15,9 @@
   used narrower limits. This release probes the saved file before accepting a
   job and streams it from disk without re-rendering or a whole-video buffer.
 - Publishing keeps one durable video ID and its protected upload destination.
+  A partial transfer resumes only at Meta's verified byte offset, while missing
+  or invalid offsets stay stopped. Both Meta destinations share the current app
+  credentials; changing them invalidates stale approvals and pending connections.
   An uncertain finish is checked rather than repeated, and only confirmed
   publishing completion moves the output to Posted. Instagram music, location,
   people tags and companion Story options are not sent to Facebook.
