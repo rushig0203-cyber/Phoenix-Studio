@@ -96,6 +96,9 @@ test('linked Facebook Page setup checks the saved token without choosing another
   assert.equal(token.props.type, 'password'); assert.equal(token.props.autoComplete, 'off');
   assert.equal(token.props.spellCheck, false);
   assert.match(h.text, /pages_manage_posts/); assert.match(h.text, /Identity verification alone does not enable posting/);
+  assert.match(h.text, /Meta app ID and App Secret saved with Instagram/);
+  assert.match(h.text, /request up to 60 days of Facebook User access/);
+  assert.match(h.text, /Meta decides the actual lifetime/); assert.match(h.text, /verifies the returned expiry/);
   assert.equal(nodes(h.tree, node => node.type === 'input' && node.props.inputMode === 'numeric').length, 0);
   assert.equal(nodes(h.tree, node => node.type === 'form' && text(node).includes('Meta app ID')).length, 0);
   const form = nodes(h.tree, node => node.type === 'form')[0];
@@ -103,6 +106,35 @@ test('linked Facebook Page setup checks the saved token without choosing another
   assert.equal(requests.filter(item => item.method === 'POST').length, 1);
   assert.match(h.text, /Verified linked Page/); assert.match(h.text, /Ready for confirmed uploads/);
   assert.equal(nodes(h.tree, node => node.type === 'form').length, 0);
+});
+
+test('missing Facebook app credentials route to the existing Instagram setup without saving or copying a private token', async t => {
+  const requests = environment(t, [status('instagram'), status('facebook')], async () => assert.fail('Opening app setup must not save credentials'));
+  const h = hooks(); await h.flush(); button(h, 'Connect linked Facebook Page').props.onClick(); await h.flush();
+  assert.match(h.text, /Instagram → Connection setup → Meta app credentials first/);
+  field(h, 'Fresh Facebook User token (optional)').props.onChange({ target: { value: 'fixture_private_user_token' } }); await h.flush();
+  button(h, 'Open Instagram Meta app credentials').props.onClick(); await h.flush();
+  assert.equal(field(h, 'Meta app secret').props.type, 'password');
+  assert.equal(field(h, 'Meta app secret').props.value, ''); assert.equal(field(h, 'Instagram access token').props.value, '');
+  assert.match(h.text, /Facebook also uses these credentials to request and verify its User token lifetime/);
+  assert.equal(nodes(h.tree, node => node.type === 'form' && text(node).includes('Meta app ID')).length, 1);
+  assert.equal(requests.filter(item => item.method).length, 0);
+});
+
+test('a delayed refresh cannot overwrite newer linked Page connection status or its success notice', async t => {
+  const ready = [status('facebook')];
+  environment(t, ready, async () => Response.json({ channels: [status('facebook', { connected: true, publishReady: true, name: 'Fresh verified Page' })] }));
+  const h = hooks(); await h.flush();
+  button(h, 'Connect linked Facebook Page').props.onClick(); await h.flush();
+  const form = nodes(h.tree, node => node.type === 'form')[0];
+  const fetchAction = global.fetch; let resolveRefresh;
+  global.fetch = (url, options = {}) => options.method ? fetchAction(url, options) : new Promise(resolve => { resolveRefresh = resolve; });
+  nodes(h.tree, node => node.type === 'button' && node.props['aria-label'] === 'Refresh channel status')[0].props.onClick();
+  form.props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.match(h.text, /Fresh verified Page/); assert.match(h.text, /Connection verified successfully/);
+  resolveRefresh(Response.json({ channels: ready, error: 'Stale refresh must not win.' })); await h.flush();
+  assert.match(h.text, /Fresh verified Page/); assert.match(h.text, /Ready for confirmed uploads/);
+  assert.match(h.text, /Connection verified successfully/); assert.doesNotMatch(h.text, /Stale refresh/);
 });
 
 test('a fresh Facebook User token remains private and a permission error never creates a connected Page', async t => {

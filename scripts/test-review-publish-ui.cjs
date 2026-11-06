@@ -290,7 +290,7 @@ test('Facebook Page review reads only verified setup and jobs, shows saved MP4 a
   assert.deepEqual(h.requests.map(request => [request.method, request.url]), [['GET', '/api/channels'], ['GET', h.endpoint]]);
   assert.match(h.text, /Facebook Page · final posting review/); assert.match(h.text, /Destination: Verified linked Page/);
   assert.match(h.text, /1080 × 1920 · 12 seconds/); assert.match(h.text, /Saved MP4/);
-  assert.match(h.text, /4–60 seconds/); assert.match(h.text, /23 fps/); assert.match(h.text, /will not trim, stretch or re-render/);
+  assert.match(h.text, /3–90 seconds/); assert.match(h.text, /24–60 fps/); assert.match(h.text, /will not trim, stretch or re-render/);
   assert.equal(h.control('Caption and hashtags', 'textarea').props.value, 'Saved caption\n\n#fixture #video');
   assert.match(h.text, /Clicking Post approves publishing this Reel publicly to Verified linked Page/);
   assert.equal(h.confirmation(), undefined); assert.equal(h.control('Privacy', 'select'), undefined);
@@ -326,7 +326,7 @@ test('Facebook identity-only setup or missing output cannot submit, and backend 
     const h = uiHarness(settings); t.after(() => h.unmount()); h.choose('Post to Facebook Page'); await h.flush();
     assert.equal(h.button('Post to Facebook Page').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   }
-  const h = uiHarness({ channels: [channel('facebook')], post: () => response({ error: 'This saved output is outside Phoenix Facebook Page Reel support: 4–60 seconds and 23 fps.' }, 400) }); t.after(() => h.unmount());
+  const h = uiHarness({ channels: [channel('facebook')], post: () => response({ error: 'This saved output is outside Phoenix Facebook Page Reel support: 3–90 seconds and 24–60 fps.' }, 400) }); t.after(() => h.unmount());
   h.choose('Post to Facebook Page'); await h.flush(); h.submit(); await h.flush();
   assert.match(h.text, /outside Phoenix Facebook Page Reel support/); assert.equal(h.posts.length, 1);
   assert.equal(h.button('Post to Facebook Page').props.disabled, false); assert.equal(h.intervals.size, 0);

@@ -14,17 +14,20 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<ChannelPlatform | null>(null);
   const actionInFlight = useRef(false);
+  const statusRevision = useRef(0);
   const [notice, setNotice] = useState("");
   const [setup, setSetup] = useState<ChannelPlatform | null>(null);
   const [credentials, setCredentials] = useState({ clientId: "", clientSecret: "", accessToken: "", pageId: "" });
   const load = useCallback(async () => {
+    const revision = ++statusRevision.current;
+    setLoading(true);
     try {
       const response = await fetch("/api/channels", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not load channel connections.");
-      setChannels(data.channels);
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Channel connections are unavailable."); }
-    finally { setLoading(false); }
+      if (revision === statusRevision.current) setChannels(data.channels);
+    } catch (error) { if (revision === statusRevision.current) setNotice(error instanceof Error ? error.message : "Channel connections are unavailable."); }
+    finally { if (revision === statusRevision.current) setLoading(false); }
   }, []);
   useEffect(() => {
     void load();
@@ -50,12 +53,14 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
   async function action(platform: ChannelPlatform, data: Record<string, string>, method = "POST") {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
-    setBusy(platform); setNotice("");
+    statusRevision.current++;
+    setLoading(false); setBusy(platform); setNotice("");
     try {
       const response = await fetch(`/api/channels/${platform}`, { method, headers: { "Content-Type": "application/json" }, ...(method === "POST" ? { body: JSON.stringify(data) } : {}) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "The channel action failed.");
       if (result.authorizationUrl) { window.location.assign(result.authorizationUrl); return; }
+      statusRevision.current++;
       setChannels(result.channels);
       setCredentials((current) => ({ ...current, clientSecret: "", accessToken: "", pageId: "" }));
       setNotice(method === "DELETE" ? "Disconnected from Phoenix. You can also remove Phoenix access in your platform account settings." : data.action === "configure"
@@ -92,6 +97,8 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
             {platform === "facebook" ? <>
               <p className="text-xs leading-5 text-[#59634d]">Phoenix verifies only the Facebook Page already linked to your connected Instagram account. Personal profiles and other Pages cannot be selected. Connecting does not publish a video.</p>
               <p className="text-xs leading-5 text-[#59634d]">The Facebook User token needs pages_show_list, pages_read_engagement and pages_manage_posts for that Page, plus permission to create content. Identity verification alone does not enable posting. If the saved Instagram token lacks these permissions, authorize them in the same Meta app and paste a fresh User token below.</p>
+              <p className="text-xs leading-5 text-[#59634d]">Phoenix uses the Meta app ID and App Secret saved with Instagram to request up to 60 days of Facebook User access. Meta decides the actual lifetime; Phoenix verifies the returned expiry before saving the linked Page connection.</p>
+              {!channel.configured && <div className="space-y-2"><p className="text-xs leading-5 text-[#59634d]">Save the same app&apos;s ID and App Secret in Instagram → Connection setup → Meta app credentials first.</p>{channels.some(item => item.platform === "instagram") && <button type="button" className={button} disabled={Boolean(busy)} onClick={() => { const instagram = channels.find(item => item.platform === "instagram"); if (instagram) showSetup(instagram); }}>Open Instagram Meta app credentials</button>}</div>}
               <a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Open Graph API Explorer · Facebook User token<ExternalLink className="h-3 w-3"/></a>
               <form className="space-y-3" onSubmit={event => { event.preventDefault(); if (!busy) void action("facebook", { action: "facebook-page", ...(credentials.accessToken.trim() ? { accessToken: credentials.accessToken } : {}) }); }}>
                 <label className="block text-xs">Fresh Facebook User token (optional)<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={16000} className={field} value={credentials.accessToken} onChange={event => setCredentials({ ...credentials, accessToken: event.target.value })} placeholder="Leave blank to check the saved linked-account token"/></label>
@@ -109,7 +116,7 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
               </form>
               <p className="text-xs text-[#59634d]">Local HTTP is supported for token verification. No token is displayed in connection status and nothing is posted by connecting.</p>
             </>}
-            {platform === "instagram" && <div className="space-y-2"><h3 className="text-xs font-semibold">Meta app credentials · location search</h3><p className="text-xs leading-5 text-[#59634d]">Use App settings → Basic in the same Meta app that issued your saved Facebook Login token. These fields work on localhost; adding the app for the first time retains that token connection. Name lookup also needs Meta&apos;s Pages Search access. No ads, payment or publishing happens here.</p><a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">Open Meta app settings<ExternalLink className="h-3 w-3"/></a></div>}
+            {platform === "instagram" && <div className="space-y-2"><h3 className="text-xs font-semibold">Meta app credentials · location search and linked Page</h3><p className="text-xs leading-5 text-[#59634d]">Use App settings → Basic in the same Meta app that issued your saved Facebook Login token. These fields work on localhost; adding the app for the first time retains that token connection. Facebook also uses these credentials to request and verify its User token lifetime. Name lookup also needs Meta&apos;s Pages Search access. No ads, payment or publishing happens here.</p><a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">Open Meta app settings<ExternalLink className="h-3 w-3"/></a></div>}
             {platform !== "facebook" && <form onSubmit={(event) => { event.preventDefault(); if (!busy) void action(platform, { action: "configure", clientId: credentials.clientId, clientSecret: credentials.clientSecret }); }} className="space-y-3">
               <label className="block text-xs">{platform === "youtube" ? "OAuth client ID" : "Meta app ID"}<input className={field} value={credentials.clientId} onChange={(event) => setCredentials({ ...credentials, clientId: event.target.value })} autoComplete="off" maxLength={500} required/></label>
               <label className="block text-xs">{platform === "youtube" ? "OAuth client secret" : "Meta app secret"}<input type="password" className={field} value={credentials.clientSecret} onChange={(event) => setCredentials({ ...credentials, clientSecret: event.target.value })} autoComplete="off" maxLength={2000} placeholder={channel.hasClientSecret ? "Saved · leave blank to keep" : "Enter the app secret"} required={!channel.hasClientSecret}/></label>
