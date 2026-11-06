@@ -85,6 +85,25 @@ test('only a completed matching parent upload with its exact output fingerprint 
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE|accountId|caption|session|token|fingerprint/);
   assert.equal(result.inspectionIssue, undefined);
 });
+
+test('Facebook Page publishing has its own destination record and reuses an existing output fingerprint', async () => {
+  const remoteId = '9988776655443322';
+  write('facebook', parent('facebook', { remoteId, remoteUrl: `https://www.facebook.com/FixturePage/videos/${remoteId}/?private=discard` }));
+  const result = await summaries.reviewPublicationSummary(file.id);
+  assert.equal(result.status, 'POSTED'); assert.deepEqual(result.postedTo.map(post => post.platform), ['facebook']);
+  assert.equal(result.postedTo[0].remoteUrl, `https://www.facebook.com/FixturePage/videos/${remoteId}/`);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE|discard|caption|token|fingerprint/);
+  for (const remoteUrl of [`https://www.facebook.com/reel/123/`, `https://evil.example/reel/${remoteId}`, `https://token@www.facebook.com/reel/${remoteId}`]) {
+    write('facebook', parent('facebook', { remoteId, remoteUrl }));
+    assert.equal((await summaries.reviewPublicationSummary(file.id)).postedTo[0].remoteUrl, undefined);
+  }
+  for (const status of ['PROCESSING', 'NEEDS_CHECK', 'FAILED']) {
+    write('facebook', parent('facebook', { remoteId, status, phase: 'processing' }));
+    assert.equal((await summaries.reviewPublicationSummary(file.id)).status, 'GENERATED');
+  }
+  write('facebook', parent('facebook', { remoteId, renderTarget: 'facebook' }));
+  assert.equal((await summaries.reviewPublicationSummary(file.id)).inspectionIssue, true);
+});
 test('queued, uploading, processing, failed and needs-check parents never count as posted even with a remote ID', async () => {
   for (const status of ['QUEUED', 'UPLOADING', 'PROCESSING', 'FAILED', 'NEEDS_CHECK']) {
     write('instagram', parent('instagram', { status, phase: 'processing' }));

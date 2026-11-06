@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const Module = require("node:module");
+const childProcess = require("node:child_process");
 const { test, beforeEach, after } = require("node:test");
 
 // Everything is isolated from the owner's media, vault and network. No provider request is real.
@@ -26,8 +27,8 @@ let appSecretProof = null, proofCalls = 0, sessionReads = 0;
 channels.getChannelPublishAccess = async (platform, expectedRevision) => {
   accessCalls++;
   if (permissionDenied || expectedRevision !== "fixture-revision") throw new Error("Untrusted credential error fixture-secret-token");
-  return { platform, accountId: platform === "instagram" ? instagramAccount : "fixture-owning-channel", name: platform === "instagram" ? instagramName : "Fixture channel",
-    connectionRevision: "fixture-revision", accessToken: "fixture-secret-token", loginType: platform === "instagram" ? instagramLogin : "youtube" };
+  return { platform, accountId: platform === "instagram" ? instagramAccount : platform === "facebook" ? "1122334455667788" : "fixture-owning-channel", name: platform === "instagram" ? instagramName : platform === "facebook" ? "Fixture Page" : "Fixture channel",
+    connectionRevision: "fixture-revision", accessToken: "fixture-secret-token", loginType: platform === "instagram" ? instagramLogin : platform === "facebook" ? "facebook" : "youtube" };
 };
 channels.assertChannelPublishAccessCurrent = async () => { assertionCalls++; if (channelChanged) throw new Error("Changed private account fixture-secret-token"); };
 channels.createChannelPublishAccessMonitor = async access => {
@@ -56,7 +57,7 @@ const request = (id, body, origin = "http://localhost:3000") => new Request(`htt
   method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
 });
 const settings = (platform = "youtube", overrides = {}) => ({ action: "create", confirm: true, platform, title: "Fixture title", caption: "Fixture caption",
-  madeForKids: false, connectionRevision: "fixture-revision", ...(platform === "instagram" ? { privacy: "public" } : {}), ...overrides });
+  madeForKids: false, connectionRevision: "fixture-revision", ...(platform !== "youtube" ? { privacy: "public" } : {}), ...overrides });
 const storedPath = (id, platform = "youtube") => path.join(process.env.PHOENIX_PUBLISH_STORAGE, `${id}-${platform}.json`);
 const businessPath = () => path.join(process.env.PHOENIX_PUBLISH_STORAGE, "instagram-story-business.json");
 const storyPath = id => storedPath(id, "instagram-story");
@@ -111,6 +112,164 @@ test("confirmation, local request, audience and Instagram visibility are explici
   assert.equal(accessCalls, 0);
   assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
 });
+
+const facebookVideo = "9988776655443322", facebookUpload = `https://rupload.facebook.com/video-upload/v26.0/${facebookVideo}`;
+const facebookStatus = (publishing = 'not_started', patch = {}) => ({ id: facebookVideo, status: { video_status: publishing === 'complete' ? 'ready' : 'processing',
+  uploading_phase: { status: 'complete' }, processing_phase: { status: publishing === 'complete' ? 'complete' : 'not_started' },
+  publishing_phase: { status: publishing, ...(publishing === 'complete' ? { publish_status: 'published' } : {}) }, ...patch } });
+const facebookMetadata = () => ({ format: { duration: '20', format_name: 'mov,mp4,m4a,3gp,3g2,mj2' }, streams: [{ codec_type: 'video', width: 720, height: 1280, avg_frame_rate: '30/1', sample_aspect_ratio: '1:1' }] });
+async function withFacebookProbe(metadata, run) {
+  const original = childProcess.execFile, timer = global.setTimeout; let probes = 0;
+  childProcess.execFile = (executable, args, options, callback) => {
+    probes++; assert.match(executable, /ffprobe(?:\.exe)?$/); assert.ok(args.includes('-show_streams')); assert.equal(options.windowsHide, true); assert.equal(options.maxBuffer, 65536);
+    assert.ok(fs.existsSync(args.at(-1))); queueMicrotask(() => callback(null, JSON.stringify(metadata), '')); return {};
+  };
+  global.setTimeout = (callback, milliseconds, ...args) => timer(callback, milliseconds === 3000 ? 0 : milliseconds, ...args);
+  try { return await run(() => probes); } finally { childProcess.execFile = original; global.setTimeout = timer; }
+}
+
+test('Facebook Page posting requires public final approval and rejects Instagram-only choices', async () => {
+  const { id } = await fixture('instagram');
+  for (const patch of [{ confirm: false }, { privacy: 'private' }, { madeForKids: undefined }, { companionStory: true }, { location: { id: '123' } },
+    { userTags: ['some.person'] }, { automaticTags: true }, { audio: { audio_id: '123', audio_volume: 70, video_volume: 30 } }]) {
+    await assert.rejects(publishing.prepareReviewPublication(id, settings('facebook', patch)));
+  }
+  assert.equal(accessCalls, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+});
+
+test('Facebook eligibility inspects actual MP4 properties before credentials and never alters an ineligible output', async () => {
+  const { id } = await fixture('instagram', 256), filename = files.outputPath(id, 'instagram'), original = fs.readFileSync(filename);
+  const bad = [
+    { format: { duration: '3.9' } }, { format: { duration: '60.1' } }, { format: { format_name: 'webm' } },
+    { video: { width: 1280, height: 720 } }, { video: { width: 360, height: 640 } }, { video: { avg_frame_rate: '22/1' } },
+    { video: { avg_frame_rate: '0/0' } }, { video: { tags: { rotate: '90' } } }, { video: { sample_aspect_ratio: '2:1' } },
+  ];
+  for (const patch of bad) {
+    const metadata = facebookMetadata(); Object.assign(metadata.format, patch.format); Object.assign(metadata.streams[0], patch.video);
+    await withFacebookProbe(metadata, async probes => {
+      await assert.rejects(publishing.prepareReviewPublication(id, settings('facebook')), /verified Facebook Page Reel support/);
+      assert.equal(probes(), 1);
+    });
+    assert.deepEqual(fs.readFileSync(filename), original); assert.deepEqual(await publishing.listReviewPublishJobs(id), []); assert.equal(accessCalls, 0);
+  }
+});
+
+test('Facebook reuses one saved MP4 with independent durable approval, streamed upload and confirmed published status', async () => withFacebookProbe(facebookMetadata(), async probes => {
+  const { id } = await fixture('instagram', 4 * 1024 * 1024 + 7); let starts = 0, streams = 0, finishes = 0, checks = 0;
+  const approved = await publishing.prepareReviewPublication(id, settings('facebook'));
+  const duplicate = await publishing.prepareReviewPublication(id, settings('facebook', { caption: 'Different text must not replace approval' }));
+  assert.equal(approved.job.id, duplicate.job.id); assert.equal(duplicate.dispatch, false); assert.equal(probes(), 1);
+  assert.equal(approved.job.outputTarget, 'instagram'); assert.equal(readStored(id, 'facebook').caption, 'Fixture caption');
+  const instagram = await publishing.prepareReviewPublication(id, settings('instagram'));
+  assert.notEqual(instagram.job.id, approved.job.id); assert.equal((await publishing.listReviewPublishJobs(id)).length, 2);
+  global.fetch = async (url, options) => {
+    const parsed = new URL(url); assert.equal(options.redirect, 'error');
+    if (parsed.hostname === 'rupload.facebook.com') {
+      streams++; assert.equal(String(url), facebookUpload); assert.equal(options.method, 'POST'); assert.equal(options.headers.Authorization, 'OAuth fixture-secret-token'); assert.equal(options.headers.offset, '0');
+      assert.equal(Number(options.headers.file_size), 4 * 1024 * 1024 + 7); await consumeStream(options); return Response.json({ success: true });
+    }
+    assert.equal(options.headers.Authorization, 'Bearer fixture-secret-token');
+    if (options.method === 'POST') {
+      assert.equal(parsed.pathname, '/v26.0/1122334455667788/video_reels');
+      if (options.body.get('upload_phase') === 'start') { starts++; return Response.json({ video_id: facebookVideo, upload_url: facebookUpload }); }
+      finishes++; assert.equal(options.body.get('video_state'), 'PUBLISHED'); assert.equal(options.body.get('video_id'), facebookVideo); assert.equal(options.body.get('description'), 'Fixture caption');
+      assert.notEqual(readStored(id, 'facebook').status, 'COMPLETE'); return Response.json({ success: true });
+    }
+    if (parsed.searchParams.get('fields') === 'permalink_url') return Response.json({ permalink_url: `/FixturePage/videos/${facebookVideo}/?private=discard` });
+    checks++;
+    if (checks > 1) { assert.equal(readStored(id, 'facebook').facebookFinishAccepted, true); assert.notEqual(readStored(id, 'facebook').status, 'COMPLETE'); }
+    return Response.json(facebookStatus(checks >= 3 ? 'complete' : checks === 2 ? 'in_progress' : 'not_started'));
+  };
+  await publishing.runReviewPublication(id, approved.job.id);
+  const status = (await publishing.listReviewPublishJobs(id)).find(job => job.platform === 'facebook');
+  assert.equal(status.status, 'COMPLETE'); assert.equal(status.actualPrivacy, 'public'); assert.equal(status.remoteId, facebookVideo);
+  assert.equal(status.remoteUrl, `https://www.facebook.com/FixturePage/videos/${facebookVideo}/`); assert.equal(status.percent, 100);
+  assert.deepEqual([starts, streams, finishes, checks], [1, 1, 1, 3]); assert.equal(sessions.has(approved.job.id), false);
+  assert.equal(readStored(id, 'instagram').status, 'QUEUED'); assert.doesNotMatch(JSON.stringify(status), /fixture-secret-token|accessToken|facebookFinishAccepted/);
+}));
+
+test('an ambiguous Facebook finish is reconciled by status without a second finish or binary transfer', async () => withFacebookProbe(facebookMetadata(), async () => {
+  const { id } = await fixture('youtube', 100); const { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+  let starts = 0, uploads = 0, finishes = 0, reconciling = false;
+  global.fetch = async (url, options) => {
+    if (new URL(url).hostname === 'rupload.facebook.com') { uploads++; await consumeStream(options); return Response.json({ success: true }); }
+    if (options.method === 'POST') {
+      if (options.body.get('upload_phase') === 'start') { starts++; return Response.json({ video_id: facebookVideo, upload_url: facebookUpload }); }
+      finishes++; throw new Error('fixture lost finish response containing secret');
+    }
+    if (String(url).includes('permalink_url')) return Response.json({ permalink_url: `https://www.facebook.com/reel/${facebookVideo}/` });
+    return Response.json(facebookStatus(reconciling ? 'complete' : 'not_started'));
+  };
+  await publishing.runReviewPublication(id, job.id);
+  const failed = (await publishing.listReviewPublishJobs(id))[0]; assert.equal(failed.status, 'NEEDS_CHECK'); assert.equal(failed.canContinue, true); assert.equal(readStored(id, 'facebook').phase, 'publish_unknown');
+  reconciling = true; const continued = await publishing.prepareReviewPublication(id, { action: 'continue', jobId: job.id, confirm: true }); assert.equal(continued.dispatch, true);
+  await publishing.runReviewPublication(id, job.id);
+  assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'COMPLETE'); assert.deepEqual([starts, uploads, finishes], [1, 1, 1]);
+}));
+
+test('Facebook finish acknowledgement and ready video alone cannot claim published completion', async () => withFacebookProbe(facebookMetadata(), async () => {
+  const { id } = await fixture('instagram', 100);
+  const response = await route.POST(request(id, settings('facebook')), context(id)); assert.equal(response.status, 202); assert.equal(scheduled.length, 1);
+  const { job } = await response.json(); let finishes = 0, calls = 0, checks = 0;
+  accessCalls = 0; const read = await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish`), context(id));
+  assert.equal((await read.json()).jobs[0].platform, 'facebook'); assert.equal(accessCalls, 0); assert.equal(scheduled.length, 1);
+  global.fetch = async (url, options) => {
+    calls++;
+    if (new URL(url).hostname === 'rupload.facebook.com') { await consumeStream(options); return Response.json({ success: true }); }
+    if (options.method === 'POST') {
+      if (options.body.get('upload_phase') === 'start') return Response.json({ video_id: facebookVideo, upload_url: facebookUpload });
+      finishes++; return Response.json({ success: true });
+    }
+    checks++; return Response.json(facebookStatus(finishes ? 'in_progress' : 'not_started', { video_status: 'ready' }));
+  };
+  await publishing.runReviewPublication(id, job.id);
+  const [waiting] = await publishing.listReviewPublishJobs(id);
+  assert.equal(waiting.status, 'NEEDS_CHECK'); assert.equal(waiting.canContinue, true); assert.equal(waiting.remoteId, undefined);
+  assert.equal(finishes, 1); assert.equal(checks, 12); assert.equal(readStored(id, 'facebook').facebookFinishAccepted, true);
+  const prior = calls; await publishing.runReviewPublication(id, job.id); assert.equal(calls, prior, 'Duplicate callbacks cannot revive pending work');
+  await publishing.prepareReviewPublication(id, { action: 'continue', jobId: job.id, confirm: true });
+  global.fetch = async (_url, options) => { assert.notEqual(options.method, 'POST'); return Response.json(facebookStatus('complete', { publishing_phase: { status: 'complete', publish_status: 'draft' } })); };
+  await publishing.runReviewPublication(id, job.id);
+  const [draft] = await publishing.listReviewPublishJobs(id); assert.equal(draft.status, 'NEEDS_CHECK'); assert.match(draft.detail, /draft or scheduled/); assert.equal(draft.remoteId, undefined);
+}));
+
+test('interrupted Facebook transfer checks its existing video and never blindly resends the file', async () => withFacebookProbe(facebookMetadata(), async () => {
+  const { id } = await fixture('instagram', 100); const { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+  let uploads = 0, finishes = 0;
+  global.fetch = async (url, options) => {
+    if (new URL(url).hostname === 'rupload.facebook.com') { uploads++; await consumeStream(options); throw new Error('fixture lost transfer response'); }
+    if (options.method === 'POST') {
+      if (options.body.get('upload_phase') === 'start') return Response.json({ video_id: facebookVideo, upload_url: facebookUpload });
+      finishes++; return Response.json({ success: true });
+    }
+    if (String(url).includes('permalink_url')) return Response.json({});
+    return Response.json(facebookStatus(finishes ? 'complete' : 'not_started'));
+  };
+  await publishing.runReviewPublication(id, job.id); assert.equal(readStored(id, 'facebook').phase, 'sending');
+  const recovered = await publishing.prepareReviewPublication(id, { action: 'continue', jobId: job.id, confirm: true }); assert.equal(recovered.dispatch, true);
+  await publishing.runReviewPublication(id, job.id); assert.equal((await publishing.listReviewPublishJobs(id))[0].status, 'COMPLETE');
+  assert.equal(uploads, 1); assert.equal(finishes, 1);
+}));
+
+test('Facebook cannot attach credentials to an unsafe or mismatched returned upload destination', async () => withFacebookProbe(facebookMetadata(), async () => {
+  for (const upload_url of ['https://evil.example/video-upload/v26.0/123', instagramLocation, facebookUpload.replace(facebookVideo, '123'), facebookUpload + '?access_token=secret']) {
+    const { id } = await fixture('instagram', 100); const { job } = await publishing.prepareReviewPublication(id, settings('facebook')); let calls = 0;
+    global.fetch = async () => { calls++; return Response.json({ video_id: facebookVideo, upload_url }); };
+    await publishing.runReviewPublication(id, job.id);
+    const [status] = await publishing.listReviewPublishJobs(id); assert.equal(calls, 1); assert.equal(status.status, 'NEEDS_CHECK'); assert.equal(status.canContinue, false); assert.equal(status.bytesUploaded, 0);
+    assert.doesNotMatch(JSON.stringify(status), /evil\.example|access_token|fixture-secret-token/);
+  }
+}));
+
+test('Facebook permission, changed-output and malformed render-target checks stop before transfer', async () => withFacebookProbe(facebookMetadata(), async () => {
+  const { id } = await fixture('instagram', 100); permissionDenied = true;
+  await assert.rejects(publishing.prepareReviewPublication(id, settings('facebook')), /upload permission/); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  permissionDenied = false; const { job } = await publishing.prepareReviewPublication(id, settings('facebook'));
+  fs.appendFileSync(files.outputPath(id, 'instagram'), 'changed');
+  await publishing.runReviewPublication(id, job.id); assert.match((await publishing.listReviewPublishJobs(id))[0].detail, /changed after confirmation/);
+  alterStored(id, value => { value.renderTarget = 'facebook'; }, 'facebook');
+  await assert.rejects(publishing.listReviewPublishJobs(id), /local inspection/);
+}));
 test("create is durable, reviewed caption is immutable, provenance stays in file metadata and duplicate create returns one job", async () => {
   const { id, file } = await fixture("youtube", 100, true);
   const first = await publishing.prepareReviewPublication(id, settings());

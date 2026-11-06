@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { outputPath, type ReviewFile, type ReviewTarget } from "./reviewFiles";
+import { outputPath, type ReviewFile } from "./reviewFiles";
+import type { ChannelPlatform } from "./channelConnections";
+import { facebookReelPermalink } from "./posting";
 
-type ConfirmedPublication = { platform: ReviewTarget; remoteId: string; remoteUrl?: string; postedAt?: string };
+type ConfirmedPublication = { platform: ChannelPlatform; remoteId: string; remoteUrl?: string; postedAt?: string };
 export type ReviewPublicationSummary = {
   status: "GENERATED" | "POSTED";
   postedTo: ConfirmedPublication[];
@@ -17,7 +19,8 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const statuses = new Set(["QUEUED", "UPLOADING", "PROCESSING", "COMPLETE", "FAILED", "NEEDS_CHECK"]);
 const storeRoot = () => process.env.PHOENIX_PUBLISH_STORAGE || path.join(process.cwd(), "storage", "private", "review-publications");
 
-function publicUrl(value: unknown, platform: ReviewTarget, remoteId: string) {
+function publicUrl(value: unknown, platform: ChannelPlatform, remoteId: string) {
+  if (platform === "facebook") return facebookReelPermalink(value, remoteId);
   if (typeof value !== "string") return undefined;
   try {
     const url = new URL(value);
@@ -31,7 +34,7 @@ function publicUrl(value: unknown, platform: ReviewTarget, remoteId: string) {
   } catch { return undefined; }
 }
 
-async function readParentRecord(reviewId: string, platform: ReviewTarget) {
+async function readParentRecord(reviewId: string, platform: ChannelPlatform) {
   const filename = path.join(storeRoot(), `${reviewId}-${platform}.json`);
   const info = await fs.lstat(filename);
   if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > recordLimit) throw new Error("Unreadable publication record");
@@ -59,7 +62,7 @@ async function readParentRecord(reviewId: string, platform: ReviewTarget) {
 export async function reviewPublicationSummary(reviewId: string): Promise<ReviewPublicationSummary> {
   const result: ReviewPublicationSummary = { status: "GENERATED", postedTo: [] };
   if (!uuid.test(reviewId)) return { ...result, inspectionIssue: true };
-  for (const platform of ["instagram", "youtube"] as const) {
+  for (const platform of ["instagram", "youtube", "facebook"] as const) {
     try {
       const record = await readParentRecord(reviewId, platform);
       if (record.version !== 1 || !uuid.test(String(record.id || "")) || record.reviewId !== reviewId || record.platform !== platform
@@ -68,7 +71,7 @@ export async function reviewPublicationSummary(reviewId: string): Promise<Review
       }
       if (record.status !== "COMPLETE") continue;
       const remoteId = typeof record.remoteId === "string" ? record.remoteId : "";
-      if (record.phase !== "complete" || !(platform === "instagram" ? /^\d{1,40}$/ : /^[A-Za-z0-9_-]{11}$/).test(remoteId)) {
+      if (record.phase !== "complete" || !(platform === "youtube" ? /^[A-Za-z0-9_-]{11}$/ : /^\d{1,40}$/).test(remoteId)) {
         result.inspectionIssue = true; continue;
       }
       const remoteUrl = publicUrl(record.remoteUrl, platform, remoteId);

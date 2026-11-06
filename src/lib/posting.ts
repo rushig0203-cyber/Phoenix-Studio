@@ -1,4 +1,5 @@
 import type { ReviewFile, ReviewTarget } from "./reviewFiles";
+import type { ChannelPlatform } from "./channelConnections";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, VIDEO_HASHTAG_BANK_LIMIT, videoHashtags } from "./postingCopyPolicy";
 import { withStockPostingCredits } from "./stockProviders";
 
@@ -83,7 +84,7 @@ export function postingCaption(file: ReviewFile) {
   return withStockPostingCredits(stripFootageProvenance(file.quality.postCopy?.trim() || "", file) || file.title, file);
 }
 
-export function postingText(file: ReviewFile, target?: ReviewTarget) {
+export function postingText(file: ReviewFile, target?: ChannelPlatform) {
   const caption = postingCaption(file);
   const embedded = captionHashtags(caption);
   const present = new Set(embedded.map(tag => tag.toLowerCase()));
@@ -95,10 +96,25 @@ export function postingText(file: ReviewFile, target?: ReviewTarget) {
   return [caption, hashtags.join(" ")].filter(Boolean).join("\n\n");
 }
 
-export function postingDownload(file: ReviewFile, preferred?: ReviewTarget) {
+export function postingDownload(file: ReviewFile, preferred?: ChannelPlatform) {
   if (file.status !== "READY" || file.trashedAt) return null;
-  const target = preferred && file.outputs[preferred] ? preferred
+  const renderTarget: ReviewTarget | undefined = preferred === "facebook" ? "instagram" : preferred;
+  const target = renderTarget && file.outputs[renderTarget] ? renderTarget
     : file.delivery?.platform && file.outputs[file.delivery.platform] ? file.delivery.platform
       : file.outputs.instagram ? "instagram" : file.outputs.youtube ? "youtube" : null;
   return target ? { target, url: `/api/review-files/${encodeURIComponent(file.id)}/media?target=${target}` } : null;
+}
+
+/** Return only a Facebook video permalink for the confirmed provider video ID. */
+export function facebookReelPermalink(value: unknown, remoteId: string) {
+  if (typeof value !== "string" || value.length > 2048 || !/^\d{1,40}$/.test(remoteId)) return undefined;
+  try {
+    const url = new URL(value.startsWith("/") && !value.startsWith("//") ? `https://www.facebook.com${value}` : value);
+    if (url.protocol !== "https:" || !/^(?:www\.)?facebook\.com$/.test(url.hostname) || url.username || url.password || url.port) return undefined;
+    if (/^\/watch\/?$/.test(url.pathname) && url.searchParams.get("v") === remoteId) return `https://www.facebook.com/watch/?v=${remoteId}`;
+    const id = url.pathname.match(/^\/reel\/(\d{1,40})\/?$/)?.[1]
+      || url.pathname.match(/^\/[A-Za-z0-9._-]{1,100}\/videos\/(\d{1,40})\/?$/)?.[1];
+    if (id !== remoteId) return undefined;
+    url.hostname = "www.facebook.com"; url.search = ""; url.hash = ""; return url.href;
+  } catch { return undefined; }
 }

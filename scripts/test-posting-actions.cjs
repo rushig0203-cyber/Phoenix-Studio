@@ -6,7 +6,7 @@ require('tsconfig-paths').register({baseUrl:path.resolve(__dirname,'..'),paths:{
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const Posting = require('../src/components/PostingActions').default;
-const { postingDownload, postingText } = require('../src/lib/posting');
+const { facebookReelPermalink, postingDownload, postingText } = require('../src/lib/posting');
 const base = { id:'fixture',title:'A waterfall',status:'READY',audience:'general',quality:{postCopy:'Water flowing over rocks. Credit: source creator.',hashtags:['#Waterfall','#Nature'],captions:['Water flowing.']},outputs:{youtube:{filename:'test.mp4'}} };
 function captionDisclosure(html) {
   const summary = html.indexOf('>Caption &amp; hashtags</summary>'), start = html.lastIndexOf('<details', summary);
@@ -45,6 +45,18 @@ test('platform downloads select an existing output and preserve credits in copy'
   assert.equal(postingDownload({...base,outputs:{}}),null);
   assert.equal(postingDownload({...base,trashedAt:'today'}),null);
   assert.equal(postingDownload({...base,status:'FAILED'}),null);
+  assert.equal(postingDownload(base,'facebook').target,'youtube');
+  assert.equal(postingDownload({...base,outputs:{...base.outputs,instagram:{filename:'ig.mp4'}}},'facebook').target,'instagram');
+  assert.doesNotMatch(postingDownload(base,'facebook').url,/target=facebook/);
+});
+
+test('Facebook video links match the confirmed ID and strip credentials, tracking and unrelated hosts',()=>{
+  const id='9988776655443322';
+  for(const value of [`https://www.facebook.com/reel/${id}/?token=PRIVATE#private`, `/FixturePage/videos/${id}/?tracking=discard`]){
+    assert.match(facebookReelPermalink(value,id),new RegExp(id));assert.doesNotMatch(facebookReelPermalink(value,id),/PRIVATE|tracking|discard/);
+  }
+  assert.equal(facebookReelPermalink(`https://facebook.com/watch/?v=${id}&secret=PRIVATE`,id),`https://www.facebook.com/watch/?v=${id}`);
+  for(const value of [`https://www.facebook.com/reel/123/`,`https://evil.example/reel/${id}`,`//evil.example/reel/${id}`,`https://token@www.facebook.com/reel/${id}`,`http://www.facebook.com/reel/${id}`])assert.equal(facebookReelPermalink(value,id),undefined);
 });
 
 test('a twenty-tag candidate bank stays available inside the collapsed caption details',()=>{
@@ -58,6 +70,7 @@ test('a twenty-tag candidate bank stays available inside the collapsed caption d
   assert.doesNotMatch(postingText(file,'instagram'),/Footage source:/);
   assert.equal((postingText(file,'instagram').match(/#Waterfall\d+/g)||[]).length,5);
   assert.equal((postingText(file,'youtube').match(/#Waterfall\d+/g)||[]).length,20);
+  assert.equal((postingText(file,'facebook').match(/#Waterfall\d+/g)||[]).length,20);
   assert.equal((postingText(file).match(/#Waterfall\d+/g)||[]).length,20);
   assert.equal((postingText(file,'instagram').match(/#Waterfall0\b/g)||[]).length,1);
 });

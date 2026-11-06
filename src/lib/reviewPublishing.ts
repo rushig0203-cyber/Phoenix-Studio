@@ -3,11 +3,12 @@ import { createReadStream } from "node:fs";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
 import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "./postingCopyPolicy";
-import { stripFootageProvenance } from "./posting";
+import { facebookReelPermalink, stripFootageProvenance } from "./posting";
 import { stockPostingCredits } from "./stockProviders";
 import { getReviewFile, reviewRoot, safeReviewId, type ReviewTarget } from "./reviewFiles";
 import { reviewMediaPath, selectedReviewTarget } from "./reviewMedia";
@@ -19,11 +20,11 @@ import { musicBriefFromReview, musicCatalogQueries, rankMusicCatalog, type Catal
 import { postingMediaFingerprint } from "./postingEvidence";
 import {
   assertLocalChannelRequest, assertChannelPublishAccessCurrent, createChannelPublishAccessMonitor, getChannelPublishAccess,
-  getChannelUploadSession, saveChannelUploadSession, getInstagramLocationAppSecretProof, type ChannelPublishAccess,
+  getChannelUploadSession, saveChannelUploadSession, getInstagramLocationAppSecretProof, FACEBOOK_PAGE_GRAPH_VERSION, type ChannelPublishAccess, type ChannelPlatform,
 } from "./channelConnections";
 
 export type ReviewPublishJob = {
-  id: string; reviewId: string; platform: ReviewTarget;
+  id: string; reviewId: string; platform: ChannelPlatform;
   status: "QUEUED" | "UPLOADING" | "PROCESSING" | "COMPLETE" | "FAILED" | "NEEDS_CHECK";
   percent: number; detail: string; accountName: string; privacy: "public" | "unlisted" | "private";
   actualPrivacy?: "public" | "unlisted" | "private"; outputTarget?: ReviewTarget;
@@ -50,23 +51,27 @@ type StoredJob = ReviewPublishJob & {
   parentReelId?: string;
   detachedFromReelId?: string;
   instagramGraphVersion?: typeof INSTAGRAM_AUDIO_GRAPH_VERSION;
+  facebookGraphVersion?: typeof FACEBOOK_PAGE_GRAPH_VERSION;
+  facebookFinishAccepted?: true;
 };
-type PublishInput = { action: "create"; platform: ReviewTarget; title: string; caption: string; privacy?: ReviewPublishJob["privacy"]; madeForKids: boolean; connectionRevision: string; confirm: true };
+type PublishInput = { action: "create"; platform: ChannelPlatform; title: string; caption: string; privacy?: ReviewPublishJob["privacy"]; madeForKids: boolean; connectionRevision: string; confirm: true };
 type ProviderResult = { status: number; headers: Headers; json: Record<string, unknown> };
 const JSON_LIMIT = 64 * 1024;
 const BODY_LIMIT = 24 * 1024;
 const LEASE_MS = 30_000;
 const GRAPH = "https://graph.facebook.com/v21.0";
 const AUDIO_GRAPH = `https://graph.facebook.com/${INSTAGRAM_AUDIO_GRAPH_VERSION}`;
+const FACEBOOK_GRAPH = `https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}`;
 const instagramGraph = (job: StoredJob) => job.instagramGraphVersion === INSTAGRAM_AUDIO_GRAPH_VERSION ? AUDIO_GRAPH : GRAPH;
 const storeRoot = () => process.env.PHOENIX_PUBLISH_STORAGE || path.join(process.cwd(), "storage", "private", "review-publications");
 const storyBusinessPath = () => path.join(storeRoot(), "instagram-story-business.json");
 const postingDefaultsPath = () => path.join(storeRoot(), "instagram-posting-defaults.json");
 const STORY_BUSINESS_CONFIRMATION = "Confirm that this connected Instagram account is Business, not Creator, before enabling Stories. Facebook Login does not expose a reliable account-type check. Reel posting is unaffected.";
-const jobPath = (reviewId: string, platform: ReviewTarget, kind?: "story") => path.join(storeRoot(), `${reviewId}-${platform}${kind === "story" ? "-story" : ""}.json`);
-const pairLock = (reviewId: string, platform: ReviewTarget, kind?: "story") => `${jobPath(reviewId, platform, kind)}.lock`;
+const jobPath = (reviewId: string, platform: ChannelPlatform, kind?: "story") => path.join(storeRoot(), `${reviewId}-${platform}${kind === "story" ? "-story" : ""}.json`);
+const pairLock = (reviewId: string, platform: ChannelPlatform, kind?: "story") => `${jobPath(reviewId, platform, kind)}.lock`;
 const operationLock = (job: StoredJob) => `${jobPath(job.reviewId, job.platform, job.kind)}.operation.lock`;
-const isPlatform = (value: unknown): value is ReviewTarget => value === "youtube" || value === "instagram";
+const isPlatform = (value: unknown): value is ChannelPlatform => value === "youtube" || value === "instagram" || value === "facebook";
+const isRenderTarget = (value: unknown): value is ReviewTarget => value === "youtube" || value === "instagram";
 const validId = (value: unknown): value is string => typeof value === "string" && safeReviewId(value) && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const now = () => new Date().toISOString();
 
@@ -116,7 +121,7 @@ function checkedText(value: unknown, label: string, maximum: number, allowEmpty 
   if (!allowEmpty && !result) throw problem(`${label} is required.`);
   return result;
 }
-function checkPlatformPostingText(platform: ReviewTarget, title: string, caption: string) {
+function checkPlatformPostingText(platform: ChannelPlatform, title: string, caption: string) {
   if (platform === "instagram" && captionHashtags(caption).length > INSTAGRAM_HASHTAG_LIMIT) {
     throw problem("Instagram allows at most five hashtags per Reel. Remove extra hashtags before posting; no text was silently changed.");
   }
@@ -129,11 +134,39 @@ function fingerprint(stats: Stats): Fingerprint {
 function sameFile(left: Fingerprint, right: Fingerprint) {
   return left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs && left.ino === right.ino && left.dev === right.dev;
 }
-async function readyMedia(reviewId: string, platform: ReviewTarget, expected?: Fingerprint, renderTarget?: ReviewTarget) {
+
+async function assertFacebookReelMedia(filename: string) {
+  const executable = process.env.PHOENIX_FFPROBE_PATH?.trim() || path.join(process.cwd(), "node_modules", "@ffprobe-installer", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ffprobe.exe" : "ffprobe");
+  let raw: string;
+  try {
+    raw = await new Promise<string>((resolve, reject) => execFile(executable, ["-v", "error", "-show_streams", "-show_format", "-of", "json", filename],
+      { windowsHide: true, encoding: "utf8", timeout: 15_000, maxBuffer: JSON_LIMIT }, (error, stdout) => error ? reject(error) : resolve(stdout)));
+  } catch { throw problem("Phoenix could not inspect this MP4 for Facebook Page Reels. Check the local FFprobe installation or export the saved video manually."); }
+  try {
+    const data = JSON.parse(raw) as { format?: { duration?: string; format_name?: string }; streams?: Array<{ codec_type?: string; width?: number; height?: number; avg_frame_rate?: string; sample_aspect_ratio?: string; tags?: { rotate?: string }; side_data_list?: Array<{ rotation?: number }> }> };
+    const video = data.streams?.find(stream => stream.codec_type === "video");
+    const rate = video?.avg_frame_rate?.match(/^(\d+)\/(\d+)$/);
+    const fps = rate && Number(rate[2]) > 0 ? Number(rate[1]) / Number(rate[2]) : NaN;
+    const seconds = Number(data.format?.duration), width = Number(video?.width), height = Number(video?.height);
+    const rotation = Number(video?.tags?.rotate ?? video?.side_data_list?.find(side => side.rotation !== undefined)?.rotation ?? 0);
+    // This intentionally implements Meta's documented sample subset, not unverified newer limits.
+    if (!data.format?.format_name?.split(",").includes("mp4") || !Number.isFinite(seconds) || seconds < 4 || seconds > 60
+        || !Number.isInteger(width) || !Number.isInteger(height) || width < 540 || height < 960 || width * 16 !== height * 9
+        || !Number.isFinite(fps) || fps < 23 || !Number.isFinite(rotation) || rotation % 360 !== 0
+        || (video?.sample_aspect_ratio !== undefined && video.sample_aspect_ratio !== "1:1")) {
+      throw problem("This saved output is outside Phoenix's verified Facebook Page Reel support: MP4, 4–60 seconds, vertical 9:16, at least 540×960 and 23 fps. Choose an eligible saved reel or export it for Facebook. Phoenix will not trim, stretch or re-render it automatically.");
+    }
+  } catch (error) {
+    if (error instanceof ReviewPublishingError) throw error;
+    throw problem("The MP4's actual Facebook Reel properties could not be verified. Export it manually or choose another saved video.");
+  }
+}
+
+async function readyMedia(reviewId: string, platform: ChannelPlatform, expected?: Fingerprint, renderTarget?: ReviewTarget) {
   const file = await getReviewFile(reviewId);
   if (!file || file.trashedAt) throw problem("The saved review video is no longer available.", 404);
   if (file.status !== "READY") throw problem("Render a ready video output before uploading.");
-  const target = renderTarget ? selectedReviewTarget(file, renderTarget) : selectedReviewTarget(file, platform) || selectedReviewTarget(file);
+  const target = renderTarget ? selectedReviewTarget(file, renderTarget) : selectedReviewTarget(file, platform === "facebook" ? "instagram" : platform) || selectedReviewTarget(file);
   if (!target) throw problem("The confirmed rendered output is unavailable. Render a ready video first.");
   const filename = reviewMediaPath(file, target);
   if (!filename) throw problem("The rendered video is unavailable.");
@@ -143,13 +176,14 @@ async function readyMedia(reviewId: string, platform: ReviewTarget, expected?: F
     const fp = fingerprint(stats);
     if (expected && !sameFile(fp, expected)) throw problem("The saved video changed after confirmation. This upload is paused; check the platform before creating another upload.", 409);
     if (platform === "instagram" && stats.size > 1_000_000_000) throw problem("Instagram Reels accepts files up to 1 GB. Render a smaller saved output first.");
+    if (platform === "facebook" && !expected) await assertFacebookReelMedia(resolved);
     return { file, filename: resolved, fingerprint: fp, target };
   } catch (error) {
     if (error instanceof ReviewPublishingError) throw error;
     throw problem("The rendered video is missing or cannot be read. Render it again before uploading.");
   }
 }
-async function readStored(reviewId: string, platform: ReviewTarget, kind?: "story"): Promise<StoredJob | null> {
+async function readStored(reviewId: string, platform: ChannelPlatform, kind?: "story"): Promise<StoredJob | null> {
   try {
     const filename = jobPath(reviewId, platform, kind); const stats = await fs.stat(filename);
     if (stats.size > JSON_LIMIT) throw problem("The saved upload status needs local inspection.", 500);
@@ -158,7 +192,10 @@ async function readStored(reviewId: string, platform: ReviewTarget, kind?: "stor
         || (kind === "story" && (platform !== "instagram" || (value.standaloneStory === true ? value.parentReelId !== undefined : !validId(value.parentReelId)) || value.companionStoryApproved !== undefined))
         || (value.standaloneStory !== undefined && (kind !== "story" || value.standaloneStory !== true))
         || (value.detachedFromReelId !== undefined && (kind !== "story" || value.standaloneStory !== true || !validId(value.detachedFromReelId)))
-        || !isPlatform(value.renderTarget) || !value.fingerprint || !Number.isSafeInteger(value.totalBytes)
+        || !isRenderTarget(value.renderTarget) || !value.fingerprint || !Number.isSafeInteger(value.totalBytes)
+        || (platform === "facebook" && (value.privacy !== "public" || value.facebookGraphVersion !== FACEBOOK_PAGE_GRAPH_VERSION || value.kind !== undefined || value.companionStoryApproved !== undefined))
+        || (value.facebookGraphVersion !== undefined && (platform !== "facebook" || value.facebookGraphVersion !== FACEBOOK_PAGE_GRAPH_VERSION))
+        || (value.facebookFinishAccepted !== undefined && (platform !== "facebook" || value.facebookFinishAccepted !== true))
         || (value.location !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramLocation(value.location)))
         || (value.audio !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramAudioSelection(value.audio) || value.instagramGraphVersion !== INSTAGRAM_AUDIO_GRAPH_VERSION))
         || (value.userTags !== undefined && (platform !== "instagram" || kind === "story" || !publicInstagramUserTags(value.userTags)))
@@ -181,6 +218,7 @@ async function operationActive(job: StoredJob) {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
 }
 function continuable(job: StoredJob) {
+  if (job.platform === "facebook" && job.containerId && /^\d{1,40}$/.test(job.containerId) && ["publishing", "publish_unknown"].includes(job.phase)) return true;
   return !["complete", "session_unknown", "publish_unknown", "initiating", "publishing"].includes(job.phase);
 }
 function revisable(job: StoredJob) {
@@ -200,7 +238,8 @@ function detachedStoryMatches(story: StoredJob | null, parent: StoredJob) {
   return Boolean(story?.standaloneStory && story.detachedFromReelId === parent.id && story.accountId === parent.accountId
     && story.connectionRevision === parent.connectionRevision && story.renderTarget === parent.renderTarget && sameFile(story.fingerprint, parent.fingerprint));
 }
-function publicRemoteUrl(value: string | undefined, platform: ReviewTarget) {
+function publicRemoteUrl(value: string | undefined, platform: ChannelPlatform, remoteId?: string) {
+  if (platform === "facebook") return facebookReelPermalink(value, remoteId || "");
   if (!value) return undefined;
   try {
     const url = new URL(value);
@@ -216,7 +255,7 @@ function publicRemoteUrl(value: string | undefined, platform: ReviewTarget) {
 async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
   const freshQueue = job.status === "QUEUED" && Date.now() - job.queuedAt < LEASE_MS;
   const interrupted = ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) && !freshQueue && !await operationActive(job);
-  const remoteUrl = publicRemoteUrl(job.remoteUrl, job.platform);
+  const remoteUrl = publicRemoteUrl(job.remoteUrl, job.platform, job.remoteId);
   const story = job.platform === "instagram" && !job.kind && job.companionStoryApproved ? await readStored(job.reviewId, "instagram", "story") : null;
   const companionDetached = detachedStoryMatches(story, job);
   const parent = job.kind === "story" && !job.standaloneStory && job.phase === "created" ? await readStored(job.reviewId, "instagram") : null;
@@ -251,11 +290,11 @@ async function publicJob(job: StoredJob): Promise<ReviewPublishJob> {
 /** Reading status never loads credentials, refreshes tokens, contacts a provider, or dispatches work. */
 export async function listReviewPublishJobs(reviewId: string) {
   if (!validId(reviewId)) throw problem("Review video not found.", 404);
-  const [youtubeJob, instagramJob, story] = await Promise.all([readStored(reviewId, "youtube"), readStored(reviewId, "instagram"), readStored(reviewId, "instagram", "story")]);
-  const jobs = [youtubeJob, instagramJob, story?.standaloneStory ? story : null];
+  const [youtubeJob, instagramJob, story, facebookJob] = await Promise.all([readStored(reviewId, "youtube"), readStored(reviewId, "instagram"), readStored(reviewId, "instagram", "story"), readStored(reviewId, "facebook")]);
+  const jobs = [youtubeJob, instagramJob, story?.standaloneStory ? story : null, facebookJob];
   return Promise.all(jobs.filter((job): job is StoredJob => Boolean(job)).map(publicJob));
 }
-async function accessFor(platform: ReviewTarget, revision: string) {
+async function accessFor(platform: ChannelPlatform, revision: string) {
   try { return await getChannelPublishAccess(platform, revision); }
   catch { throw problem("This channel is disconnected, changed, or lacks upload permission. Check Channels and authorize uploading again.", 403); }
 }
@@ -692,7 +731,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
     });
   }
   if (body.action === "create") {
-    if (!isPlatform(body.platform)) throw problem("Choose YouTube or Instagram.");
+    if (!isPlatform(body.platform)) throw problem("Choose YouTube, Instagram or a connected Facebook Page.");
     const platform = body.platform;
     const title = checkedText(body.title, "Video title", 100);
     const requestedCaption = checkedText(body.caption, "Caption", platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200, true);
@@ -701,6 +740,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
     const privacy = body.privacy ?? "private";
     if (!["public", "unlisted", "private"].includes(String(privacy))) throw problem("Choose public, unlisted, or private visibility.");
     if (platform === "instagram" && privacy !== "public") throw problem("Instagram Reels are published publicly. Confirm public visibility to upload this Reel.");
+    if (platform === "facebook" && privacy !== "public") throw problem("Facebook Page Reels are published publicly. Confirm public visibility to upload this Reel.");
     const madeForKids = body.madeForKids;
     if (typeof madeForKids !== "boolean") throw problem("Choose the made-for-kids setting explicitly.");
     if (body.companionStory !== undefined && typeof body.companionStory !== "boolean") throw problem("Choose whether to include a matching Story explicitly.");
@@ -755,6 +795,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
         ...(body.companionStory === true ? { companionStoryApproved: true } : {}),
         ...(location ? { location } : {}),
         ...(audio ? { audio, instagramGraphVersion: INSTAGRAM_AUDIO_GRAPH_VERSION } : {}),
+        ...(platform === "facebook" ? { facebookGraphVersion: FACEBOOK_PAGE_GRAPH_VERSION } : {}),
         ...(requestedUserTags?.length ? { userTags: requestedUserTags } : {}),
         ...(body.automaticTags === true ? { automaticTags: true } : {}),
       };
@@ -773,7 +814,7 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
   if (body.audio !== undefined) throw problem("The confirmed Instagram audio is immutable. Continue the saved upload without changing its track or volumes.");
   if (body.userTags !== undefined) throw problem("The confirmed Instagram people tags are immutable. Continue the saved upload without changing its usernames.");
   if (!["continue", "continue-story"].includes(String(body.action)) || !validId(body.jobId)) throw problem("Use create or continue with a saved upload job.");
-  const candidates: Array<{ platform: ReviewTarget; kind?: "story" }> = body.action === "continue-story" ? [{ platform: "instagram", kind: "story" }] : [{ platform: "youtube" }, { platform: "instagram" }];
+  const candidates: Array<{ platform: ChannelPlatform; kind?: "story" }> = body.action === "continue-story" ? [{ platform: "instagram", kind: "story" }] : [{ platform: "youtube" }, { platform: "instagram" }, { platform: "facebook" }];
   for (const { platform, kind } of candidates) {
     const result = await withFileLock(pairLock(reviewId, platform, kind), async () => {
       const job = await readStored(reviewId, platform, kind);
@@ -796,13 +837,14 @@ export async function prepareReviewPublication(reviewId: string, body: Record<st
 }
 
 /** Session URIs are credentials: validate before attaching tokens or opening the stream. */
-export function validateReviewUploadUrl(value: string, platform: ReviewTarget) {
+export function validateReviewUploadUrl(value: string, platform: ChannelPlatform) {
   try {
     const url = new URL(value);
     const host = platform === "youtube" ? "www.googleapis.com" : "rupload.facebook.com";
-    if (value.length > 8192 || url.protocol !== "https:" || url.hostname !== host || url.port || url.username || url.password || url.hash) throw new Error();
+    if (!isPlatform(platform) || value.length > 8192 || url.protocol !== "https:" || url.hostname !== host || url.port || url.username || url.password || url.hash) throw new Error();
     if (platform === "youtube" && (url.pathname !== "/upload/youtube/v3/videos" || url.searchParams.get("uploadType") !== "resumable" || !url.searchParams.get("upload_id"))) throw new Error();
     if (platform === "instagram" && !/^\/ig-api-upload\/(?:v\d+\.\d+\/)?\d+\/?$/.test(url.pathname)) throw new Error();
+    if (platform === "facebook" && !/^\/video-upload\/v\d+\.\d+\/\d{1,40}\/?$/.test(url.pathname)) throw new Error();
     if (url.searchParams.has("access_token")) throw new Error();
     return url.href;
   } catch { throw problem("The provider returned an unsafe upload destination. No credentials or video were sent to it.", 502, true); }
@@ -840,7 +882,7 @@ async function providerCall(url: string, options: RequestInit & { duplex?: "half
     throw problem("The platform did not respond reliably. This upload is saved; use Continue to check its existing state.", 502, true);
   } finally { clearTimeout(timer); }
 }
-function videoId(value: unknown, platform: ReviewTarget) {
+function videoId(value: unknown, platform: ChannelPlatform) {
   if (typeof value !== "string" || !(platform === "youtube" ? /^[A-Za-z0-9_-]{11}$/ : /^\d{1,40}$/).test(value)) throw problem("The platform response did not identify the uploaded video. Check the channel before taking another action.", 502, true);
   return value;
 }
@@ -862,7 +904,7 @@ async function completeYoutube(job: StoredJob, result: ProviderResult) {
   await persist(job); await saveChannelUploadSession(job.id, null);
 }
 
-async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, url: string, offset: number, instagram = false) {
+async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, url: string, offset: number, metaUpload = false) {
   const safeUrl = validateReviewUploadUrl(url, job.platform);
   const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
   if (job.kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Publishing was stopped.");
@@ -913,8 +955,8 @@ async function streamSavedVideo(job: StoredJob, access: ChannelPublishAccess, ur
       try { accessMonitor = await createChannelPublishAccessMonitor(access); }
       catch { throw problem("The channel connection changed or was disconnected. Uploading stopped before sending the video.", 409); }
       return await providerCall(safeUrl, {
-        method: instagram ? "POST" : "PUT", body: body as unknown as BodyInit, duplex: "half",
-        headers: instagram ? { Authorization: `OAuth ${access.accessToken}`, offset: "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes), "Content-Type": "video/mp4" }
+        method: metaUpload ? "POST" : "PUT", body: body as unknown as BodyInit, duplex: "half",
+        headers: metaUpload ? { Authorization: `OAuth ${access.accessToken}`, offset: "0", file_size: String(job.totalBytes), "Content-Length": String(job.totalBytes), "Content-Type": "video/mp4" }
           : { Authorization: `Bearer ${access.accessToken}`, "Content-Length": String(job.totalBytes - offset), "Content-Type": "video/mp4", "Content-Range": `bytes ${offset}-${job.totalBytes - 1}/${job.totalBytes}` },
       }, true, true);
     } catch (error) {
@@ -955,6 +997,87 @@ async function youtube(job: StoredJob, access: ChannelPublishAccess) {
   }
   throw problem("YouTube has not confirmed this upload. Continue to check the saved session.", 502, true);
 }
+
+async function facebook(job: StoredJob, access: ChannelPublishAccess) {
+  if (access.loginType !== "facebook" || !/^\d{1,40}$/.test(access.accountId)) throw problem("Reconnect a verified Facebook Page with Page publishing permission.", 403);
+  if (!job.containerId) {
+    if (job.phase !== "created") throw problem("The Facebook Reel session request was interrupted. Check the Page before taking another action.", 409, true);
+    job.phase = "initiating"; job.status = "UPLOADING"; job.canContinue = false;
+    job.detail = "Creating a Facebook Page Reel upload session."; await persist(job); await assertCurrent(access);
+    const created = await providerCall(`${FACEBOOK_GRAPH}/${access.accountId}/video_reels`, {
+      method: "POST", headers: { Authorization: `Bearer ${access.accessToken}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ upload_phase: "start" }),
+    });
+    const id = videoId(created.json.video_id, "facebook");
+    if (typeof created.json.upload_url !== "string") throw problem("Facebook did not return a safe Reel upload destination. Check the Page before taking another action.", 502, true);
+    const session = validateReviewUploadUrl(created.json.upload_url, "facebook");
+    if (new URL(session).pathname.split("/").filter(Boolean).at(-1) !== id) throw problem("Facebook returned an upload destination for a different video. No video was sent.", 502, true);
+    await saveChannelUploadSession(job.id, session);
+    job.containerId = id; job.phase = "session"; await persist(job);
+  }
+  if (!/^\d{1,40}$/.test(job.containerId)) throw problem("The saved Facebook Reel identity is invalid. Check the Page before continuing.", 409, true);
+  if (job.phase === "session") {
+    const session = await getChannelUploadSession(job.id);
+    if (!session) throw problem("The private Facebook Reel upload session is unavailable. Check the Page before continuing.", 409, true);
+    const uploaded = await streamSavedVideo(job, access, session, 0, true);
+    if (uploaded.json.success !== true) throw problem("Facebook has not acknowledged the video transfer. Continue checks this same video; Phoenix will not resend it blindly.", 502, true);
+    job.phase = "processing"; await persist(job);
+  }
+  // A lost finish response must never cause a second finish/publish request.
+  let checkOnly = Boolean(job.facebookFinishAccepted || ["publishing", "publish_unknown"].includes(job.phase));
+  job.status = "PROCESSING"; job.percent = Math.max(96, job.percent);
+  job.detail = "Checking Facebook's upload, processing and publishing status."; await persist(job);
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await assertCurrent(access);
+    const checked = await providerCall(`${FACEBOOK_GRAPH}/${job.containerId}?fields=status`, { headers: { Authorization: `Bearer ${access.accessToken}` } });
+    const state = checked.json.status as { video_status?: unknown; uploading_phase?: { status?: unknown }; processing_phase?: { status?: unknown }; publishing_phase?: { status?: unknown; publish_status?: unknown } } | undefined;
+    const phases = [state?.uploading_phase?.status, state?.processing_phase?.status, state?.publishing_phase?.status];
+    if (checked.json.id !== job.containerId || !state || !["uploading", "upload_complete", "processing", "ready", "error", "upload_failed", "expired"].includes(String(state.video_status))
+        || !phases.every(phase => ["not_started", "in_progress", "complete", "error"].includes(String(phase)))) {
+      throw problem("Facebook returned an unrecognized Reel status. Continue checks the same video without repeating its upload or publish request.", 502, true);
+    }
+    if (["error", "upload_failed", "expired"].includes(String(state.video_status)) || phases.includes("error")) throw problem("Facebook could not process this saved Reel. Check the Page's video status and requirements before taking another action.", 409, true);
+    const publishing = state.publishing_phase!;
+    if (publishing.publish_status !== undefined && !["published", "scheduled", "draft"].includes(String(publishing.publish_status))) throw problem("Facebook returned an unknown publishing visibility. Check the existing Reel on the Page.", 502, true);
+    if (publishing.publish_status === "draft" || publishing.publish_status === "scheduled") {
+      job.phase = "publish_unknown";
+      throw problem("Facebook reports this video as draft or scheduled rather than the approved public Reel. Continue only checks its saved status; Phoenix will not publish it again.", 409, true);
+    }
+    if (state.video_status === "ready" && publishing.status === "complete") {
+      job.remoteId = job.containerId; job.phase = "complete"; job.status = "COMPLETE"; job.percent = 100;
+      job.bytesUploaded = job.totalBytes; job.canContinue = false;
+      if (publishing.publish_status === "published") job.actualPrivacy = "public";
+      job.detail = "Facebook confirmed that Page Reel publishing completed. Its video ID is saved.";
+      await persist(job); await saveChannelUploadSession(job.id, null);
+      try {
+        await assertCurrent(access);
+        const link = await providerCall(`${FACEBOOK_GRAPH}/${job.remoteId}?fields=permalink_url`, { headers: { Authorization: `Bearer ${access.accessToken}` } });
+        job.remoteUrl = facebookReelPermalink(link.json.permalink_url, job.remoteId); await persist(job);
+      } catch { /* A missing link cannot repeat a confirmed successful publication. */ }
+      return;
+    }
+    if (!checkOnly && (publishing.status === "in_progress" || publishing.status === "complete")) {
+      checkOnly = true; job.phase = "publish_unknown"; await persist(job);
+    }
+    if (!checkOnly && state.uploading_phase!.status === "complete" && publishing.status === "not_started") {
+      const media = await readyMedia(job.reviewId, job.platform, job.fingerprint, job.renderTarget);
+      if (stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Publishing was stopped.");
+      job.phase = "publishing"; job.percent = 98; job.canContinue = false;
+      job.detail = "Facebook received the saved video. Finishing the approved public Page Reel."; await persist(job); await assertCurrent(access);
+      const finished = await providerCall(`${FACEBOOK_GRAPH}/${access.accountId}/video_reels`, {
+        method: "POST", headers: { Authorization: `Bearer ${access.accessToken}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ video_id: job.containerId, upload_phase: "finish", video_state: "PUBLISHED", title: job.title, description: job.caption }),
+      });
+      if (finished.json.success !== true) throw problem("Facebook did not confirm the finish request. Continue only checks the existing video; Phoenix will not repeat publishing.", 502, true);
+      job.facebookFinishAccepted = true; job.phase = "processing"; checkOnly = true;
+      job.detail = "Facebook accepted the public Reel request. Waiting for confirmed publishing completion."; await persist(job);
+    }
+    if (attempt < 11) await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  job.status = "NEEDS_CHECK"; job.canContinue = true;
+  job.detail = "Facebook is still processing this saved Reel. Continue checks the same video; acknowledged or uncertain publishing is never repeated."; await persist(job);
+}
+
 async function instagramStatus(job: StoredJob, access: ChannelPublishAccess) {
   if (!job.containerId || !/^\d{1,40}$/.test(job.containerId)) throw problem("Instagram container status is unavailable. Check the account before taking another action.", 409, true);
   await assertCurrent(access);
@@ -1056,7 +1179,7 @@ async function instagram(job: StoredJob, access: ChannelPublishAccess) {
 /** Called only from a confirmed POST's after() callback; importing the module does not run jobs. */
 export async function runReviewPublication(reviewId: string, jobId: string) {
   if (!validId(reviewId) || !validId(jobId)) return;
-  for (const { platform, kind } of [{ platform: "youtube" }, { platform: "instagram" }, { platform: "instagram", kind: "story" }] as Array<{ platform: ReviewTarget; kind?: "story" }>) {
+  for (const { platform, kind } of [{ platform: "youtube" }, { platform: "instagram" }, { platform: "instagram", kind: "story" }, { platform: "facebook" }] as Array<{ platform: ChannelPlatform; kind?: "story" }>) {
     const saved = await readStored(reviewId, platform, kind);
     if (!saved || saved.id !== jobId) continue;
     try {
@@ -1075,7 +1198,7 @@ export async function runReviewPublication(reviewId: string, jobId: string) {
             const media = await readyMedia(reviewId, platform, job.fingerprint, job.renderTarget); await assertCurrent(access);
             if (kind !== "story" && stockPostingCredits(media.file).some(credit => !job.caption.includes(credit))) throw problem("The saved upload is missing required footage credits. Uploading was stopped.");
             if (kind === "story") { await assertStoryParent(job); assertStoryMedia(media); await assertStoryAccount(access); }
-            if (platform === "youtube") await youtube(job, access); else await instagram(job, access);
+            if (platform === "youtube") await youtube(job, access); else if (platform === "facebook") await facebook(job, access); else await instagram(job, access);
           }, { timeoutMs: 31 * 60_000, retryMs: 1000, staleMs: LEASE_MS });
         } catch (error) {
           if (job.phase === "complete") return;
@@ -1089,6 +1212,7 @@ export async function runReviewPublication(reviewId: string, jobId: string) {
           job.status = safe.ambiguous ? "NEEDS_CHECK" : "FAILED";
           job.canContinue = continuable(job);
           job.detail = safe.message;
+          if (job.platform === "facebook" && job.phase === "publish_unknown" && job.canContinue) job.detail += " Continue checks only this saved video; the uncertain finish request will not be repeated.";
           if (rejectedInstagramContainer) job.detail += " Container creation stopped before the video transfer; no video bytes were sent. Continue uses the same approved choices, not corrected tags or caption.";
           if (!job.canContinue && safe.ambiguous) job.detail += " Check the destination channel; Phoenix will not repeat an ambiguous creation or publish request.";
           await persist(job);
