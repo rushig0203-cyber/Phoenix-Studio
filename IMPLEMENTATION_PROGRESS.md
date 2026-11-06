@@ -1,6 +1,6 @@
 # Phoenix Studio implementation and verified releases
 
-## November 6 — installed Facebook Page release; account authorization unfinished
+## November 6 — installed Facebook Page release; linked Page connected
 
 - Installed source `094b7c9208d4a3bf54d924fb8ca8f989ebdf207c` passed Windows
   run `42208346550`: 1,524 Node tests, 49 Python checks, lint, TypeScript,
@@ -40,19 +40,24 @@
   pass a 44-case synthetic matrix, including live-lock and malformed-state
   rejection. The actual saved pair passed without changing either record or the
   protected vault; activation did not retry or dispatch either upload.
-- Facebook is NOT connected yet. The owner approved adding `pages_manage_posts`
-  and privately saving verified access for up to 60 days. Meta's permission
-  response now confirms all seven requested scopes, but `/me/accounts` still
-  returns an empty list. The published linked Page is accessible in Facebook's
-  management UI; this does not establish an API Page token or content-creation
-  task. No unverified token was saved. Primary Meta documentation confirms that
-  business-linked Pages also require `business_management` and a user role on
-  the linked business to appear in `/me/accounts`. This broader scope is not
-  covered by the existing seven-scope approval. Its plain-language action-time
-  consent question is pending; do not interpret uncertainty as authorization.
-  The existing signed-in Meta session can continue after that consent, without
-  repeating the Chrome login request. No code change is needed for this scope.
-  No social test post or failed owner-job retry was performed.
+- Facebook is now connected to **Bitet.themap**, Page `1390878777432770`,
+  linked to Instagram `@__bitet.hemap`. After the owner's explicit approval of
+  `business_management`, Meta confirmed all eight approved scopes and returned
+  the exact Page with the `CREATE_CONTENT` task. This resolved the previously
+  empty `/me/accounts` result for the business-linked Page.
+- Phoenix verified and privately saved the connection using its existing
+  long-lived exchange and expiry checks. At `2026-11-06T16:12:55.116Z`, the live
+  channel API and Settings both reported Facebook connected and publishing
+  ready. Instagram remained connected and publishing ready. No token or secret
+  was added to Git, a screenshot, or a plaintext handoff file.
+- Library final review confirms destination **Bitet.themap**, permission
+  verified, the existing 720 × 1280 Sailing MP4 and an enabled **Post to Facebook
+  Page** action. No social test post or failed owner-job retry was performed;
+  actual publication remains dependent on the owner's final Post action and
+  Meta's processing. YouTube remains unconfigured, while Rumble is an assisted
+  handoff and Bilibili.tv is unconnected. No code change or new build was needed
+  for this account authorization. The owner's exact `tsconfig.json` hash remains
+  unchanged.
 
 ## Earlier November 6 release evidence and remaining account work
 
