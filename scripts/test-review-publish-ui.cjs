@@ -159,13 +159,13 @@ function uiHarness(options = {}) {
     },
   };
   function load(compiledSource) {
-    const module = { exports: {} };
-    const context = vm.createContext({ ...shared, module, exports: module.exports, require(name) {
+    const loaded = { exports: {} };
+    const context = vm.createContext({ ...shared, module: loaded, exports: loaded.exports, require(name) {
       if (!Object.hasOwn(dependencies, name)) throw new Error(`Unexpected isolated publishing UI import: ${name}`);
       return dependencies[name];
     } });
     new vm.Script(compiledSource.source, { filename: compiledSource.filename }).runInContext(context, { timeout: 1000 });
-    return module.exports;
+    return loaded.exports;
   }
   dependencies['./postingCopyPolicy'] = dependencies['@/lib/postingCopyPolicy'] = load(postingPolicySource);
   dependencies['./stockProviders'] = dependencies['@/lib/stockProviders'] = load(providersSource);
@@ -282,6 +282,71 @@ test('posting expands inline and can be collapsed without submitting', async t =
   assert.equal(h.posts.length, 0); assert.equal(h.reveals.length, 0);
   h.click('Post / export'); await h.flush(); assert.equal(panel().props.hidden, false);
   h.click('Post / export'); await h.flush(); assert.equal(panel().props.hidden, true);
+});
+
+test('Facebook Page review reads only verified setup and jobs, shows saved MP4 and caption, and excludes Instagram choices', async t => {
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook', { name: 'Verified linked Page' })] }); t.after(() => h.unmount());
+  h.choose('Post to Facebook Page'); await h.flush();
+  assert.deepEqual(h.requests.map(request => [request.method, request.url]), [['GET', '/api/channels'], ['GET', h.endpoint]]);
+  assert.match(h.text, /Facebook Page · final posting review/); assert.match(h.text, /Destination: Verified linked Page/);
+  assert.match(h.text, /1080 × 1920 · 12 seconds/); assert.match(h.text, /Saved MP4/);
+  assert.match(h.text, /4–60 seconds/); assert.match(h.text, /23 fps/); assert.match(h.text, /will not trim, stretch or re-render/);
+  assert.equal(h.control('Caption and hashtags', 'textarea').props.value, 'Saved caption\n\n#fixture #video');
+  assert.match(h.text, /Clicking Post approves publishing this Reel publicly to Verified linked Page/);
+  assert.equal(h.confirmation(), undefined); assert.equal(h.control('Privacy', 'select'), undefined);
+  assert.equal(h.button('Post to Facebook Page').props.type, 'submit'); assert.equal(h.button('Post to Facebook Page').props.disabled, false);
+  assert.equal(h.control('Place name or Facebook location Page ID', 'input'), undefined);
+  assert.doesNotMatch(h.text, /Automatic Reel tags|Automatic Reel music|Instagram music:|matching Story after|Story ideas/);
+  assert.ok(!nodes(h.tree).some(node => node.type === 'dialog'));
+  h.click('Check status'); await h.flush(); assert.equal(h.posts.length, 0);
+  h.click('Copy Facebook Page text'); await h.flush(); assert.deepEqual(h.copied, ['Saved caption\n\n#fixture #video']);
+  assert.match(h.text, /Facebook Page text copied/);
+});
+
+test('one final Facebook Page action creates one public job with reviewed caption and no Instagram payload', async t => {
+  const waiting = deferred(); let submitted;
+  const h = uiHarness({ channels: [channel('facebook', { name: 'Verified linked Page' })], post(request) {
+    submitted = JSON.parse(request.body); return waiting.promise;
+  } }); t.after(() => h.unmount());
+  h.choose('Post to Facebook Page'); await h.flush();
+  h.change(h.control('Caption and hashtags', 'textarea'), 'Owner-reviewed Facebook caption #One #Two #Three #Four #Five #Six'); h.render();
+  const form = h.form(); h.submit(form); h.submit(form); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(submitted.platform, 'facebook'); assert.equal(submitted.privacy, 'public');
+  assert.equal(submitted.confirm, true); assert.equal(submitted.connectionRevision, 'revision-facebook');
+  assert.equal(submitted.caption, 'Owner-reviewed Facebook caption #One #Two #Three #Four #Five #Six');
+  for (const key of ['companionStory', 'location', 'audio', 'automaticTags', 'userTags']) assert.equal(submitted[key], undefined);
+  waiting.resolve(response({ job: job({ platform: 'facebook', accountName: 'Verified linked Page', privacy: 'public', status: 'QUEUED', percent: 0, detail: 'Saved Facebook Page request.' }) })); await h.flush();
+  assert.match(h.text, /Verified linked Page · QUEUED · 0%/); assert.match(h.text, /saved Facebook Page upload request/);
+  assert.equal(h.form(), undefined); assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 1);
+});
+
+test('Facebook identity-only setup or missing output cannot submit, and backend media errors remain actionable', async t => {
+  for (const settings of [{ channels: [channel('facebook', { publishReady: false, publishReason: 'Authorize pages_manage_posts for this Page.' })] },
+    { channels: [channel('facebook')], file: sampleFile({ status: 'NEEDS_RENDERER', outputs: {} }) }]) {
+    const h = uiHarness(settings); t.after(() => h.unmount()); h.choose('Post to Facebook Page'); await h.flush();
+    assert.equal(h.button('Post to Facebook Page').props.disabled, true); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
+  }
+  const h = uiHarness({ channels: [channel('facebook')], post: () => response({ error: 'This saved output is outside Phoenix Facebook Page Reel support: 4–60 seconds and 23 fps.' }, 400) }); t.after(() => h.unmount());
+  h.choose('Post to Facebook Page'); await h.flush(); h.submit(); await h.flush();
+  assert.match(h.text, /outside Phoenix Facebook Page Reel support/); assert.equal(h.posts.length, 1);
+  assert.equal(h.button('Post to Facebook Page').props.disabled, false); assert.equal(h.intervals.size, 0);
+});
+
+test('saved Facebook Page jobs show progress and permalink, prevent duplicates and require explicit continuation', async t => {
+  let continued;
+  const saved = job({ platform: 'facebook', accountName: 'Verified Page', status: 'NEEDS_CHECK', privacy: 'public', percent: 88, canContinue: true, detail: 'Check the saved Facebook video before continuing.' });
+  const h = uiHarness({ channels: [channel('facebook')], jobs: [saved], post(request) {
+    continued = JSON.parse(request.body); return response({ job: { ...saved, status: 'COMPLETE', canContinue: false, percent: 100, remoteUrl: 'https://www.facebook.com/reel/123456789/', detail: 'Facebook confirmed publication.' } });
+  } }); t.after(() => h.unmount()); h.choose('Post to Facebook Page'); await h.flush();
+  assert.match(h.text, /NEEDS CHECK · 88%/); assert.match(h.text, /Check the saved Facebook video/);
+  assert.match(h.text, /already has a saved Facebook Page upload request/);
+  assert.equal(h.button('Continue saved upload').props.disabled, true);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'button' && node.props.type === 'submit').length, 0);
+  h.change(h.control('Continue this saved upload', 'input'), true); h.render(); h.click('Continue saved upload'); await h.flush();
+  assert.deepEqual(continued, { action: 'continue', jobId: saved.id, confirm: true });
+  assert.match(h.text, /Facebook confirmed publication/);
+  assert.ok(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://www.facebook.com/reel/123456789/'));
+  assert.equal(h.posts.length, 1); assert.equal(h.form(), undefined);
 });
 
 test('Rumble reveals the existing MP4 and copies its text without downloading or submitting an upload', async t => {
@@ -1055,7 +1120,7 @@ test('automatic tag policy is Instagram-only and no manual tag entry appears on 
 test('an untagged Reel omits the optional parameter and continued uploads use only the saved job', async t => {
   let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({platform:'instagram'}) }); } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); h.submit(); await h.flush(); assert.equal(saved.userTags,undefined); assert.equal(saved.automaticTags,true);
-  const continued = uiHarness({ jobs:[job({platform:'instagram',status:'NEEDS_CHECK',canContinue:true,userTags:['saved.person']})], post(request) { return response({job:job({platform:'instagram'})}); } }); t.after(() => continued.unmount());
+  const continued = uiHarness({ jobs:[job({platform:'instagram',status:'NEEDS_CHECK',canContinue:true,userTags:['saved.person']})], post() { return response({job:job({platform:'instagram'})}); } }); t.after(() => continued.unmount());
   continued.choose('Post to Instagram'); await continued.flush(); assert.match(continued.text,/Reel tags: @saved.person/);
   assert.equal(continued.control('Instagram usernames','input'),undefined);
   continued.change(continued.control('Continue this saved upload','input'),true); continued.render(); continued.click('Continue saved upload'); await continued.flush();

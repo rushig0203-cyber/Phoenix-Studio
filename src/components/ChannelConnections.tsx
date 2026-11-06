@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, Camera, Link2, Loader2, RefreshCw, Play } from "lucide-react";
+import { ExternalLink, Camera, Facebook, Link2, Loader2, RefreshCw, Play } from "lucide-react";
 import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 import { socialHandle } from "@/lib/socialAccounts";
 
 const button = "inline-flex items-center justify-center gap-2 rounded-lg border border-[#a9b88f] bg-[#fffdf7] px-3 py-2 text-xs font-semibold text-[#26331f] hover:bg-[#e7eedb] disabled:cursor-wait disabled:opacity-50";
 const field = "mt-1 w-full rounded-lg border border-[#a9b88f] bg-[#fffdf7] px-3 py-2 text-sm text-[#26331f] outline-none focus:ring-2 focus:ring-[#718758]";
-const names = { youtube: "YouTube", instagram: "Instagram" };
+const names = { youtube: "YouTube", instagram: "Instagram", facebook: "Facebook Page" };
 
 export default function ChannelConnections({ compact = false }: { compact?: boolean }) {
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
@@ -64,7 +64,7 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
           : "Meta app credentials saved securely. Connect Instagram with a token issued by this same app."
         : "App credentials saved securely on this PC. Select Enable YouTube uploads to authorize your channel."
         : "Connection verified successfully.");
-      if (data.action === "instagram-token") setSetup(null);
+      if (data.action === "instagram-token" || data.action === "facebook-page") setSetup(null);
     } catch (error) { setNotice(error instanceof Error ? error.message : "The channel action failed."); await load(); }
     finally { actionInFlight.current = false; setBusy(null); }
   }
@@ -74,22 +74,30 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
     {notice && <p role="status" className="mt-3 rounded-lg border border-[#b6c4a3] bg-[#edf1e5] p-3 text-xs leading-5 text-[#365122]">{notice}</p>}
     {loading ? <p className="mt-4 flex items-center gap-2 text-xs text-[#59634d]"><Loader2 className="h-4 w-4 animate-spin"/>Loading channels…</p> : <div className={`mt-4 grid gap-3 ${compact ? "" : "xl:grid-cols-2"}`}>
       {channels.map((channel) => {
-        const platform = channel.platform, Icon = platform === "youtube" ? Play : Camera;
+        const platform = channel.platform, Icon = platform === "youtube" ? Play : platform === "facebook" ? Facebook : Camera;
         return <div key={platform} className="rounded-xl border border-[#c4cfb5] bg-[#f5f7ef] p-4">
           <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 text-sm font-semibold"><Icon className={`h-4 w-4 ${platform === "youtube" ? "text-[#b32c24]" : "text-[#a72f69]"}`}/>{names[platform]}</span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${channel.connected ? "bg-[#e0f0df] text-[#245b2e]" : "bg-[#fff0ce] text-[#80571b]"}`}>{channel.connected ? "Connected" : channel.state === "needs_attention" ? "Reconnect needed" : "Not connected"}</span></div>
-          <p className="mt-2 text-xs text-[#59634d]">{channel.name || (platform === "instagram" ? `Intended account: ${socialHandle("instagram")}` : "Choose your YouTube channel")}</p>
+          <p className="mt-2 text-xs text-[#59634d]">{channel.name || (platform === "instagram" ? `Intended account: ${socialHandle("instagram")}` : platform === "facebook" ? "Connect the Page linked to your verified Instagram account" : "Choose your YouTube channel")}</p>
           {channel.verifiedAt && <p className="mt-1 text-[10px] text-[#59634d]">Last verified {new Date(channel.verifiedAt).toLocaleString()}</p>}
           {channel.error && <p className="mt-2 text-xs text-[#80571b]">{channel.error}</p>}
           <p className={`mt-2 text-xs ${channel.publishReady ? "text-[#245b2e]" : "text-[#59634d]"}`}>{channel.publishReady ? "Ready for confirmed uploads" : channel.publishReason || "Uploading is not authorized yet."}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {(channel.connected || channel.state === "needs_attention") && <><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, { action: "verify" })}>{busy === platform ? <Loader2 className="h-3 w-3 animate-spin"/> : <RefreshCw className="h-3 w-3"/>}Check connection</button><button className={button} disabled={Boolean(busy)} onClick={() => void action(platform, {}, "DELETE")}>Disconnect</button></>}
-            {!channel.connected && <button className={button} disabled={Boolean(busy)} onClick={() => channel.configured && channel.oauthAvailable ? void action(platform, { action: "connect" }) : showSetup(channel)}>{busy === platform ? "Connecting…" : `Connect ${names[platform]}`}</button>}
+            {!channel.connected && <button className={button} disabled={Boolean(busy)} onClick={() => channel.configured && channel.oauthAvailable ? void action(platform, { action: "connect" }) : showSetup(channel)}>{busy === platform ? "Connecting…" : platform === "facebook" ? "Connect linked Facebook Page" : `Connect ${names[platform]}`}</button>}
             {platform === "youtube" && !channel.publishReady && <button className={button} disabled={Boolean(busy)} onClick={() => channel.configured ? void action(platform, { action: "connect", intent: "upload" }) : showSetup(channel)}>Enable YouTube uploads</button>}
-            <a className={button} href={platform === "youtube" ? "https://www.youtube.com/upload" : "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer">{platform === "youtube" ? "Open YouTube upload" : "Open Instagram · Create"}<ExternalLink className="h-3 w-3"/></a>
+            <a className={button} href={platform === "youtube" ? "https://www.youtube.com/upload" : platform === "facebook" ? "https://business.facebook.com/" : "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer">{platform === "youtube" ? "Open YouTube upload" : platform === "facebook" ? "Open Meta Business Suite" : "Open Instagram · Create"}<ExternalLink className="h-3 w-3"/></a>
             <button className={button} disabled={Boolean(busy)} onClick={() => showSetup(channel)}>{setup === platform ? "Close setup" : "Connection setup"}</button>
           </div>
           {setup === platform && <div className="mt-4 space-y-3 border-t border-[#c4cfb5] pt-4">
-            {platform === "youtube" ? <><p className="text-xs leading-5 text-[#59634d]">In Google Cloud, enable YouTube Data API v3, configure the OAuth consent screen with your account as a test user, then create a Web application OAuth client. Add this exact redirect URI:</p><code className="block break-all rounded-lg bg-[#edf1e5] p-2 text-[11px] text-[#59634d]">{channel.redirectUri}</code><a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Open Google credentials<ExternalLink className="h-3 w-3"/></a><p className="text-xs text-[#59634d]">Connect verifies your channel with read-only access. Enable YouTube uploads requests separate upload consent; connecting alone never publishes anything or enables a paid AI service.</p></> : <>
+            {platform === "facebook" ? <>
+              <p className="text-xs leading-5 text-[#59634d]">Phoenix verifies only the Facebook Page already linked to your connected Instagram account. Personal profiles and other Pages cannot be selected. Connecting does not publish a video.</p>
+              <p className="text-xs leading-5 text-[#59634d]">The Facebook User token needs pages_show_list, pages_read_engagement and pages_manage_posts for that Page, plus permission to create content. Identity verification alone does not enable posting. If the saved Instagram token lacks these permissions, authorize them in the same Meta app and paste a fresh User token below.</p>
+              <a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Open Graph API Explorer · Facebook User token<ExternalLink className="h-3 w-3"/></a>
+              <form className="space-y-3" onSubmit={event => { event.preventDefault(); if (!busy) void action("facebook", { action: "facebook-page", ...(credentials.accessToken.trim() ? { accessToken: credentials.accessToken } : {}) }); }}>
+                <label className="block text-xs">Fresh Facebook User token (optional)<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={16000} className={field} value={credentials.accessToken} onChange={event => setCredentials({ ...credentials, accessToken: event.target.value })} placeholder="Leave blank to check the saved linked-account token"/></label>
+                <button type="submit" className={button} disabled={Boolean(busy)}>{busy === platform ? <Loader2 className="h-3 w-3 animate-spin"/> : null}Verify and connect linked Page</button>
+              </form>
+            </> : platform === "youtube" ? <><p className="text-xs leading-5 text-[#59634d]">In Google Cloud, enable YouTube Data API v3, configure the OAuth consent screen with your account as a test user, then create a Web application OAuth client. Add this exact redirect URI:</p><code className="block break-all rounded-lg bg-[#edf1e5] p-2 text-[11px] text-[#59634d]">{channel.redirectUri}</code><a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Open Google credentials<ExternalLink className="h-3 w-3"/></a><p className="text-xs text-[#59634d]">Connect verifies your channel with read-only access. Enable YouTube uploads requests separate upload consent; connecting alone never publishes anything or enables a paid AI service.</p></> : <>
               <p className="text-xs leading-5 text-[#59634d]">Use a Creator or Business account. An Instagram Login token connects directly without a Facebook Page, but this local-file uploader currently supports Facebook Login. Link your professional Instagram account to its Facebook Page and authorize that Page.</p>
               <p className="text-xs leading-5 text-[#59634d]">For uploading from Graph API Explorer, grant instagram_basic, instagram_content_publish, pages_show_list and pages_read_engagement. Add instagram_manage_insights for automatic video performance feedback. Page roles granted through Business Manager may additionally require ads_read. An accepted identity-only token is not publishing permission.</p>
               <a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Open Graph API Explorer · Facebook Login tokens<ExternalLink className="h-3 w-3"/></a>
@@ -102,12 +110,12 @@ export default function ChannelConnections({ compact = false }: { compact?: bool
               <p className="text-xs text-[#59634d]">Local HTTP is supported for token verification. No token is displayed in connection status and nothing is posted by connecting.</p>
             </>}
             {platform === "instagram" && <div className="space-y-2"><h3 className="text-xs font-semibold">Meta app credentials · location search</h3><p className="text-xs leading-5 text-[#59634d]">Use App settings → Basic in the same Meta app that issued your saved Facebook Login token. These fields work on localhost; adding the app for the first time retains that token connection. Name lookup also needs Meta&apos;s Pages Search access. No ads, payment or publishing happens here.</p><a className="inline-flex items-center gap-1 text-xs text-[#365122] underline" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">Open Meta app settings<ExternalLink className="h-3 w-3"/></a></div>}
-            <form onSubmit={(event) => { event.preventDefault(); if (!busy) void action(platform, { action: "configure", clientId: credentials.clientId, clientSecret: credentials.clientSecret }); }} className="space-y-3">
+            {platform !== "facebook" && <form onSubmit={(event) => { event.preventDefault(); if (!busy) void action(platform, { action: "configure", clientId: credentials.clientId, clientSecret: credentials.clientSecret }); }} className="space-y-3">
               <label className="block text-xs">{platform === "youtube" ? "OAuth client ID" : "Meta app ID"}<input className={field} value={credentials.clientId} onChange={(event) => setCredentials({ ...credentials, clientId: event.target.value })} autoComplete="off" maxLength={500} required/></label>
               <label className="block text-xs">{platform === "youtube" ? "OAuth client secret" : "Meta app secret"}<input type="password" className={field} value={credentials.clientSecret} onChange={(event) => setCredentials({ ...credentials, clientSecret: event.target.value })} autoComplete="off" maxLength={2000} placeholder={channel.hasClientSecret ? "Saved · leave blank to keep" : "Enter the app secret"} required={!channel.hasClientSecret}/></label>
               {channel.clientId && credentials.clientId.trim() !== channel.clientId && <p className="text-xs text-[#80571b]">Replacing the saved app ID disconnects this channel. Reconnect with the new app after saving.</p>}
               <div className="flex flex-wrap gap-2"><button type="submit" className={button} disabled={Boolean(busy) || !credentials.clientId.trim()}>Save app credentials</button>{channel.configured && channel.oauthAvailable && <button type="button" className={button} disabled={Boolean(busy)} onClick={() => void action(platform, { action: "connect", ...(platform === "youtube" ? { intent: "upload" } : {}) })}>{platform === "youtube" ? "Authorize YouTube uploads" : `Connect ${names[platform]}`}</button>}</div>
-            </form>
+            </form>}
             <p className="text-[10px] leading-4 text-[#59634d]">Secrets are encrypted in this computer&apos;s private storage. Each finished video asks for your final approval before any upload. Manual download and posting links remain available.</p>
           </div>}
         </div>;

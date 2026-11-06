@@ -81,6 +81,51 @@ test("the intended Instagram handle stays separate from verified account identit
   assert.match(h.text, /Not connected/);
 });
 
+test('linked Facebook Page setup checks the saved token without choosing another Page or starting OAuth', async t => {
+  const ready = [status('instagram', { connected: true, name: '@verified_fixture' }), status('facebook')];
+  const requests = environment(t, ready, async (url, options) => {
+    assert.equal(url, '/api/channels/facebook');
+    assert.deepEqual(JSON.parse(options.body), { action: 'facebook-page' });
+    return Response.json({ channels: [ready[0], status('facebook', { connected: true, publishReady: true, name: 'Verified linked Page' })] });
+  });
+  const h = hooks(); await h.flush();
+  assert.match(h.text, /Connect the Page linked to your verified Instagram account/);
+  button(h, 'Connect linked Facebook Page').props.onClick(); await h.flush();
+  assert.equal(requests.filter(item => item.method).length, 0, 'Opening setup is inert');
+  const token = field(h, 'Fresh Facebook User token (optional)');
+  assert.equal(token.props.type, 'password'); assert.equal(token.props.autoComplete, 'off');
+  assert.equal(token.props.spellCheck, false);
+  assert.match(h.text, /pages_manage_posts/); assert.match(h.text, /Identity verification alone does not enable posting/);
+  assert.equal(nodes(h.tree, node => node.type === 'input' && node.props.inputMode === 'numeric').length, 0);
+  assert.equal(nodes(h.tree, node => node.type === 'form' && text(node).includes('Meta app ID')).length, 0);
+  const form = nodes(h.tree, node => node.type === 'form')[0];
+  form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.equal(requests.filter(item => item.method === 'POST').length, 1);
+  assert.match(h.text, /Verified linked Page/); assert.match(h.text, /Ready for confirmed uploads/);
+  assert.equal(nodes(h.tree, node => node.type === 'form').length, 0);
+});
+
+test('a fresh Facebook User token remains private and a permission error never creates a connected Page', async t => {
+  let attempts = 0;
+  const ready = [status('facebook')];
+  const requests = environment(t, ready, async (url, options) => {
+    assert.equal(url, '/api/channels/facebook');
+    assert.deepEqual(JSON.parse(options.body), { action: 'facebook-page', accessToken: 'Authorization: Bearer fixture_fresh_user_token' });
+    return ++attempts === 1 ? Response.json({ error: 'Authorize pages_manage_posts for the linked Page.' }, { status: 400 })
+      : Response.json({ channels: [status('facebook', { connected: true, publishReady: true, name: 'Verified Page' })] });
+  });
+  const h = hooks(); await h.flush(); button(h, 'Connect linked Facebook Page').props.onClick(); await h.flush();
+  field(h, 'Fresh Facebook User token (optional)').props.onChange({ target: { value: 'Authorization: Bearer fixture_fresh_user_token' } }); await h.flush();
+  nodes(h.tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} }); await h.flush();
+  assert.match(h.text, /Authorize pages_manage_posts/); assert.match(h.text, /Not connected/);
+  assert.doesNotMatch(h.text, /fixture_fresh_user_token/);
+  assert.equal(field(h, 'Fresh Facebook User token (optional)').props.value, 'Authorization: Bearer fixture_fresh_user_token');
+  nodes(h.tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} }); await h.flush();
+  button(h, 'Connection setup').props.onClick(); await h.flush();
+  assert.equal(field(h, 'Fresh Facebook User token (optional)').props.value, '');
+  assert.equal(requests.filter(item => item.method === 'POST').length, 2);
+});
+
 test('localhost Meta app credentials are visible, private and saveable without starting OAuth or replacing the connected token', async t => {
   const ready = [status('youtube'), status('instagram', { connected: true, state: 'connected', name: '@verified_fixture', loginType: 'facebook', publishReady: true })];
   const requests = environment(t, ready, async (url, options) => {

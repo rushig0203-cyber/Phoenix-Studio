@@ -254,6 +254,18 @@ test('Generated and Posted views separate confirmed uploads while category and c
   assert.match(text(h.tree), /Posting history could not be confirmed/);
 });
 
+test('a confirmed Facebook Page post counts once in Posted and uses the correct label and link', t => {
+  const remoteUrl = 'https://www.facebook.com/reel/123456789/';
+  const h = harness(t, [fixture('fb-posted', 'Facebook Page video', { publication: { status: 'POSTED', postedTo: [{ platform: 'facebook', remoteId: '123456789', remoteUrl }] } }),
+    fixture('new-video', 'Unposted video')]);
+  assert.deepEqual(h.titles(), ['Unposted video']);
+  h.button('Posted · 1').props.onClick(); h.render();
+  assert.deepEqual(h.titles(), ['Facebook Page video']);
+  assert.match(text(h.tree), /Confirmed Instagram Reels, Facebook Page Reels or YouTube/);
+  const link = nodes(h.tree, node => node.type === 'a' && node.props.href === remoteUrl)[0];
+  assert.equal(text(link), 'Facebook Page ↗'); assert.doesNotMatch(text(h.tree), /Posted to YouTube/);
+});
+
 test('each posting view has independent bounded paging and switching closes the single preview', t => {
   const posted = { status: 'POSTED', postedTo: [{ platform: 'instagram', remoteId: '123' }] };
   const records = Array.from({ length: 20 }, (_, index) => fixture(`split-${index}`, `Split video ${index}`, index < 8 ? { publication: posted } : {}));
@@ -276,5 +288,5 @@ test('an older posted output stays Generated with clear version wording and Post
   assert.deepEqual(h.titles(), ['Revised video']);
   assert.match(text(h.tree), /An earlier version was posted; this output is new or changed/);
   h.button('Posted · 0').props.onClick(); h.render();
-  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed Reel or YouTube posts yet/);
+  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed Instagram, Facebook Page or YouTube posts yet/);
 });
