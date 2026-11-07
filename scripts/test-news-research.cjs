@@ -55,6 +55,17 @@ test('a concise news brief preserves source qualifications and a complete ending
   assert.equal(research.text, 'Officials alleged a breach. The operator denied responsibility. The cause remains unverified.');
 });
 
+test('headline shorthand cannot remove material current-status qualifications from the article body', () => {
+  const research = { ...news.parseNewsFeed(item(), now)[0], title: 'Court rules candidate cannot stand', fetchedAt: new Date().toISOString(), text: 'The court invalidated the nomination. The party will appeal. The electoral commission final list still includes the candidate.', limitation: 'Single source' };
+  const prompt = news.newsWritingContext(research);
+  assert.ok(prompt.includes(research.text));
+  assert.match(prompt, /Read the complete article body, not only its headline or summary/);
+  assert.match(prompt, /electoral list still includes them/);
+  assert.match(prompt, /consistentFacts editorial check, compare every narrated assertion with this source body/);
+  assert.match(prompt, /what is actually decided and what remains unresolved at the end/);
+  assert.match(prompt, /final substantive sentence remains the actual conclusion/);
+});
+
 test('research fetches only a server-selected article; redirects and oversized responses fail', async () => {
   const original = global.fetch;
   const calls = [];
