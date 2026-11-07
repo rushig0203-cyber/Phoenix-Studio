@@ -38,6 +38,15 @@ test('posting copy uses a complete narration hook and skips generic production n
   assert.equal(editor.stockPostCopy('This video shows a process. Okay.', 'Market'), 'Market');
 });
 
+test('the ending review examines the actual final payoff rather than unrelated earlier evidence', async () => {
+  let prompt = '';
+  global.fetch = async (_, init) => { prompt = JSON.parse(init.body).prompt; return Response.json({ response: JSON.stringify(verdict()) }); };
+  assert.equal((await editor.editStockNarration(brief)).script, script);
+  assert.match(prompt, /inspect the final substantive sentence itself/);
+  assert.match(prompt, /trail into a dependent clause, repeat an earlier point/);
+  assert.match(prompt, /do not invent resolution/);
+});
+
 test('approval retains grounded findings and caches only the same model/policy/feedback', async () => {
   const count = responses([verdict(), verdict()]); const history = [];
   const result = await editor.editStockNarration(brief, async () => {}, async attempt => history.push(attempt));
@@ -336,7 +345,7 @@ test('business writing retains feasible visuals and the reviewer evaluates the p
   const input = { topic: 'Repair updates with a clear next action', duration: 45, creationType: 'business' };
   assert.equal(await createStockScript(input), script);
   assert.equal(prompts.length, 3);
-  assert.equal(input.editorial.version, 6);
+  assert.equal(input.editorial.version, 7);
   assert.ok(input.editorial.findings.every(finding => script.includes(finding.evidence)));
   assert.notEqual(editor.editorialFingerprint(brief), editor.editorialFingerprint({ ...brief, creationType: 'business' }));
 });

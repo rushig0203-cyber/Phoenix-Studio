@@ -1,5 +1,24 @@
 # Phoenix Studio implementation and verified releases
 
+## November 7 — next news presentation and Instagram music fixes in verification
+
+- Source work now ranks supported Instagram music fit before trending membership
+  and removes animal/train-only guesses. Narration, songs, news and sensitive or
+  devotional observations retain their soundtrack rather than an unrelated match.
+- News writing uses a short sourced bulletin with necessary denials and a complete
+  ending. Its render requests smaller unboxed outlined text, measured short phrases
+  above social controls and modestly brisk speech without random background music.
+  The ending editor now explicitly examines the actual final substantive sentence.
+- New phrase grouping retains every spoken word and uses only real speech events;
+  it cannot divide an observed cue by guessing timestamps. Existing shot timing
+  remains unchanged. Renderer capability checks reject a stale caption adapter.
+- These changes are not installed yet. Keep the verified release below running
+  until remote Windows build and idle activation pass. Large UI fixture tests run
+  remotely; their compiler cannot fit the laptop's small per-process test heap.
+- The source-library audit in `docs/FREE_MEDIA_SOURCES.md` distinguishes connected
+  video providers from proposed image/archive adapters. No new API is claimed
+  connected, and no paid key or arbitrary internet-media scraper was added.
+
 ## November 7 — installed caption, episode, singing and news-visual release
 
 - Installed source `b2baa4091fd9c22bc803568da0f184c614234a89` passed Windows

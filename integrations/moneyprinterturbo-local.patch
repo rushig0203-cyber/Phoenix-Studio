@@ -27,7 +27,7 @@ index 8c90c58..a3df813 100644
  
      raise HttpException(
 diff --git a/app/models/schema.py b/app/models/schema.py
-index c4d12e1..17d06e2 100644
+index c4d12e1..470728a 100644
 --- a/app/models/schema.py
 +++ b/app/models/schema.py
 @@ -38,11 +38,11 @@ class VideoAspect(str, Enum):
@@ -58,7 +58,7 @@ index c4d12e1..17d06e2 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +101,11 @@ class VideoParams(BaseModel):
+@@ -95,6 +101,12 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
@@ -67,10 +67,11 @@ index c4d12e1..17d06e2 100644
 +    phoenix_artifacts_version: Optional[Literal[1]] = None
 +    phoenix_local_voice_protocol: Optional[Literal["windows-speech-events-v1"]] = None
 +    phoenix_news_visual_policy: Optional[Literal["context-only-no-supplement-v1"]] = None
++    phoenix_news_caption_style: Optional[Literal["measured-phrases-v1"]] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,7 +142,10 @@ class VideoParams(BaseModel):
+@@ -131,7 +143,10 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -83,7 +84,7 @@ index c4d12e1..17d06e2 100644
      video_script_prompt: str = Field(default="", max_length=2000)
      custom_system_prompt: str = Field(default="", max_length=8000)
 diff --git a/app/services/task.py b/app/services/task.py
-index a310390..77895c4 100644
+index a310390..0721cc5 100644
 --- a/app/services/task.py
 +++ b/app/services/task.py
 @@ -13,13 +13,14 @@ from loguru import logger
@@ -181,7 +182,7 @@ index a310390..77895c4 100644
  
          _progress += 50 / params.video_count / 2
          sm.state.update_task(task_id, progress=_progress)
-@@ -1410,13 +1429,33 @@ def _run_pipeline(
+@@ -1410,13 +1429,38 @@ def _run_pipeline(
      sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
  
      # 5. Get video materials
@@ -208,6 +209,11 @@ index a310390..77895c4 100644
 +                task_id, params, subtitle_path, measured_audio_duration,
 +                lambda percent, stage: sm.state.update_task(task_id, progress=percent, phoenix_stage=stage),
 +            )
++            if getattr(params, "phoenix_news_caption_style", None) == "measured-phrases-v1":
++                subtitle_path = phoenix_storyboard.save_news_captions(
++                    video_script, getattr(sub_maker, "cues", None), measured_audio_duration,
++                    path.join(utils.task_dir(task_id), "subtitle.srt"),
++                )
 +            downloaded_videos = list(dict.fromkeys(shot["path"] for shot in storyboard_timeline))
 +        except Exception as exc:
 +            return _mark_task_failed(task_id, "storyboard", str(exc))
@@ -222,7 +228,7 @@ index a310390..77895c4 100644
      if not downloaded_videos:
          return _mark_task_failed(
              task_id,
-@@ -1449,6 +1488,7 @@ def _run_pipeline(
+@@ -1449,6 +1493,7 @@ def _run_pipeline(
              audio_file,
              subtitle_path,
              audio_duration,
@@ -230,7 +236,7 @@ index a310390..77895c4 100644
          )
      )
  
-@@ -1466,7 +1506,8 @@ def _run_pipeline(
+@@ -1466,7 +1511,8 @@ def _run_pipeline(
      # 7. 先完成视频生成任务，再按需提交跨平台发布。第三方上传可能耗时
      # 数分钟，不应阻塞视频结果返回，也不能反向影响已经生成的成片。
      cross_post_enabled = (
@@ -240,7 +246,7 @@ index a310390..77895c4 100644
          and upload_post.upload_post_service.auto_upload
      )
      platforms = (
-@@ -1493,7 +1534,11 @@ def _run_pipeline(
+@@ -1493,7 +1539,11 @@ def _run_pipeline(
          "cross_post_error": None,
          "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
          "warnings": generation_warnings or None,
@@ -532,10 +538,10 @@ index 2176fa1..2fc193a 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..403c476
+index 0000000..29fe5e3
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,609 @@
+@@ -0,0 +1,633 @@
 +"""Narration-timed, stock-only edits. No synthetic fallback and no global footage loop."""
 +
 +import hashlib
@@ -767,6 +773,30 @@ index 0000000..403c476
 +    if first_line != len(script_lines) or not result:
 +        raise ValueError(message)
 +    return result
++
++
++def news_caption_lines(script):
++    """Short complete text groups; timing is supplied only by real speech events."""
++    if not isinstance(script, str) or not 1 <= len(script.strip()) <= 24000:
++        raise ValueError("News captions require a bounded, complete narration.")
++    result, current = [], []
++    for token in script.split():
++        if current and (len(current) >= 6 or len(" ".join([*current, token])) > 42):
++            result.append(" ".join(current))
++            current = []
++        current.append(token)
++        if re.search(r"[.!?;।][\"'’”)]*$", token):
++            result.append(" ".join(current))
++            current = []
++    if current:
++        result.append(" ".join(current))
++    return result
++
++
++def save_news_captions(script, observed_cues, audio_duration, filename):
++    # edge_caption_cues merges groups when an observed cue spans their boundary;
++    # never divide a provider cue or guess word timestamps for prettier subtitles.
++    return save_edge_captions(news_caption_lines(script), observed_cues, audio_duration, filename)
 +
 +
 +def save_edge_captions(script_lines, observed_cues, audio_duration, filename):

@@ -23,6 +23,7 @@ import { generateWritingModel, withWritingSession, isWritingWaitError, WritingQu
 import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { NEWS_STOCK_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender } from "./newsVisualPolicy";
+import { newsPresentation, supportsNewsPresentation } from "./newsPresentation";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
 import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
@@ -392,6 +393,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false, ne
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
   if (!supportsNativeStockPlayback(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for original-speed footage. Phoenix will not slow down or freeze clips to fill narration; existing exports are retained.");
   if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for news footage. Phoenix will not let a longer narration silently add unrelated supplemental stock; existing exports are retained.");
+  if (news && !supportsNewsPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for measured news captions before creating this report. Existing videos and narration are retained.");
   if (localVoice && !supportsLocalStockVoice(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the stock renderer for offline local narration. The selected local voice will not be replaced with an online voice.");
 }
 
@@ -694,10 +696,10 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
     return script;
   }
   return withWritingSession(async () => {
-  const targetWords = stockScriptTargetWords(input.duration);
+  const targetWords = input.research && input.autoDuration ? Math.min(90, stockScriptTargetWords(input.duration)) : stockScriptTargetWords(input.duration);
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const prompt = `Write an original ${input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
+  const prompt = `Write an original ${input.research ? "neutral, source-grounded news bulletin" : input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${input.research ? "Explain the main sourced development, its necessary context and consequence or uncertainty. Do not turn the report into a tutorial, moral or fictional story. Necessary attribution and denials take priority over a word target." : stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
     if (!rawScript) {
@@ -1095,6 +1097,7 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       text_background_color: true,
       stroke_color: "#000000",
       stroke_width: 2,
+      ...(prepared.research ? newsPresentation(prepared.aspect) : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     });

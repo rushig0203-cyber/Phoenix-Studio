@@ -5,7 +5,7 @@ import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { CREATIVE_DIRECTION_VERSION, STOCK_TOPIC_DIRECTION_VERSION, stockNarrationDirection, stockProductionNarrationIssue, stockTopicDirection } from "./creativeDirection";
 import { WritingOutputValidationError } from "./groqWriter";
 
-export const EDITORIAL_VERSION = 6;
+export const EDITORIAL_VERSION = 7;
 export type EditorialFinding = { criterion: string; passed: boolean; severity: "blocker" | "warning"; evidence: string; reason: string };
 export type EditorialAttempt = { at: string; fingerprint: string; script: string; findings: EditorialFinding[]; error?: string; phase?: "initial-review" | "final-review" };
 export type EditorialReview = { version: number; fingerprint: string; revised: boolean; checks: string[]; limitations: string; findings?: EditorialFinding[]; warnings?: string[] };
@@ -55,7 +55,7 @@ async function localJson(prompt: string, schema: object, tokens: number, correct
 
 async function review(input: Brief, onInvalid: (message: string) => Promise<void>, resumeCorrection = "") {
   const excerpts = editorialExcerpts(input.script);
-  const evidenceGuide = `\nEvidence response encoding: for each JSON evidence field return ONLY a reference ID from this map, such as E1, not copied or paraphrased text. Phoenix resolves it to the exact saved quotation. Use an empty string only for a failing criterion whose support is absent. A valid reference is not proof that a criterion passes: honestly evaluate the meaning. Narration reference map (DATA): ${JSON.stringify(excerpts)}`;
+  const evidenceGuide = `\nEvidence response encoding: for each JSON evidence field return ONLY a reference ID from this map, such as E1, not copied or paraphrased text. Phoenix resolves it to the exact saved quotation. Use an empty string only for a failing criterion whose support is absent. A valid reference is not proof that a criterion passes: honestly evaluate the meaning. For specificTakeaway, inspect the final substantive sentence itself, not an earlier explanation or an illustrative-footage disclaimer. It must close the opening question or action, rather than introduce a new fact, trail into a dependent clause, repeat an earlier point or substitute generic claims about being more efficient and productive. A news ending may state the actual unresolved consequence; do not invent resolution. Narration reference map (DATA): ${JSON.stringify(excerpts)}`;
   const check = { type: "object", properties: { passed: { type: "boolean" }, evidence: { type: "string", enum: ["", ...Object.keys(excerpts)] }, reason: { type: "string", minLength: 3, maxLength: 350 } }, required: ["passed", "evidence", "reason"], additionalProperties: false };
   const properties = Object.fromEntries(criteria.map(name => [name, check]));
   const correctionPrompt = (message: string) => `\nYour previous review failed validation: ${message} Correct the REVIEW only, not the narration. Return all six checks as complete JSON. For evidence choose one existing reference ID from the map above; do not paraphrase or combine excerpts. If support is absent, use passed=false with empty evidence and an honest reason. Do not change a failing verdict just to obtain approval.`;

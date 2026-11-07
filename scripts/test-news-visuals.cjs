@@ -116,6 +116,8 @@ test('central stock submission rejects legacy news renderers before writing or r
     await generation.requireStockStoryboardRenderer(true, false);
     await assert.rejects(generation.requireStockStoryboardRenderer(true, true), /news footage/);
     properties.phoenix_news_visual_policy = { anyOf: [{ const: policy.NEWS_STOCK_VISUAL_POLICY }, { type: 'null' }] };
+    await assert.rejects(generation.requireStockStoryboardRenderer(true, true), /measured news captions/);
+    properties.phoenix_news_caption_style = { anyOf: [{ const: 'measured-phrases-v1' }, { type: 'null' }] };
     await generation.requireStockStoryboardRenderer(true, true);
   } finally { global.fetch = originalFetch; if (base === undefined) delete process.env.MPT_BASE_URL; else process.env.MPT_BASE_URL = base; }
 });

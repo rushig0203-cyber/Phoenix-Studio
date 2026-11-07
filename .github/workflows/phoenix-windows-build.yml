@@ -140,6 +140,7 @@ jobs:
           scripts/test-unavailable-stock-queries.cjs
           scripts/test-creation-drafts.cjs
           scripts/test-news-research.cjs
+          scripts/test-news-presentation.cjs
           scripts/test-news-visuals.cjs
           scripts/test-service-health.cjs
           scripts/test-stock-editorial.cjs
@@ -196,7 +197,7 @@ jobs:
           npx --no-install eslint
           src/lib/reelMusic.ts src/lib/postingEvidence.ts
           src/lib/stockProviders.ts src/lib/openStockCatalog.ts
-          src/lib/generation.ts
+          src/lib/generation.ts src/lib/newsPresentation.ts
           src/lib/voiceStudio.ts src/lib/kidsRenderer.ts
           src/lib/localSinging.ts src/lib/hostedSinging.ts src/lib/songAudio.ts
           src/lib/creationDraftTypes.ts

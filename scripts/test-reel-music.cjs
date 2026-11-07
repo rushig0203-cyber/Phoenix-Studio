@@ -99,7 +99,7 @@ test('catalog ranking returns at most six stable, unique tracks after comparing 
   assert.deepEqual(result.map(value=>value.recommendation.rank),[1,2,3,4,5,6]);
 });
 
-test('eligible Meta trending music outranks a stronger editorial seed without letting unrelated trends bypass fit',()=>{
+test('a stronger editorial fit outranks weaker trending metadata without letting unrelated trends bypass fit',()=>{
   const fetchedAt='2026-10-18T10:20:30.000Z';
   const result=rankMusicCatalog([
     {...track('Holocene','Bon Iver','501'),discovery:{source:'keyword-search',fetchedAt,position:0}},
@@ -107,10 +107,20 @@ test('eligible Meta trending music outranks a stronger editorial seed without le
     {...track('Dance Party (Instrumental)','Fixture composer','503'),discovery:{source:'meta-trending',fetchedAt,position:0}},
     {...track('Calm English Song','Unknown singer','504'),discovery:{source:'meta-trending',fetchedAt,position:1}},
   ],brief());
-  assert.deepEqual(result.map(candidate=>candidate.audio_id),['502','501']);
-  assert.deepEqual(result[0].recommendation.discovery,{source:'meta-trending',fetchedAt,position:4});
-  assert.equal(result[1].recommendation.discovery.source,'keyword-search');
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['501','502']);
+  assert.equal(result[0].recommendation.discovery.source,'keyword-search');
+  assert.deepEqual(result[1].recommendation.discovery,{source:'meta-trending',fetchedAt,position:4});
   assert.equal(result[0].discovery,undefined,'Provenance stays in recommendation metadata, outside the saved track configuration');
+});
+
+test('trending breaks a fit-score tie, never a clearly better visual-energy fit',()=>{
+  const fetchedAt='2026-11-07T10:20:30.000Z';
+  const result=rankMusicCatalog([
+    {...track('saman','Ólafur Arnalds','510'),discovery:{source:'keyword-search',fetchedAt,position:0}},
+    {...track('Experience','Ludovico Einaudi','511'),discovery:{source:'meta-trending',fetchedAt,position:0}},
+    {...track('Holocene','Bon Iver','512'),discovery:{source:'meta-trending',fetchedAt,position:1}},
+  ],brief('reflective','low'));
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['512','510','511']);
 });
 
 test('deduplication retains trending membership and provider order rather than alphabetical order',()=>{
@@ -209,6 +219,34 @@ test('invalid stored profiles use bounded saved observations or return no recomm
   assert.equal(result.brief.mood,'playful');assert.equal(result.brief.energy,'medium');
   assert.deepEqual(result.brief.evidenceFrames,[2]);
   assert.equal(musicBriefFromReview(review(['Frame 1: A ceramic bowl on a table.'],{mood:'viral'})),null);
+});
+
+test('legacy animal and location nouns do not imply playful, energetic or adventurous music',()=>{
+  for(const observation of ['A dog sits beside a plain wall.','A butterfly rests on a plain surface.','A train at a station.','Traffic in a city.','A mountain road.','Horses standing together.']) {
+    assert.equal(musicBriefFromReview(review([`Frame 1: ${observation}`])),null,observation);
+  }
+  const resting=musicBriefFromReview(review(['Frame 1: A dog rests on the grass.']));
+  assert.equal(resting.brief.mood,'calm');assert.equal(resting.brief.energy,'low');
+  const playing=musicBriefFromReview(review(['Frame 1: A dog is playing with a ball.']));
+  assert.equal(playing.brief.mood,'playful');
+});
+
+test('legacy serious and devotional context never inherits cheerful music from incidental scenery',()=>{
+  for(const observation of ['An injured dog lies on the grass.','Flowers beside a Krishna statue.','Golden light over a temple.','A Bhagavad Gita book beside leaves.','Trees near a war memorial.','A dog is not playing on the grass.']) {
+    assert.equal(musicBriefFromReview(review([`Frame 1: ${observation}`])),null,observation);
+    assert.equal(musicBriefFromReview(review([`Frame 1: ${observation}`],brief('playful','medium'))),null,observation);
+  }
+});
+
+test('known narration, original songs and news keep their finished soundtrack even with a sampled mood',()=>{
+  for(const audio of ['local-narration','local-narration-music','supplied-song']) {
+    const file=review(['Frame 1: A dog is playing on the grass.'],brief('playful','medium'));
+    file.quality.audio=audio;
+    assert.equal(musicBriefFromReview(file),null,audio);
+  }
+  const news=review(['Frame 1: Golden light on trees.'],brief('warm','low'));
+  news.quality.research={source:'Fixture report'};
+  assert.equal(musicBriefFromReview(news),null);
 });
 
 test('saved-observation fallback ignores title, topic, caption and hashtag templates',()=>{

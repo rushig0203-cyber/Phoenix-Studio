@@ -120,7 +120,7 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
     if (!previous || previous.score < score) candidates.set(track.audio_id, { track, kind, score, reason, order: previous?.order ?? order });
   }
   return [...candidates.values()].map(candidate => ({ ...candidate, discovery: discoveries.get(candidate.track.audio_id) }))
-    .sort((left, right) => Number(right.discovery?.source === "meta-trending") - Number(left.discovery?.source === "meta-trending") || right.score - left.score
+    .sort((left, right) => right.score - left.score || Number(right.discovery?.source === "meta-trending") - Number(left.discovery?.source === "meta-trending")
     || (left.discovery?.position ?? left.order) - (right.discovery?.position ?? right.order) || normalized(left.track.title).localeCompare(normalized(right.track.title))
     || left.track.audio_id.localeCompare(right.track.audio_id)).slice(0, Math.min(6, Math.max(0, limit))).map((candidate, index) => ({
       audio_id: candidate.track.audio_id, title: candidate.track.title, display_artist: candidate.track.display_artist,
@@ -131,21 +131,25 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
 
 /** Uses actual saved frame observations, never a topic/title/hashtag template. */
 export function musicBriefFromReview(file: ReviewFile): { brief: ReelMusicBrief; basis: ReelMusicRecommendation["basis"] } | null {
+  if (file.quality.research || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio)) return null;
   const analysis = file.quality.postingAnalysis;
   if (analysis?.status !== "COMPLETE" || !Array.isArray(analysis.observations) || !analysis.observations.length) return null;
   const observations = analysis.observations.slice(0, 6).filter(value => typeof value === "string").map(value => value.slice(0, 400));
   const evidenceFrames = [...new Set(observations.flatMap(value => { const frame = /^Frame ([1-3]):/.exec(value); return frame ? [Number(frame[1])] : []; }))];
   if (!evidenceFrames.length) return null;
+  const evidence = observations.filter(value => /^Frame [1-3]:/.test(value)).join(" ").toLowerCase();
+  // A visible animal, road or flower cannot establish a comic, adventurous or
+  // devotional soundtrack. Keep the saved audio when context needs more than scenery.
+  if (/\b(?:injur\w*|dead|death|funeral|memorial|victims?|police|soldiers?|protest\w*|courts?|courtrooms?|hospitals?|war|disaster\w*|krishna|arjuna|bhagavad|gita|deit\w*|religious|devotional|temples?|prayer|worship|scriptures?)\b|कृष्ण|अर्जुन|गीता/iu.test(evidence)
+      || /\b(?:not|never|no|without)\b.{0,24}\b(?:play\w*|calm|peaceful|quiet|relax\w*|warm|golden|sunrise|sunset)\b/i.test(evidence)) return null;
   const profile = reelMusicBriefSchema.safeParse(analysis.musicBrief);
   if (profile.success && profile.data.evidenceFrames.every(frame => evidenceFrames.includes(frame))) return { brief: profile.data, basis: "sampled-frames" };
-  const evidence = observations.filter(value => /^Frame [1-3]:/.test(value)).join(" ").toLowerCase();
   const match: [RegExp, ReelMusicBrief["mood"], ReelMusicBrief["energy"]][] = [
-    [/\b(?:dogs?|pupp(?:y|ies)|kittens?|cats?|play(?:ing|ful)|butterfl(?:y|ies))\b/, "playful", "medium"],
+    [/\b(?:play(?:s|ing|ful)|frolick\w*)\b/, "playful", "medium"],
     [/\b(?:sunset|sunrise|golden|orange light|warm light)\b/, "warm", "low"],
-    [/\b(?:city|traffic|neon|skate\w*|cycl\w*|running|runner)\b/, "energetic", "medium"],
+    [/\b(?:skateboard(?:ing)?|cycl(?:ing|ists?)|running|runners?)\b/, "energetic", "medium"],
     [/\b(?:rain|raindrops|fog|mist|snow)\b/, "reflective", "low"],
-    [/\b(?:mountain|mountains|train|road|roads|hiking)\b/, "uplifting", "medium"],
-    [/\b(?:forest|trees|leaves|water|waves|sea|ocean|clouds|grass|horses?)\b/, "calm", "low"],
+    [/\b(?:forest|trees|leaves|water|waves|sea|ocean|clouds|grass)\b/, "calm", "low"],
   ];
   const found = match.find(([cue]) => cue.test(evidence));
   if (!found) return null;

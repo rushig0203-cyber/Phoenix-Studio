@@ -40,6 +40,21 @@ test('source context retains provenance, uncertainty and freshness requirements'
   assert.throws(() => news.newsWritingContext({ ...research, fetchedAt: '2020-01-01' }));
 });
 
+test('a concise news brief preserves source qualifications and a complete ending', () => {
+  const research = { ...news.parseNewsFeed(item(), now)[0], fetchedAt: new Date().toISOString(), text: 'Officials alleged a breach. The operator denied responsibility. The cause remains unverified.', limitation: 'Single source, not independently verified' };
+  const prompt = news.newsWritingContext(research);
+  assert.ok(prompt.includes(JSON.stringify(research)), 'The original source and its denial remain available to the writer.');
+  assert.match(prompt, /news bulletin, not political advocacy, outrage bait, a fictional story or a practical-advice lesson/);
+  assert.match(prompt, /one main development/);
+  assert.match(prompt, /Normally use no more than two supporting facts/);
+  assert.match(prompt, /one main idea each/);
+  assert.match(prompt, /never append background details or repeat information to fill a runtime/);
+  assert.match(prompt, /Brevity must not remove attribution, a material denial or the uncertainty/);
+  assert.match(prompt, /complete qualified sentence rather than cutting it mid-claim/);
+  assert.match(prompt, /Simplify the narration itself rather than dropping spoken claims or qualifications from subtitles/);
+  assert.equal(research.text, 'Officials alleged a breach. The operator denied responsibility. The cause remains unverified.');
+});
+
 test('research fetches only a server-selected article; redirects and oversized responses fail', async () => {
   const original = global.fetch;
   const calls = [];

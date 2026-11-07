@@ -55,6 +55,12 @@ catalogue searches while preserving the saved narration and selected clips.
 Court reports prefer unbranded legal objects, such as a gavel or documents,
 rather than a stock courthouse, flag or judge standing in for the reported
 jurisdiction. This remains illustrative stock, not verified footage of the event.
+New news reports use a concise bulletin: one development, its necessary context
+and a complete qualified ending. Smaller white subtitles with a light outline and
+no background box sit above social controls. Short phrases follow measured speech events;
+no spoken qualification is deleted to shorten a caption. News speech is synthesized
+at a modestly brisk rate, without post-production stretching. Random background
+music is disabled for reports so it cannot contradict the subject or mask narration.
 For narrated videos, sampled frames receive the saved caption window at each
 sample time, including late scenes. Missing timing or silent gaps stay unverified;
 topical similarity alone is not proof of narration-to-picture synchronization.
@@ -92,6 +98,14 @@ If every suitable track is recent, Phoenix reuses the least recent suitable one
 instead of choosing an unrelated mood. Saved soundtrack recipes stay fixed.
 Commons WebM footage can supply picture duration through its video-stream
 duration tag; a longer audio/container duration is never used to extend picture.
+
+Instagram catalogue recommendations rank supported mood/energy fit before trending
+membership. A trend only breaks an equal-fit tie. An animal or train alone does not
+prove playful or adventurous music, and serious/devotional observations do not
+receive a cheerful scenery-based fallback. Original songs and narrated/news outputs
+keep their finished soundtrack. No track listening, beat synchronization or perfect
+musical fit is claimed. See [the free-media source audit](docs/FREE_MEDIA_SOURCES.md)
+for researched libraries, their access limits and which workflows actually use them.
 
 Quality ratings supply bounded guidance for matching future work. Supported
 Instagram performance metrics can guide experiments after the necessary insights
