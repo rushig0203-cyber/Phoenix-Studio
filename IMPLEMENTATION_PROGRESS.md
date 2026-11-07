@@ -1,23 +1,45 @@
 # Phoenix Studio implementation and verified releases
 
-## November 7 — next news presentation and Instagram music fixes in verification
+## November 7 — installed natural news captions, complete endings and music matching
 
-- Source work now ranks supported Instagram music fit before trending membership
-  and removes animal/train-only guesses. Narration, songs, news and sensitive or
+- Installed source `8cd98248678d6a85504d9b83155c16d3a49af578` passed Windows
+  run `42347008701`: 1,581 Node tests, 52 Python checks, lint, full TypeScript
+  and production build, real offline Windows speech and phrase grouping,
+  compiled-worker memory checks, real FFmpeg/public licensed Pexels export and
+  decoding, and the 49-minute synthetic interrupted/resumed episode proof.
+  Both Vercel deployments passed. Builds ran remotely without a large local model.
+- Selected and serving bundle `.next-build-gh-42347008701-1`, build ID
+  `cIgP-AEJiCskDMtnerE3T`, returns dashboard HTTP 200 with healthy manager and
+  worker, and a ready renderer. Guarded idle activation preserved all five
+  owner video/job stores and the exact owner `tsconfig.json` bytes. The Desktop
+  launcher and port 3000 select this same installed bundle.
+- Instagram music ranks metadata fit before trending membership and removes
+  animal/train-only mood guesses. Narration, songs, news and sensitive or
   devotional observations retain their soundtrack rather than an unrelated match.
-- News writing uses a short sourced bulletin with necessary denials and a complete
-  ending. Its render requests smaller unboxed outlined text, measured short phrases
-  above social controls and modestly brisk speech without random background music.
-  The ending editor now explicitly examines the actual final substantive sentence.
-- New phrase grouping retains every spoken word and uses only real speech events;
-  it cannot divide an observed cue by guessing timestamps. Existing shot timing
-  remains unchanged. Renderer capability checks reject a stale caption adapter.
-- These changes are not installed yet. Keep the verified release below running
-  until remote Windows build and idle activation pass. Large UI fixture tests run
-  remotely; their compiler cannot fit the laptop's small per-process test heap.
+  A read-only live catalogue check for the saved Waterfall video returned a calm
+  instrumental matching its sampled-frame recommendation. No upload occurred.
+  This is metadata matching, not audio listening, beat synchronization or a
+  guarantee of access to every song available in the Instagram app.
+- News writing uses a short sourced bulletin with material qualifications and a
+  complete ending. The ending editor examines the actual final substantive
+  sentence; it rejects trailing new details, repetition and a generic payoff.
+  A real free-writer check on the owner's saved public article produced 54 words,
+  retained the electoral-list qualification and closed on the unresolved status.
+  The inspected existing report contained its last spoken word: its weak closing
+  was a writing problem, not a shortened media file. Model-assisted review cannot
+  guarantee every future ending; existing videos were not silently re-rendered.
+- New news renders request smaller white outlined text with no black box,
+  measured short phrases above social controls, and modestly brisk speech without
+  random background music. Phrase grouping retains every spoken word and uses
+  actual speech events, never guessed cue splits. Existing shot timing stays
+  unchanged; capability checks reject a stale renderer. The real offline speech
+  check retained the final cue and complete audio duration.
 - The source-library audit in `docs/FREE_MEDIA_SOURCES.md` distinguishes connected
-  video providers from proposed image/archive adapters. No new API is claimed
-  connected, and no paid key or arbitrary internet-media scraper was added.
+  video providers from proposed image/archive adapters. No new archive adapter
+  was added. Arbitrary Krishna/Gita scene understanding and exact event footage
+  remain separate limitations; a larger catalogue alone does not solve alignment.
+- No failed owner job was retried, no social test post was made and no paid
+  service was added. Provider follow-up automation remains paused.
 
 ## November 7 — installed caption, episode, singing and news-visual release
 
