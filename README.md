@@ -52,6 +52,9 @@ start with a short, complete line from their own narration or lyrics. Report
 captions retain the source and identify illustrative footage. If a generated
 report shot plan fails its context checks, Phoenix tries relevant neutral
 catalogue searches while preserving the saved narration and selected clips.
+Court reports prefer unbranded legal objects, such as a gavel or documents,
+rather than a stock courthouse, flag or judge standing in for the reported
+jurisdiction. This remains illustrative stock, not verified footage of the event.
 For narrated videos, sampled frames receive the saved caption window at each
 sample time, including late scenes. Missing timing or silent gaps stay unverified;
 topical similarity alone is not proof of narration-to-picture synchronization.

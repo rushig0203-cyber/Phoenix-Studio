@@ -31,6 +31,46 @@ test('government-formation reports permit neutral buildings without substituting
   assert.match(policy.newsStockQueryIssue('sea waves',article),/unrelated/);
 });
 
+const courtResearch = { ...research, title: 'Nigerian court rules opposition candidate cannot stand in elections',
+  summary: 'A court ruling determines whether the opposition candidate can stand in the election.', text: 'The report concerns a judicial ruling, not stock footage of the actual court.' };
+
+test('court reports prefer unbranded legal objects even when election context would allow buildings', () => {
+  for (const query of ['gavel', 'legal documents', 'law books', 'scales of justice', 'gavel used in court']) assert.equal(policy.newsStockQueryIssue(query, courtResearch), undefined, query);
+  for (const query of ['courthouse exterior', 'government building', 'parliament building', 'national flags', 'judge holding gavel', 'Nigerian gavel', 'law books and airport runway']) assert.ok(policy.newsStockQueryIssue(query, courtResearch), query);
+  assert.deepEqual(policy.newsContextSearches(courtResearch, 'The opposition can appeal the court ruling.'), ['gavel', 'legal documents', 'law books', 'scales justice']);
+  assert.match(policy.newsStockVisualInstructions(courtResearch), /even when the report also mentions elections/);
+});
+
+test('court catalogue rejects foreign institutions and legal actors while keeping neutral props and ignoring creator names', () => {
+  for (const description of ['PALACIO DA JUSTICA courthouse with national flags', 'PALÁCIO_DA_JUSTIÇA-gavel', 'gavel beside parliament building', 'judge holding a gavel', 'lawyer reviewing legal documents']) assert.ok(policy.newsFootageMetadataIssue(description, 'gavel', courtResearch), description);
+  for (const description of ["judge's gavel on a wooden table", 'gavel used in court', 'unbranded gavel']) assert.equal(policy.newsFootageMetadataIssue(description, 'gavel', courtResearch), undefined, description);
+  const safe = { ...choice(502, 'unbranded-gavel'), creator: 'Palacio da Justica' };
+  assert.deepEqual(footage.rankFootage([choice(501, 'palacio-da-justica-courthouse-flags-gavel'), safe, choice(503, 'judge-holding-gavel')], 'gavel', 15, '9:16', new Set(), undefined, courtResearch).map(result => result.choice.id), [502]);
+  assert.equal(policy.newsFootageMetadataIssue('legal documents on table', 'legal documents', courtResearch), undefined);
+  assert.equal(policy.newsFootageMetadataIssue('law book on table', 'law books', courtResearch), undefined);
+});
+
+test('judicial precedence does not capture executives, lawmakers or courtyard reports', () => {
+  for (const title of ['Executive order changes government offices', 'Lawmakers debate the election bill', 'Government offices renovate the courtyard']) {
+    const report = { ...research, title, summary: 'The report concerns government offices and buildings.', text: title };
+    assert.equal(policy.newsStockQueryIssue('government building exterior', report), undefined, title);
+    assert.deepEqual(policy.newsContextSearches(report, title), ['government building', 'parliament building'], title);
+  }
+});
+
+test('unsafe fresh court plans repair to legal objects without a third writer request or changed narration', async () => {
+  const originalFetch = global.fetch;
+  const replies = [['courthouse exterior', 'government building'], ['parliament building', 'national flags']];
+  global.fetch = async () => { assert.ok(replies.length, 'No third writer request'); return Response.json({ response: JSON.stringify({ queries: replies.shift() }) }); };
+  const script = 'The court ruled that the candidate cannot stand in the election. The report describes the opposition response to that ruling.';
+  try {
+    const plan = await storyboard.createStockStoryboard({ topic: courtResearch.title, script, duration: 30, research: courtResearch });
+    assert.deepEqual(plan.map(beat => beat.query), ['gavel', 'legal documents']);
+    assert.equal(plan.map(beat => beat.narration).join(' '), script);
+    assert.equal(replies.length, 0);
+  } finally { global.fetch = originalFetch; }
+});
+
 test('evacuation context remains usable when the report also mentions unavailable electricity',()=>{
   const article={...research,title:'Ukrainian evacuees reunite with family after years trapped in Russia-occupied city',summary:'Residents had been without food, water and electricity.',text:'The report concerns evacuees from an occupied city.'};
   for(const query of ['empty city street','building exterior','empty railway station'])assert.equal(policy.newsStockQueryIssue(query,article),undefined,query);
@@ -219,7 +259,7 @@ test('a second off-topic election plan uses report-specific context and keeps th
     assert.equal(result.map(beat => beat.narration).join(' '), script);
     assert.equal(replies.length, 0);
     const court = { ...research, title: 'Australian author jailed', summary: 'The author pleaded guilty in May.', text: 'The report concerns an author and court proceedings.' };
-    assert.deepEqual(policy.newsContextSearches(court, 'The court heard the case.'), ['courthouse exterior', 'courthouse building']);
+    assert.deepEqual(policy.newsContextSearches(court, 'The court heard the case.'), ['gavel', 'legal documents', 'law books', 'scales justice']);
     const unrelated = { ...research, title: 'A change was reported', summary: 'A report described a change.', text: 'The circumstances remain unclear.' };
     assert.deepEqual(policy.newsContextSearches(unrelated, 'A hospital is shown.'), [], 'Narration alone cannot establish source context');
   } finally { global.fetch = originalFetch; }
