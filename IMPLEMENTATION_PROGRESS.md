@@ -1,36 +1,54 @@
 # Phoenix Studio implementation and verified releases
 
-## November 6 — caption, episode and singing changes awaiting release verification
+## November 7 — installed caption, episode, singing and news-visual release
 
-- Explicit caption reanalysis now saves a separate bounded automatic-feedback
-  record, without fabricating or replacing human review ratings. It retains the
+- Installed source `b2baa4091fd9c22bc803568da0f184c614234a89` passed Windows
+  run `42343627258`: 1,571 Node tests, 49 Python checks, lint, full TypeScript
+  and production build, compiled-worker memory checks, and real FFmpeg/public
+  licensed Pexels export and decoding. Both Vercel deployments passed. The build
+  ran remotely; no local Next build or large local model was started.
+- Selected and serving bundle `.next-build-gh-42343627258-1`, build ID
+  `Kb-vOmAGB_wm6-lvUKkTm`, returns dashboard HTTP 200 with healthy manager and
+  worker, and a ready renderer. Guarded idle activation preserved all five
+  owner video/job stores and the owner's exact `tsconfig.json` bytes. The
+  canonical Desktop launcher and port 3000 use this installed bundle.
+- Explicit caption reanalysis saves a separate bounded automatic-feedback
+  record without fabricating or replacing human review ratings. It retains the
   complaint through quota waits, avoids the rejected copy and guides matching
   future work. Initial background analysis is not recorded as a complaint.
-  Focused caption/feedback/provider/UI checks pass; actual editorial quality
-  remains subject to the saved public-footage smoke and final owner review.
+  Actual public-footage frame analysis and revision parsed successfully;
+  editorial quality still needs human review.
 - General 2D action planning no longer treats quoted wishes, hypothetical or
-  negated actions as completed events, or makes a listening character copy the
-  actor's movement. Focused action, raster and continuity checks pass. This is
-  bounded English action parsing, not full arbitrary Hindi scene understanding.
-- Episode silence boundaries are parsed across the complete diagnostic stream.
-  Source-bound silence and per-cut audio checkpoints avoid repeated scans, and
-  a changed staged source stops safely before old transcripts/clips are reused.
-  The isolated 49-minute queue regression retains three finished clips after
-  interruption and resumes to 20 non-overlapping clips without duplicating them.
-  A separate real-FFmpeg 49-minute synthetic proof is added to remote Windows
-  verification; it has not yet certified actual owner speech or subject tracking.
-- With the owner's explicit lyrics/description consent, the official stable
-  ACE-Step hosted API produced real 15-second original English and Hindi MP3s.
-  Download, duration and full decode were verified outside owner job stores. The newer
-  demo returned an unspecified error and is not used by the production adapter.
-  Hosted generation retains accepted tasks and completed audio metadata;
-  free-quota waits never invoke a paid service or local music model. This proves
-  the small test, not unlimited free access or professional singing quality.
-- Google again rejected Mapbite's identity verification for enabling 2-Step
-  Verification. YouTube is still unconfigured; no password, OAuth client or
-  channel-upload access was bypassed. Facebook and Instagram remain connected.
-- These source changes are not installed yet. Keep the verified release below
-  serving until full remote checks pass and guarded idle activation completes.
+  negated actions as completed events, or makes a listener copy the actor's
+  movement. This is bounded English action parsing, not full arbitrary Hindi
+  scene understanding or professional animation quality.
+- Episode silence parsing covers the complete diagnostic stream. Source-bound
+  silence and per-cut audio checkpoints avoid repeated scans; a changed staged
+  source stops before old transcripts or clips are reused. The actual FFmpeg
+  49-minute silent, 1-fps synthetic proof produced 20 contiguous clips, retained
+  three completed files byte-for-byte after interrupting the fourth encode,
+  resumed without duplication and fully decoded all 20 outputs. This verifies
+  recovery mechanics, not actual episode speech, subject tracking or throughput.
+- With the owner's explicit lyrics/description consent, official stable hosted
+  ACE-Step generated original English and Hindi 15-second MP3s and a
+  149.952-second original English song. Download, duration and full decode
+  passed outside owner job stores, without a local music model. Hosted tasks
+  and completed audio metadata survive interruption; quota waits never invoke
+  a paid service. Shared availability and free quotas apply. Hindi requires
+  supplied original Hindi lyrics; pronunciation, artistic quality and precise
+  lyric timing have not been certified. VoiceStudio remains speech, not singing.
+- Judicial news now prefers unbranded legal objects over recognizable foreign
+  courthouses, flags or legal actors, including reports with election context.
+  This is a catalogue/context guard, not visual geography recognition or proof
+  of actual-event footage. The existing mismatched owner report stays flagged;
+  it was not silently approved or re-rendered.
+- Facebook and Instagram remain connected and publishing ready. Google again
+  rejected Mapbite's identity verification for enabling 2-Step Verification;
+  YouTube remains unconfigured. Rumble has an assisted saved-file handoff, and
+  Bilibili.tv is unconnected. No supported free automatic publishing grant was
+  obtained for either provider; the provider follow-up automation stays paused.
+- No failed owner job was retried and no social test post was made. The
+  requested one-hour display hold ended and normal power settings resumed.
 
 ## November 6 — installed Facebook Page release; linked Page connected
 
