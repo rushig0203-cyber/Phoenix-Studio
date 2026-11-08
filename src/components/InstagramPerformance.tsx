@@ -13,9 +13,9 @@ const statusLabels: Record<InstagramPerformanceResponse["status"], string> = {
   not_connected: "Not connected", permission_required: "Insights permission needed", syncing: "Collecting results",
   ready: "Results saved", limited: "Some metrics unavailable", error: "Sync needs attention", rate_limited: "Waiting for Meta quota",
 };
-const metric = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : "—";
+const metric = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : "â€”";
 const dateLabel = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : "Not yet";
-const watchLabel = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1)}s` : "—";
+const watchLabel = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1)}s` : "â€”";
 
 function instagramLink(value?: string) {
   if (!value) return undefined;
@@ -90,8 +90,8 @@ export default function InstagramPerformance() {
   };
   return <section aria-label="Instagram insights" className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><p className="text-sm font-medium">{data?.account?.name || "Instagram"}</p><p className="mt-1 text-xs text-[#687657]">{data ? statusLabels[data.status] : busy ? "Loading�" : "Unavailable"} � Last measured batch: {dateLabel(data?.lastSuccessfulBatchAt || data?.lastSuccessfulSyncAt)}</p></div>
-      <button type="button" className={secondary} disabled={busy} onClick={() => void load(true)}>{busy ? "Checking�" : "Refresh insights"}</button>
+      <div><p className="text-sm font-medium">{data?.account?.name || "Instagram"}</p><p className="mt-1 text-xs text-[#687657]">{data ? statusLabels[data.status] : busy ? "Loading…" : "Unavailable"} · Last measured batch: {dateLabel(data?.lastSuccessfulBatchAt || data?.lastSuccessfulSyncAt)}</p></div>
+      <button type="button" className={secondary} disabled={busy} onClick={() => void load(true)}>{busy ? "Checking…" : "Refresh insights"}</button>
     </div>
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     {data && <>
@@ -108,13 +108,13 @@ export default function InstagramPerformance() {
           return <details key={video.id} data-instagram-result className="py-2">
             <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs">
               <span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-[#687657]">{dateLabel(video.timestamp)}</span></span>
-              <span className="shrink-0 text-[#687657]"><span className="tabular-nums">{metric(video.metrics.views)}</span> views � <span className="tabular-nums">{metric(video.metrics.likes)}</span> likes</span>
+              <span className="shrink-0 text-[#687657]"><span className="tabular-nums">{metric(video.metrics.views)}</span> views · <span className="tabular-nums">{metric(video.metrics.likes)}</span> likes</span>
             </summary>
             <div className="mt-3 space-y-2 text-xs text-[#687657]">
               <p className="font-medium">{assessment ? labels[assessment.label] : "Not compared"}</p>
               <p>{assessment?.reason || "This video is outside the current comparison set. Its available saved counts are shown separately."}</p>
-              <p>Comments: {metric(video.metrics.comments)} � Saves: {metric(video.metrics.saves)} � Shares: {metric(video.metrics.shares)} � Reach: {metric(video.metrics.reach)}</p>
-              <p>Average watch time: {watchLabel(video.metrics.averageWatchTimeMs)} � Metrics checked: {dateLabel(video.metricsUpdatedAt)}</p>
+              <p>Comments: {metric(video.metrics.comments)} · Saves: {metric(video.metrics.saves)} · Shares: {metric(video.metrics.shares)} · Reach: {metric(video.metrics.reach)}</p>
+              <p>Average watch time: {watchLabel(video.metrics.averageWatchTimeMs)} · Metrics checked: {dateLabel(video.metricsUpdatedAt)}</p>
               {video.metricIssues?.map(issue => <p key={issue}>{issue}</p>)}
               {link && <a href={link} target="_blank" rel="noreferrer" className="inline-block font-medium underline">{title}</a>}
             </div>
