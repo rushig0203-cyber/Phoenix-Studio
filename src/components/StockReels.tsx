@@ -96,7 +96,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   useEffect(() => {
     mounted.current = true;
     if (!suggestionsInitialized.current) { suggestionsInitialized.current = true; moreSuggestions(); }
-    let suggestionTimer: ReturnType<typeof setTimeout>;
+    let suggestionTimer: number;
     const refresh = () => { moreSuggestions(); suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS); };
     suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS);
     return () => { window.clearTimeout(suggestionTimer); mounted.current = false; cancelSearch(); currentResults.current = null; };

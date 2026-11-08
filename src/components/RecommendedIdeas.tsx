@@ -24,7 +24,7 @@ export default function RecommendedIdeas({ onChoose }: { onChoose: (idea: Creati
   useEffect(() => {
     if (!initialized.current) { initialized.current = true; more(); }
     if (typeof window === "undefined") return;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: number;
     const refresh = () => { more(); timer = window.setTimeout(refresh, RECOMMENDATION_REFRESH_MS); };
     timer = window.setTimeout(refresh, RECOMMENDATION_REFRESH_MS);
     return () => window.clearTimeout(timer);
