@@ -41,6 +41,7 @@ test('Insights has its own screen, and Settings links there while Library stays 
   assert.ok(libraryBranch.includes('<ReviewLibrary'));
   assert.doesNotMatch(libraryBranch, /<ChannelInsights|<InstagramPerformance/);
   assert.match(dashboard, /section === "insights"[\s\S]*<ChannelInsights/);
+  assert.match(dashboard, /<a href="#insights"[^>]*>Channel insights<\/a>/, 'Same-page Settings action must emit the native hashchange');
   const settings = fs.readFileSync(path.join(__dirname, '../src/app/dashboard/settings/page.tsx'), 'utf8');
   assert.match(settings, /href="\/dashboard#insights"/); assert.doesNotMatch(settings, /<ChannelInsights/);
 });

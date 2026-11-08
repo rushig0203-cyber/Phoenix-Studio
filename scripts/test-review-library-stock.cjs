@@ -84,7 +84,8 @@ test('only confirmed posted videos expose a direct Insights action for their exa
   assert.equal(nodes(h.tree, node => node.props?.['aria-label'] === 'Insights for New draft').length, 0);
   h.button('Posted · 1').props.onClick(); h.render();
   const actions = nodes(h.tree, node => node.props?.['aria-label'] === 'Insights for Posted waterfall');
-  assert.equal(actions.length, 1); assert.equal(actions[0].props.href, `/dashboard#insights?review=${id}`);
+  assert.equal(actions.length, 1); assert.equal(actions[0].type, 'a', 'Native hash navigation must notify the dashboard section listener');
+  assert.equal(actions[0].props.href, `#insights?review=${id}`);
 });
 
 test('creation-type children and edited children retain precedence over provider stock kind', t => {

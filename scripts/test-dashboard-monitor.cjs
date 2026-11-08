@@ -380,7 +380,7 @@ test('legacy Jobs and storyboards bookmarks show only the inline list under Crea
     assert.equal(nodes(h.tree, node => node.props?.['data-studio-screen'] === 'create')[0].props.hidden, false);
     assert.equal(nodes(h.tree, node => node.props?.['aria-label'] === 'Jobs and progress').length, 1);
     const nav = nodes(h.tree, node => node.type === 'nav' && node.props['aria-label'] === 'Studio sections')[0];
-    assert.deepEqual(nodes(nav, node => node.type === 'a').map(node => node.props.href), ['#create', '#library', '#settings']);
+    assert.deepEqual(nodes(nav, node => node.type === 'a').map(node => node.props.href), ['#create', '#library', '#insights', '#settings']);
     assert.equal(nodes(nav, node => node.props['aria-current'] === 'page')[0].props.href, '#create');
     assert.ok(h.requests.every(request => !request.method), 'Opening a bookmark does not start or retry a job');
     global.window.location.hash = '#library'; await h.event('hashchange');
