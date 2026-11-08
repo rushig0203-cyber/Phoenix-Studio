@@ -1,12 +1,13 @@
 # Phoenix Studio implementation and verified releases
 
-## November 8 — audio verified; standalone Insights and purple theme in verification
+## November 9 — installed purple dashboard, standalone Insights and matched Reel audio
 
-- Audio/initial insights source `a6d7e63286261f9eba11d86e5e383f556a82988f`
-  passed Windows run `42457223969`: 1,610 Node tests, 52 Python checks, lint,
-  full TypeScript/build, real FFmpeg/public Pexels exports and the synthetic
-  49-minute interrupted episode proof. Both Vercel deployments passed. The
-  subsequent requests below require a new verified release before activation.
+- Installed source `a433d619f5d8fd80c1007936baa155f6fba2505f` passed Windows
+  run `42519140374`: 1,633 Node tests, 52 Python checks, lint, full TypeScript
+  and production build, real offline Windows speech, bounded compiled-worker
+  history scans, real FFmpeg/public Pexels export/decode and the synthetic
+  49-minute interrupted episode proof. Both Vercel deployments passed for this
+  source. The build ran remotely without loading a large local model.
 
 - New licensed-recording selections use actual offline-measured recording attacks
   rather than arbitrary whole-second starts. The final picture-cut pattern guides
@@ -25,27 +26,39 @@
   Library videos open their exact confirmed remote publication, while absent
   measurements stay explicitly unavailable. Five recent expandable results remain
   the default, with pagination. Instagram's existing collector/learning stays intact.
-  A read-only live Facebook `/video_reels` probe returned three Page reels with
-  actual basic view/like/comment counts through the existing verified Page token.
+  A read-only live Facebook `/video_reels` refresh returned six Page reels with
+  actual basic view/like/comment counts through the existing verified Page token;
+  its saved cache matched the successful response. No new permission was added.
   This supports a bounded independent Facebook cache, not advanced private
   analytics. YouTube is still unconfigured after Google's identity check failed;
   Rumble/Bilibili have manual service links, not invented connected statistics.
 - Job rows gain compact visible progress and Retry/Delete actions. Hourly manager
   housekeeping soft-archives failed local history after seven days, skipping active
   tasks, uncertain provider reservations, retries and upload journals. Final files
-  and originals remain saved. No cleanup was run on owner history during testing.
+  and originals remain saved. Activation archived one eligible old failed AI job.
+  Locked stores are skipped until a later idle hourly pass; cleanup does not
+  interrupt normal draft initialization or retries.
 - Suggestions mix multiple searchable subject groups, rotate weekly without a
   model call and refresh manually. Reports can bypass their ten-minute feed cache.
   A changed creation payload gets a new idempotency key; a saved request rejects
   a conflicting original topic instead of returning the old video.
   Retained optional narration/visual searches/lyrics are disarmed on a new topic;
   re-editing one field activates only that field. The earlier text is not deleted.
-- These source changes are not installed by this session yet. A separate local
-  update selected `.next-build-20261108071524332` and changed only the owner's
-  generated type include paths; preserve the resulting exact owner configuration
-  hash `97AF40D8DC79A56F70612C0A12A15FBA9F30118E1D4504E1C80EC8B7DAEAF45C`.
-  The final combined source requires remote verification and guarded activation.
-  No owner job was retried, no social test post was made and no paid service added.
+- Selected and serving bundle `.next-build-gh-42519140374-1`, build ID
+  `14_wEOmk3_KD7tcSSKeqe`, returns dashboard HTTP 200 with healthy manager and
+  worker, and a ready renderer. Guarded activation preserved the review index,
+  all 226 output-video file entries and all 111 publishing journals. Only the
+  authorized archive fields changed in job history. The owner's exact
+  `tsconfig.json` hash remains
+  `97AF40D8DC79A56F70612C0A12A15FBA9F30118E1D4504E1C80EC8B7DAEAF45C`.
+  The canonical Desktop launcher and port 3000 select this same bundle.
+- Live browser checks verified the purple dashboard, measured job bars, separate
+  Instagram/Facebook screens, exact Waterfall publication results, Settings links,
+  changing mixed topic batches and the selected suggestion's exact input text.
+  Same-page Insights actions use native anchors so the dashboard receives the
+  section-change event. Screenshots and activation/data checks are retained in
+  the session artifacts. No owner job was retried, no social test post was made,
+  no paid service was added and provider-follow-up automation remains paused.
 
 ## November 7 — installed natural news captions, complete endings and music matching
 

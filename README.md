@@ -27,6 +27,9 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
   **Library** has Generated, Posted and Episode clips views with previews,
   posting copy, native editing and recoverable Trash. Episode folders use the
   uploaded filename and retain posted clips and edits with their source episode.
+- **Insights** has its own screen for saved Instagram results and basic Facebook
+  Page Reel counts. Posted videos open their matching publication's results.
+  Other platforms show their actual connection or service-access limits.
 - **Settings** holds private writer/channel setup and content-quality feedback.
 
 Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Commons
@@ -130,9 +133,10 @@ claiming a statistics API connection.
 Posted Library videos open their exact saved Instagram/Facebook publication in
 Insights; missing measurements are never replaced by another video's results.
 Job rows show a compact progress bar and percentage when measured, with failure
-details collapsed. The running manager soft-archives local failed history after
+details collapsed. Hourly housekeeping soft-archives local failed history after
 seven days; originals, finished videos and protected publishing journals stay saved.
-Active or uncertain provider work is excluded from this cleanup.
+Locked stores wait for a later idle pass. Active or uncertain provider work is
+excluded from this cleanup.
 Make Reel suggestions mix wildlife, nature, countries, movement, architecture and
 everyday subjects. Open suggestion panels rotate weekly; manual refresh changes
 the batch immediately. Report refresh bypasses the short news cache without
