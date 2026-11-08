@@ -1131,6 +1131,33 @@ const footageFile = (audio = 'local-music-replaced') => sampleFile({
   source: { kind: 'pexels', filename: 'saved-stock.mp4' }, quality: { audio, hashtags: [], captions: [] },
 });
 const automaticMusicPanel = h => nodes(h.tree).find(node => node.type === 'section' && node.props['aria-label'] === 'Automatic Reel music');
+
+test('new timing-matched reels retain their reviewed music through Reel and companion Story without a catalogue replacement', async t => {
+  const file=footageFile();
+  file.quality.musicRecording={trackId:'old-saga',title:'Old Saga',timing:'onset-v1'};
+  let saved;
+  const h=uiHarness({file,story:{ready:true,reason:'Saved MP4 is eligible.'},audio:[audioResult()],
+    post(request){saved=JSON.parse(request.body);return response({job:job({platform:'instagram'})});}});
+  t.after(()=>h.unmount());h.choose('Post to Instagram');await h.flush();
+  assert.match(text(automaticMusicPanel(h)),/matched instrumental · Old Saga/);
+  assert.match(text(automaticMusicPanel(h)),/preview, Instagram Reel and matching Story keep this same soundtrack/);
+  assert.equal(h.requests.some(request=>request.url.includes('check=audio')),false);
+  assert.equal(h.button('Post to Instagram').props.disabled,false);
+  h.submit();await h.flush();
+  assert.equal(saved.audio,undefined);assert.equal(saved.companionStory,true);assert.equal(h.posts.length,1);
+});
+
+test('a manually trimmed recorded soundtrack is retained without claiming a measured opening attack or replacing the owner edit', async t => {
+  const file=footageFile();file.editedFrom='original-reel';
+  file.quality.musicRecording={trackId:'old-saga',title:'Old Saga'};
+  const h=uiHarness({file,audio:[audioResult()]});t.after(()=>h.unmount());
+  h.choose('Post to Instagram');await h.flush();
+  assert.match(text(automaticMusicPanel(h)),/edited instrumental · Old Saga/);
+  assert.doesNotMatch(text(automaticMusicPanel(h)),/matched instrumental/);
+  assert.equal(h.requests.some(request=>request.url.includes('check=audio')),false);
+  assert.equal(h.button('Post to Instagram').props.disabled,false);
+});
+
 function assertNoManualMusicControls(h) {
   for (const label of ['Use Instagram music', 'Keep saved video audio', 'Track or artist', 'Instagram track volume (%)', 'Saved video volume (%)']) {
     assert.equal(h.control(label, 'input'), undefined, label);

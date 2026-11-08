@@ -17,8 +17,10 @@ const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-
 const platformButton = `${button} aria-pressed:border-[#394a2a] aria-pressed:bg-[#394a2a] aria-pressed:text-white`;
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
 const active = (job: ReviewPublishJob): boolean => ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) || Boolean(job.companionStory && active(job.companionStory));
+const matchedSoundtrack = (file: ReviewFile): boolean => file.quality.audio === "local-music-replaced" && Boolean(file.quality.musicRecording
+  && (file.quality.musicRecording.timing === "onset-v1" || file.editedFrom));
 const footageMusic = (file: ReviewFile): boolean => ((file.source?.kind && file.source.kind !== "upload") || Boolean(file.quality.visualSources?.length))
-  && ["natural-audio-preserved", "local-music-replaced", "no-audio", "needs-review"].includes(file.quality.audio);
+  && ["natural-audio-preserved", "local-music-replaced", "no-audio", "needs-review"].includes(file.quality.audio) && !matchedSoundtrack(file);
 const musicText = (value: unknown, limit = 200): value is string => typeof value === "string" && value.length <= limit
   && Boolean(value.trim()) && !/[\u0000-\u001f\u007f]/.test(value);
 function publicMusicRecommendation(value: unknown): ReelMusicRecommendation | null {
@@ -538,7 +540,8 @@ export default function ReviewPublishActions({ file }: { file: ReviewFile }) {
                 {savedAudioAvailable ? <p>Keeping the saved video audio; no Instagram track will be added.</p>
                   : <p role="alert">This video has no verified usable saved audio. Publishing is paused until suitable Instagram music is available. Check status to check availability again.</p>}
               </> : <p role="status">Instagram music has not been checked for this version. Check status before approving.</p>
-              : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
+              : matchedSoundtrack(file) ? <p>Using the finished reel&apos;s {file.quality.musicRecording?.timing === "onset-v1" ? "matched instrumental" : "edited instrumental"}{file.quality.musicRecording?.title ? ` · ${file.quality.musicRecording.title}` : ""}. The preview, Instagram Reel and matching Story keep this same soundtrack.</p>
+                : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
           </section>}
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
           {platform === "youtube" ? <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !publishReady}/><span>I have reviewed this video, hold the required rights, and approve uploading this video as {privacy} to {channel?.name || name}.</span></label> : <p className="text-xs">Clicking Post approves publishing this Reel publicly{platform === "instagram" && includeStory ? " and then its matching Story" : ""} to {channel?.name || name}, with the required rights.</p>}

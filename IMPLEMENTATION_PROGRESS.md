@@ -1,5 +1,31 @@
 # Phoenix Studio implementation and verified releases
 
+## November 8 — Make Reel audio alignment and dim palette in verification
+
+- New licensed-recording selections use actual offline-measured recording attacks
+  rather than arbitrary whole-second starts. The final picture-cut pattern guides
+  a mood/cooldown-eligible excerpt; safe nearby cuts can move at most four frames
+  within source/movement bounds. Legacy saved choices remain fixed. Measurements
+  are pinned to the existing six compact CC0 assets, with no runtime model or scan.
+- New timing-marked reels retain their finished soundtrack through Instagram
+  posting and matching Stories, keeping the reviewed preview's music. Legacy
+  footage still uses bounded Instagram lookup, now including a fitting original
+  recording, while guided meditation/sleep utilities are excluded. Actual saved
+  cut durations can inform edit energy without claiming measured subject motion.
+- Create, Library, posting and Settings share dim slate/charcoal surfaces and
+  muted green controls. Focus, input and text/status contrast checks cover the
+  palette. Layout and publishing approvals remain unchanged.
+- Channel insights move into Settings with compact platform views and five recent
+  results by default. Instagram's existing collector/learning stays intact.
+  A read-only live Facebook `/video_reels` probe returned three Page reels with
+  actual basic view/like/comment counts through the existing verified Page token.
+  This supports a bounded independent Facebook cache, not advanced private
+  analytics. YouTube is still unconfigured after Google's identity check failed;
+  Rumble/Bilibili have manual service links, not invented connected statistics.
+- These source changes are not installed yet. Keep the November 7 verified
+  release selected until remote Windows verification and guarded activation pass.
+  No owner job was retried, no social test post was made and no paid service added.
+
 ## November 7 — installed natural news captions, complete endings and music matching
 
 - Installed source `8cd98248678d6a85504d9b83155c16d3a49af578` passed Windows

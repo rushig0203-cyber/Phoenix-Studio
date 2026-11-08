@@ -17,7 +17,7 @@ const activity = require('../src/lib/instagramHashtagActivity');
 const locks = require('../src/lib/fileLock');
 const reviews = require('../src/lib/reviewFiles');
 const analysis = require('../src/lib/videoPostingAnalysis');
-const { editedPostingTextOrigin } = require('../src/lib/reviewEdits');
+const { editedPostingTextOrigin, editedMusicMetadata } = require('../src/lib/reviewEdits');
 const originals = { fetch: global.fetch, spawn: childProcess.spawn, settings: settings.readVideoAnalysisSettings, status: resources.heavyWorkStatus, slot: resources.tryWithLocalRenderSlot, activity: activity.analyzeInstagramHashtagActivity };
 const selected = { provider: 'groq', model: settings.WRITING_GROQ_MODEL, apiKey: 'gsk_test_not_real_12345678901234', freePlanConfirmed: true, allowVideoFrames: true };
 const evidence = { observations: [{ frame: 1, visible: 'A small stream passes moss-covered stones.' }], caption: 'Follow the water between these moss-covered stones.', captionVariants: ['A closer look at this woodland stream.'], hashtags: ['#ForestStream', '#Moss'], confidence: 'clear' };
@@ -140,6 +140,30 @@ test('editor ownership distinguishes picture-only edits from changed copy and co
   assert.equal(editedPostingTextOrigin({ ...file, editedFrom: 'legacy-parent' }, draft), 'owner');
   assert.equal(editedPostingTextOrigin({ ...file, editedFrom: 'known-picture-edit', quality: { ...file.quality, postingTextOrigin: 'automatic' } }, draft), 'automatic');
   assert.equal(editedPostingTextOrigin({ ...file, quality: { ...file.quality, postingTextOrigin: 'owner' } }, draft), 'owner');
+});
+test('manual trims retain licensed recording identity but clear stale opening and cut timing proof', async () => {
+  const file = await fixture();
+  file.quality.musicRecording = { trackId: 'old-saga', title: 'Old Saga', artist: 'Fixture', licence: 'CC0-1.0', sourcePage: 'https://example.com/licence', assetSha256: 'a'.repeat(64), originalOffsetSeconds: 32.5, timing: 'onset-v1' };
+  file.quality.musicEdit = { version: 1, shotDurations: [1, 1, 1, 1] };
+  file.quality.checks = ['Source licence retained', 'Measured low-frequency recording attacks: start retained on a measured onset; 2 final cut(s) nudged', 'Nearby internal cuts aligned within four picture frames', 'CC0 recording: Old Saga; start chosen from offline-measured recording attacks, without tempo changes', 'Finished encoded music measured -16 LUFS'];
+  const before = JSON.stringify(file);
+  for (const trim of [{ trimStart: 1, trimEnd: 3 }, { trimStart: 0, trimEnd: 3 }]) {
+    const result = editedMusicMetadata(file, trim, 4);
+    assert.equal(result.musicRecording.trackId, file.quality.musicRecording.trackId);
+    assert.equal(result.musicRecording.assetSha256, file.quality.musicRecording.assetSha256);
+    assert.equal(result.musicRecording.originalOffsetSeconds, 32.5 + trim.trimStart);
+    assert.equal(result.musicRecording.timing, undefined); assert.equal(result.musicEdit, undefined);
+    assert.ok(result.checks.includes('Source licence retained'));
+    assert.ok(result.checks.some(check => /opening attack and cut alignment were not re-measured/.test(check)));
+    assert.ok(!result.checks.some(check => /Measured low-frequency recording attacks|Nearby internal cuts aligned|start chosen from offline-measured|Finished encoded music measured/.test(check)));
+  }
+  const whole = editedMusicMetadata(file, { trimStart: 0, trimEnd: 4 }, 4);
+  assert.equal(whole.musicRecording.timing, 'onset-v1'); assert.deepEqual(whole.musicEdit, file.quality.musicEdit);
+  assert.equal(JSON.stringify(file), before, 'Editing metadata must not mutate its original');
+  for (const durations of [[1, 1], [1, NaN, 1, 1], [-1, 2, 2, 1], Array(25).fill(.16)]) {
+    file.quality.musicEdit = { version: 1, shotDurations: durations };
+    assert.equal(editedMusicMetadata(file, { trimStart: 0, trimEnd: 4 }, 4).musicEdit, undefined);
+  }
 });
 test('an owner edit during slot admission prevents frame extraction even without an updated timestamp', async () => {
   const file = await fixture();

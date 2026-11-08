@@ -46,14 +46,16 @@ function harness(options = {}) {
   };
 }
 
-test('results remain compact, newest first, with eight rows and working pagination', async () => {
+test('results remain compact, newest first, with five expandable rows and working pagination', async () => {
   const ui = harness(); await ui.settle();
-  assert.equal(ui.all('details')[0].props.open, undefined);
-  assert.equal(ui.all('tbody')[0].props.children.length, 8);
-  assert.equal(text(ui.all('tbody')[0].props.children[0]).startsWith('Video 10'), true);
+  const rows = () => ui.all('details').filter(node => node.props['data-instagram-result']);
+  assert.equal(rows().length, 5); assert.ok(rows().every(row => row.props.open === undefined));
+  assert.equal(text(rows()[0]).startsWith('Video 10'), true);
+  assert.equal(ui.all('table').length, 0);
+  assert.equal(ui.all('dl')[0].props['aria-label'], 'Saved Instagram sample');
   assert.equal(ui.find('button', 'Previous').props.disabled, true);
   ui.find('button', 'Next').props.onClick(); ui.render();
-  assert.equal(ui.all('tbody')[0].props.children.length, 2);
+  assert.equal(rows().length, 5);
   assert.equal(ui.find('button', 'Next').props.disabled, true);
   assert.match(text(ui.tree()), /Page 2 of 2/);
   ui.find('button', 'Previous').props.onClick(); ui.render();
@@ -96,7 +98,7 @@ test('a video outside the bounded comparison set retains its real metrics withou
   const data = state([video(1)]); data.summary.assessments = [];
   const ui = harness({ fetch: () => response(data) }); await ui.settle();
   assert.match(text(ui.tree()), /Not compared/); assert.match(text(ui.tree()), /outside the current comparison set/);
-  assert.equal(text(ui.all('td')[1]), '50'); assert.doesNotMatch(text(ui.tree()), /Metrics unavailable/);
+  assert.match(text(ui.find('summary', node => text(node).startsWith('Video 1'))), /50 likes/); assert.doesNotMatch(text(ui.tree()), /Metrics unavailable/);
 });
 
 test('only official HTTPS Instagram media permalinks are linked', async () => {

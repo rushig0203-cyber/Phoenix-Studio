@@ -31,6 +31,22 @@ export function editedPostingTextOrigin(original: ReviewFile, draft: Pick<Review
     || draft.postCopy !== (original.quality.postCopy || "") || JSON.stringify(draft.hashtags) !== JSON.stringify(original.quality.hashtags)
     ? "owner" : "automatic";
 }
+export function editedMusicMetadata(original: ReviewFile, draft: Pick<ReviewEditDraft, "trimStart" | "trimEnd">, sourceDuration: number) {
+  const whole = draft.trimStart === 0 && Math.abs(draft.trimEnd - sourceDuration) < 1e-6;
+  const edit = original.quality.musicEdit;
+  const validCadence = edit?.version === 1 && Array.isArray(edit.shotDurations) && edit.shotDurations.length > 0 && edit.shotDurations.length <= 20
+    && edit.shotDurations.every(seconds => Number.isFinite(seconds) && seconds > 0 && seconds <= 40)
+    && Math.abs(edit.shotDurations.reduce((sum, seconds) => sum + seconds, 0) - sourceDuration) <= .15;
+  return {
+    musicRecording: original.quality.musicRecording ? { ...original.quality.musicRecording,
+      originalOffsetSeconds: original.quality.musicRecording.originalOffsetSeconds + draft.trimStart,
+      timing: whole ? original.quality.musicRecording.timing : undefined } : undefined,
+    musicEdit: whole && validCadence ? edit : undefined,
+    checks: original.quality.checks.filter(check => !check.startsWith("Finished encoded music measured ")
+      && (whole || !/^(?:Measured low-frequency recording attacks:|Nearby internal cuts aligned|Measured source cut boundaries retained after colour ordering; final cuts)/.test(check)))
+      .map(check => whole ? check : check.replace("start chosen from offline-measured recording attacks, without tempo changes", "trimmed with the picture; opening attack and cut alignment were not re-measured")),
+  };
+}
 const draftSchema = z.object({
   title: z.string().trim().min(1).max(180), postCopy: z.string().max(5000),
   hashtags: z.array(z.string().regex(/^#[\p{L}\p{N}_]+$/u)).max(30),
@@ -262,9 +278,10 @@ export function processNextReviewEdit(): Promise<void> {
         editedFrom:original.id,editableMaster:source.clean,captionCues:source.clean?trimmedCues(draft):[],
         captionEditing: source.clean ? { enabled: draft.captionsEnabled, position: draft.captionPosition, size: draft.captionSize, color: draft.captionColor } : undefined,
         artifacts: { version: 1, renderRevision: "editor-artifacts-v1", finalVideo: artifactReference(destination), editing: { video: artifactReference(path.join(directory, "clean.mp4")), offsetSeconds: 0, captionsBaked: !source.clean }, captions: source.clean ? artifactReference(path.join(directory, "captions.srt")) : undefined },
-        quality:{...original.quality,postingTextOrigin:editedPostingTextOrigin(original,draft),postingAnalysis:undefined,audioMastering:undefined,musicRecording:original.quality.musicRecording?{...original.quality.musicRecording,originalOffsetSeconds:original.quality.musicRecording.originalOffsetSeconds+draft.trimStart}:undefined,subtitles:undefined,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags,checks:[...original.quality.checks.filter(check => !check.startsWith("Finished encoded music measured ")),"Manually edited copy: trim, framing, audio and caption settings applied"]},
+        quality:{...original.quality,...editedMusicMetadata(original,draft,source.duration),postingTextOrigin:editedPostingTextOrigin(original,draft),postingAnalysis:undefined,audioMastering:undefined,subtitles:undefined,captions:source.clean?cues.map(c=>c.text):original.quality.captions,postCopy:draft.postCopy,hashtags:draft.hashtags},
         delivery:original.delivery?{...original.delivery,aspect:draft.format === "original" ? (width === height ? "1:1" : Math.abs(width/height-9/16)<.02 ? "9:16" : Math.abs(width/height-16/9)<.02 ? "16:9" : "original") : draft.format,actualDuration:duration,requestedDuration:duration}:undefined,
         processing:undefined,monetizationReview:original.monetizationReview?{...original.monetizationReview,status:"NOT_REVIEWED"}:undefined };
+      file.quality.checks.push("Manually edited copy: trim, framing, audio and caption settings applied");
       await saveReviewFile(file);
       await patchJob(job.id,{status:"COMPLETED",progress:100,stage:"Edited copy ready for review",finishedAt:now});
     } catch(error) { await patchJob(job.id,{status:"FAILED",stage:"Edited export failed",error:error instanceof Error?error.message:String(error),finishedAt:new Date().toISOString()}); }

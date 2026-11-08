@@ -72,9 +72,16 @@ const moodCatalog = {
 } as const;
 
 /** Meta documents a blank query as trending; keyword matches alone establish no trend. */
-export function musicCatalogQueries(brief: ReelMusicBrief): string[] {
+export function musicCatalogQueries(brief: ReelMusicBrief, videoSeed = ""): string[] {
   if (brief.mood === "uncertain") return [];
-  return ["", `${moodCatalog[brief.mood].query} instrumental`, "instrumental"].slice(0, REEL_MUSIC_LOOKUP_LIMIT);
+  const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
+  const candidates = musicSeedsFor(brief);
+  const distance = (seed: Seed) => Math.abs({ low: 0, medium: 1, high: 2 }[seed.energy] - energy);
+  const closest = candidates.filter(seed => distance(seed) === Math.min(...candidates.map(distance)));
+  const rotation = [...videoSeed.slice(0, 100)].reduce((hash, letter) => (hash * 31 + letter.charCodeAt(0)) >>> 0, 0);
+  const seed = closest[rotation % closest.length];
+  return ["", seed ? `${seed.title} ${seed.artist}` : `${moodCatalog[brief.mood].query} instrumental`, `${moodCatalog[brief.mood].query} instrumental`]
+    .filter((query, index, all) => all.indexOf(query) === index).slice(0, REEL_MUSIC_LOOKUP_LIMIT);
 }
 
 /** Prefer known recordings or explicit catalog labels; titles in English alone prove no vocal language. */
@@ -99,6 +106,7 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
       reason = `${original.character} fits the ${brief.mood} visual mood. Verified recording identity; editorial fit, not audio analysis.`;
     } else {
       const title = normalized(track.title);
+      if (/\b(?:guided meditation|deep sleep|sleep (?:music|therapy|aid)|white noise|binaural|solfeggio)\b/.test(title)) continue;
       const instrumental = /\b(?:instrumental|no vocals|without vocals)\b/.test(title);
       // Explicit absence labels are allowed; any other vocal declaration,
       // including language-qualified singing, contradicts an instrumental.
@@ -129,6 +137,16 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
     }));
 }
 
+function matchEditCadence(file: ReviewFile, brief: ReelMusicBrief): ReelMusicBrief {
+  const edit = file.quality.musicEdit, duration = (file.outputs.instagram || file.outputs.youtube)?.duration;
+  if (brief.mood === "uncertain" || brief.energy !== "low" || edit?.version !== 1 || !Array.isArray(edit.shotDurations)
+      || edit.shotDurations.length < 4 || edit.shotDurations.length > 20
+      || edit.shotDurations.some(value => !Number.isFinite(value) || value < .25 || value > 40) || !duration || !Number.isFinite(duration)) return brief;
+  const total = edit.shotDurations.reduce((sum, value) => sum + value, 0), mean = total / edit.shotDurations.length;
+  if (Math.abs(total - duration) > .15 || mean > 3.2) return brief;
+  return { ...brief, energy: "medium", reason: `The ${brief.mood} visual mood is retained; measured cuts average ${mean.toFixed(1)} seconds, so a steady mid-energy bed fits the edit. This is editing cadence, not measured subject motion or music tempo.` };
+}
+
 /** Uses actual saved frame observations, never a topic/title/hashtag template. */
 export function musicBriefFromReview(file: ReviewFile): { brief: ReelMusicBrief; basis: ReelMusicRecommendation["basis"] } | null {
   if (file.quality.research || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio)) return null;
@@ -143,7 +161,7 @@ export function musicBriefFromReview(file: ReviewFile): { brief: ReelMusicBrief;
   if (/\b(?:injur\w*|dead|death|funeral|memorial|victims?|police|soldiers?|protest\w*|courts?|courtrooms?|hospitals?|war|disaster\w*|krishna|arjuna|bhagavad|gita|deit\w*|religious|devotional|temples?|prayer|worship|scriptures?)\b|कृष्ण|अर्जुन|गीता/iu.test(evidence)
       || /\b(?:not|never|no|without)\b.{0,24}\b(?:play\w*|calm|peaceful|quiet|relax\w*|warm|golden|sunrise|sunset)\b/i.test(evidence)) return null;
   const profile = reelMusicBriefSchema.safeParse(analysis.musicBrief);
-  if (profile.success && profile.data.evidenceFrames.every(frame => evidenceFrames.includes(frame))) return { brief: profile.data, basis: "sampled-frames" };
+  if (profile.success && profile.data.evidenceFrames.every(frame => evidenceFrames.includes(frame))) return { brief: matchEditCadence(file, profile.data), basis: "sampled-frames" };
   const match: [RegExp, ReelMusicBrief["mood"], ReelMusicBrief["energy"]][] = [
     [/\b(?:play(?:s|ing|ful)|frolick\w*)\b/, "playful", "medium"],
     [/\b(?:sunset|sunrise|golden|orange light|warm light)\b/, "warm", "low"],
@@ -153,6 +171,6 @@ export function musicBriefFromReview(file: ReviewFile): { brief: ReelMusicBrief;
   ];
   const found = match.find(([cue]) => cue.test(evidence));
   if (!found) return null;
-  return { basis: "saved-observations", brief: { version: 1, mood: found[1], energy: found[2], evidenceFrames,
-    reason: `Saved sampled-frame observations suggest a ${found[1]} visual mood; this is an editorial music fit, not a full-video or audio review.` } };
+  return { basis: "saved-observations", brief: matchEditCadence(file, { version: 1, mood: found[1], energy: found[2], evidenceFrames,
+    reason: `Saved sampled-frame observations suggest a ${found[1]} visual mood; this is an editorial music fit, not a full-video or audio review.` }) };
 }

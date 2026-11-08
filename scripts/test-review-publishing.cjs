@@ -1759,7 +1759,8 @@ test('music recommendations reuse current visual evidence, bound Meta lookups an
   const { id, file } = await musicFixture(); const queries = installMusicCatalog();
   const response = await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish?check=audio-recommendations&connectionRevision=fixture-revision`), context(id));
   const result = await response.json(); assert.equal(response.status, 200); assert.equal(queries.length, 3);
-  assert.deepEqual(queries,['','ambient instrumental','instrumental']);assert.equal(result.outcome,'matched');
+  assert.equal(queries[0],'');assert.equal(queries[2],'ambient instrumental');
+  assert.match(queries[1],/^(?:Holocene Bon Iver|Banana Pancakes Jack Johnson|saman Ólafur Arnalds)$/);assert.equal(result.outcome,'matched');
   assert.equal(result.recommendation.preference, 'english-and-instrumental'); assert.equal(result.recommendation.basis, 'sampled-frames');
   assert.equal(result.audio.length, 3); assert.ok(result.audio.some(track => track.recommendation.kind === 'english-vocal'));
   assert.ok(result.audio.some(track => track.recommendation.kind === 'instrumental'));

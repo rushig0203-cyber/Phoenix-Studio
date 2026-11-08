@@ -10,7 +10,7 @@ import { socialHandle } from "@/lib/socialAccounts";
 import Link from "next/link";
 import ChannelConnections from "@/components/ChannelConnections";
 import ReviewLibrary from "@/components/ReviewLibrary";
-import InstagramPerformance from "@/components/InstagramPerformance";
+import ChannelInsights from "@/components/ChannelInsights";
 import CreationDrafts from "@/components/CreationDrafts";
 import StockReels from "@/components/StockReels";
 import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
@@ -366,7 +366,7 @@ export default function DashboardClient() {
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
         </fieldset>
-        {section === "library" ? <><InstagramPerformance /><ReviewLibrary files={files} loading={loading} onRefresh={load} /></> : null}
+        {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
         {section === "create" ? <>
         <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -449,7 +449,7 @@ export default function DashboardClient() {
         </section>
 
         </> : null}
-        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link></div></div><ChannelConnections /></div> : null}
+        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link></div></div><ChannelInsights /><ChannelConnections /></div> : null}
       </main>
       {previewFile ? <ReviewPlayer key={previewFile.id} file={previewFile} onClose={() => setPreview(null)} /> : null}
     </div>

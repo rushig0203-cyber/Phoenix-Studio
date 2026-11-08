@@ -35,6 +35,7 @@ const automatic = load('automaticStockReel');
 const planning = load('stockReel');
 const visual = load('stockVisualContinuity');
 const movement = load('stockMotion');
+const recordings = load('stockMusicLibrary');
 const compilerLoaded = () => Object.keys(require.cache).some(filename => /[\\/]node_modules[\\/](?:typescript|ts-node)[\\/]/.test(filename));
 assert.equal(compilerLoaded(), false, 'The shipped worker imports must not load a compiler.');
 const fixtures = [
@@ -135,6 +136,9 @@ async function main() {
   assert.equal(visualRequests,1);assert.equal(plannedFrames,3);
   assert.equal(file.quality.postingAnalysis.model,'isolated-fixture-no-provider');assert.equal(file.quality.postingAnalysis.status,'COMPLETE');
   assert.equal(file.quality.postCopy,'Take a moment for the greenery.');assert.equal(file.quality.postingAnalysis.musicBrief.mood,'warm');
+  assert.equal(file.quality.musicRecording?.timing,'onset-v1');
+  assert.equal(file.quality.musicEdit?.version,1);
+  assert.ok(Math.abs(file.quality.musicEdit.shotDurations.reduce((sum,duration)=>sum+duration,0)-info.videoDuration)<1e-5);
   assert.ok(file.quality.checks.some(check => /one continuous bed across every shot/.test(check)));
   await tool(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-threads', '1', '-i', output, '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-']);
   const assembly = path.join(reviews.reviewRoot(), 'work', `source-${job.id}`, 'stock-assembly-v2');
@@ -160,18 +164,34 @@ async function main() {
       modified: stats[index].mtimeMs, start: provisional[index].start, end: provisional[index].end })).digest('hex');
     assert.equal(cache.identity, identity, 'Appearance evidence must identify the exact sampled source bounds.'); return cache.pair;
   });
-  const order = visual.stockVisualOrder(appearance), intervals = planning.reorderStockIntervals(provisional, order);
+  const order = visual.stockVisualOrder(appearance), ordered = planning.reorderStockIntervals(provisional, order);
+  const protectedFrames=planning.stockPostingSamples(ordered);
+  const onsetBounds=ordered.map((interval,position)=>{
+    const at=order[position],measured=motion[at].filter(window=>window.start<=interval.start+1e-6&&window.end>=interval.end-1e-6).sort((a,b)=>b.motion-a.motion)[0];
+    return measured?{start:Math.max(bounds[at].start,measured.start),end:Math.min(bounds[at].end,measured.end)}:bounds[at];
+  });
+  const onsets=recordings.stockRecordingOnsets(done.stockSource.musicRecording);
+  const aligned=planning.alignStockIntervalsToOnsets(ordered,onsetBounds,onsets,protectedFrames),intervals=aligned.intervals;
+  assert.ok(file.quality.checks.some(check=>check.includes(`${aligned.adjustedCuts} final cut(s) nudged`)));
+  for(let at=0;at<intervals.length-1;at++){
+    assert.ok(Math.abs(intervals[at].outputEnd-ordered[at].outputEnd)<=4/24+1e-6);
+    if(intervals[at].outputEnd!==ordered[at].outputEnd)assert.ok(onsets.some(onset=>Math.abs(onset-intervals[at].outputEnd)<=1/48+1e-6));
+  }
+  assert.deepEqual(file.quality.musicEdit.shotDurations,intervals.map(interval=>interval.frames/24));
+  const projectedTimes=protectedFrames.map(frame=>intervals[frame.shotIndex].outputStart+(frame.sourceSeconds-intervals[frame.shotIndex].start)/(intervals[frame.shotIndex].speed||1));
+  assert.deepEqual(file.quality.postingAnalysis.sampledAt,projectedTimes,'Saved visual evidence must map to its actual final output timestamps');
   assert.deepEqual(file.quality.visualSources.map(credit => credit.providerMediaId), order.map(index => shots[index].mediaId));
   assert.deepEqual(done.stockSource.renderedShots, order.map(index => ({ provider: shots[index].provider, mediaId: shots[index].mediaId })));
   assert.deepEqual(done.stockSource.shots, job.stockSource.shots, 'Downloaded source provenance must remain intact when sources are excluded.');
   intervals.forEach((interval, index) => {
     const check = file.quality.checks.find(text => text.startsWith(`Shot ${index + 1}:`) && text.includes('playback;'));
-    assert.ok(check?.includes(`; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s;`), 'Finished cuts must preserve the measured appearance endpoints.');
+    assert.ok(check?.includes(`; ${interval.start.toFixed(3)}s–${interval.end.toFixed(3)}s;`), 'Finished cuts must match the final onset-aligned source windows.');
   });
   const hash = filename => crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'), before = hash(output);
   await source.updateJob(job.id, { status: 'FAILED', error: 'Isolated public proof interrupted-finalization fixture' });
   await source.retrySourceJob(job.id); await source.processNextSourceJob();
   const retried = await source.getSourceJob(job.id); assert.equal(retried.status, 'COMPLETED'); assert.deepEqual(retried.reviewIds, done.reviewIds);
+  assert.deepEqual(retried.stockSource.musicRecording,done.stockSource.musicRecording,'Retry must retain the exact chosen recording and measured start');
   assert.deepEqual(retried.stockSource.renderedShots, done.stockSource.renderedShots, 'Retry must retain exact completed usage accounting.');
   assert.equal(hash(output), before, 'Fixture retry must retain the verified output exactly.');
   assert.equal(visualRequests,1);assert.equal(plannedFrames,3,'Retry must not extract/upload frames again.');
@@ -191,6 +211,7 @@ async function main() {
     excludedAtSelection: downloaded.filter(video => !selected.includes(video)).map(({ id, title }) => ({ id, title })),
     omittedAtRender, greeneryThreshold: greenery.threshold,
     duration: info.videoDuration, frames: info.frames, order, sourceIntervals: intervals, checks: file.quality.checks, sha256: before,
+    musicRecording:file.quality.musicRecording,musicEdit:file.quality.musicEdit,recordedOnsetCutAdjustments:aligned.adjustedCuts,
     contactSheet: { sampling: 'One midpoint frame from every final source interval, in output order', columns, rows, midpointFrames },
     fullyDecoded: true, retryIdempotent: true, ownerJobsRead: 0, ownerMediaUploaded: 0,
     visualPreparation: {pictureSamples:plannedFrames,requests:visualRequests,result:'Injected fixture result only; no AI provider or owner account was called',copyReused:true},

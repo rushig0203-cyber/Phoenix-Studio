@@ -66,7 +66,11 @@ async function main() {
   assert.match(file.quality.checks.join(' '),/Watch-time opening experiment v1/);
   assert.equal(file.quality.audioMastering?.version, 'loudness-v1');
   assert.equal(file.quality.musicRecording?.licence,'CC0-1.0');
+  assert.equal(file.quality.musicRecording?.timing,'onset-v1');
   assert.equal(done.stockSource.musicRecording.trackId,file.quality.musicRecording.trackId);
+  assert.deepEqual(file.quality.musicEdit?.shotDurations.length,8);
+  assert.ok(Math.abs(file.quality.musicEdit.shotDurations.reduce((sum,duration)=>sum+duration,0)-Number(picture.duration))<1e-5);
+  assert.ok(file.quality.checks.some(check=>check.startsWith('Measured low-frequency recording attacks:')));
   assert.ok(!file.quality.checks.some(check=>check.includes('BPM instrumental')),'Unmeasured recording tempo cannot inherit the synthetic beat-grid claim.');
   assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 16) <= 1.5);
   assert.ok(file.quality.audioMastering.truePeakDb <= -1);
@@ -88,8 +92,9 @@ async function main() {
   const retried = await source.getSourceJob(job.id);
   assert.equal(retried.status, 'COMPLETED', retried.error);
   assert.deepEqual(retried.reviewIds, done.reviewIds);
+  assert.deepEqual(retried.stockSource.musicRecording,done.stockSource.musicRecording,'Retry must keep the exact measured recording start');
   assert.deepEqual(fs.readFileSync(output), before, 'Retry reuses verified output and stable sampled movement');
-  console.log(JSON.stringify({ syntheticMechanicsOnly: true, duration: Number(picture.duration), frames: Number(picture.nb_read_frames), audioMastering: file.quality.audioMastering, speedAndAudioVerified: true, retryIdempotent: true, providerCalls: 0 }));
+  console.log(JSON.stringify({ syntheticMechanicsOnly: true, duration: Number(picture.duration), frames: Number(picture.nb_read_frames), audioMastering: file.quality.audioMastering, musicRecording:file.quality.musicRecording,musicEdit:file.quality.musicEdit, speedAndAudioVerified: true, retryIdempotent: true, providerCalls: 0 }));
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => {
   process.chdir(project);

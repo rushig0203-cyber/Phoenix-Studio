@@ -521,13 +521,13 @@ export async function recommendInstagramAudio(reviewId: string, connectionRevisi
   const profile = musicBriefFromReview(media.file);
   if (!profile) return { audio: [], outcome: "missing-evidence", reason: "There is not enough saved visual evidence to choose fitting English vocals or instrumentals. No extra model call was made." };
   const recommendation = { preference: "english-and-instrumental" as const, basis: profile.basis, mood: profile.brief.mood, energy: profile.brief.energy, reason: profile.brief.reason };
-  const queries = musicCatalogQueries(profile.brief);
+  const queries = musicCatalogQueries(profile.brief, reviewId);
   if (!queries.length) return { audio: [], outcome: "uncertain", recommendation, reason: "The sampled visual mood is uncertain. No unrelated Instagram track was selected." };
   const tracks: CatalogInstagramAudio[] = [];
   const catalog = { requests: 0, received: 0, inspected: 0, valid: 0, malformed: 0, eligible: 0, truncated: false };
   try {
     // At most three sequential metadata reads. Rank the bounded trending catalog
-    // as well as mood/instrumental searches; never infer vocals from an English title.
+    // as well as an exact fitting recording and mood search; never infer vocal language from a title.
     for (const query of queries) {
       await readyMedia(reviewId, "instagram", media.fingerprint, media.target);
       const url = new URL(`${AUDIO_GRAPH}/ig_audio`);

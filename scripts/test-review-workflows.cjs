@@ -52,6 +52,11 @@ test('episode preview does not stack edited captions on its existing burned capt
   assert.equal(state.canReplaceCaptions,true);assert.equal(state.previewIsClean,false);assert.equal(await edits.getEditorMedia(id),null);
 });
 test('manual export is idempotent, playable, captioned, and retains original',async()=>{
+  const original=await reviews.getReviewFile(jobId);
+  original.quality.musicRecording={trackId:'fixture-tone',title:'Synthetic test tone',artist:'Fixture',licence:'CC0-1.0',sourcePage:'https://example.com/fixture',assetSha256:'a'.repeat(64),originalOffsetSeconds:30,timing:'onset-v1'};
+  original.quality.musicEdit={version:1,shotDurations:[1,1,1,1]};
+  original.quality.checks.push('Measured low-frequency recording attacks: fixture proof','CC0 recording: fixture; start chosen from offline-measured recording attacks, without tempo changes');
+  await reviews.saveReviewFile(original);
   const job=await edits.queueReviewEdit(jobId,draft);
   assert.deepEqual((await edits.getReviewEditState(jobId)).draft,draft,'Export also persists the draft for reopening');
   assert.equal((await edits.queueReviewEdit(jobId,draft)).id,job.id);
@@ -65,6 +70,10 @@ test('manual export is idempotent, playable, captioned, and retains original',as
   await edits.processNextReviewEdit();
   const finished=(await edits.listReviewEdits())[0];assert.equal(finished.status,'COMPLETED',finished.error);assert.equal(finished.progress,100);
   const file=await reviews.getReviewFile(job.outputId);assert.ok(file);assert.equal(file.editedFrom,jobId);assert.equal(file.outputs.youtube.width,720);assert.equal(file.outputs.youtube.height,720);assert.ok(Math.abs(file.outputs.youtube.duration-2)<.15);
+  assert.equal(file.quality.musicRecording.originalOffsetSeconds,31);assert.equal(file.quality.musicRecording.timing,undefined);assert.equal(file.quality.musicEdit,undefined);
+  assert.ok(!file.quality.checks.some(check=>check.startsWith('Measured low-frequency recording attacks:')));
+  assert.ok(file.quality.checks.some(check=>check.includes('opening attack and cut alignment were not re-measured')));
+  assert.equal((await reviews.getReviewFile(jobId)).quality.musicRecording.timing,'onset-v1','Original timing proof stays unchanged');
   assert.equal(file.quality.captions[0],'Corrected first line');assert.equal(hash(reviews.outputPath(jobId,'youtube')),originalHash);
   const newState=await edits.getReviewEditState(file.id);assert.equal(newState.canReplaceCaptions,true);assert.equal(newState.draft.cues[0].start,0);
   await edits.removeReviewEdit(job.id);assert.equal((await edits.listReviewEdits()).length,0);assert.ok(fs.existsSync(reviews.outputPath(file.id,'youtube')));

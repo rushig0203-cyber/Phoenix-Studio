@@ -113,9 +113,11 @@ jobs:
           scripts/test-instagram-tags.cjs
           scripts/test-channel-connections.cjs
           scripts/test-facebook-channel.cjs
+          scripts/test-facebook-performance.cjs
           scripts/test-instagram-performance.cjs
           scripts/test-instagram-performance-learning.cjs
           scripts/test-instagram-performance-ui.cjs
+          scripts/test-channel-insights-ui.cjs
           scripts/test-instagram-performance-boundaries.cjs
           scripts/test-instagram-learning-guidance.cjs
           scripts/test-instagram-topic-suggestions.cjs
@@ -158,6 +160,7 @@ jobs:
           scripts/test-dashboard-job-views.cjs
           scripts/test-preparation-retry-ui.cjs
           scripts/test-studio-navigation.cjs
+          scripts/test-studio-palette.cjs
           scripts/test-source-processor-resources.cjs
           scripts/test-source-status-polling.cjs
           scripts/test-kids-writing-direction.cjs
@@ -211,7 +214,9 @@ jobs:
           src/lib/instagramPerformanceLearning.ts src/lib/instagramLearningGuidance.ts src/lib/instagramPublishedReviews.ts
           src/lib/instagramTopicSuggestions.ts src/components/InstagramPerformance.tsx src/components/InstagramTopicSuggestions.tsx
           src/app/api/instagram-performance/route.ts
-          src/lib/reviewFiles.ts src/components/ReviewPublishActions.tsx
+          src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx
+          src/components/ChannelInsights.tsx src/components/InstagramPerformance.tsx
+          src/lib/facebookPerformance.ts src/lib/facebookPerformanceTypes.ts src/app/api/facebook-performance/route.ts
           src/components/ReviewLibrary.tsx
           src/app/api/review-files/[id]/publish/route.ts
           src/app/api/review-files/[id]/reveal/route.ts

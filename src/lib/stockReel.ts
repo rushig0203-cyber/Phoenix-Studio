@@ -123,6 +123,41 @@ export function reorderStockIntervals(intervals: StockInterval[], order: readonl
   });
 }
 
+/** Nudge final edits to measured recording attacks without moving the chosen moments. */
+export function alignStockIntervalsToOnsets(intervals: StockInterval[], bounds: Array<{ start: number; end: number }>, onsets: number[], protectedSamples: Array<{ shotIndex: number; sourceSeconds: number }> = []) {
+  reorderStockIntervals(intervals, intervals.map((_interval, index) => index));
+  if (bounds.length !== intervals.length || bounds.some((bound, index) => !Number.isFinite(bound.start) || !Number.isFinite(bound.end)
+    || bound.start > intervals[index].start + 1e-6 || bound.end < intervals[index].end - 1e-6)
+    || onsets.length > 400 || onsets.some((seconds, index) => !Number.isFinite(seconds) || seconds <= 0 || seconds > 40 || index > 0 && seconds <= onsets[index - 1])
+    || protectedSamples.some(sample => !Number.isInteger(sample.shotIndex) || !intervals[sample.shotIndex] || !Number.isFinite(sample.sourceSeconds))) throw new Error("Recorded music timing needs bounded ordered onsets and exact source windows.");
+  if (intervals.length < 2 || !onsets.length) return { intervals, adjustedCuts: 0 };
+  const totalFrames = intervals.reduce((sum, interval) => sum + interval.frames, 0);
+  const original = intervals.slice(0, -1).map(interval => Math.round(interval.outputEnd * STOCK_REEL_FPS));
+  let boundaries = [...original];
+  const assemble = (points: number[]) => {
+    let cursor = 0;
+    return intervals.map((interval, index) => {
+      const next = index < points.length ? points[index] : totalFrames, frames = next - cursor;
+      const length = frames / STOCK_REEL_FPS * (interval.speed ?? 1), middle = (interval.start + interval.end) / 2;
+      const result = { ...interval, frames, start: middle - length / 2, end: middle + length / 2, outputStart: cursor / STOCK_REEL_FPS, outputEnd: next / STOCK_REEL_FPS };
+      cursor = next; return result;
+    });
+  };
+  for (let index = 0; index < boundaries.length; index++) {
+    const nearest = [...new Set(onsets.map(seconds => Math.round(seconds * STOCK_REEL_FPS)))]
+      .filter(frame => Math.abs(frame - original[index]) <= 4).sort((a, b) => Math.abs(a - original[index]) - Math.abs(b - original[index]) || a - b);
+    for (const frame of nearest) {
+      const candidate = [...boundaries]; candidate[index] = frame;
+      const planned = assemble(candidate);
+      if (planned.some((interval, at) => interval.frames < Math.min(12, intervals[at].frames) || interval.start < bounds[at].start - 1e-6 || interval.end > bounds[at].end + 1e-6)
+        || protectedSamples.some(sample => sample.sourceSeconds < planned[sample.shotIndex].start || sample.sourceSeconds >= planned[sample.shotIndex].end)) continue;
+      boundaries = candidate; break;
+    }
+  }
+  const adjustedCuts = boundaries.filter((frame, index) => frame !== original[index]).length;
+  return { intervals: adjustedCuts ? assemble(boundaries) : intervals, adjustedCuts };
+}
+
 /** A modest preview window, not a claim to have detected a source's best action. */
 export function suggestStockTrim(duration: number, singleShot = false) {
   if (!Number.isFinite(duration) || duration <= 0) throw new Error("A selected shot has no readable duration.");

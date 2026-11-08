@@ -67,6 +67,8 @@ export type ReviewFile = {
     /** Measured from the finished encoded video, not its input music file. */
     audioMastering?: import("./stockReel").StockMusicLoudness & { version: "loudness-v1" };
     musicRecording?: import("./stockMusicLibrary").StockRecordingCredit;
+    /** Final measured picture intervals; music uses editing pace, not guessed motion. */
+    musicEdit?: { version: 1; shotDurations: number[] };
     captions: string[];
     hashtags: string[];
     postCopy?: string;

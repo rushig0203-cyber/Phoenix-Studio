@@ -11,10 +11,10 @@ import { localMusicWav } from "./kidsRenderer";
 import { socialHandle } from "./socialAccounts";
 import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
-import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
+import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, alignStockIntervalsToOnsets, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
 import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
-import { selectStockRecording, stockRecordingMood, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, type StockRecordingSelection } from "./stockMusicLibrary";
+import { selectStockRecording, stockRecordingMood, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, stockRecordingOnsets, type StockRecordingSelection } from "./stockMusicLibrary";
 import { applyPlannedVisualPosting, extractPostingFrame, requestVisualPosting, sampleTimes, visualPostingEnabled, type VisualPostingResult } from "./videoPostingAnalysis";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
 import { stockPostingSamples } from "./stockReel";
@@ -1579,7 +1579,7 @@ export function stockReelMusicVolume(sections: StockMusicSection[]) {
 
 /** Only Phoenix's already encoded stock assembly may bypass a second encode. */
 /** Preparation is saved once per exact picture plan, before any music is rendered. */
-export async function prepareStockVisualMusic(job: SourceJob, frames: Array<{ filename: string; seconds: number; filter: string }>, pictureIdentity: string, duration: number) {
+export async function prepareStockVisualMusic(job: SourceJob, frames: Array<{ filename: string; seconds: number; filter: string }>, pictureIdentity: string, duration: number, cutTimes: number[] = []) {
   const stock = job.stockSource!;
   if (!stock.visualMusic || stock.visualMusic.pictureIdentity === pictureIdentity) return stock;
   if (stock.visualMusic.pictureIdentity) throw new Error("The saved visual soundtrack belongs to different cuts. No analysis or music choice was silently reused.");
@@ -1609,7 +1609,7 @@ export async function prepareStockVisualMusic(job: SourceJob, frames: Array<{ fi
     if (result?.musicBrief && result.musicBrief.mood !== "uncertain") {
       const recent = jobs.filter(item => item.id !== job.id && !item.archivedAt && item.status !== "CANCELLED").slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .flatMap(item => item.stockSource?.musicRecording ? [item.stockSource.musicRecording.trackId] : []).slice(0, 20);
-      const selected = selectStockRecording(stockRecordingMood(result.musicBrief, stock.options!.mood), job.id, recent);
+      const selected = selectStockRecording(stockRecordingMood(result.musicBrief, stock.options!.mood), job.id, recent, stock.musicRecording?.timing === "onset-v1", cutTimes);
       await stockRecordingFile(selected);
       current.stockSource.musicRecording = selected;
     }
@@ -1767,14 +1767,15 @@ async function processStockReel(
     reordered = order.some((index, position) => index !== position);
     shots = order.map(index => shots[index]); infos = order.map(index => infos[index]);
     pictureBounds = order.map(index => pictureBounds[index]); motionWindows = order.map(index => motionWindows[index]);
-    // Preserve the exact source boundaries that supplied the appearance samples.
-    // Replanning here could shift endpoints/speeds after measuring their colours.
+    // Choose order from the original sampled windows. The recording pass below
+    // may nudge final endpoints slightly, while retaining those chosen moments.
     intervals = reorderStockIntervals(intervals, order);
     continuityCheck = complete
       ? `Selected opening retained; companions ordered by sampled boundary light/colour similarity (source order ${order.map(index => index + 1).join(", ")}); this does not recognize subjects or verify one location`
       : "Visual continuity samples incomplete; catalogue order retained without guessing";
   }
   const duration = intervals[intervals.length - 1].outputEnd;
+  const plannedSamples = stock.visualMusic ? stockPostingSamples(intervals) : [];
   if (stock.visualMusic) {
     const pictureFiles = [];
     for (const shot of shots) {
@@ -1782,14 +1783,25 @@ async function processStockReel(
       pictureFiles.push({ file: shot.sourceFile, bytes: stat.size, modified: stat.mtimeMs });
     }
     const pictureIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: 1, pictureFiles, intervals, framing: options.framing, background: options.background })).digest("hex");
-    const frames = stockPostingSamples(intervals).map(({ shotIndex, sourceSeconds }) => {
+    const frames = plannedSamples.map(({ shotIndex, sourceSeconds }) => {
       return { filename: sourcePath(job.id, shots[shotIndex].sourceFile), seconds: sourceSeconds, filter: stockFraming(infos[shotIndex], options.framing, options.background === "soft-v1").filter };
     });
     await report(12, "Checking the planned cuts for soundtrack mood and posting copy · three tiny frames, no local model");
-    stock = await prepareStockVisualMusic(job, frames, pictureIdentity, duration);
+    stock = await prepareStockVisualMusic(job, frames, pictureIdentity, duration, intervals.slice(0, -1).map(interval => interval.outputEnd));
     job = { ...job, stockSource: stock };
     recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
   }
+  let recordedTimingCheck: string | undefined;
+  if (recording && stock.musicRecording?.timing === "onset-v1" && adaptive && options.continuity === "visual-v1") {
+    const selectedWindows = intervals.map((interval, index) => {
+      const measured = motionWindows[index].filter(window => window.start <= interval.start + 1e-6 && window.end >= interval.end - 1e-6).sort((a, b) => b.motion - a.motion)[0];
+      return measured ? { start: Math.max(pictureBounds[index].start, measured.start), end: Math.min(pictureBounds[index].end, measured.end) } : pictureBounds[index];
+    });
+    const aligned = alignStockIntervalsToOnsets(intervals, selectedWindows, stockRecordingOnsets(stock.musicRecording), stock.visualMusic?.result ? plannedSamples : []);
+    intervals = aligned.intervals;
+    recordedTimingCheck = `Measured low-frequency recording attacks: start retained on a measured onset; ${aligned.adjustedCuts} final cut(s) nudged by at most four picture frames after colour ordering. Total duration, playback speed, source windows and sampled visual frames retained; not a measured BPM/downbeat or a claim of semantic music understanding`;
+  }
+  const postingSampleTimes = plannedSamples.map(sample => intervals[sample.shotIndex].outputStart + (sample.sourceSeconds - intervals[sample.shotIndex].start) / (intervals[sample.shotIndex].speed ?? 1));
   const renderedStock = { ...stock, renderedShots: shots.map(shot => ({ provider: shot.provider, mediaId: shot.mediaId })) };
   const minimumPictureDuration = adaptive ? duration : options.minDuration;
   const planIdentity = crypto.createHash("sha256").update(JSON.stringify({ version: editVersion, shots, options, intervals, audioPolicy: "section-aware-v1", ...(recording ? { musicRecording: stock.musicRecording } : {}) })).digest("hex").slice(0, 24);
@@ -1900,6 +1912,7 @@ async function processStockReel(
   item.title = job.title;
   item.quality.audio = anyOriginal ? "natural-audio-preserved" : useMusic ? "local-music-replaced" : "no-audio";
   if (recording) item.quality.musicRecording = recording.credit;
+  if (stock.musicRecording?.timing === "onset-v1") item.quality.musicEdit = { version: 1, shotDurations: intervals.map(interval => interval.frames / STOCK_REEL_FPS) };
   item.quality.checks = [
     `Real footage reel: ${shots.length} shots in the ${adaptive ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v3" ? "native speed or bounded 1.35× acceleration from measured movement" : adaptive ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
@@ -1908,10 +1921,11 @@ async function processStockReel(
       ? `Measured source cut boundaries retained after colour ordering; final cuts are not claimed beat-aligned to the ${rhythm.bpm} BPM instrumental`
       : `Nearby internal cuts aligned within four picture frames to the actual ${rhythm.bpm} BPM instrumental; total picture duration and source capacities retained`] : [])] : []),
     ...(sustainedMovement ? ["Movement-window ranking uses median sampled frame differences so isolated flashes/cuts do not dominate; not subject/action recognition"] : []),
+    ...(recordedTimingCheck ? [recordedTimingCheck] : []),
     ...framingChecks, ...credits,
     ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
     `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${adaptive ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
-    useMusic ? recording ? `CC0 recording: ${recording.credit.title} — ${recording.credit.artist}; ${recording.credit.sourcePage}; one continuous bed across every shot. Recorded instrumental, not AI music or a verified trending track; tempo/beat phase were not measured` : `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
+    useMusic ? recording ? `CC0 recording: ${recording.credit.title} — ${recording.credit.artist}; ${recording.credit.sourcePage}; one continuous bed across every shot. Recorded instrumental, not AI music or a verified trending track; ${stock.musicRecording?.timing === "onset-v1" ? "start chosen from offline-measured recording attacks, without tempo changes" : "tempo/beat phase were not measured"}` : `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
     ...(useMusic && options.musicVersion === 2 && !recording ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
     ...(options.openingExperiment ? ["Watch-time opening experiment v1: the opening targets 1.2 rather than 1.6 seconds when genuine picture and the minimum allow it; the chosen subject, measured window and native/bounded playback stay intact. This tests an observational signal, not a proven cause of low watch time"] : []),
     subtitleDecision.reason,
@@ -1965,7 +1979,7 @@ async function processStockReel(
   item.artifacts = { version: 1, renderRevision: `stock-assembly-v${editVersion}`, finalVideo: artifactReference(instagram), editing: { video: artifactReference(master), offsetSeconds: 0, captionsBaked: false }, captions: cues.length ? artifactReference(path.join(directory, "captions.srt")) : undefined, original: artifactReference(originalAssembly), music: useMusic ? artifactReference(music) : undefined };
   item.outputs = { instagram: { filename: path.basename(instagram), ...instagramInfo }, youtube: { filename: path.basename(youtube), ...youtubeInfo } };
   item.status = "READY"; item.processing!.status = "COMPLETED"; item.updatedAt = new Date().toISOString();
-  if (stock.visualMusic?.result && stock.visualMusic.sampledAt) await applyPlannedVisualPosting(item, stock.visualMusic.result, stock.visualMusic.sampledAt);
+  if (stock.visualMusic?.result && stock.visualMusic.sampledAt) await applyPlannedVisualPosting(item, stock.visualMusic.result, postingSampleTimes);
   await saveReviewFile(item);
   const finished = await updateJob(job.id, { status: "COMPLETED", stockSource: renderedStock, progress: 100, stage: `Real footage reel ready · ${shots.length} shots · ${instagramInfo.duration.toFixed(1)} seconds`, duration: instagramInfo.duration, hasAudio: anyOriginal || useMusic, error: undefined, finishedAt: new Date().toISOString(), completedClips: 1, totalClips: 1, reviewIds: [item.id] });
   await cleanupStockTemporaries(job.id);

@@ -33,12 +33,26 @@ test('recognized original reissue suffixes and known artist credits preserve ide
   assert.equal(musicSeedMatches(track('Holocene (Remastered)','A cover artist'),seed('Holocene')),false);
 });
 
-test('bounded discovery reads the available catalog and mood/style plus instrumental searches',()=>{
+test('bounded discovery searches a fitting original recording as well as trends and a mood instrumental',()=>{
   const queries=musicCatalogQueries(brief());
-  assert.deepEqual(queries,['','ambient instrumental','instrumental']);
-  assert.equal(musicCatalogQueries(brief('energetic','high'))[1],'upbeat instrumental');
+  assert.deepEqual(queries,['','Holocene Bon Iver','ambient instrumental']);
+  assert.equal(musicCatalogQueries(brief('energetic','high'))[1],'Adventure Of A Lifetime Coldplay');
   assert.deepEqual(musicCatalogQueries(brief('uncertain','unknown')),[]);
   assert.ok(queries.length<=REEL_MUSIC_LOOKUP_LIMIT);
+  const choices=['1','2','3'].map(id=>musicCatalogQueries(brief(),id)[1]);
+  assert.equal(new Set(choices).size,3,'equally fitting recordings vary by video, without extra API reads');
+  assert.equal(musicCatalogQueries(brief(),'1')[1],choices[0],'the same saved video keeps its lookup');
+  assert.equal(musicCatalogQueries(brief('calm','medium'))[1],'A Walk Tycho','the recording lookup respects the edit energy');
+});
+
+test('therapy and sleep utilities do not become a reel soundtrack merely from calm instrumental labels',()=>{
+  const result=rankMusicCatalog([
+    track('Guided Meditation (Instrumental)','Fixture','1'),
+    track('Deep Sleep Ambient Instrumental','Fixture','2'),
+    track('White Noise Calm Instrumental','Fixture','3'),
+    track('Calm Piano (Instrumental)','Fixture','4'),
+  ],brief());
+  assert.deepEqual(result.map(item=>item.audio_id),['4']);
 });
 
 test('non-seed catalog instrumentals with relevant descriptive styles can rank without an original-song allowlist',()=>{
@@ -192,6 +206,24 @@ test('valid sampled-frame profiles retain their explanation and actual frame ref
   assert.equal(result.basis,'sampled-frames');
   assert.deepEqual(result.brief,profile);
   assert.equal(JSON.stringify(file),before,'Reading recommendations does not rewrite owner data');
+});
+
+test('actual brisk cut durations inform music energy without inventing subject motion or changing the visual mood',()=>{
+  const file=review(['Frame 1: Water beside green trees.'],brief());
+  file.outputs.instagram.duration=10;
+  file.quality.musicEdit={version:1,shotDurations:[1,2,3,2,2]};
+  const before=JSON.stringify(file),result=musicBriefFromReview(file);
+  assert.equal(result.brief.mood,'calm');assert.equal(result.brief.energy,'medium');
+  assert.match(result.brief.reason,/measured cuts average 2.0 seconds/);
+  assert.match(result.brief.reason,/not measured subject motion or music tempo/);
+  assert.equal(reelMusicBriefSchema.safeParse(result.brief).success,true);
+  assert.equal(JSON.stringify(file),before);
+  for(const invalid of [{version:1,shotDurations:[1,2,3,2,1]}, {version:1,shotDurations:[-1,3,4,4]}, {version:1,shotDurations:[2,2,NaN,2,2]}, {version:1,shotDurations:Array(50).fill(.2)}, {version:2,shotDurations:[2,2,2,2,2]}]) {
+    file.quality.musicEdit=invalid;
+    assert.equal(musicBriefFromReview(file).brief.energy,'low','invalid or stale timing is ignored');
+  }
+  file.outputs.instagram.duration=30;file.quality.musicEdit={version:1,shotDurations:[6,6,6,6,6]};
+  assert.equal(musicBriefFromReview(file).brief.energy,'low','long quiet shots retain their quiet soundtrack direction');
 });
 
 test('music profiles reject invalid frame numbers, enums, versions and explanation bounds',()=>{

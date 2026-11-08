@@ -96,6 +96,14 @@ recorded. The small instrumental library cannot guarantee a perfect soundtrack.
 Within that catalogue, the selected mood takes priority over the repeat cooldown.
 If every suitable track is recent, Phoenix reuses the least recent suitable one
 instead of choosing an unrelated mood. Saved soundtrack recipes stay fixed.
+New recordings also use offline-measured low-frequency attacks from the exact
+bundled files. Within the matching, available catalogue, the final cut pattern
+guides the recording excerpt. Nearby cuts can move by at most four picture
+frames inside genuine source/movement windows; total duration, playback speed,
+source framing and sampled visual evidence stay valid. This aligns to measured
+attacks, not an inferred musical downbeat or a promised beat-perfect edit. It
+adds no model or audio scan during normal rendering. Legacy saved recipes keep
+their original offsets. The compact six-track library still limits musical variety.
 Commons WebM footage can supply picture duration through its video-stream
 duration tag; a longer audio/container duration is never used to extend picture.
 
@@ -104,7 +112,22 @@ membership. A trend only breaks an equal-fit tie. An animal or train alone does 
 prove playful or adventurous music, and serious/devotional observations do not
 receive a cheerful scenery-based fallback. Original songs and narrated/news outputs
 keep their finished soundtrack. No track listening, beat synchronization or perfect
-musical fit is claimed. See [the free-media source audit](docs/FREE_MEDIA_SOURCES.md)
+musical fit is claimed for Instagram catalogue tracks. Existing footage without
+the new timing marker searches a fitting original recording as well as current
+Meta trends and a relevant instrumental, within the same three-request limit.
+Guided meditation/sleep utilities are excluded from automatic Reel choices.
+New timing-matched reels keep their mastered soundtrack through Instagram posting
+and matching Stories, so the reviewed preview is not replaced by differently timed
+catalogue music. Original songs and narration keep their saved audio as before.
+The dashboard uses dim slate surfaces and muted green controls with readable text,
+status messages and visible keyboard focus.
+Channel insights are grouped in Settings: Instagram keeps its existing measured
+results and manager guidance, while Facebook can refresh a bounded basic snapshot
+of Page reels using the existing Page connection. Missing metrics stay unknown;
+advanced watch-time/reach analytics are not inferred. YouTube shows its actual
+connection state, and Rumble/Bilibili entries link to their services without
+claiming a statistics API connection.
+See [the free-media source audit](docs/FREE_MEDIA_SOURCES.md)
 for researched libraries, their access limits and which workflows actually use them.
 
 Quality ratings supply bounded guidance for matching future work. Supported
