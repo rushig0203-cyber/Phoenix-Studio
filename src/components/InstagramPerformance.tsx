@@ -13,9 +13,9 @@ const statusLabels: Record<InstagramPerformanceResponse["status"], string> = {
   not_connected: "Not connected", permission_required: "Insights permission needed", syncing: "Collecting results",
   ready: "Results saved", limited: "Some metrics unavailable", error: "Sync needs attention", rate_limited: "Waiting for Meta quota",
 };
-const metric = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : "â€”";
+const metric = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value.toLocaleString() : "—";
 const dateLabel = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : "Not yet";
-const watchLabel = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1)}s` : "â€”";
+const watchLabel = (value: number | null | undefined) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${(value / 1000).toFixed(1)}s` : "—";
 
 function instagramLink(value?: string) {
   if (!value) return undefined;

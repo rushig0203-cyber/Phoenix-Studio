@@ -68,7 +68,7 @@ test('results remain compact, newest first, with five expandable rows and workin
 test('missing values remain unavailable while real zero is zero and watch time converts milliseconds', async () => {
   const sample = video(1, { metrics: { views: null, likes: 0, comments: null, shares: 0, saves: -1, reach: NaN, averageWatchTimeMs: 8500 } });
   const ui = harness({ fetch: () => response(state([sample])) }); await ui.settle();
-  const cells = ui.all('td'); assert.equal(text(cells[0]), '—'); assert.equal(text(cells[1]), '0');
+  assert.match(text(ui.find('summary', node => text(node).startsWith('Video 1'))), /— views · 0 likes/);
   assert.match(text(ui.tree()), /Average watch time: 8\.5s/);
   assert.match(text(ui.tree()), /Saves: —/); assert.match(text(ui.tree()), /Reach: —/);
   assert.match(text(ui.tree()), /Missing metrics mean unavailable, not zero/);
@@ -105,6 +105,8 @@ test('only official HTTPS Instagram media permalinks are linked', async () => {
   const invalid = ['https://instagram.com.evil.test/reel/x/', 'https://evil.test/reel/x/', 'javascript:alert(1)', 'http://instagram.com/reel/x/', 'https://user:password@instagram.com/reel/x/', 'https://www.instagram.com/accounts/login/', 'https://www.instagram.com/reel/x/../../accounts/login/'];
   const ui = harness({ fetch: () => response(state([video(1, { permalink: 'https://www.instagram.com/reel/safe/?token=not-real#private' }), ...invalid.map((permalink, index) => video(index + 2, { permalink }))])) });
   await ui.settle();
+  assert.equal(ui.all('a').length, 0, 'The first page has only unsafe media links.');
+  ui.find('button', 'Next').props.onClick(); ui.render();
   const links = ui.all('a'); assert.equal(links.length, 1);
   assert.equal(links[0].props.href, 'https://www.instagram.com/reel/safe/'); assert.equal(links[0].props.rel, 'noreferrer');
 });
