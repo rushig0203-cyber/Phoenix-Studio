@@ -87,3 +87,14 @@ test('research fetches only a server-selected article; redirects and oversized r
     await assert.rejects(news.researchNews(idea.id), /safe text size/);
   } finally { global.fetch = original; }
 });
+
+test('explicit report refresh bypasses the ten-minute cache and joins an in-flight fetch',async()=>{
+  const original=global.fetch;let calls=0;
+  global.fetch=async()=>{calls++;await Promise.resolve();return new Response(item(`https://www.bbc.com/news/articles/fixture${calls}`,new Date().toUTCString()));};
+  try{
+    const first=await news.newsIdeas(true);const cached=await news.newsIdeas();
+    assert.equal(calls,1);assert.equal(cached[0].id,first[0].id);
+    const [a,b]=await Promise.all([news.newsIdeas(true),news.newsIdeas(true)]);
+    assert.equal(calls,2);assert.notEqual(a[0].id,first[0].id);assert.equal(a[0].id,b[0].id);
+  }finally{global.fetch=original;}
+});

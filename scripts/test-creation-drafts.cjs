@@ -400,6 +400,24 @@ test('duplicate plan clicks reuse drafts and archive tombstones prevent revival'
   await assert.rejects(drafts.createCreationDrafts([item]), /removed/);
   assert.equal(read().length, 1);
 });
+
+test('a saved creation key cannot return a different selected topic or workflow',async()=>{
+  const original={...input(),requestTopic:'Otters',topic:'Explain otter swimming'};
+  const [created]=await drafts.createCreationDrafts([original]);
+  const before=fs.readFileSync(file,'utf8');
+  for(const change of [{requestTopic:'Castles',topic:'Explain castles'},{creationType:'business'},{language:'Hindi'}]){
+    await assert.rejects(drafts.createCreationDrafts([{...original,...change}]),/different idea/);
+    assert.equal(fs.readFileSync(file,'utf8'),before,'A conflicting selection must not mutate or replace saved work');
+  }
+  assert.equal((await drafts.createCreationDrafts([original]))[0].id,created.id);
+});
+
+test('explicit automatic ideas reuse their original request even when a new provider draft was invented',async()=>{
+  const original={...input(),requestTopic:'',creationType:'children-story',topic:'A bunny follows a little bell'};
+  const [created]=await drafts.createCreationDrafts([original]);
+  const [retry]=await drafts.createCreationDrafts([{...original,topic:'An owl carries a small letter'}]);
+  assert.equal(retry.id,created.id);assert.equal(retry.input.topic,original.topic);assert.equal(read().length,1);
+});
 test('stock approval requires every actual asset and rejects insufficient duration', async () => {
   let draft = await ready();
   await assert.rejects(drafts.approveCreationDraft(draft.id, draft.version), /every section/);

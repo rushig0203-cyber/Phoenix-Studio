@@ -1,31 +1,31 @@
 .shell {
-  background: radial-gradient(ellipse at 75% 0%, #293b32 0, transparent 48%), #171d21;
-  color: #dfe7df;
+  background: radial-gradient(ellipse at 75% 0%, #302040 0, transparent 48%), #111016;
+  color: #e5dfef;
 }
 .sidebar {
-  background: #15221d;
-  color: #dfe7df;
-  border-color: #15221d;
+  background: #15111d;
+  color: #e5dfef;
+  border-color: #15111d;
 }
 .brand { color: inherit; }
 .brandMark {
-  background: #36503f;
-  color: #d3e4cd;
+  background: #3d285c;
+  color: #dac6f5;
   border: 0;
-  box-shadow: 3px 3px 0 #111a16;
+  box-shadow: 3px 3px 0 #0d0913;
   transform: rotate(-6deg);
 }
-.navLink { color: #b3c2b5; }
-.navLink:hover { background: #2b4134; color: #fff; }
+.navLink { color: #c3b5d3; }
+.navLink:hover { background: #2e213e; color: #fff; }
 .navLink[aria-current="page"] {
-  background: #36503f;
-  color: #eff6eb;
-  box-shadow: 0 3px 0 #111a16;
+  background: #3d285c;
+  color: #f4edff;
+  box-shadow: 0 3px 0 #0d0913;
 }
 .main { padding-top: 2.5rem; }
 .header { border: 0; padding-bottom: 0; margin-bottom: 2rem; }
 .heading { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.18; letter-spacing: -.045em; }
-.queueBadge { background: #20282d; border-color: #45594d; box-shadow: 0 2px 4px #15221d08; }
+.queueBadge { background: #1c1924; border-color: #554560; box-shadow: 0 2px 4px #15111d08; }
 .workflows { gap: 1.15rem; }
 .workflow {
   position: relative;
@@ -33,10 +33,10 @@
   flex-direction: column;
   overflow: hidden;
   padding: 1.25rem;
-  background: #20282d;
-  border: 1px solid #45594d;
+  background: #1c1924;
+  border: 1px solid #554560;
   border-radius: 1.3rem;
-  box-shadow: 0 3px 0 #141e19, 0 12px 24px -20px #15221d50;
+  box-shadow: 0 3px 0 #0d0913, 0 12px 24px -20px #15111d50;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 .workflow h2 { font-size: 1.3rem; margin-top: 1.25rem; letter-spacing: -.025em; }
@@ -47,7 +47,7 @@
   height: 9rem;
   overflow: hidden;
   border-radius: .85rem;
-  background: linear-gradient(135deg, #2e3b34, #26322f);
+  background: linear-gradient(135deg, #2d223b, #241c2e);
   isolation: isolate;
 }
 .artwork::before, .artwork::after {
@@ -55,39 +55,39 @@
   position: absolute;
   width: 6.4rem;
   height: 4.3rem;
-  border: 1px solid #718777;
+  border: 1px solid #887497;
   border-radius: .65rem;
-  background: #20282d;
+  background: #1c1924;
   transform: rotate(-13deg) translate(-.7rem, -.3rem);
-  box-shadow: 4px 6px 0 #131e18;
+  box-shadow: 4px 6px 0 #0d0913;
 }
-.artwork::after { transform: rotate(7deg) translate(.7rem, .2rem); background: #36503f; }
-.artwork svg { position: relative; z-index: 1; width: 1.8rem; height: 1.8rem; color: #d3e4cd; }
-.creation .artwork { background: linear-gradient(135deg, #3d372e, #302f2b); }
-.creation .artwork::before { border-color: #887b5e; box-shadow: 4px 6px 0 #211f1c; }
-.creation .artwork::after { background: #675c3f; border-color: #887b5e; transform: rotate(-6deg) translate(.7rem, .2rem); }
-.reel .artwork { background: #2c3c32; }
+.artwork::after { transform: rotate(7deg) translate(.7rem, .2rem); background: #3d285c; }
+.artwork svg { position: relative; z-index: 1; width: 1.8rem; height: 1.8rem; color: #dac6f5; }
+.creation .artwork { background: linear-gradient(135deg, #33243d, #251d2d); }
+.creation .artwork::before { border-color: #9271a5; box-shadow: 4px 6px 0 #130d1a; }
+.creation .artwork::after { background: #67477c; border-color: #9271a5; transform: rotate(-6deg) translate(.7rem, .2rem); }
+.reel .artwork { background: #2d213a; }
 .reel .artwork::before, .reel .artwork::after { width: 3.6rem; height: 6rem; }
-.reel .artwork::after { background: #446044; border-color: #446044; }
-.reel .artwork svg { color: #dae9d3; }
+.reel .artwork::after { background: #62458a; border-color: #62458a; }
+.reel .artwork svg { color: #ead9ff; }
 .workflowButton {
   justify-content: space-between;
   margin-top: 1.1rem;
   width: 100%;
   min-height: 2.75rem;
   border-radius: .7rem;
-  background: #486a55;
+  background: #7048ba;
 }
-.workflowButton:hover { background: #3d5949; }
+.workflowButton:hover { background: #5d3a9b; }
 .jobs {
-  border-color: #45594d;
+  border-color: #554560;
   border-radius: 1.1rem;
-  background: #20282d;
-  box-shadow: 0 2px 0 #141e19;
+  background: #1c1924;
+  box-shadow: 0 2px 0 #0d0913;
 }
-.shell :where(a, button, summary):focus-visible { outline: 3px solid #a0c28f; outline-offset: 4px; }
+.shell :where(a, button, summary):focus-visible { outline: 3px solid #c59aff; outline-offset: 4px; }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .workflow:hover { transform: perspective(900px) translateY(-4px) rotateX(1deg); border-color: #718777; box-shadow: 0 6px 0 #141e19, 0 20px 30px -22px #15221d70; }
+  .workflow:hover { transform: perspective(900px) translateY(-4px) rotateX(1deg); border-color: #887497; box-shadow: 0 6px 0 #0d0913, 0 20px 30px -22px #15111d70; }
 }
 @media (prefers-reduced-motion: reduce) {
   .workflow { transition: none; }

@@ -11,11 +11,12 @@ const { processNextPostingAnalysis } = load("videoPostingAnalysis");
 const { syncInstagramPerformance } = load("instagramPerformance");
 const { heavyWorkStatus, reconcileLocalModelWork } = load("renderResources");
 const { workerHasPendingWork } = load("workerReadiness");
+const { archiveExpiredJobHistory } = load("failedJobHistory");
 const { createWorkerDispatcher } = require("./worker-workflows.cjs");
 
 // Exercise the real loader and every entry point without accepting any work.
 if (process.argv.includes("--preflight")) {
-  for (const entry of [processNextSourceJob, pollGenerationJobs, reconcileRenderResources, writeWorkerHeartbeat, processNextReviewEdit, processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady, processNextPostingAnalysis, syncInstagramPerformance, heavyWorkStatus, reconcileLocalModelWork, workerHasPendingWork]) {
+  for (const entry of [processNextSourceJob, pollGenerationJobs, reconcileRenderResources, writeWorkerHeartbeat, processNextReviewEdit, processNextCreationDraft, enableAutomaticCreation, creationDraftWorkflowReady, processNextPostingAnalysis, syncInstagramPerformance, heavyWorkStatus, reconcileLocalModelWork, workerHasPendingWork, archiveExpiredJobHistory]) {
     if (typeof entry !== "function") throw new Error("A required worker entry point is unavailable.");
   }
   console.log("Phoenix worker preflight passed: source, generation, edits and drafts loaded.");
@@ -46,6 +47,8 @@ const dispatcher = createWorkerDispatcher({
     heartbeat: { run: writeWorkerHeartbeat, intervalMs: 5000 },
     // Small read-only Graph batches; never wait for a model/renderer RAM slot.
     instagramInsights: { run: syncInstagramPerformance, intervalMs: 60_000 },
+    // Soft history only; the helper skips active leases and keeps all media/uploads.
+    historyCleanup: { run: archiveExpiredJobHistory, intervalMs: 3_600_000 },
     resources: { run: async () => {
       await reconcileLocalModelWork();
       // This status-only path releases terminal external reservations without

@@ -161,6 +161,7 @@ export async function POST(request: Request) {
       songStyle: data.songStyle,
       songAudioId: data.songAudioId,
       requestId,
+      requestTopic: children && data.autoIdea ? "" : data.topic.trim(),
       language: studioStory?.language || data.language,
       duration: data.duration,
       autoDuration: !!studioStory || data.autoDuration,

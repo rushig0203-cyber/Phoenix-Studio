@@ -39,6 +39,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [songStyle, setSongStyle] = useState("Acoustic guitar, glockenspiel, handclaps, a cheerful melody and a memorable chorus.");
   const [narration, setNarration] = useState("");
   const [visualBrief, setVisualBrief] = useState("");
+  const [activeWriting, setActiveWriting] = useState({ narration: true, visualBrief: true, lyrics: true });
   const [uploadingSong, setUploadingSong] = useState(false);
   const [recommendationNotice, setRecommendationNotice] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -46,8 +47,13 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [selectedNews, setSelectedNews] = useState<NewsIdea | null>(null);
   const submitInFlight = useRef(false);
   const requestId = useRef(crypto.randomUUID());
+  const submittedIdea = useRef("");
   const children = kind.startsWith("Children");
-  const krishnaStarter = isKrishnaStoryTopic(topic) && !narration.trim() && !autoIdea;
+  const activeNarration = activeWriting.narration ? narration : "";
+  const activeVisualBrief = activeWriting.visualBrief ? visualBrief : "";
+  const activeLyrics = activeWriting.lyrics ? lyrics : "";
+  const savedWriting = !!(narration.trim() && !activeWriting.narration || visualBrief.trim() && !activeWriting.visualBrief || lyrics.trim() && !activeWriting.lyrics);
+  const krishnaStarter = isKrishnaStoryTopic(topic) && !activeNarration.trim() && !autoIdea;
   useEffect(() => {
     if (kind !== "Children's song") return;
     const controller = new AbortController();
@@ -56,6 +62,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   }, [kind]);
 
   function changeTopic(value: string) {
+    if (value.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setSelectedNews(null);
     setTopic(value);
     const nextKind = creationIntent(value);
@@ -75,7 +82,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
 
   function chooseRecommendation(idea: CreationRecommendation) {
     setSelectedNews(null);
-    const next = applyRecommendationToForm({ kind, topic, autoIdea, publishingFormat, duration, batchCount, narration, visualBrief, lyrics, songMode, songAudio }, idea);
+    const next = applyRecommendationToForm({ kind, topic, autoIdea, publishingFormat, duration, batchCount, narration: idea.title.trim() === topic.trim() ? activeNarration : "", visualBrief, lyrics, songMode, songAudio }, idea);
+    if (next.topic.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setKind(next.kind);
     setTopic(next.topic);
     setAutoIdea(next.autoIdea);
@@ -86,10 +94,11 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setIdeaOpen(false);
     // Choosing inspiration must not discard owner writing or switch a saved
     // recording to a generator. These fields remain under the owner's control.
-    setRecommendationNotice(`${next.kind} selected. Nothing has been queued.${narration.trim() || visualBrief.trim() || lyrics.trim() || songAudio ? " Your writing and any song recording are kept; check that they match this idea before creating." : ""}`);
+    setRecommendationNotice(`${next.kind} selected. Nothing has been queued.`);
   }
 
   function chooseNews(idea: NewsIdea) {
+    if (idea.title.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setSelectedNews(idea); setTopic(idea.title); setKind("General video");
     setAutoIdea(false); setBatchCount(1); setPublishingFormat("youtube-short"); setDuration(60);
     setSuggestionsOpen(false);
@@ -116,20 +125,15 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           : kind === "Business video"
             ? "business"
             : "general";
-      const response = await fetch("/api/generations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(60000),
-        body: JSON.stringify({
+      const payload = {
           newsId: selectedNews?.id,
           planOnly: false,
           songMode,
           hostedSongConsent: songMode === "hosted-ace" && hostedSongConsent,
           songStyle,
-          requestId: requestId.current,
           songAudioId: kind === "Children's song" && songMode === "recording" ? songAudio?.id : undefined,
-          script: selectedNews ? undefined : kind === "Children's song" ? lyrics : (batchCount === 1 && narration.trim()) ? narration : undefined,
-          visualTerms: !selectedNews && !children && visualBrief.trim() ? visualBrief.split("\n").map(term => term.trim()).filter(Boolean) : undefined,
+          script: selectedNews ? undefined : kind === "Children's song" ? activeLyrics : (batchCount === 1 && activeNarration.trim()) ? activeNarration : undefined,
+          visualTerms: !selectedNews && !children && activeVisualBrief.trim() ? activeVisualBrief.split("\n").map(term => term.trim()).filter(Boolean) : undefined,
           topic,
           autoIdea: children && autoIdea,
           duration,
@@ -142,7 +146,15 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           voice: "local-windows-voice",
           subtitleStyle: "clear-bold",
           audienceAge: children ? "3-6" : undefined,
-        }),
+        };
+      const identity = JSON.stringify(payload);
+      if (submittedIdea.current && submittedIdea.current !== identity) requestId.current = crypto.randomUUID();
+      submittedIdea.current = identity;
+      const response = await fetch("/api/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify({ ...payload, requestId: requestId.current }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -211,7 +223,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <p className="text-xs leading-5 text-[#647451]">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason || "Checking the free local singing engine…"} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
           {songMode === "hosted-ace" ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={hostedSongConsent} onChange={event => setHostedSongConsent(event.target.checked)} className="mt-1"/><span>Allow this song&apos;s description and lyrics to be sent to official hosted ACE-Step on Hugging Face. Video files and recordings stay on this PC. No account, token or paid plan is used.</span></label> : null}
           {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<p role="status" className="text-sm">Saving and checking song recording…</p>:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}</> : <label className="block text-sm font-semibold">Musical direction<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label>}
-          <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>setLyrics(e.target.value)} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : songLanguage === "Hindi" ? "Enter your original Hindi lyrics" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording" || songLanguage === "Hindi"}/></label>
+          <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>{setLyrics(e.target.value);setActiveWriting(current=>({...current,lyrics:true}));}} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : songLanguage === "Hindi" ? "Enter your original Hindi lyrics" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording" || songLanguage === "Hindi"}/></label>
           <p className="text-xs text-[#647451]">Listen to the complete finished video before posting. Caption timing is an estimate; adjust it in Edit video if needed. Use only audio and lyrics you have permission to publish.</p>
         </section> : null}
 
@@ -220,7 +232,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             <input
               type="checkbox"
               checked={autoIdea}
-              onChange={(event) => setAutoIdea(event.target.checked)}
+              onChange={(event) => { setAutoIdea(event.target.checked); if (event.target.checked) setActiveWriting({ narration: false, visualBrief: false, lyrics: false }); }}
               className="mt-1"
             />
             <span>
@@ -240,6 +252,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
                 </div></> : null}
             </details>
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
+            {savedWriting ? <p role="status" className="text-xs text-[#657153]">Previous custom writing is saved but not used for this idea; edit a field to reuse that writing.</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}
             <details className="rounded-xl border p-3" open={ideaOpen} onToggle={event => setIdeaOpen(event.currentTarget.open)}>
               <summary className="cursor-pointer text-sm font-semibold">{topic.trim() ? "Edit your idea" : "Describe your video"}{topic.trim() ? <span className="mt-1 block line-clamp-2 text-xs font-normal text-[#59634d]">{topic}</span> : null}</summary>
@@ -268,12 +281,12 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
 
         {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
           <summary className="cursor-pointer font-semibold">Narration & visual brief (optional)</summary>
-          <label className="block text-sm font-semibold">Your narration (optional)<textarea rows={5} maxLength={20000} value={narration} onChange={event => setNarration(event.target.value)} placeholder="Leave blank for your selected writer, or write the exact narration you want." className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
+          <label className="block text-sm font-semibold">Your narration (optional)<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} placeholder="Leave blank for your selected writer, or write the exact narration you want." className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
           <p className="text-xs text-[#647451]">Phoenix estimates the length from your complete narration. Your words are kept, not rewritten or stretched to fill time.</p>
-          <label className="block text-sm font-semibold">Visual search brief (optional, one scene per line)<textarea rows={4} maxLength={650} value={visualBrief} onChange={event => setVisualBrief(event.target.value)} placeholder={kind === "Business video" ? "customer speaking to shop assistant\nshop assistant listening\ncustomer collecting purchase" : "person opening bedroom curtains\npouring water into glass\nwriting a morning plan"} className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
+          <label className="block text-sm font-semibold">Visual search brief (optional, one scene per line)<textarea rows={4} maxLength={650} value={visualBrief} onChange={event => {setVisualBrief(event.target.value);setActiveWriting(current=>({...current,visualBrief:true}));}} placeholder={kind === "Business video" ? "customer speaking to shop assistant\nshop assistant listening\ncustomer collecting purchase" : "person opening bedroom curtains\npouring water into glass\nwriting a morning plan"} className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
           <p className="text-xs text-[#647451]">Up to 8 short, concrete searches in story order. Use a consistent setting and subject. Leave blank for automatic shot planning. Selection checks catalog metadata, not the actual frames; judge visual relevance in the final review.</p>
         </details> : null}
-        {kind === "Children's short story" && batchCount === 1 ? <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">Your story (optional)</summary><label className="block text-sm font-semibold">Story text<textarea rows={5} maxLength={20000} value={narration} onChange={event => setNarration(event.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" placeholder="Write your own story, or leave blank for automatic local planning." /></label></details> : null}
+        {kind === "Children's short story" && batchCount === 1 ? <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">Your story (optional)</summary><label className="block text-sm font-semibold">Story text<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} className="mt-1 w-full rounded-lg border p-2 font-normal" placeholder="Write your own story, or leave blank for automatic local planning." /></label></details> : null}
 
         {kind === "Children's short story" && !krishnaStarter && publishingFormat !== "youtube-full" ? (
           <label className="block rounded-xl border border-[#cad7a4] bg-[#f7faef] p-4 text-sm font-semibold">
@@ -299,7 +312,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         </div>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
-        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !lyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent || (songLanguage === "Hindi" && !lyrics.trim()) : !singing?.available))} className="bg-[#26331f] px-5 text-white">
+        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent || (songLanguage === "Hindi" && !activeLyrics.trim()) : !singing?.available))} className="bg-[#26331f] px-5 text-white">
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {busy
             ? selectedNews ? "Reading the report and checking creation…" : "Queuing your video…"

@@ -11,19 +11,20 @@ const cards = dashboard.slice(cardStart, cardEnd);
 
 test('completed history cards summarize the reel, clip count, duration, and 100 percent', () => {
   assert.match(cards, /const completed = job\.status === "COMPLETED"/);
-  assert.match(cards, /completed \? "Completed · 100%"/);
+  assert.match(cards, /<JobProgress[^>]*progress=\{completed \? 100 : job\.progress\}/);
   assert.match(cards, /\{clipCount\} \{clipCount === 1 \? "clip" : "clips"\} · \{durationSeconds > 0 \? formatTime\(durationSeconds\) : "Duration unavailable"\}/);
   assert.match(cards, /Object\.values\(file\.outputs \|\| \{\}\)/);
   assert.match(cards, /Math\.max\(\.\.\.durations\)/);
-  assert.match(cards, /!completed \? <div className="mt-3 h-2/);
+  assert.doesNotMatch(cards, /!completed \? <div className="mt-3 h-2/, 'No duplicate large progress bar remains inside the details');
 });
 
-test('compact job names and dates reveal progress, ETA, stage and errors only inside a closed disclosure', () => {
+test('compact job names/date/progress stay visible while ETA, stage and errors remain in a closed disclosure', () => {
   assert.match(cards, /\{!completed && timing\(job\) \? <p/);
   assert.match(cards, /!completed && !failed && job\.stage \? <p/);
   assert.match(cards, /<details className="min-w-0">\s*<summary title="Show job details"/);
   assert.match(cards, /<time dateTime=\{dated \? job\.createdAt : undefined\}/);
   assert.match(cards, /dateStyle: "medium", timeStyle: "short"/);
+  assert.ok(cards.indexOf('<JobProgress') < cards.indexOf('</summary>'), 'The actual progress stays visible in the collapsed row');
   assert.ok(cards.indexOf('<details className="min-w-0">') < cards.indexOf('{job.error ? <p'));
   assert.doesNotMatch(cards, /<details[^>]*\bopen(?:\s|=|>)/);
 });
@@ -44,10 +45,10 @@ test('posting tools remain accessible behind a compact disclosure on completed c
   assert.match(cards, /Watch video/);
 });
 
-test('Delete and explicit failed-job Recover stay outside details, while both phases share one ordered list', () => {
+test('Delete and explicit failed-job Retry stay outside details, while both phases share one ordered list', () => {
   assert.match(cards, /job\.status === "FAILED" \|\| job\.status === "BLOCKED"/);
   assert.match(cards, /failed && job\.kind !== "edit"/);
-  assert.ok(cards.indexOf('Recover failed job:') > cards.lastIndexOf('</details>'));
+  assert.ok(cards.indexOf('Retry failed job:') > cards.lastIndexOf('</details>'));
   assert.match(cards, /Delete job history/);
   assert.match(cards, /disabled=\{offline \|\| active \|\| removingJob !== null \|\| retrying !== null\}/);
   assert.doesNotMatch(dashboard, /displayedDrafts|displayedJobs|grouped separately/);

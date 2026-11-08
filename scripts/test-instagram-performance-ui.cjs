@@ -34,7 +34,7 @@ function harness(options = {}) {
     async fetch(url, init = {}) { assert.equal(url, '/api/instagram-performance'); const request = { url, ...init }; requests.push(request); return options.fetch ? options.fetch(request) : response(state()); },
     require(name) { assert.ok(Object.hasOwn(dependencies, name), `Unexpected UI import: ${name}`); return dependencies[name]; },
   }, { timeout: 1000 });
-  function render() { index = 0; tree = compiledModule.exports.default(); while (pending.length) pending.shift()(); return tree; }
+  function render() { index = 0; tree = compiledModule.exports.default(options.props || {}); while (pending.length) pending.shift()(); return tree; }
   async function settle() { for (let pass = 0; pass < 15; pass++) { await Promise.resolve(); render(); } return tree; }
   const find = (type, match) => nodes(tree).find(node => node.type === type && (typeof match === 'function' ? match(node) : text(node) === match));
   render();
@@ -191,4 +191,14 @@ test('refresh allows a bounded collection turn and a timeout does not claim the 
   assert.match(text(ui.tree()), /Collection can continue in the manager/);
   assert.match(text(ui.tree()), /saved results remain available/);
   assert.equal(ui.find('button', 'Refresh insights').props.disabled, false);
+});
+
+test('a selected posted Reel uses only its exact remote ID and opens its measured evidence', async () => {
+  const ui = harness({ props: { videoId: 'video-2' } }); await ui.settle();
+  const rows = ui.all('details').filter(node => node.props['data-instagram-result']);
+  assert.equal(rows.length, 1); assert.match(text(rows[0]), /^Video 2/); assert.equal(rows[0].props.open, true);
+  assert.deepEqual(ui.all('dd').map(text), ['1', '1,000', '50']); ui.unmount();
+  const missing = harness({ props: { videoId: 'not-in-cache' } }); await missing.settle();
+  assert.equal(missing.all('details').filter(node => node.props['data-instagram-result']).length, 0);
+  assert.match(text(missing.tree()), /no saved Instagram results yet/); assert.deepEqual(missing.all('dd').map(text), ['0', '—', '—']); missing.unmount();
 });

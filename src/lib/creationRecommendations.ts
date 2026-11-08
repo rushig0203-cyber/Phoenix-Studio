@@ -17,6 +17,7 @@ export type CreationRecommendation = {
 
 export const RECOMMENDATION_STORAGE_KEY = "phoenix-recommendations-v1";
 export const RECOMMENDATION_HISTORY_LIMIT = 256;
+export const RECOMMENDATION_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 export type RecommendationMemory = { version: 1; shown: string[]; cursor: number };
 export const emptyRecommendationMemory = (): RecommendationMemory => ({ version: 1, shown: [], cursor: 0 });
 
@@ -151,6 +152,14 @@ const additions: Array<[string, string, RecommendationGroup, CreationKind, strin
   ["customer-order-update", "example", "Work & business", "Business video", "An order update that answers the actual question — Give a short example with the current stage, expected next action and update timing."],
   ["customer-feedback-response", "example", "Work & business", "Business video", "Respond to feedback without an empty apology — Acknowledge one specific issue, explain the action and close with a useful next step."],
   ["customer-handover", "demonstration", "Work & business", "Business video", "Finish a service with a clear handover — Show the completed work, one practical care note and how the customer can get help."],
+  ["otter-swimming", "observation", "Nature & places", "General video", "How an otter moves through water — Follow visible swimming and surfacing, explain one useful adaptation and end on the same animal's next movement."],
+  ["penguin-feathers", "adaptation", "Nature & places", "General video", "Why penguin feathers look different from flying birds — Explain their close-packed covering using penguin footage; keep the ending about warmth rather than a generic wildlife montage."],
+  ["bee-pollen", "process", "Nature & places", "General video", "The tiny cargo a bee carries between flowers — Follow a visible pollen-covered bee and explain one part of the journey without inventing the animal's thoughts."],
+  ["arched-bridge", "structure", "Science & curiosity", "General video", "Why so many old bridges use arches — Use a clear bridge detail to explain the shape and how it carries load; finish with the feature viewers can recognize."],
+  ["courtyard-light", "design", "Nature & places", "General video", "Why a courtyard changes the feel of a building — Connect the enclosed outdoor space and surrounding rooms, explaining light and shade without claiming a precise filming location."],
+  ["windmill-design", "mechanism", "Science & curiosity", "General video", "What a windmill's turning sails actually do — Explain the visible mechanism with matching windmill footage and finish on the transfer of movement."],
+  ["japan-train-platform", "observation", "Nature & places", "General video", "A railway journey through Japan's changing landscapes — Use verified Japanese source descriptions, connect matching train views and end on one clear landscape detail; do not substitute an unrelated country."],
+  ["iceland-waterfall-landscape", "comparison", "Nature & places", "General video", "What shapes the landscape around Iceland's waterfalls — Connect source-supported Iceland scenery and one geological explanation, ending on a visible feature rather than a list of destinations."],
 ];
 
 const RECOMMENDATIONS: CreationRecommendation[] = [...seedRecommendations, ...additions.map(([topicKey, angleKey, category, kind, title]) => ({

@@ -11,7 +11,7 @@ const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeo
 const response = (value, status = 200) => ({ ok: status >= 200 && status < 300, async json() { return value; } });
 const facebook = (extra = {}) => ({ status: 'ready', detail: 'Saved basic Facebook video statistics.', account: { name: 'Fixture Page' }, lastSuccessfulSyncAt: '2026-11-08T10:00:00Z', videos: Array.from({ length: 7 }, (_, index) => ({ id: `${100 + index}`, caption: `Facebook ${index + 1}`, timestamp: `2026-11-${String(index + 1).padStart(2, '0')}T10:00:00Z`, permalink: `https://www.facebook.com/reel/${100 + index}/`, metrics: { views: 100 + index, likes: 0, comments: null, shares: null } })), ...extra });
 
-function harness(fetcher) {
+function harness(fetcher, props = {}) {
   let index = 0, tree;
   const slots = [], effects = [], pending = [], requests = [];
   const hooks = {
@@ -27,7 +27,7 @@ function harness(fetcher) {
     async fetch(url, init = {}) { requests.push({ url, ...init }); return fetcher ? fetcher(url, init, requests.length) : response(url === '/api/channels' ? { channels: [{ platform: 'facebook', name: 'Fixture Page', connected: true }, { platform: 'youtube', connected: false }] } : facebook()); },
     require(name) { assert.ok(Object.hasOwn(dependencies, name), `Unexpected UI import: ${name}`); return dependencies[name]; },
   }, { timeout: 1000 });
-  function render() { index = 0; tree = mod.exports.default(); while (pending.length) pending.shift()(); return tree; }
+  function render() { index = 0; tree = mod.exports.default(props); while (pending.length) pending.shift()(); return tree; }
   async function settle() { for (let pass = 0; pass < 15; pass++) { await Promise.resolve(); render(); } return tree; }
   const all = type => nodes(tree).filter(node => node.type === type);
   const find = (type, match) => all(type).find(node => typeof match === 'function' ? match(node) : text(node) === match);
@@ -35,13 +35,14 @@ function harness(fetcher) {
   return { render, settle, all, find, requests, tree: () => tree, select(name) { find('button', name).props.onClick(); render(); }, unmount() { effects.forEach(effect => effect?.cleanup?.()); } };
 }
 
-test('Settings hosts platform insights while Library stays focused on videos', () => {
+test('Insights has its own screen, and Settings links there while Library stays focused on videos', () => {
   const dashboard = fs.readFileSync(path.join(__dirname, '../src/app/dashboard/DashboardClient.tsx'), 'utf8');
-  const libraryBranch = dashboard.slice(dashboard.indexOf('{section === "library"'), dashboard.indexOf('{section === "create"', dashboard.indexOf('{section === "library"')));
+  const libraryBranch = dashboard.slice(dashboard.indexOf('{section === "library"'), dashboard.indexOf('{section === "insights"', dashboard.indexOf('{section === "library"')));
   assert.ok(libraryBranch.includes('<ReviewLibrary'));
   assert.doesNotMatch(libraryBranch, /<ChannelInsights|<InstagramPerformance/);
-  assert.match(dashboard, /section === "settings"[\s\S]*<ChannelInsights\s*\/>/);
-  assert.match(fs.readFileSync(path.join(__dirname, '../src/app/dashboard/settings/page.tsx'), 'utf8'), /<ChannelInsights\s*\/>/);
+  assert.match(dashboard, /section === "insights"[\s\S]*<ChannelInsights/);
+  const settings = fs.readFileSync(path.join(__dirname, '../src/app/dashboard/settings/page.tsx'), 'utf8');
+  assert.match(settings, /href="\/dashboard#insights"/); assert.doesNotMatch(settings, /<ChannelInsights/);
 });
 
 test('platform selection reads saved Facebook stats and only refresh explicitly collects new statistics', async () => {
@@ -106,4 +107,24 @@ test('late Facebook responses cannot replace another platform or install results
   assert.equal(ui.requests.at(-1).signal.aborted, true);
   complete(response(facebook({ account: { name: 'Late replacement' } }))); await ui.settle();
   assert.doesNotMatch(text(ui.tree()), /Late replacement/);
+});
+
+test('posted-video focus matches the saved publication ID and never substitutes other channel videos', async () => {
+  const id = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
+  const review = { id, title: 'Chosen posted reel', publication: { status: 'POSTED', postedTo: [{ platform: 'facebook', remoteId: '106' }] } };
+  const ui = harness(undefined, { review, requestedReviewId: id }); await ui.settle();
+  assert.equal(ui.find('button', 'Facebook').props['aria-pressed'], true);
+  const rows = ui.all('details').filter(node => node.props['data-facebook-result']);
+  assert.equal(rows.length, 1); assert.match(text(rows[0]), /^Facebook 7/); assert.equal(rows[0].props.open, true);
+  assert.deepEqual(ui.all('dd').map(text), ['1', '106', '0']);
+  ui.select('Instagram'); assert.match(text(ui.tree()), /No confirmed Instagram post/); assert.equal(ui.all('dd').length, 0);
+  assert.equal(ui.find('a', 'All videos').props.href, '#insights'); ui.unmount();
+});
+
+test('a missing posted-video sample remains unavailable rather than showing another Reel', async () => {
+  const id = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
+  const review = { id, title: 'Older posted reel', publication: { status: 'POSTED', postedTo: [{ platform: 'facebook', remoteId: '99999' }] } };
+  const ui = harness(undefined, { review, requestedReviewId: id }); await ui.settle();
+  assert.equal(ui.all('details').filter(node => node.props['data-facebook-result']).length, 0);
+  assert.match(text(ui.tree()), /not in the saved Facebook sample yet/); assert.deepEqual(ui.all('dd').map(text), ['0', '—', '—']); ui.unmount();
 });

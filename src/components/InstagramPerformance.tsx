@@ -26,7 +26,7 @@ function instagramLink(value?: string) {
   } catch { return undefined; }
 }
 
-export default function InstagramPerformance() {
+export default function InstagramPerformance({ videoId }: { videoId?: string } = {}) {
   const [data, setData] = useState<InstagramPerformanceResponse | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -82,7 +82,7 @@ export default function InstagramPerformance() {
     };
   }, [load]);
 
-  const videos = data ? [...data.videos].sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)) : [];
+  const videos = data ? [...data.videos].filter(video => !videoId || video.id === videoId).sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)) : [];
   const assessments = new Map(data?.summary.assessments.map(item => [item.videoId, item]));
   const measuredTotal = (name: "views" | "likes") => {
     const available = videos.map(video => video.metrics[name]).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
@@ -95,8 +95,8 @@ export default function InstagramPerformance() {
     </div>
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     {data && <>
-      <dl aria-label="Saved Instagram sample" className="grid grid-cols-3 gap-2">
-        {([["Videos", videos.length], ["Views", measuredTotal("views")], ["Likes", measuredTotal("likes")]] as const).map(([label, value]) => <div key={label} className="rounded-lg bg-[#edf1e5] px-3 py-2"><dt className="text-xs text-[#687657]">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{metric(value)}</dd></div>)}
+      <dl aria-label="Saved Instagram sample" className="grid grid-cols-3 gap-3">
+        {([["Videos", videos.length], ["Views", measuredTotal("views")], ["Likes", measuredTotal("likes")]] as const).map(([label, value]) => <div key={label} className="rounded-xl bg-[#edf1e5] p-4"><dt className="text-xs text-[#687657]">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metric(value)}</dd></div>)}
       </dl>
       <p role="status" className={`text-xs ${["error", "permission_required"].includes(data.status) ? "text-red-700" : "text-[#687657]"}`}>{data.detail}</p>
       {data.status === "permission_required" && <p className="text-xs"><a href="/dashboard#settings" className="font-medium underline">Reconnect Instagram in Settings</a> with <code>instagram_manage_insights</code> while keeping your existing publishing permissions.</p>}
@@ -105,7 +105,7 @@ export default function InstagramPerformance() {
         {videos.slice(page * pageSize, (page + 1) * pageSize).map(video => {
           const assessment = assessments.get(video.id), link = instagramLink(video.permalink);
           const title = (video.topic || video.caption || "Untitled Instagram video").slice(0, 100);
-          return <details key={video.id} data-instagram-result className="py-2">
+          return <details key={video.id} data-instagram-result open={videoId ? true : undefined} className="py-2">
             <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs">
               <span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-[#687657]">{dateLabel(video.timestamp)}</span></span>
               <span className="shrink-0 text-[#687657]"><span className="tabular-nums">{metric(video.metrics.views)}</span> views · <span className="tabular-nums">{metric(video.metrics.likes)}</span> likes</span>
@@ -120,7 +120,7 @@ export default function InstagramPerformance() {
             </div>
           </details>;
         })}
-      </div> : <p className="text-sm">No posted video results collected yet.</p>}
+      </div> : <p className="text-sm">{videoId ? "This post has no saved Instagram results yet. Refresh to collect its available counts; other videos are not substituted." : "No posted video results collected yet."}</p>}
       {videos.length > pageSize && <nav aria-label="Instagram results pages" className="flex items-center justify-between gap-2 text-xs"><button type="button" className={secondary} disabled={page === 0} onClick={() => setPage(current => Math.max(0, current - 1))}>Previous</button><span>Page {page + 1} of {Math.ceil(videos.length / pageSize)}</span><button type="button" className={secondary} disabled={(page + 1) * pageSize >= videos.length} onClick={() => setPage(current => current + 1)}>Next</button></nav>}
       <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-[#d5ddb8] pt-3">
         <details className="min-w-0 text-xs"><summary className="cursor-pointer font-medium">What the manager learned</summary>

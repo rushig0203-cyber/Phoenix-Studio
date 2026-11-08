@@ -55,8 +55,8 @@ export function parseNewsFeed(xml: string, now = Date.now()): NewsIdea[] {
   return items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)).slice(0, 24);
 }
 
-export async function newsIdeas() {
-  if (cache && Date.now() - cache.at < 10 * 60_000) return cache.items;
+export async function newsIdeas(refresh = false) {
+  if (!refresh && cache && Date.now() - cache.at < 10 * 60_000) return cache.items;
   if (!pending) pending = boundedText(feedUrl, 500_000).then(xml => {
     const items = parseNewsFeed(xml); if (!items.length) throw new Error("No recent usable reports were returned. No news was invented.");
     cache = { at: Date.now(), items }; return items;

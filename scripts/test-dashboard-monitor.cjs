@@ -218,15 +218,17 @@ test('compact rows keep preparations and renders in one chronological list with 
     const summary = nodes(disclosure, node => node.type === 'summary')[0];
     assert.ok(nodes(summary, node => node.type === 'time')[0].props.dateTime);
     const buttons = nodes(row, node => typeof node.props?.onClick === 'function');
-    assert.deepEqual(buttons.map(text), ['Recover', 'Delete']);
+    assert.deepEqual(buttons.map(text), ['Retry', 'Delete']);
+    const progress = nodes(summary, node => node.type?.name === 'JobProgress')[0];
+    assert.equal(progress.props.progress, 10); assert.equal(progress.props.failed, true);
   }
   assert.equal(h.requests.length, 6); assert.ok(h.requests.every(request => !request.method));
 });
 
-test('Recover and Delete cannot submit duplicate or conflicting actions before rerendering', async t => {
+test('Retry and Delete cannot submit duplicate or conflicting actions before rerendering', async t => {
   const h = harness(t); global.window.location.hash = '#jobs';
   h.setJobs([source('failed-fixture', 'FAILED')]); await h.flush();
-  const recover = h.button('Recover'), remove = h.button('Delete');
+  const recover = h.button('Retry'), remove = h.button('Delete');
   recover.props.onClick(); recover.props.onClick(); remove.props.onClick(); await h.flush();
   const mutations = h.requests.filter(request => request.method);
   assert.equal(mutations.length, 1);

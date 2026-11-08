@@ -32,6 +32,7 @@ function memoryStorage(initial = {}) {
 // mounts a browser, imports owner state, starts a timer or calls a provider/job.
 function harness(options = {}) {
   let index = 0, tree, networkCalls = 0;
+  let clock=0,nextTimer=0;const timers=new Map();
   const slots = [], effects = [], pending = [], chosen = [];
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
@@ -44,7 +45,7 @@ function harness(options = {}) {
     creationRecommendations: (...args) => decorate(recommendations.creationRecommendations(...args)),
     nextStoredRecommendations: (...args) => decorate(recommendations.nextStoredRecommendations(...args)),
   };
-  const sandbox = { fetch() { networkCalls++; assert.fail('Recommendations must never call a network, job or provider'); } };
+  const sandbox = { window:{setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{at:clock+delay,callback});return id;},clearTimeout(id){timers.delete(id);}},fetch() { networkCalls++; assert.fail('Recommendations must never call a network, job or provider'); } };
   if (options.propertyDenied) Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Browser property blocked'); } });
   else sandbox.localStorage = options.storage || memoryStorage();
   const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/lib/creationRecommendations': helpers }, sandbox).default;
@@ -53,7 +54,8 @@ function harness(options = {}) {
   const ids = () => cards().map(node => node.key);
   const more = () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'More ideas').props.onClick(); render(); };
   render(); render();
-  return { render, cards, ids, more, chosen, tree: () => tree, networkCalls: () => networkCalls };
+  const advance=milliseconds=>{const target=clock+milliseconds;for(let passes=0;;passes++){assert.ok(passes<20);const next=[...timers.entries()].filter(([,timer])=>timer.at<=target).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;clock=next[1].at;timers.delete(next[0]);next[1].callback();render();}clock=target;};
+  return { render, cards, ids, more, chosen, advance,tree: () => tree, networkCalls: () => networkCalls };
 }
 
 test('readable complete history with blocked writes does not replay stale cards on More ideas', () => {
@@ -109,4 +111,12 @@ test('headline and visible brief select the exact complete premise, including a 
     assert.equal(selected.title, premise); assert.equal(selected.id, card.key);
   }
   assert.equal(ui.chosen.length, 6); assert.equal(ui.networkCalls(), 0);
+});
+
+test('weekly creation ideas rotate without overwriting or choosing a topic',()=>{
+  const ui=harness(),before=ui.ids();ui.advance(recommendations.RECOMMENDATION_REFRESH_MS-1);
+  assert.deepEqual(plain(ui.ids()),plain(before));ui.advance(1);
+  assert.ok(ui.ids().every(id=>!before.includes(id)));
+  assert.equal(ui.chosen.length,0);assert.equal(ui.networkCalls(),0);
+  const weekly=ui.ids();ui.more();assert.ok(ui.ids().every(id=>!weekly.includes(id)));
 });

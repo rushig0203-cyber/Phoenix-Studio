@@ -2,6 +2,7 @@ import { CONTENT_IDEAS, type ContentIdea } from "./contentIdeas";
 
 export const FOOTAGE_SUGGESTION_STORAGE_KEY = "phoenix-footage-suggestions-v1";
 export const FOOTAGE_SUGGESTION_COUNT = 6;
+export const FOOTAGE_SUGGESTION_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 // Keep the existing IDs/cursor order; append visual keywords rather than scripted premises.
 const topics: Record<string, readonly [string, string]> = {
   "0-0": ["Nature", "nature"], "0-1": ["Ocean", "ocean"], "0-2": ["Birds", "birds"],
@@ -14,8 +15,9 @@ const topics: Record<string, readonly [string, string]> = {
 const extraTopics: Array<{ category: string; titles: string[] }> = [
   { category: "Places & travel", titles: ["Switzerland", "Norway", "Iceland", "Italy", "Japan", "Canada", "Scotland", "Austria", "New Zealand", "Alps", "Dolomites", "Fjords", "Glaciers", "Lighthouse", "Coastal road", "Countryside"] },
   { category: "Nature & wildlife", titles: ["Waterfall", "Lake", "River", "Beach", "Sunset", "Sunrise", "Aurora", "Desert", "Dunes", "Cliffs", "Island", "Meadow", "Snow", "Rainforest", "Tulips", "Lavender", "Autumn", "Spring"] },
-  { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish"] },
+  { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish", "Otters", "Whales", "Seals", "Giraffes", "Lions", "Pandas", "Rabbits", "Flamingos", "Parrots", "Squirrels", "Dragonflies", "Bees"] },
   { category: "Movement & outdoors", titles: ["Steam train", "Railway", "Tram", "Sailing", "Kayaking", "Skiing", "Surfing", "Hiking"] },
+  { category: "Architecture & design", titles: ["Architecture", "Bridges", "Castles", "Skyscrapers", "Libraries", "Museums", "Courtyards", "Staircases", "Old town", "Stone streets", "Windmills", "Greenhouses", "Lighthouses", "City lights", "Glass buildings", "Wooden houses"] },
 ];
 // Country + one visible subject stays searchable; landlocked places do not
 // receive invented coast/beach suggestions. These are not filming-location claims.
@@ -56,7 +58,7 @@ const ideas: ContentIdea[] = [...CONTENT_IDEAS.filter(idea => idea.workflow === 
   return { id: `footage-${country.toLowerCase()}-${subject}`, category: "Places & travel", title, query: title, workflow: "stock-reel" as const };
 }))];
 // Balance each visible batch; a long country list must not crowd out wildlife.
-const animals = new Set(["Birds", "Butterflies", "Cats", "Dogs", "Horses", "Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish"]);
+const animals = new Set(["Birds", "Butterflies", "Cats", "Dogs", "Horses", ...extraTopics[2].titles]);
 const places = new Set(extraTopics[0].titles);
 const nature = new Set(["Nature", "Ocean", "Forest", "Mountains", "Rain", "Gardens", "Parks"]);
 const pools: ContentIdea[][] = Array.from({ length: FOOTAGE_SUGGESTION_COUNT }, () => []);
@@ -65,7 +67,8 @@ for (const idea of ideas) {
     : idea.category === "Nature & wildlife" || nature.has(idea.title) ? 1
     : places.has(idea.title) ? 2
     : idea.category === "Movement & outdoors" || idea.title === "Train" ? 3
-    : countryTopics.some(([country]) => idea.title.startsWith(country + " ")) ? 5 : 4;
+    : idea.category === "Architecture & design" || idea.title === "Cities" ? 4
+    : countryTopics.some(([country]) => idea.title.startsWith(country + " ")) ? 2 : 5;
   pools[group].push(idea);
 }
 const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;

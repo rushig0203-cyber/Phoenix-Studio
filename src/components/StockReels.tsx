@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { NaturalStock } from "@/lib/naturalStock";
 import type { ContentIdea } from "@/lib/contentIdeas";
-import { nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/stockFootageSuggestions";
+import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/stockFootageSuggestions";
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
 import InstagramTopicSuggestions from "./InstagramTopicSuggestions";
@@ -96,7 +96,10 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   useEffect(() => {
     mounted.current = true;
     if (!suggestionsInitialized.current) { suggestionsInitialized.current = true; moreSuggestions(); }
-    return () => { mounted.current = false; cancelSearch(); currentResults.current = null; };
+    let suggestionTimer: ReturnType<typeof setTimeout>;
+    const refresh = () => { moreSuggestions(); suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS); };
+    suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS);
+    return () => { window.clearTimeout(suggestionTimer); mounted.current = false; cancelSearch(); currentResults.current = null; };
   }, []);
   useEffect(() => {
     const wanted = query.trim(); latestQuery.current = wanted;
@@ -143,7 +146,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       <p id="footage-topic-help" className="mt-2 text-xs text-[#657153]">Use a short place, subject or action. Matching videos appear as you type.</p>
     </form>
     <details className="mt-3 rounded-xl bg-[#f1f5e8] p-3"><summary className="cursor-pointer text-sm font-medium">Topic suggestions</summary>
-      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Searchable topics, not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={moreSuggestions}>More topics</Button></div>
+      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Mixed searchable topics, refreshed weekly—not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={moreSuggestions}>More topics</Button></div>
       <div className="mt-2 flex flex-wrap gap-2">{suggestions.map(idea => <button key={idea.id} type="button" disabled={busy} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span>{idea.title}</span></button>)}</div>
       <InstagramTopicSuggestions mode="stock" onChoose={chooseIdea} disabled={busy} />
       {!suggestionsRemembered ? <p className="mt-2 text-xs text-[#657153]">Browser storage is unavailable; ideas still rotate here but may repeat next visit.</p> : null}

@@ -119,14 +119,27 @@ Guided meditation/sleep utilities are excluded from automatic Reel choices.
 New timing-matched reels keep their mastered soundtrack through Instagram posting
 and matching Stories, so the reviewed preview is not replaced by differently timed
 catalogue music. Original songs and narration keep their saved audio as before.
-The dashboard uses dim slate surfaces and muted green controls with readable text,
-status messages and visible keyboard focus.
-Channel insights are grouped in Settings: Instagram keeps its existing measured
+The dashboard uses near-black surfaces with restrained neon-purple accents,
+readable text and visible keyboard focus. Insights has its own sidebar screen:
+Instagram keeps its existing measured
 results and manager guidance, while Facebook can refresh a bounded basic snapshot
 of Page reels using the existing Page connection. Missing metrics stay unknown;
 advanced watch-time/reach analytics are not inferred. YouTube shows its actual
 connection state, and Rumble/Bilibili entries link to their services without
 claiming a statistics API connection.
+Posted Library videos open their exact saved Instagram/Facebook publication in
+Insights; missing measurements are never replaced by another video's results.
+Job rows show a compact progress bar and percentage when measured, with failure
+details collapsed. The running manager soft-archives local failed history after
+seven days; originals, finished videos and protected publishing journals stay saved.
+Active or uncertain provider work is excluded from this cleanup.
+Make Reel suggestions mix wildlife, nature, countries, movement, architecture and
+everyday subjects. Open suggestion panels rotate weekly; manual refresh changes
+the batch immediately. Report refresh bypasses the short news cache without
+inventing headlines when the source has not changed. Changed creation selections
+use a new request identity, and saved requests cannot silently return an older topic.
+Earlier custom narration, visual searches and lyrics remain saved when the topic
+changes, but stay inactive for the new idea until the corresponding field is edited.
 See [the free-media source audit](docs/FREE_MEDIA_SOURCES.md)
 for researched libraries, their access limits and which workflows actually use them.
 

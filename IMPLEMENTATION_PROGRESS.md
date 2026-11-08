@@ -1,6 +1,12 @@
 # Phoenix Studio implementation and verified releases
 
-## November 8 — Make Reel audio alignment and dim palette in verification
+## November 8 — audio verified; standalone Insights and purple theme in verification
+
+- Audio/initial insights source `a6d7e63286261f9eba11d86e5e383f556a82988f`
+  passed Windows run `42457223969`: 1,610 Node tests, 52 Python checks, lint,
+  full TypeScript/build, real FFmpeg/public Pexels exports and the synthetic
+  49-minute interrupted episode proof. Both Vercel deployments passed. The
+  subsequent requests below require a new verified release before activation.
 
 - New licensed-recording selections use actual offline-measured recording attacks
   rather than arbitrary whole-second starts. The final picture-cut pattern guides
@@ -12,18 +18,33 @@
   footage still uses bounded Instagram lookup, now including a fitting original
   recording, while guided meditation/sleep utilities are excluded. Actual saved
   cut durations can inform edit energy without claiming measured subject motion.
-- Create, Library, posting and Settings share dim slate/charcoal surfaces and
-  muted green controls. Focus, input and text/status contrast checks cover the
-  palette. Layout and publishing approvals remain unchanged.
-- Channel insights move into Settings with compact platform views and five recent
-  results by default. Instagram's existing collector/learning stays intact.
+- The owner's later colour choice replaces green with near-black/violet surfaces
+  and restrained neon-purple accents. Focus, input and text/status contrast checks
+  cover the palette. Publishing approvals remain unchanged.
+- Insights now has a standalone sidebar dashboard, linked from Settings. Posted
+  Library videos open their exact confirmed remote publication, while absent
+  measurements stay explicitly unavailable. Five recent expandable results remain
+  the default, with pagination. Instagram's existing collector/learning stays intact.
   A read-only live Facebook `/video_reels` probe returned three Page reels with
   actual basic view/like/comment counts through the existing verified Page token.
   This supports a bounded independent Facebook cache, not advanced private
   analytics. YouTube is still unconfigured after Google's identity check failed;
   Rumble/Bilibili have manual service links, not invented connected statistics.
-- These source changes are not installed yet. Keep the November 7 verified
-  release selected until remote Windows verification and guarded activation pass.
+- Job rows gain compact visible progress and Retry/Delete actions. Hourly manager
+  housekeeping soft-archives failed local history after seven days, skipping active
+  tasks, uncertain provider reservations, retries and upload journals. Final files
+  and originals remain saved. No cleanup was run on owner history during testing.
+- Suggestions mix multiple searchable subject groups, rotate weekly without a
+  model call and refresh manually. Reports can bypass their ten-minute feed cache.
+  A changed creation payload gets a new idempotency key; a saved request rejects
+  a conflicting original topic instead of returning the old video.
+  Retained optional narration/visual searches/lyrics are disarmed on a new topic;
+  re-editing one field activates only that field. The earlier text is not deleted.
+- These source changes are not installed by this session yet. A separate local
+  update selected `.next-build-20261108071524332` and changed only the owner's
+  generated type include paths; preserve the resulting exact owner configuration
+  hash `97AF40D8DC79A56F70612C0A12A15FBA9F30118E1D4504E1C80EC8B7DAEAF45C`.
+  The final combined source requires remote verification and guarded activation.
   No owner job was retried, no social test post was made and no paid service added.
 
 ## November 7 — installed natural news captions, complete endings and music matching

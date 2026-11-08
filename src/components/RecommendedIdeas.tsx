@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
-  creationRecommendations, emptyRecommendationMemory, nextStoredRecommendations, type CreationRecommendation,
+  creationRecommendations, emptyRecommendationMemory, nextStoredRecommendations, RECOMMENDATION_REFRESH_MS, type CreationRecommendation,
 } from "@/lib/creationRecommendations";
 
 export default function RecommendedIdeas({ onChoose }: { onChoose: (idea: CreationRecommendation) => void }) {
@@ -22,9 +22,12 @@ export default function RecommendedIdeas({ onChoose }: { onChoose: (idea: Creati
     setRemembered(next.remembered);
   }
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    more();
+    if (!initialized.current) { initialized.current = true; more(); }
+    if (typeof window === "undefined") return;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = () => { more(); timer = window.setTimeout(refresh, RECOMMENDATION_REFRESH_MS); };
+    timer = window.setTimeout(refresh, RECOMMENDATION_REFRESH_MS);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return <section aria-label="Recommended ideas" className="rounded-xl bg-[#f1f5e8] p-3">
@@ -41,7 +44,7 @@ export default function RecommendedIdeas({ onChoose }: { onChoose: (idea: Creati
       </button>;
     })}</div>
     <details className="mt-2 text-xs text-[#59634d]"><summary className="cursor-pointer">About these ideas</summary>
-      <p className="mt-2">Starting points, not live trends; nothing starts until you click Create video.</p>
+      <p className="mt-2">Starting points, not live trends; nothing starts until you click Create video. Open suggestions rotate automatically each week; More ideas changes the batch now.</p>
       <p className="mt-1">{remembered ? "Recently shown topics are remembered and rotate after the catalogue is explored." : "Browser history storage is unavailable; topics may repeat on your next visit."}</p>
     </details>
   </section>;

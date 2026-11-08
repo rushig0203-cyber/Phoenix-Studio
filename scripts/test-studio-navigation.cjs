@@ -6,9 +6,9 @@ require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'c
 require('tsconfig-paths').register({ baseUrl: path.resolve(__dirname, '..'), paths: { '@/*': ['src/*'] } });
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
-const { studioSection, STUDIO_SECTIONS } = require('../src/lib/studioNavigation');
+const { insightReviewId, studioSection, STUDIO_SECTIONS } = require('../src/lib/studioNavigation');
 test('section links restore the right screen and retain old bookmarks', () => {
-  assert.deepEqual(STUDIO_SECTIONS, ['create', 'library', 'settings']);
+  assert.deepEqual(STUDIO_SECTIONS, ['create', 'library', 'insights', 'settings']);
   for (const value of STUDIO_SECTIONS) assert.equal(studioSection('#' + value), value);
   assert.equal(studioSection('#jobs'), 'create');
   assert.equal(studioSection('#ideas'), 'create');
@@ -16,6 +16,10 @@ test('section links restore the right screen and retain old bookmarks', () => {
   assert.equal(studioSection('#channels'), 'settings');
   assert.equal(studioSection('#writing-settings'), 'settings');
   assert.equal(studioSection('#unknown'), 'create');
+  const review = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
+  assert.equal(studioSection('#insights?review=' + review), 'insights');
+  assert.equal(insightReviewId('#insights?review=' + review), review);
+  for (const hash of ['#library?review=' + review, '#insights?review=../secret', '#insights?review=not-an-id']) assert.equal(insightReviewId(hash), undefined);
 });
 test('home shows creation workflows followed by inline Jobs, with Library and channel settings kept separate', () => {
   const Dashboard = require('../src/app/dashboard/DashboardClient').default;
@@ -24,6 +28,7 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   assert.match(html, /aria-label="Studio sections"/);
   const nav = /<nav[^>]*aria-label="Studio sections"[\s\S]*?<\/nav>/.exec(html)[0];
   assert.doesNotMatch(nav, /href="#jobs"|>Jobs</);
+  assert.match(nav, /href="#insights"/);
   assert.equal((html.match(/aria-label="Jobs and progress"/g) || []).length, 1);
   assert.match(html, /id="jobs"/);
   assert.match(html, /aria-current="page"/);
@@ -101,7 +106,7 @@ test('prompt-first routing is conservative and completion navigation ignores his
 test('preparation cards offer retry/cancel only, with no editing or approval gate', () => {
   const Preparation = require('../src/components/CreationDrafts').default;
   const html = renderToStaticMarkup(React.createElement(Preparation, { onRefresh: async () => {}, drafts: [{ id: 'fixture', status: 'FAILED', stage: 'Could not find footage', error: 'No suitable asset', input: { topic: 'My video', duration: 60, aspect: '9:16' } }] }));
-  assert.match(html, /Recover/);
+  assert.match(html, /Retry/);
   assert.match(html, /Delete/);
   assert.doesNotMatch(html, /Preparing videos|Preparation needs attention/);
   assert.match(html, /Why this job failed/);

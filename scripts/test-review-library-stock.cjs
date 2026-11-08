@@ -77,6 +77,16 @@ test('stock filter includes both provider kinds and legacy stock names without c
   h.filter('source'); assert.deepEqual(h.titles(), ['Uploaded episode clip']);
 });
 
+test('only confirmed posted videos expose a direct Insights action for their exact saved review', t => {
+  const id = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
+  const posted = fixture(id, 'Posted waterfall', { publication: { status: 'POSTED', postedTo: [{ platform: 'instagram', remoteId: '12345' }] } });
+  const h = harness(t, [fixture('unposted', 'New draft'), posted]);
+  assert.equal(nodes(h.tree, node => node.props?.['aria-label'] === 'Insights for New draft').length, 0);
+  h.button('Posted · 1').props.onClick(); h.render();
+  const actions = nodes(h.tree, node => node.props?.['aria-label'] === 'Insights for Posted waterfall');
+  assert.equal(actions.length, 1); assert.equal(actions[0].props.href, `/dashboard#insights?review=${id}`);
+});
+
 test('creation-type children and edited children retain precedence over provider stock kind', t => {
   const records = [
     fixture('typed-child', 'Typed children video', { source: files[0].source, delivery: { creationType: 'children-story' } }),

@@ -5,19 +5,23 @@ export default function NewsIdeas({ onChoose }: { onChoose: (idea: NewsIdea) => 
   const [items, setItems] = useState<NewsIdea[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const lock = useRef(false);
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
   async function load() {
-    if (lock.current) return; lock.current = true; setBusy(true); setError("");
+    if (lock.current) return; lock.current = true; setBusy(true); setError(""); setNotice("");
     const controller = new AbortController(); pending.current = controller;
     try {
-      const response = await fetch("/api/news-ideas", { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
+      const response = await fetch(`/api/news-ideas${items.length ? "?refresh=1" : ""}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || "News unavailable. Check that Phoenix is running, then try again.");
       if (!Array.isArray(data?.items) || !data.items.length) throw new Error("No recent usable reports were returned. Try again later; no headlines were invented.");
       if (controller.signal.aborted) return;
-      setItems(data.items);
+      const previous = new Set(items.map(item => item.id));
+      const other = data.items.filter((item: NewsIdea) => !previous.has(item.id));
+      setItems([...other, ...data.items.filter((item: NewsIdea) => previous.has(item.id))].slice(0, 8));
+      if (items.length && !other.length) setNotice("The source returned no other recent reports. These are the available reports; no headlines were invented.");
     } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error && e.name !== "TimeoutError" ? e.message : "News lookup timed out. Try again; your selected idea is kept."); }
     finally {
       if (pending.current === controller) { pending.current = null; lock.current = false; }
@@ -28,6 +32,7 @@ export default function NewsIdeas({ onChoose }: { onChoose: (idea: NewsIdea) => 
     <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold">World news & international affairs</h4><button type="button" disabled={busy} onClick={() => void load()} className="rounded-lg border px-3 py-2 text-xs">{busy ? "Checking reports…" : items.length ? "Refresh reports" : "Find recent reports"}</button></div>
     <p className="mt-2 text-xs text-[#657153]">Recent reporting—not a controversy score. Phoenix reads the selected report before writing; news claims remain attributed. Article text is sent to your selected writer. No paid news API or publisher video is used.</p>
     {error ? <p role="alert" className="mt-2 text-sm text-red-800">{error}</p> : null}
+    {notice ? <p role="status" className="mt-2 text-xs text-[#657153]">{notice}</p> : null}
     <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map(item => <article key={item.id} className="rounded-lg border p-3 text-sm"><h5 className="font-medium">{item.title}</h5><p className="mt-1 text-xs">{item.summary}</p><a className="mt-2 block text-xs underline" href={item.url} target="_blank" rel="noreferrer">BBC News · {new Date(item.publishedAt).toLocaleDateString()}</a><button type="button" onClick={() => onChoose(item)} className="mt-2 rounded-lg bg-[#394a2a] px-3 py-2 text-xs text-white">Use this report</button></article>)}</div>
   </section>;
 }

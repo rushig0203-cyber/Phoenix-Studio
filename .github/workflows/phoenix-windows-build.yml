@@ -188,6 +188,8 @@ jobs:
           scripts/test-stock-visual-continuity.cjs
           scripts/test-stock-temporary-cleanup.cjs
           scripts/test-job-summary-ui.cjs
+          scripts/test-job-progress.cjs
+          scripts/test-failed-job-history.cjs
           scripts/test-stock-reel-editing.cjs
           scripts/test-stock-reel-quality.cjs
           scripts/test-stock-reel-audio.cjs
@@ -215,6 +217,7 @@ jobs:
           src/lib/instagramTopicSuggestions.ts src/components/InstagramPerformance.tsx src/components/InstagramTopicSuggestions.tsx
           src/app/api/instagram-performance/route.ts
           src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx
+          src/lib/failedJobHistory.ts src/components/JobProgress.tsx src/components/CreationDrafts.tsx
           src/components/ChannelInsights.tsx src/components/InstagramPerformance.tsx
           src/lib/facebookPerformance.ts src/lib/facebookPerformanceTypes.ts src/app/api/facebook-performance/route.ts
           src/components/ReviewLibrary.tsx

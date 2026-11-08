@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChannelStatus } from "@/lib/channelConnections";
+import type { ReviewFile } from "@/lib/reviewFiles";
 import InstagramPerformance from "./InstagramPerformance";
 
 type Platform = "instagram" | "facebook" | "youtube" | "rumble" | "bilibili";
@@ -35,8 +36,10 @@ function facebookLink(value?: string) {
   } catch { /* Untrusted links stay plain text. */ }
 }
 
-export default function ChannelInsights() {
-  const [platform, setPlatform] = useState<Platform>("instagram");
+export default function ChannelInsights({ review, requestedReviewId }: { review?: ReviewFile; requestedReviewId?: string } = {}) {
+  const publications = review?.publication?.status === "POSTED" ? review.publication.postedTo : [];
+  const preferredPlatform = publications.find(item => item.platform === "instagram")?.platform || publications[0]?.platform || "instagram";
+  const [platform, setPlatform] = useState<Platform>(preferredPlatform);
   const [channels, setChannels] = useState<ChannelStatus[] | null>(null);
   const [channelError, setChannelError] = useState("");
   const [facebook, setFacebook] = useState<FacebookResults | null>(null);
@@ -45,6 +48,7 @@ export default function ChannelInsights() {
   const [page, setPage] = useState(0);
   const mounted = useRef(false);
   const request = useRef<AbortController | null>(null);
+  useEffect(() => { if (requestedReviewId && review?.id === requestedReviewId) setPlatform(preferredPlatform); }, [requestedReviewId, review?.id, preferredPlatform]);
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -77,22 +81,25 @@ export default function ChannelInsights() {
   useEffect(() => { if (platform === "facebook") void loadFacebook(); }, [platform, loadFacebook]);
   const channel = channels?.find(item => item.platform === platform);
   const manual = platform === "youtube" || platform === "rumble" || platform === "bilibili" ? external[platform] : null;
-  const videos = facebook ? [...facebook.videos].sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)) : [];
+  const focusedVideoId = publications.find(item => item.platform === platform)?.remoteId;
+  const focusUnavailable = !!requestedReviewId && (!review || !focusedVideoId);
+  const videos = facebook ? [...facebook.videos].filter(video => !requestedReviewId || video.id === focusedVideoId).sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)) : [];
   const total = (name: "views" | "likes") => {
     const values = videos.map(video => video.metrics[name]).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
     return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
   };
-  return <section id="channel-insights" aria-label="Channel insights" className="rounded-xl border border-[#c4cfb5] bg-[#fffdf7] p-4">
-    <h2 className="text-sm font-semibold">Channel insights</h2>
-    <div role="group" aria-label="Insight platforms" className="mt-3 flex flex-wrap gap-2">{platforms.map(item => <button key={item.id} type="button" aria-pressed={platform === item.id} onClick={() => setPlatform(item.id)} className={`${button} ${platform === item.id ? "bg-[#394a2a] text-white" : "text-[#687657]"}`}>{item.name}</button>)}</div>
-    <div className="mt-4">
-      {platform === "instagram" ? <InstagramPerformance /> : platform === "facebook" ? <div className="space-y-3">
+  return <section id="channel-insights" aria-label="Channel insights" className="space-y-5">
+    {requestedReviewId && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#c4cfb5] bg-[#fffdf7] p-4"><div><p className="text-xs text-[#687657]">Selected video</p><h2 className="mt-1 font-semibold">{review?.title || "Video unavailable in the current Library"}</h2></div><a href="#insights" className={button}>All videos</a></div>}
+    <div role="group" aria-label="Insight platforms" className="flex flex-wrap gap-2">{platforms.map(item => <button key={item.id} type="button" aria-pressed={platform === item.id} onClick={() => { setPlatform(item.id); setPage(0); }} className={`${button} ${platform === item.id ? "bg-[#394a2a] text-white" : "text-[#687657]"}`}>{item.name}</button>)}</div>
+    <div className="rounded-2xl border border-[#c4cfb5] bg-[#fffdf7] p-4 sm:p-6">
+      {focusUnavailable && (platform === "instagram" || platform === "facebook") ? <div className="space-y-3 text-sm"><p>No confirmed {platform === "instagram" ? "Instagram" : "Facebook"} post is linked to this saved video. Other videos&apos; results are not substituted.</p><a href="#insights" className="inline-block font-medium underline">View all channel results</a></div> : platform === "instagram" ? <InstagramPerformance videoId={requestedReviewId ? focusedVideoId : undefined} /> : platform === "facebook" ? <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium">{facebook?.account?.name || channel?.name || "Facebook Page"}</p><p className="mt-1 text-xs text-[#687657]">Basic video statistics · Last measured batch: {dateLabel(facebook?.lastSuccessfulSyncAt)}</p></div><button type="button" className={button} disabled={busy} onClick={() => void loadFacebook(true)}>{busy ? "Checking…" : "Refresh insights"}</button></div>
         {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
         {facebook ? <>
-          {facebook.lastSuccessfulSyncAt && <dl aria-label="Saved Facebook sample" className="grid grid-cols-3 gap-2">{([["Videos", videos.length], ["Views", total("views")], ["Likes", total("likes")]] as const).map(([label, value]) => <div key={label} className="rounded-lg bg-[#edf1e5] px-3 py-2"><dt className="text-xs text-[#687657]">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{metric(value)}</dd></div>)}</dl>}
+          {facebook.lastSuccessfulSyncAt && <dl aria-label="Saved Facebook sample" className="grid grid-cols-3 gap-3">{([["Videos", videos.length], ["Views", total("views")], ["Likes", total("likes")]] as const).map(([label, value]) => <div key={label} className="rounded-xl bg-[#edf1e5] p-4"><dt className="text-xs text-[#687657]">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metric(value)}</dd></div>)}</dl>}
           <p role="status" className="text-xs text-[#687657]">{facebook.detail}</p>
-          <div className="divide-y divide-[#45594d]">{videos.slice(page * 5, (page + 1) * 5).map(video => { const title = (video.caption || "Facebook video").slice(0, 100), link = facebookLink(video.permalink); return <details key={video.id} data-facebook-result className="py-2"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs"><span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-[#687657]">{dateLabel(video.timestamp)}</span></span><span className="shrink-0 text-[#687657]">{metric(video.metrics.views)} views · {metric(video.metrics.likes)} likes</span></summary><div className="mt-2 space-y-2 text-xs text-[#687657]"><p>Comments: {metric(video.metrics.comments)} · Shares: {metric(video.metrics.shares)}</p>{link && <a href={link} target="_blank" rel="noopener noreferrer" className="underline">Open Facebook video</a>}</div></details>; })}</div>
+          {requestedReviewId && !videos.length && <p className="text-sm">This post is not in the saved Facebook sample yet. Refresh to check the latest available Page Reels; no count is assumed.</p>}
+          <div className="divide-y divide-[#45594d]">{videos.slice(page * 5, (page + 1) * 5).map(video => { const title = (video.caption || "Facebook video").slice(0, 100), link = facebookLink(video.permalink); return <details key={video.id} data-facebook-result open={requestedReviewId ? true : undefined} className="py-2"><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs"><span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-[#687657]">{dateLabel(video.timestamp)}</span></span><span className="shrink-0 text-[#687657]">{metric(video.metrics.views)} views · {metric(video.metrics.likes)} likes</span></summary><div className="mt-2 space-y-2 text-xs text-[#687657]"><p>Comments: {metric(video.metrics.comments)} · Shares: {metric(video.metrics.shares)}</p>{link && <a href={link} target="_blank" rel="noopener noreferrer" className="underline">Open Facebook video</a>}</div></details>; })}</div>
           {videos.length > 5 && <nav aria-label="Facebook results pages" className="flex items-center justify-between gap-2 text-xs"><button type="button" className={button} disabled={!page} onClick={() => setPage(value => value - 1)}>Previous</button><span>Page {page + 1} of {Math.ceil(videos.length / 5)}</span><button type="button" className={button} disabled={(page + 1) * 5 >= videos.length} onClick={() => setPage(value => value + 1)}>Next</button></nav>}
           <p className="text-xs text-[#687657]">Saved sample only. Missing metrics are unavailable, not zero. Reach and watch time are not collected here.</p>
         </> : !error && <p className="text-xs text-[#687657]">{busy ? "Loading saved Facebook results…" : "No saved Facebook results available."}</p>}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileVideo, RefreshCw, RotateCcw, Sparkles, Plus, FolderOpen, Settings, Film, Info } from "lucide-react";
+import { FileVideo, RefreshCw, RotateCcw, Sparkles, Plus, FolderOpen, Settings, Film, Info, BarChart3 } from "lucide-react";
 import SourceProcessor from "@/components/SourceProcessor";
 import AICreation from "@/components/AICreation";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,12 @@ import ChannelConnections from "@/components/ChannelConnections";
 import ReviewLibrary from "@/components/ReviewLibrary";
 import ChannelInsights from "@/components/ChannelInsights";
 import CreationDrafts from "@/components/CreationDrafts";
+import JobProgress from "@/components/JobProgress";
 import StockReels from "@/components/StockReels";
 import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
 import type { ReviewEditJob } from "@/lib/reviewEditTypes";
 import type { CreationDraft } from "@/lib/creationDraftTypes";
-import { studioSection, type StudioSection } from "@/lib/studioNavigation";
+import { insightReviewId, studioSection, type StudioSection } from "@/lib/studioNavigation";
 import StudioHealth, { type StudioHealthState } from "@/components/StudioHealth";
 import ReviewPlayer from "@/components/ReviewPlayer";
 import { completedTransitions } from "@/lib/creationIntent";
@@ -94,11 +95,13 @@ function timing(job: DisplayJob) {
 
 export default function DashboardClient() {
   const [section, setSection] = useState<StudioSection>("create");
+  const [insightReview, setInsightReview] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<CreationDraft[]>([]);
   const navigate = useCallback((value: StudioSection) => { setSection(value); window.location.hash = value; }, []);
   useEffect(() => {
     const sync = () => {
       setSection(studioSection(window.location.hash));
+      setInsightReview(insightReviewId(window.location.hash));
       if (["#jobs", "#storyboards"].includes(window.location.hash)) document.getElementById("jobs")?.scrollIntoView({ block: "start" });
       else window.scrollTo(0, 0);
     };
@@ -299,7 +302,7 @@ export default function DashboardClient() {
     setNotice(`${finished.length === 1 ? finished[0].title : `${finished.length} videos`} finished. Choose Watch video below to review the result.`);
     // Keep the owner in Create with the finished result directly below its
     // controls. A playing preview or Library activity must not be interrupted.
-    if (section === "library" || preview) return;
+    if (section === "library" || section === "insights" || preview) return;
     setJobFilter("completed");
     setJobPage(1);
     if (section !== "create") navigate("create");
@@ -324,9 +327,10 @@ export default function DashboardClient() {
   const sections = [
     { id: "create" as const, label: "Create", icon: Plus },
     { id: "library" as const, label: "Library", icon: FolderOpen },
+    { id: "insights" as const, label: "Insights", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
-  const pageCopy = { create: ["What will you make today?", ""], library: ["Your video library", ""], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
+  const pageCopy = { create: ["What will you make today?", ""], library: ["Your video library", ""], insights: ["Channel insights", "See how your posted videos are performing."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
     <div className={`${styles.shell} min-h-screen`}>
       <aside className={`${styles.sidebar} border-b p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6`}>
@@ -367,6 +371,7 @@ export default function DashboardClient() {
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
         </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
+        {section === "insights" ? <ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /> : null}
         {section === "create" ? <>
         <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -377,8 +382,8 @@ export default function DashboardClient() {
                 <div className="absolute left-0 top-8 z-10 w-64 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-xs leading-5 shadow-lg">
                   <p>{offline ? "Connection unavailable; displaying the last received job status." : "Updates every three seconds during work, every fifteen seconds when idle, and pauses while this window is hidden."}</p>
                   <p>Active includes preparation and rendering in one list. Needs attention shows saved failures; Completed shows finished jobs. History is newest first. Click a name for details and finished video controls.</p>
-                  <p>Delete removes history, not saved videos; queued jobs are cancelled. Recover retries a failed job only when you click it.</p>
-                  <p>Paging keeps every saved job and video available.</p>
+                  <p>Delete removes history, not saved videos; queued jobs are cancelled. Retry runs a failed job only when you click it.</p>
+                  <p>Failed preparation and render history is archived after seven days while the manager is running. Saved videos remain; active and uncertain uploads are kept.</p>
                 </div>
               </details>
             </div>
@@ -413,15 +418,12 @@ export default function DashboardClient() {
                 return (
                   <article key={retryKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
                     <details className="min-w-0">
-                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time></summary>
+                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time><JobProgress status={job.status} progress={completed ? 100 : job.progress} failed={failed} label={`${job.title} progress`} /></summary>
                       <div className="mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]">
                     <p className={failed ? "font-semibold text-[#914527]" : "font-semibold text-[#4f5c31]"}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</p>
                     {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
                     {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
                     {!completed && !failed && job.stage ? <p className="mt-1 text-xs text-[#687657]">{job.stage}</p> : null}
-                    {!completed ? <div className="mt-3 h-2 overflow-hidden rounded bg-[#d5ddb8]">
-                      <div className={`h-full transition-[width] duration-500 ${failed ? "bg-[#b55d3d]" : "bg-[#667b42]"}`} style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
-                    </div> : null}
                     {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
                       <p className="mt-1">{job.detail}</p>
                       {completed && timing(job) ? <p className="mt-1">{timing(job)}</p> : null}
@@ -435,8 +437,8 @@ export default function DashboardClient() {
                       </div>
                     </details>
                     <div className="flex items-center gap-1 pt-0.5">
-                      {failed && job.kind !== "edit" ? <Button type="button" variant="ghost" size="sm" disabled={offline || retrying !== null || removingJob !== null} aria-label={`Recover failed job: ${job.title}`} title="Retry this failed job" onClick={() => void retry(job)}>{retrying === retryKey ? "Queueing…" : "Recover"}</Button> : null}
-                      {failed && job.kind === "edit" && !offline ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} aria-label={`Recover failed edit: ${job.title}`} title="Open the saved edit to export again" className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]">Recover</Link> : null}
+                      {failed && job.kind !== "edit" ? <Button type="button" variant="ghost" size="sm" disabled={offline || retrying !== null || removingJob !== null} aria-label={`Retry failed job: ${job.title}`} title="Retry this failed job" onClick={() => void retry(job)}>{retrying === retryKey ? "Queueing…" : "Retry"}</Button> : null}
+                      {failed && job.kind === "edit" && !offline ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} aria-label={`Retry failed edit: ${job.title}`} title="Open the saved edit to export again" className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]">Retry</Link> : null}
                       <Button type="button" variant="ghost" size="sm" disabled={offline || active || removingJob !== null || retrying !== null} onClick={() => void removeJob(job)} aria-label={`${job.status === "QUEUED" ? "Cancel queued job and delete history" : "Delete job history"}: ${job.title}`} title={active ? "Available when this render finishes" : job.status === "QUEUED" ? "Cancel this queued job and remove its history; saved videos are kept" : "Remove history only; saved videos are kept"}>{removingJob === retryKey ? "Removing…" : "Delete"}</Button>
                     </div>
                   </article>
@@ -449,7 +451,7 @@ export default function DashboardClient() {
         </section>
 
         </> : null}
-        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link></div></div><ChannelInsights /><ChannelConnections /></div> : null}
+        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link><Link href="/dashboard#insights" className="rounded-lg border px-4 py-2 text-sm font-semibold">Channel insights</Link></div></div><ChannelConnections /></div> : null}
       </main>
       {previewFile ? <ReviewPlayer key={previewFile.id} file={previewFile} onClose={() => setPreview(null)} /> : null}
     </div>

@@ -138,6 +138,7 @@ function mockedRunner() {
     "./src/lib/videoPostingAnalysis.ts": { processNextPostingAnalysis: run("posting") },
     "./src/lib/instagramPerformance.ts": { syncInstagramPerformance: async () => { calls.push("instagram-insights"); } },
     "./src/lib/workerReadiness.ts": { workerHasPendingWork: async key => { calls.push(`readiness-${key}`); return key === "posting" || pendingWork; } },
+    "./src/lib/failedJobHistory.ts": { archiveExpiredJobHistory: async () => { calls.push("history-cleanup"); } },
     "./src/lib/renderResources.ts": { heavyWorkStatus: async () => resources,
       reconcileLocalModelWork: async () => { calls.push("model-status"); } },
     "./worker-workflows.cjs": { createWorkerDispatcher: options => {
@@ -148,11 +149,11 @@ function mockedRunner() {
     once: (signal, handler) => signals.set(signal, handler), exitCode: undefined };
   function start() {
     const source = fs.readFileSync(path.join(__dirname, "worker-main.cjs"), "utf8");
-    const module = { exports: {} };
+    const fixtureModule = { exports: {} };
     vm.runInNewContext(source, { require: name => {
       assert.ok(Object.hasOwn(modules, name), `Unexpected production dependency: ${name}`); return modules[name];
-    }, module, process: mockProcess, console: { log() {}, error: (...args) => errors.push(args) } });
-    module.exports(name => modules[`./src/lib/${name}.ts`]);
+    }, module: fixtureModule, process: mockProcess, console: { log() {}, error: (...args) => errors.push(args) } });
+    fixtureModule.exports(name => modules[`./src/lib/${name}.ts`]);
   }
   return { timers, calls, signals, errors, process: mockProcess, start, hold,
     get dispatcher() { return dispatcher; }, get maximum() { return maximum; },
@@ -167,6 +168,7 @@ test("real runner skips unchanged completed histories but keeps diagnostics and 
   for(const name of ["source-empty","generation","edits","drafts"])assert.ok(!runner.calls.includes(name));
   assert.equal(runner.calls.filter(name=>name==="enable").length,1,'Legacy migration still runs once');
   assert.ok(runner.calls.includes("heartbeat")&&runner.calls.includes("instagram-insights")&&runner.calls.includes("posting"));
+  assert.ok(runner.calls.includes("history-cleanup"), "Idle housekeeping still archives old failed history without accepting work");
   runner.pendingWork=true;runner.timers.tick();await runner.dispatcher.queue.whenIdle();
   for(const name of ["source-empty","generation","edits","drafts"])assert.ok(runner.calls.includes(name));
   assert.equal(runner.maximum,1);

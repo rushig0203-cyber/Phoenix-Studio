@@ -47,7 +47,7 @@ test('catalogue returns six distinct stock-only ideas and rejects malformed save
   const seen = new Set();
   for (let cursor = 0; cursor < expected.length * 6; cursor += 6) helper.stockFootageSuggestions(cursor).forEach(idea => seen.add(idea.id));
   assert.deepEqual([...seen].sort(), plain(expected.map(idea => idea.id)).sort());
-  for (const cursor of [-1, NaN, 999999, 1.1, '6']) assert.deepEqual(plain(helper.stockFootageSuggestions(cursor)), plain(first));
+  for (const cursor of [-1, NaN, Number.MAX_SAFE_INTEGER, 1.1, '6']) assert.deepEqual(plain(helper.stockFootageSuggestions(cursor)), plain(first));
   for (const raw of ['{broken', JSON.stringify({ version: 1, cursor: -1 }), 'x'.repeat(257)]) {
     assert.deepEqual(plain(helper.nextStoredFootageSuggestions(memoryStorage({ [storageKey]: raw })).ideas), plain(first));
   }
@@ -56,7 +56,7 @@ test('catalogue returns six distinct stock-only ideas and rejects malformed save
 test('footage recommendations are short broad topics while the rich creation catalogue remains unchanged', () => {
   const original = plain(catalog.CONTENT_IDEAS), all = allTopics;
   assert.ok(all.length >= 60, 'The scenic catalogue should not repeat after only a few small batches');
-  assert.equal(all.length, 216, 'Country/scenery subjects retain the original 72-topic bank and add 144 distinct combinations');
+  assert.ok(all.length >= 240, 'The pool includes countries, more wildlife and searchable architecture');
   assert.ok(all.every(idea => idea.title.split(/\s+/).length <= 2 && idea.query.split(/\s+/).length <= 2));
   assert.ok(all.every(idea => idea.query === idea.title), 'Selected input uses the exact displayed label, not a hidden alias');
   for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
@@ -75,7 +75,8 @@ test('each batch mixes wildlife, nature, places, movement and other subjects whi
   let previous;
   for (let batch = 0; batch < allTopics.length; batch++) {
     const next = helper.nextStoredFootageSuggestions(storage);
-    assert.ok(next.ideas[0].title.match(/Bird|Butterfl|Cat|Dog|Horse|Dolphin|Turtle|Deer|Fox|Owl|Penguin|Elephant|Jellyfish/));
+    assert.ok(next.ideas[0].category === 'Animals & everyday moments' || ['Birds','Butterflies'].includes(next.ideas[0].title));
+    assert.ok(next.ideas.some(idea=>idea.category==='Architecture & design'||idea.title==='Cities'),'Architecture cannot be crowded out by countries');
     assert.equal(new Set(next.ideas.map(idea => idea.id)).size, 6);
     if (previous) assert.ok(next.ideas.every(idea => !previous.includes(idea.id)), 'Adjacent mixed batches stay fresh');
     previous = next.ideas.map(idea => idea.id);
@@ -103,6 +104,16 @@ test('mount, More topics and reopening rotate locally without searching or creat
   assert.equal(h.requests.length, 0); assert.equal(h.started.length, 0);
   const reopened = harness({ storage }); await reopened.advance(1000);
   assert.notDeepEqual(ideaKeys(reopened), ideaKeys(h)); assert.equal(reopened.requests.length, 0);
+});
+
+test('an open footage screen rotates weekly without searching or changing the chosen topic/results',async()=>{
+  const h=harness();h.changeTopic('Otters');await h.advance(600);
+  const first=ideaKeys(h),requestCount=h.requests.length,candidates=h.candidates().map(node=>node.key);
+  await h.advance(helper.FOOTAGE_SUGGESTION_REFRESH_MS-601);assert.deepEqual(ideaKeys(h),first);
+  await h.advance(1);assert.notDeepEqual(ideaKeys(h),first);
+  assert.equal(h.input().props.value,'Otters');assert.deepEqual(h.candidates().map(node=>node.key),candidates);
+  assert.equal(h.requests.length,requestCount);assert.equal(h.posts.length,0);
+  h.unmount();assert.equal(h.pendingTimers,0);
 });
 
 test('unavailable and readable-but-write-blocked storage rotate honestly during this visit', () => {

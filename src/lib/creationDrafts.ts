@@ -51,6 +51,12 @@ export async function createCreationDrafts(inputs: GenerationInput[]) {
     const existing = drafts.find(d => d.requestKey === requestKey);
     if (existing) {
       if (existing.status === "ARCHIVED") throw new DraftConflict("This draft was removed. Start a new creation.");
+      const changedTopic = existing.input.requestTopic === undefined
+        ? input.requestTopic !== "" && existing.input.topic !== input.topic
+        : existing.input.requestTopic !== (input.requestTopic ?? input.topic);
+      if (changedTopic || (existing.input.creationType || "general") !== (input.creationType || "general") || existing.input.language !== input.language) {
+        throw new DraftConflict("This saved request belongs to a different idea. Start this selection as a new creation; the earlier video was kept.");
+      }
       return existing;
     }
     const now = new Date().toISOString();

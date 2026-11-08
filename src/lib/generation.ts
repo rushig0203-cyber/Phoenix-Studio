@@ -54,6 +54,8 @@ export type GenerationInput = {
   songStyle?: string;
   songAudioId?: string;
   requestId?: string;
+  /** Original selected topic; empty only when the owner explicitly requests an invented idea. */
+  requestTopic?: string;
   topic: string;
   script?: string;
   scriptOrigin?: "owner" | "local-model";
