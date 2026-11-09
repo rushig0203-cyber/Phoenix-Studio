@@ -1,5 +1,34 @@
 # Phoenix Studio implementation and verified releases
 
+## November 9 — installed black-and-teal theme and separate Facebook posting box
+
+- The owner rejected purple and chose black plus teal. Neutral black surfaces,
+  teal actions/highlights and soft white text replace the purple palette. Three
+  existing readability checks passed; layout and video processing were unchanged.
+- Facebook now opens a separate stateful posting box beside Instagram and the
+  existing Rumble handoff. Each uploader retains its own caption, confirmation,
+  pending requests, duplicate guard and progress. Selecting an already open box
+  preserves its draft. The existing upload logic remains one shared implementation;
+  Instagram Reel/Story and YouTube switching keep their existing behavior.
+- Installed source `a38a4e9235e8d48dc1ff92ffece1345b071b8cd5` passed Windows
+  run `42564742552`: 1,637 Node tests, including 97 publishing UI cases, 52 Python
+  checks, lint, full TypeScript/build, real speech/rendering, bounded worker scans,
+  public licensed footage export/decode and interrupted 49-minute episode recovery.
+  Both Vercel deployments passed for this source. Builds ran remotely.
+- Selected and serving bundle `.next-build-gh-42564742552-1`, build ID
+  `h77o4qXpRJwPC0NCVFZ8O`, returns dashboard HTTP 200 with healthy manager and
+  worker and a ready renderer. Activation preserved the review index, all 226
+  output-video entries, all 111 publication journals and the exact owner
+  `tsconfig.json` hash
+  `97AF40D8DC79A56F70612C0A12A15FBA9F30118E1D4504E1C80EC8B7DAEAF45C`.
+  The canonical Desktop launcher and port 3000 select the same installed bundle.
+- Live browser checks kept Instagram, Facebook and Rumble visible together and
+  retained different Instagram/Facebook draft captions through repeated chooser
+  clicks. Temporary test drafts were closed without saving or publishing. Actual
+  uploading was covered by isolated requests, not a social test post. Existing
+  account eligibility, final posting actions and Rumble's assisted access remain
+  unchanged. Screenshots and activation/data checks are retained in session artifacts.
+
 ## November 9 — installed purple dashboard, standalone Insights and matched Reel audio
 
 - Installed source `a433d619f5d8fd80c1007936baa155f6fba2505f` passed Windows
