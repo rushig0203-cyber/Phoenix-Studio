@@ -85,7 +85,7 @@ function uiHarness(options = {}) {
       if (!Object.hasOwn(renderer.slots, index)) renderer.slots[index] = typeof initial === 'function' ? initial() : initial;
       return [renderer.slots[index], next => {
         const value = typeof next === 'function' ? next(renderer.slots[index]) : next;
-        if (!Object.is(value, renderer.slots[index])) { renderer.slots[index] = value; renderer.dirty = true; }
+        if (!Object.is(value, renderer.slots[index])) { renderer.slots[index] = value; root.dirty = true; }
       }];
     },
     useRef(initial) {
@@ -176,14 +176,48 @@ function uiHarness(options = {}) {
   dependencies['@/lib/instagramTags'] = load(instagramTagsSource);
   const Component = load(componentSource).default;
   const renderer = { index: 0, slots: [], effects: [], pending: [], dirty: true, mounted: true, tree: undefined };
+  const root = renderer, children = new Map();
+  function cleanup(instance) {
+    instance.mounted = false;
+    for (const effect of instance.effects) effect?.cleanup?.();
+  }
+  function resolve(tree, location, visited) {
+    if (Array.isArray(tree)) return tree.map((node, index) => resolve(node, `${location}/${node?.key ?? index}`, visited));
+    if (!tree || typeof tree !== 'object' || !tree.props) return tree;
+    if (typeof tree.type === 'function') {
+      visited.add(location);
+      let instance = children.get(location);
+      if (!instance) {
+        instance = { index: 0, slots: [], effects: [], pending: [], mounted: true };
+        children.set(location, instance);
+      }
+      instance.index = 0; instance.pending = []; active = instance;
+      let rendered;
+      try { rendered = tree.type(tree.props); }
+      finally { active = undefined; }
+      const resolved = resolve(rendered, `${location}/rendered`, visited);
+      for (const effect of instance.pending) {
+        instance.effects[effect.index]?.cleanup?.();
+        instance.effects[effect.index] = { deps: effect.deps, cleanup: effect.callback() };
+      }
+      return resolved;
+    }
+    return { ...tree, props: { ...tree.props, children: resolve(tree.props.children, `${location}/children`, visited) } };
+  }
   function render() {
     if (!renderer.mounted) return;
     for (let pass = 0; renderer.dirty; pass++) {
       assert.ok(pass < 20, 'Mock effects settle without an update loop');
       renderer.dirty = false; renderer.index = 0; renderer.pending = [];
       active = renderer;
-      try { renderer.tree = Component({ file }); }
+      let rendered;
+      try { rendered = Component({ file }); }
       finally { active = undefined; }
+      const visited = new Set();
+      renderer.tree = resolve(rendered, 'root', visited);
+      for (const [location, instance] of children) {
+        if (!visited.has(location)) { cleanup(instance); children.delete(location); }
+      }
       for (const effect of renderer.pending) {
         renderer.effects[effect.index]?.cleanup?.();
         renderer.effects[effect.index] = { deps: effect.deps, cleanup: effect.callback() };
@@ -199,18 +233,19 @@ function uiHarness(options = {}) {
     get reveals() { return requests.filter(request => request.url.includes('/reveal?target=')); },
     async flush() { for (let pass = 0; pass < 50; pass++) { render(); await Promise.resolve(); } render(); },
     unmount() {
-      renderer.mounted = false;
-      for (const effect of renderer.effects) effect?.cleanup?.();
+      cleanup(renderer);
+      for (const instance of children.values()) cleanup(instance);
     },
-    button(label) { const matches = nodes(renderer.tree).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0]; },
-    control(label, type) {
-      const parent = nodes(renderer.tree).find(node => node.type === 'label' && text(node).startsWith(label));
+    panel(name) { return nodes(renderer.tree).find(node => node.type === 'section' && node.props['aria-label'] === `${name} upload confirmation`); },
+    button(label, scope = renderer.tree) { const matches = nodes(scope).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0]; },
+    control(label, type, scope = renderer.tree) {
+      const parent = nodes(scope).find(node => node.type === 'label' && text(node).startsWith(label));
       return parent && nodes(parent).find(node => node.type === type);
     },
     confirmation() { return h.control('I have reviewed this video', 'input'); },
-    form() { return nodes(renderer.tree).find(node => node.type === 'form'); },
-    click(label) {
-      const target = h.button(label);
+    form(scope = renderer.tree) { return nodes(scope).find(node => node.type === 'form'); },
+    click(label, scope = renderer.tree) {
+      const target = h.button(label, scope);
       assert.ok(target, `Expected button: ${label}`);
       assert.equal(Boolean(target.props.disabled), false, `User can click ${label}`);
       target.props.onClick();
@@ -347,6 +382,95 @@ test('saved Facebook Page jobs show progress and permalink, prevent duplicates a
   assert.match(h.text, /Facebook confirmed publication/);
   assert.ok(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://www.facebook.com/reel/123456789/'));
   assert.equal(h.posts.length, 1); assert.equal(h.form(), undefined);
+});
+
+test('Facebook stays independent of Instagram and Rumble drafts, notices and status checks', async t => {
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook')] }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  h.change(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')), 'Reviewed Instagram draft #One'); h.render();
+  h.choose('Rumble upload'); await h.flush(); h.click('Copy title'); await h.flush();
+  h.choose('Post to Facebook Page'); await h.flush();
+  assert.ok(h.panel('Instagram')); assert.ok(h.panel('Facebook Page'));
+  assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Rumble assisted upload'));
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
+  h.change(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')), 'Reviewed Facebook draft #Two'); h.render();
+  const checkedRequests = h.requests.length;
+  h.choose('Post to Instagram'); await h.flush(); h.choose('Post to Facebook Page'); await h.flush();
+  assert.equal(h.requests.length, checkedRequests, 'Selecting an already open box does not reload either draft');
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')).props.value, 'Reviewed Facebook draft #Two');
+  assert.equal(nodes(h.tree).filter(node => node.props['aria-label'] === 'Facebook Page upload confirmation').length, 1);
+  h.click('Copy Facebook Page text', h.panel('Facebook Page')); await h.flush();
+  assert.match(text(h.panel('Facebook Page')), /Facebook Page text copied/);
+  assert.doesNotMatch(text(h.panel('Instagram')), /Facebook Page text copied/);
+  assert.match(h.text, /Rumble title copied/);
+  h.click('Check status', h.panel('Facebook Page')); await h.flush();
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
+  assert.match(h.text, /Rumble title copied/); assert.equal(h.posts.length, 0);
+  const chooser = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
+  for (const label of ['Post to Instagram', 'Post to Facebook Page', 'Rumble upload']) assert.equal(h.button(label, chooser).props['aria-pressed'], true);
+});
+
+test('Facebook opens and posts while Instagram music lookup stays pending and unaborted', async t => {
+  const waiting = deferred(); let signal;
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook')],
+    file: sampleFile({ source: { kind: 'pexels' }, quality: { audio: 'natural-audio-preserved', postCopy: 'Saved caption', hashtags: [], captions: [] } }),
+    read(request) { if (request.url.includes('?check=audio-recommendations')) { signal = request.signal; return waiting.promise; } },
+    post(request) { assert.equal(JSON.parse(request.body).platform, 'facebook'); return response({ job: job({ platform: 'facebook' }) }); },
+  }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush(); assert.equal(signal.aborted, false);
+  h.choose('Post to Facebook Page'); await h.flush();
+  assert.equal(signal.aborted, false); assert.match(text(h.panel('Instagram')), /Choosing Instagram music/);
+  assert.equal(h.button('Post to Facebook Page', h.panel('Facebook Page')).props.disabled, false);
+  h.submit(h.form(h.panel('Facebook Page'))); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(signal.aborted, false);
+  waiting.resolve(response({ audio: [], reason: 'No eligible fixture track.' })); await h.flush();
+  assert.match(text(h.panel('Instagram')), /Keeping the saved video audio/);
+  assert.equal(h.button('Post to Instagram', h.panel('Instagram')).props.disabled, false);
+});
+
+test('Facebook and Instagram submissions keep separate busy states, captions and duplicate guards', async t => {
+  const instagram = deferred(), facebook = deferred();
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook')], post(request) {
+    return JSON.parse(request.body).platform === 'instagram' ? instagram.promise : facebook.promise;
+  } }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  h.change(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')), 'Instagram approved #One'); h.render();
+  const instagramForm = h.form(h.panel('Instagram')); h.submit(instagramForm); h.submit(instagramForm); await h.flush();
+  const chooser = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
+  assert.equal(h.button('Post to Facebook Page', chooser).props.disabled, false);
+  h.choose('Post to Facebook Page'); await h.flush();
+  h.change(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')), 'Facebook approved #Two #Three #Four #Five #Six #Seven'); h.render();
+  const facebookForm = h.form(h.panel('Facebook Page')); h.submit(facebookForm); h.submit(facebookForm); await h.flush();
+  assert.equal(h.posts.length, 2); assert.equal(h.button('Close').props.disabled, true);
+  const payloads = h.posts.map(request => JSON.parse(request.body));
+  assert.equal(payloads[0].platform, 'instagram'); assert.equal(payloads[0].caption, 'Instagram approved #One');
+  assert.equal(payloads[0].automaticTags, true);
+  assert.equal(payloads[1].platform, 'facebook'); assert.match(payloads[1].caption, /^Facebook approved/);
+  for (const key of ['companionStory', 'location', 'audio', 'automaticTags', 'userTags']) assert.equal(payloads[1][key], undefined);
+  instagram.resolve(response({ job: job({ id: 'instagram-upload', platform: 'instagram', status: 'QUEUED', percent: 0 }) })); await h.flush();
+  assert.equal(h.form(h.panel('Instagram')), undefined);
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')).props.disabled, true);
+  assert.equal(h.button('Close').props.disabled, true);
+  facebook.resolve(response({ job: job({ id: 'facebook-upload', platform: 'facebook', status: 'QUEUED', percent: 0 }) })); await h.flush();
+  assert.equal(h.form(h.panel('Facebook Page')), undefined); assert.equal(h.button('Close').props.disabled, false);
+  assert.equal(h.intervals.size, 2); assert.equal(h.posts.length, 2);
+  h.click('Close'); await h.flush(); assert.equal(h.intervals.size, 0); assert.equal(h.posts.length, 2);
+});
+
+test('Facebook continuation approval and polling cannot approve or poll an unrelated Instagram request', async t => {
+  const facebookJob = job({ id: 'facebook-saved', platform: 'facebook', status: 'FAILED', canContinue: true });
+  const instagramJob = job({ id: 'instagram-saved', platform: 'instagram', status: 'PROCESSING', percent: 90 });
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook')], jobs: [facebookJob, instagramJob],
+    post(request) { assert.deepEqual(JSON.parse(request.body), { action: 'continue', jobId: 'facebook-saved', confirm: true }); return response({ job: { ...facebookJob, status: 'COMPLETE', canContinue: false } }); },
+  }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush(); h.choose('Post to Facebook Page'); await h.flush();
+  assert.equal(h.intervals.size, 1, 'Only Instagram has an active request to poll');
+  const approved = h.control('Continue this saved upload', 'input', h.panel('Facebook Page'));
+  h.change(approved, true); h.render(); h.click('Continue saved upload', h.panel('Facebook Page')); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(h.intervals.size, 1);
+  assert.match(text(h.panel('Instagram')), /PROCESSING/); assert.match(text(h.panel('Facebook Page')), /COMPLETE/);
+  h.click('Close'); await h.flush(); assert.equal(h.intervals.size, 0);
 });
 
 test('Rumble reveals the existing MP4 and copies its text without downloading or submitting an upload', async t => {
@@ -1636,6 +1760,9 @@ test('rejected Reel keeps its saved caption and other choices but automatic tags
   assert.match(h.text, /publishing this Reel publicly to @saved_destination/); assert.match(h.text, /Approved Instagram audio: Saved track/);
   h.change(h.control('Corrected caption and hashtags', 'textarea'), 'Unsaved edit');
   h.render(); h.choose('Post to Instagram'); await h.flush();
+  assert.equal(h.control('Corrected caption and hashtags', 'textarea').props.value, 'Unsaved edit');
+  assert.equal(h.requests.length, 2);
+  h.click('Check status'); await h.flush();
   assert.equal(h.control('Corrected caption and hashtags', 'textarea').props.value, saved.caption);
   assert.equal(h.control('Corrected Instagram usernames', 'input'), undefined);
   assert.equal(h.confirmation(), undefined); assert.equal(h.requests.length, 4);

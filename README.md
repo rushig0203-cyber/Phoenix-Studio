@@ -196,6 +196,8 @@ English scene text for open-ended prompts. The authored Hindi Krishna starter ha
 Use **Post / export** on a finished video to expand its posting controls in
 Library. Choose a destination, review the caption and posting options, then
 use its final Post or Upload action. **Close** collapses the controls.
+Facebook opens its own posting box alongside Instagram and Rumble. Each uploader
+keeps its own draft, approval and progress; selecting an open box preserves it.
 
 - **Instagram:** verified professional-account access and publishing permission
   are required. Reel/Story support, locations, people tags and catalogue audio
