@@ -133,7 +133,7 @@ body [class~="hover:text-slate-900"]:hover { color: var(--foreground) !important
 .text-rose-300, .text-rose-400, .text-rose-500 { color: #803c31 !important; }
 [class*="border-violet"], [class*="border-purple"], [class*="border-indigo"], [class*="border-pink"], [class*="border-fuchsia"] { border-color: var(--border) !important; }
 [class*="bg-violet-"], [class*="bg-purple-"], [class*="bg-indigo-"], [class*="bg-pink-"], [class*="bg-fuchsia-"] { background-color: var(--muted) !important; }
-[class*="bg-violet-600"], [class*="bg-purple-600"], [class*="bg-indigo-600"], [class*="bg-pink-600"], [class*="bg-fuchsia-600"] { background-color: var(--primary) !important; }
+[class~="bg-violet-600"], [class~="bg-purple-600"], [class~="bg-indigo-600"], [class~="bg-pink-600"], [class~="bg-fuchsia-600"] { background-color: var(--primary) !important; }
 [class*="from-violet"], [class*="from-pink"], [class*="from-fuchsia"], [class*="from-indigo"], [class*="to-violet"], [class*="to-pink"], [class*="to-fuchsia"], [class*="to-indigo"] { background-image: linear-gradient(90deg, #315e7e, #3c6e91) !important; }
 .hover\:bg-violet-500:hover, .hover\:bg-violet-600:hover, .hover\:bg-pink-500:hover, .hover\:bg-pink-600:hover, .hover\:bg-rose-500:hover, .hover\:bg-rose-600:hover { background-color: #244b69 !important; }
 [class*="accent-violet"], [class*="accent-purple"], [class*="accent-indigo"], [class*="accent-pink"], [class*="accent-fuchsia"] { accent-color: #326a93 !important; }
