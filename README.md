@@ -122,7 +122,7 @@ Guided meditation/sleep utilities are excluded from automatic Reel choices.
 New timing-matched reels keep their mastered soundtrack through Instagram posting
 and matching Stories, so the reviewed preview is not replaced by differently timed
 catalogue music. Original songs and narration keep their saved audio as before.
-The dashboard uses near-black surfaces with restrained neon-purple accents,
+The dashboard uses neutral black surfaces with restrained teal accents,
 readable text and visible keyboard focus. Insights has its own sidebar screen:
 Instagram keeps its existing measured
 results and manager guidance, while Facebook can refresh a bounded basic snapshot
