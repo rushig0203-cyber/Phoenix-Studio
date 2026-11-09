@@ -1,31 +1,31 @@
 .shell {
-  background: radial-gradient(ellipse at 75% 0%, #15312d 0, transparent 48%), #101112;
-  color: #e5eeee;
+  background: radial-gradient(ellipse at 75% 0%, #e0e9ef 0, transparent 48%), #f2ede2;
+  color: #23384b;
 }
 .sidebar {
-  background: #121617;
-  color: #e5eeee;
-  border-color: #121617;
+  background: #e7edf0;
+  color: #23384b;
+  border-color: #e7edf0;
 }
 .brand { color: inherit; }
 .brandMark {
-  background: #1c453f;
-  color: #cae9e3;
+  background: #d3e0ea;
+  color: #294f6a;
   border: 0;
-  box-shadow: 3px 3px 0 #070c0b;
+  box-shadow: 3px 3px 0 #bfcdd7;
   transform: rotate(-6deg);
 }
-.navLink { color: #b3cac5; }
-.navLink:hover { background: #223c37; color: #fff; }
+.navLink { color: #4f6578; }
+.navLink:hover { background: #dbe6ee; color: #23384b; }
 .navLink[aria-current="page"] {
-  background: #1c453f;
-  color: #eafff9;
-  box-shadow: 0 3px 0 #070c0b;
+  background: #d3e0ea;
+  color: #274f6d;
+  box-shadow: 0 3px 0 #bfcdd7;
 }
 .main { padding-top: 2.5rem; }
 .header { border: 0; padding-bottom: 0; margin-bottom: 2rem; }
 .heading { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.18; letter-spacing: -.045em; }
-.queueBadge { background: #191c1e; border-color: #60777a; box-shadow: 0 2px 4px #12161708; }
+.queueBadge { background: #fbf7ee; border-color: #748a96; box-shadow: 0 2px 4px #e7edf008; }
 .workflows { gap: 1.15rem; }
 .workflow {
   position: relative;
@@ -33,10 +33,10 @@
   flex-direction: column;
   overflow: hidden;
   padding: 1.25rem;
-  background: #191c1e;
-  border: 1px solid #60777a;
+  background: #fbf7ee;
+  border: 1px solid #748a96;
   border-radius: 1.3rem;
-  box-shadow: 0 3px 0 #070c0b, 0 12px 24px -20px #12161750;
+  box-shadow: 0 3px 0 #bfcdd7, 0 12px 24px -20px #e7edf050;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 .workflow h2 { font-size: 1.3rem; margin-top: 1.25rem; letter-spacing: -.025em; }
@@ -47,7 +47,7 @@
   height: 9rem;
   overflow: hidden;
   border-radius: .85rem;
-  background: linear-gradient(135deg, #233330, #17231f);
+  background: linear-gradient(135deg, #e3ebf1, #d8e4ed);
   isolation: isolate;
 }
 .artwork::before, .artwork::after {
@@ -55,39 +55,39 @@
   position: absolute;
   width: 6.4rem;
   height: 4.3rem;
-  border: 1px solid #789295;
+  border: 1px solid #7d929e;
   border-radius: .65rem;
-  background: #191c1e;
+  background: #fbf7ee;
   transform: rotate(-13deg) translate(-.7rem, -.3rem);
-  box-shadow: 4px 6px 0 #070c0b;
+  box-shadow: 4px 6px 0 #bfcdd7;
 }
-.artwork::after { transform: rotate(7deg) translate(.7rem, .2rem); background: #1c453f; }
-.artwork svg { position: relative; z-index: 1; width: 1.8rem; height: 1.8rem; color: #cae9e3; }
-.creation .artwork { background: linear-gradient(135deg, #243c37, #182823); }
-.creation .artwork::before { border-color: #6e9990; box-shadow: 4px 6px 0 #090f0d; }
-.creation .artwork::after { background: #246f62; border-color: #6e9990; transform: rotate(-6deg) translate(.7rem, .2rem); }
-.reel .artwork { background: #1c302b; }
+.artwork::after { transform: rotate(7deg) translate(.7rem, .2rem); background: #d3e0ea; }
+.artwork svg { position: relative; z-index: 1; width: 1.8rem; height: 1.8rem; color: #294f6a; }
+.creation .artwork { background: linear-gradient(135deg, #e7edf3, #dbe6f0); }
+.creation .artwork::before { border-color: #8aa8bd; box-shadow: 4px 6px 0 #c9d5df; }
+.creation .artwork::after { background: #aec4d5; border-color: #8aa8bd; transform: rotate(-6deg) translate(.7rem, .2rem); }
+.reel .artwork { background: #e0e9f1; }
 .reel .artwork::before, .reel .artwork::after { width: 3.6rem; height: 6rem; }
-.reel .artwork::after { background: #297f70; border-color: #297f70; }
-.reel .artwork svg { color: #dcfff4; }
+.reel .artwork::after { background: #92b1c9; border-color: #92b1c9; }
+.reel .artwork svg { color: #2d516d; }
 .workflowButton {
   justify-content: space-between;
   margin-top: 1.1rem;
   width: 100%;
   min-height: 2.75rem;
   border-radius: .7rem;
-  background: #006b61;
+  background: #315e7e;
 }
-.workflowButton:hover { background: #075c54; }
+.workflowButton:hover { background: #244b69; }
 .jobs {
-  border-color: #60777a;
+  border-color: #748a96;
   border-radius: 1.1rem;
-  background: #191c1e;
-  box-shadow: 0 2px 0 #070c0b;
+  background: #fbf7ee;
+  box-shadow: 0 2px 0 #bfcdd7;
 }
-.shell :where(a, button, summary):focus-visible { outline: 3px solid #65d9c8; outline-offset: 4px; }
+.shell :where(a, button, summary):focus-visible { outline: 3px solid #326a93; outline-offset: 4px; }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .workflow:hover { transform: perspective(900px) translateY(-4px) rotateX(1deg); border-color: #789295; box-shadow: 0 6px 0 #070c0b, 0 20px 30px -22px #12161770; }
+  .workflow:hover { transform: perspective(900px) translateY(-4px) rotateX(1deg); border-color: #7d929e; box-shadow: 0 6px 0 #bfcdd7, 0 20px 30px -22px #e7edf070; }
 }
 @media (prefers-reduced-motion: reduce) {
   .workflow { transition: none; }

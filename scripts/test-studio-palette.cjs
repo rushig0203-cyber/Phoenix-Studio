@@ -25,15 +25,15 @@ function contrast(foreground, background, minimum, description) {
   assert.ok(ratio >= minimum, `${description}: ${ratio.toFixed(2)}:1 must be at least ${minimum}:1`);
 }
 
-test('dim surfaces retain readable body, secondary and action text', () => {
+test('soft light surfaces retain readable body, secondary and action text', () => {
   for (const surface of ['background', 'card', 'popover', 'muted']) {
-    assert.ok(luminance(token(surface)) < .08, `${surface} should stay dim`);
+    assert.ok(luminance(token(surface)) > .65 && luminance(token(surface)) < .98, `${surface} should remain soft and light`);
     for (const foreground of ['foreground', 'muted-foreground']) contrast(token(foreground), token(surface), 4.5, `${foreground} on ${surface}`);
   }
   for (const surface of ['primary', 'secondary', 'accent', 'sidebar']) contrast(token(`${surface}-foreground`), token(surface), 4.5, surface);
 });
 
-test('native fields, placeholders and keyboard focus remain visible on dim surfaces', () => {
+test('native fields, placeholders and keyboard focus remain visible on light surfaces', () => {
   const field = declaration(css, selector => selector.startsWith('main input:not'), 'background-color').replace(/\s*!important$/, '');
   const placeholder = declaration(css, selector => selector.startsWith('main input::placeholder'), 'color');
   contrast(token('foreground'), field, 4.5, 'input text');
