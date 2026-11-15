@@ -1,5 +1,41 @@
 # Phoenix Studio implementation and verified releases
 
+## November 15 — installed quieter video-matched music and varied Reel tags
+
+- New automatic footage reels reserve a genuine quiet instrumental, then reuse
+  the existing three planned-cut frame samples to choose a suitable mood. Peaceful
+  footage keeps soft piano/pads or ambience; supported active/playful evidence can
+  select a livelier recording. Short cuts no longer promote low-energy visuals
+  to higher-energy music. Unavailable/uncertain analysis keeps a neutral quiet
+  fallback without claiming a visual match. No extra model or frame request is added.
+- Three compact CC0 recordings extend the bundled library to nine tracks, with
+  artist/source/download evidence and pinned hashes. Quiet selections retain
+  their native tempo, gentle entry/exit fades and a saved -20 LUFS mastering
+  target. Livelier/legacy choices retain their -16 LUFS target and saved recipes.
+  Actual AAC checks measured the three quiet recordings near -20 LUFS with peak
+  headroom. Instagram and matching Stories keep the reviewed quiet soundtrack.
+- Specific animal/scenery words now reach the existing relevant six-profile tag
+  pool. A video's identity varies the selected combination while saved approvals
+  and retries retain their exact tags. The posting status distinguishes requested
+  tags from tags sent. Read-only Instagram checks confirmed @nature attached to
+  the existing rabbit Reel and @discoverearth/@earthofficial attached to the panda
+  Reel; the observed issue was sparse/repetitive selection, not missing tags on
+  those two posts. Meta retains final tagging eligibility.
+- Installed source `c3157d8677975c3c73822389005353d99d8b3d03` passed Windows
+  run `43687990438`: all 1,644 Node tests, 52 Python checks, lint, full
+  TypeScript/build, real offline speech, real recording preparation/mastering and
+  video exports, bounded worker scans and synthetic 49-minute interruption/resume.
+  Both Vercel deployments passed. The isolated public-Pexels export fully decoded,
+  retained its retry output and measured -20.0 LUFS / -6.1 dB true peak. Its visual
+  mood response was a fixture; this is not a subjective listening or audience test.
+- Selected and serving bundle `.next-build-gh-43687990438-1`, build ID
+  `DayQ4rk9jvrjm9EDqvbOc`, returns dashboard HTTP 200 with healthy manager/worker
+  and a ready renderer. Activation preserved the review index, all 234 output-video
+  entries, all 117 publication JSON records and the owner's exact `97AF40D8…`
+  configuration hash; no history archives changed. Proofs and the quiet-music
+  preview are retained in the session artifacts. No owner job was retried or
+  video published. Existing posted videos keep their current audio and tags.
+
 ## November 15 — verified the installed cream-and-blue update
 
 - The owner's latest colour choice replaces black and teal with warm cream
