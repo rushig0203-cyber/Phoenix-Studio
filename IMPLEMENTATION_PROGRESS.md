@@ -1,5 +1,34 @@
 # Phoenix Studio implementation and verified releases
 
+## November 15 — verified the installed cream-and-blue update
+
+- The owner's latest colour choice replaces black and teal with warm cream
+  surfaces, soft blue accents and navy text. Fields, navigation, status messages,
+  focus indicators and dark buttons retain readable contrast. Translucent accents
+  keep their pale backgrounds. Layout and video/publishing behaviour are unchanged;
+  Facebook retains its separate posting box beside Instagram and Rumble.
+- Installed source `bf5197493c2d9a4b0dc9c10f6acef254ca93087d` passed Windows
+  run `42567840075`: 1,637 Node tests (including 97 publishing UI cases and three
+  palette checks), 52 Python checks, lint, full TypeScript/build, real offline
+  speech, FFmpeg/public licensed footage export/decode, bounded worker scans and
+  synthetic 49-minute episode interruption/resume. Linux run `42567837907` and
+  both Vercel deployments also passed. These are the November 9 release checks;
+  no local build or large model was started for this final verification.
+- On November 15, the selected and serving bundle still matched:
+  `.next-build-gh-42567840075-1`, build ID `TJpYjhfSNnhx4UmJiOXfh`.
+  The dashboard returned HTTP 200, manager and worker were healthy, the renderer
+  was ready, and the worker was idle. Live browser inspection confirmed the cream
+  and blue Create screen, navy text and readable controls. The screenshot is saved
+  as `phoenix-cream-blue-dashboard-20261115.jpg` in the session artifacts.
+- The November 9 activation proofs preserved the review index, all 226 output
+  video entries, all 111 publication journals and the owner's exact
+  `tsconfig.json` hash
+  `97AF40D8DC79A56F70612C0A12A15FBA9F30118E1D4504E1C80EC8B7DAEAF45C`.
+  The owner configuration remains unchanged at final verification. Activation
+  proofs are retained as `phoenix-activation-42567840075.json` and
+  `phoenix-history-activation-proof-42567840075.json` in the session artifacts.
+  No restart, failed-job retry, media deletion or social test post was needed.
+
 ## November 9 — installed black-and-teal theme and separate Facebook posting box
 
 - The owner rejected purple and chose black plus teal. Neutral black surfaces,
