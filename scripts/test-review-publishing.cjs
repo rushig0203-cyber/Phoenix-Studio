@@ -1755,16 +1755,15 @@ function installMusicCatalog(onLookup) {
   };
   return queries;
 }
-test('music recommendations reuse current visual evidence, bound Meta lookups and include verified English originals plus instrumentals', async () => {
+test('peaceful music recommendations reuse current visual evidence, bound Meta lookups and exclude vocals in favour of quiet instrumentals', async () => {
   const { id, file } = await musicFixture(); const queries = installMusicCatalog();
   const response = await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish?check=audio-recommendations&connectionRevision=fixture-revision`), context(id));
   const result = await response.json(); assert.equal(response.status, 200); assert.equal(queries.length, 3);
-  assert.equal(queries[0],'');assert.equal(queries[2],'ambient instrumental');
-  assert.match(queries[1],/^(?:Holocene Bon Iver|Banana Pancakes Jack Johnson|saman Ólafur Arnalds)$/);assert.equal(result.outcome,'matched');
+  assert.deepEqual(queries,['saman Ólafur Arnalds','ambient instrumental','gentle piano instrumental']);assert.equal(result.outcome,'matched');
   assert.equal(result.recommendation.preference, 'english-and-instrumental'); assert.equal(result.recommendation.basis, 'sampled-frames');
-  assert.equal(result.audio.length, 3); assert.ok(result.audio.some(track => track.recommendation.kind === 'english-vocal'));
-  assert.ok(result.audio.some(track => track.recommendation.kind === 'instrumental'));
-  assert.deepEqual(result.audio.map(track => track.recommendation.rank), [1, 2, 3]);
+  assert.equal(result.audio.length, 1); assert.ok(result.audio.every(track => track.recommendation.kind === 'instrumental'));
+  assert.equal(result.audio[0].audio_id,'92002','Calm low-energy evidence must reject the genuine vocal originals as well as their cover/remix variants');
+  assert.deepEqual(result.audio.map(track => track.recommendation.rank), [1]);
   assert.ok(result.audio.every(track => track.audio_id.startsWith('92') && /calm visual mood/.test(track.recommendation.reason)));
   assert.ok(!JSON.stringify(result).includes('fixture-secret-token')); assert.ok(!JSON.stringify(result).includes('download_url'));
   assert.equal(scheduled.length, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
@@ -1772,7 +1771,7 @@ test('music recommendations reuse current visual evidence, bound Meta lookups an
 });
 test('legacy dual exports reuse YouTube analysis only after proving the Instagram MP4 is byte-identical', async () => {
   const { id, file } = await musicFixture({ dual: true }); const queries = installMusicCatalog();
-  const result = await publishing.recommendInstagramAudio(id, 'fixture-revision'); assert.equal(result.audio.length, 3); assert.equal(queries.length, 3);
+  const result = await publishing.recommendInstagramAudio(id, 'fixture-revision'); assert.equal(result.audio.length, 1); assert.equal(result.audio[0].audio_id,'92002'); assert.equal(queries.length, 3);
   assert.deepEqual(await files.getReviewFile(id), file, 'No cache reset or automatic analysis migration');
   const filename = files.outputPath(id, 'instagram'); const stat = fs.statSync(filename); fs.writeFileSync(filename, Buffer.alloc(stat.size, 8));
   queries.length = 0; const changed = await publishing.recommendInstagramAudio(id, 'fixture-revision');
@@ -1804,7 +1803,7 @@ test('catalog omission and wrong-language-looking unverified identities return n
 });
 
 test('music discovery retains trending provenance but ranks stronger editorial fit first', async () => {
-  const { id } = await musicFixture(); const started = Date.now();
+  const { id } = await musicFixture({ energy: 'medium' }); const started = Date.now();
   const queries = installMusicCatalog(url => Response.json({ audio: url.searchParams.has('search_query') ? [
     audioTrack({ audio_id:'98101', title:'Holocene', display_artist:'Bon Iver' }),
     audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
@@ -1813,7 +1812,7 @@ test('music discovery retains trending provenance but ranks stronger editorial f
     audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
   ] }));
   const result = await publishing.recommendInstagramAudio(id,'fixture-revision');
-  assert.equal(queries.length,3); assert.deepEqual(result.audio.map(track=>track.audio_id),['98101','98102']);
+  assert.equal(queries.length,3); assert.equal(queries[0],'','Medium-energy discovery still inspects the actual Meta trending catalogue'); assert.deepEqual(result.audio.map(track=>track.audio_id),['98101','98102']);
   const discovery=result.audio[1].recommendation.discovery;
   assert.equal(discovery.source,'meta-trending'); assert.equal(discovery.position,1);
   assert.ok(Date.parse(discovery.fetchedAt)>=started&&Date.parse(discovery.fetchedAt)<=Date.now());
