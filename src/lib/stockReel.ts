@@ -26,6 +26,8 @@ export type StockReelOptions = {
   openingExperiment?: "watch-time-v1";
   /** Bundled public-domain recordings for new automatic reels only. */
   musicLibrary?: "cc0-lofi-v1";
+  /** New automatic reels choose quiet recordings unless visual evidence calls for energy. */
+  musicPolicy?: "visual-calm-v1";
 };
 
 export const DEFAULT_STOCK_REEL_OPTIONS: StockReelOptions = { audio: "auto", mood: "reflective", transition: "cut", framing: "auto" };
@@ -51,7 +53,7 @@ export const STOCK_REEL_EDIT_VERSION = 2;
 export const AUTOMATIC_STOCK_SHOT_MAX_DURATION = 8;
 export const BRISK_STOCK_SHOT_MAX_DURATION = 6;
 
-export type StockMusicLoudness = { integratedLufs: number; truePeakDb: number; loudnessRangeLu: number };
+export type StockMusicLoudness = { integratedLufs: number; truePeakDb: number; loudnessRangeLu: number; targetLufs?: -20 };
 export const STOCK_MUSIC_LOUDNESS_FILTER = "loudnorm=I=-16:TP=-2:LRA=7";
 
 /** Read measured sound, never turn silence or a failed FFmpeg scan into a pass. */
@@ -67,13 +69,14 @@ export function stockMusicLoudness(log: string) {
   return { integratedLufs: read("input_i", -99, 0), truePeakDb: read("input_tp", -99, 20), loudnessRangeLu: read("input_lra", 0, 99), thresholdLufs: read("input_thresh", -99, 0), offsetDb: read("target_offset", -99, 99) };
 }
 
-export function stockMusicMasteringFilter(measured: ReturnType<typeof stockMusicLoudness>) {
+export function stockMusicMasteringFilter(measured: ReturnType<typeof stockMusicLoudness>, targetLufs: -16 | -20 = -16) {
   if (Object.values(measured).some(value => !Number.isFinite(value))) throw new Error("Music mastering requires finite loudness measurements.");
-  return `${STOCK_MUSIC_LOUDNESS_FILTER}:measured_I=${measured.integratedLufs}:measured_TP=${measured.truePeakDb}:measured_LRA=${measured.loudnessRangeLu}:measured_thresh=${measured.thresholdLufs}:offset=${measured.offsetDb}:linear=true`;
+  if (targetLufs !== -16 && targetLufs !== -20) throw new Error("Music mastering requires a supported loudness target.");
+  return `${STOCK_MUSIC_LOUDNESS_FILTER.replace("I=-16", `I=${targetLufs}`)}:measured_I=${measured.integratedLufs}:measured_TP=${measured.truePeakDb}:measured_LRA=${measured.loudnessRangeLu}:measured_thresh=${measured.thresholdLufs}:offset=${measured.offsetDb}:linear=true`;
 }
 
 export function assertStockMusicLoudness(measured: StockMusicLoudness) {
-  if (!Number.isFinite(measured.integratedLufs) || Math.abs(measured.integratedLufs + 16) > 1.5 || !Number.isFinite(measured.truePeakDb) || measured.truePeakDb > -1 || !Number.isFinite(measured.loudnessRangeLu) || measured.loudnessRangeLu < 0) {
+  if (measured.targetLufs !== undefined && measured.targetLufs !== -20 || !Number.isFinite(measured.integratedLufs) || Math.abs(measured.integratedLufs - (measured.targetLufs ?? -16)) > 1.5 || !Number.isFinite(measured.truePeakDb) || measured.truePeakDb > -1 || !Number.isFinite(measured.loudnessRangeLu) || measured.loudnessRangeLu < 0) {
     throw new Error("The finished music failed its loudness check. No ready video was saved; retry to repair this export.");
   }
 }

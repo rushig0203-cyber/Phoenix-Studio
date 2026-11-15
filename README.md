@@ -76,17 +76,19 @@ matching creations toward a natural audience-facing angle. Queue/quota waits
 retain that feedback; initial background analysis does not count as a complaint.
 
 New Make a Reel music-only exports use two-pass loudness mastering toward
-−16 LUFS, with peak headroom, and measure the actual encoded soundtrack before
+−20 LUFS for quiet instrumentals or −16 LUFS for livelier recordings, with peak
+headroom, and measure the actual encoded soundtrack before
 marking it ready. This is an export target, not an Instagram requirement or a
 claim of musical quality. Existing recipes and original-audio mixes keep their
 saved sound; manual edits discard the old measurement until measured again.
 
-New automatic reels use six compact CC0 instrumental recordings bundled with
+New automatic reels use nine compact CC0 instrumental recordings bundled with
 the app, with rights/source evidence retained. Queue reservations avoid the last
 three soundtracks even when requests arrive together; retries keep their saved
 recording and native-tempo excerpt. No music-model download, paid API or extra
 account is required. See [recording sources](assets/music/lofi-cc0-v1/SOURCES.md).
-These are recorded lofi instrumentals, not a claim of current Instagram trends.
+Three are gentle piano/pads or ambient recordings; the others are livelier lofi
+instrumentals. This is not a claim of current Instagram trends.
 Per-reel editing audio uses lossless FLAC at 48 kHz to avoid large PCM copies.
 New soundtrack choices prioritize a matching editorial mood over an unused but
 mismatched track, while preserving the last-three cooldown and saved retry choice.
@@ -95,7 +97,10 @@ planned cuts before reserving the final recording. Trim, order, framing and
 playback speed determine those samples. The same validated evidence supplies
 posting captions; retries retain both the soundtrack and evidence. If free
 analysis is unavailable, the queued recording remains and its unverified fit is
-recorded. The small instrumental library cannot guarantee a perfect soundtrack.
+recorded. New automatic recipes start with a quiet instrumental; saved visual
+evidence can select a livelier recording when the subject calls for it. Peaceful
+low-energy footage keeps the quiet pool and softer fades. Short picture cuts alone
+do not raise its music energy. The small library cannot guarantee a perfect soundtrack.
 Within that catalogue, the selected mood takes priority over the repeat cooldown.
 If every suitable track is recent, Phoenix reuses the least recent suitable one
 instead of choosing an unrelated mood. Saved soundtrack recipes stay fixed.
@@ -106,7 +111,7 @@ frames inside genuine source/movement windows; total duration, playback speed,
 source framing and sampled visual evidence stay valid. This aligns to measured
 attacks, not an inferred musical downbeat or a promised beat-perfect edit. It
 adds no model or audio scan during normal rendering. Legacy saved recipes keep
-their original offsets. The compact six-track library still limits musical variety.
+their original offsets. The compact nine-track library still limits musical variety.
 Commons WebM footage can supply picture duration through its video-stream
 duration tag; a longer audio/container duration is never used to extend picture.
 
@@ -119,9 +124,14 @@ musical fit is claimed for Instagram catalogue tracks. Existing footage without
 the new timing marker searches a fitting original recording as well as current
 Meta trends and a relevant instrumental, within the same three-request limit.
 Guided meditation/sleep utilities are excluded from automatic Reel choices.
-New timing-matched reels keep their mastered soundtrack through Instagram posting
+New timing-matched or quiet-instrumental reels keep their mastered soundtrack through Instagram posting
 and matching Stories, so the reviewed preview is not replaced by differently timed
 catalogue music. Original songs and narration keep their saved audio as before.
+Automatic Instagram people tags recognize specific animals and scenery in saved
+visual observations and choose relevant profiles from the existing checked pool.
+Each video's identity varies the combination while repeat approval and saved
+upload requests retain their tags. Instagram still decides tagging eligibility;
+the posting status distinguishes requested tags from tags sent.
 The dashboard uses warm cream surfaces, soft blue accents and navy text,
 readable text and visible keyboard focus. Insights has its own sidebar screen:
 Instagram keeps its existing measured

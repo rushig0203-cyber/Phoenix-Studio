@@ -7,7 +7,7 @@
   "licence": "CC0-1.0",
   "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
   "sourceArchiveSha256": "d6e73fdf9ea1b8fc6586a106d7a3951a84f8cf59887d8d8af65d44885f661c8f",
-  "notes": "Instrumental hip-hop/ambient/lofi recording excerpts, not AI synthesis. Mood tags are editorial, not measured musical understanding. Do not register these shared recordings as exclusive Content ID assets.",
+  "notes": "Mixed CC0 instrumental catalogue, not AI synthesis. Global artist/album/source archive describe the six original Loyalty Freak Music recordings only; quiet additions retain their own artist/source/original hashes per track. Mood/style tags are editorial, not measured musical understanding. Do not register these shared recordings as exclusive Content ID assets.",
   "recordings": [
     {
       "id": "sweet-you",
@@ -102,6 +102,66 @@
       "originalSha256": "cae4e095772cf91de2fcc3121b6d507a7203de2a44ba2f1767c596bdfe55e7a7",
       "originalOffsetSeconds": 30,
       "onsets": { "version": "low-band-onsets-v1", "seconds": [0.26, 0.48, 1.14, 1.5, 1.82, 2.22, 2.44, 2.78, 3.04, 3.34, 3.6, 4.06, 4.56, 5.08, 5.32, 5.68, 6, 6.54, 6.82, 7.04, 7.32, 7.54, 8.02, 8.52, 8.76, 9.06, 9.34, 9.82, 10.16, 10.6, 10.82, 11.04, 11.46, 11.82, 12.12, 12.56, 12.82, 13.08, 13.3, 13.72, 14.14, 14.52, 14.78, 15.02, 15.26, 15.66, 15.9, 16.26, 16.72, 17.14, 17.38, 17.72, 18.02, 18.44, 18.8, 19.04, 19.34, 19.6, 20.02, 20.56, 21.08, 21.32, 21.68, 22, 22.54, 22.82, 23.04, 23.3, 23.54, 24.02, 24.4, 24.76, 25.06, 25.34, 25.82, 26.16, 26.6, 26.96, 27.46, 27.82, 28.12, 28.58, 28.82, 29.08, 29.3, 29.72, 30.14, 30.52, 30.76, 31, 31.26, 31.66, 32, 32.26, 32.72, 33.14, 33.38, 33.72, 34.02, 34.44, 34.8, 35.04, 35.34, 35.6, 36.04, 36.56, 37.08, 37.32, 37.68, 38.08, 38.38, 38.82, 39.06, 39.32, 39.54, 40.02, 40.52, 40.76, 41.06, 41.34, 41.82, 42.16, 42.6, 42.82, 43.04, 43.46, 43.82, 44.1, 44.56, 44.82, 45.08, 45.3, 46.02, 46.4, 46.78, 47, 47.26, 47.56, 48, 48.72, 48.98, 49.22, 49.42, 50.64, 51.28, 51.64, 52.26, 52.5, 53.26, 53.66, 54.02, 54.24, 54.5, 54.98, 55.24, 55.5, 56.48, 56.98, 57.22, 57.48, 58.5, 58.98, 59.22, 59.5] }
+    },
+    {
+      "id": "quiet-vaporware",
+      "title": "Calm Piano 1: Vaporware",
+      "filename": "quiet-vaporware.m4a",
+      "sha256": "7ac9eecf817f65d144fa804b3de5a60b7d336851baf8b35b4d51b16e686605bc",
+      "bytes": 738517,
+      "durationSeconds": 60,
+      "moods": [
+        "reflective",
+        "warm",
+        "journey"
+      ],
+      "style": "quiet-instrumental",
+      "artist": "The Cynic Project (cynicmusic)",
+      "sourcePage": "https://opengameart.org/content/calm-piano-1-vaporware",
+      "originalFilename": "vaporware-original.mp3",
+      "originalSha256": "1697fa1b7ed6f3fe1eca4daa4f9d1a2eb3db8fe40a0f3c283529ab47e57b5b38",
+      "originalOffsetSeconds": 20,
+      "onsets": { "version": "low-band-onsets-v1", "seconds": [1.18, 1.6, 1.88, 2.24, 4.44, 5.16, 5.36, 5.64, 5.92, 6.36, 7.68, 8.08, 8.44, 8.94, 9.34, 10.32, 10.92, 11.32, 11.68, 12.42, 12.76, 13.7, 14.16, 14.58, 15, 15.22, 16.24, 16.54, 17.4, 18.08, 18.84, 19.22, 20.18, 20.64, 21.36, 21.62, 21.88, 22.3, 22.82, 23.52, 23.9, 24.28, 24.58, 24.82, 25.1, 25.58, 26.04, 26.3, 27.14, 27.56, 27.82, 28.16, 28.82, 30.38, 31.12, 31.54, 32.12, 33.62, 34.02, 34.64, 34.9, 35.22, 35.5, 35.9, 36.36, 36.86, 37.28, 37.76, 37.98, 38.26, 38.52, 38.88, 40.1, 40.52, 40.8, 41.14, 41.38, 41.76, 43.34, 44.12, 44.5, 44.9, 45.28, 45.64, 45.94, 46.28, 46.58, 46.84, 47.42, 47.7, 48.08, 48.44, 48.66, 48.92, 49.24, 49.84, 50.64, 51, 51.86, 52.38, 53.08, 53.48, 53.68, 53.98, 54.28, 55.2, 55.74, 56.32, 56.92, 57.38, 57.8, 58.3, 58.58, 59.12, 59.56, 59.8] }
+    },
+    {
+      "id": "quiet-contemplation",
+      "title": "Contemplation",
+      "filename": "quiet-contemplation.m4a",
+      "sha256": "308852a62e712af9d8e49c95336d2b20d7c2bc53cec7574c923a716713a63253",
+      "bytes": 737522,
+      "durationSeconds": 60,
+      "moods": [
+        "reflective",
+        "warm",
+        "journey"
+      ],
+      "style": "quiet-instrumental",
+      "artist": "Joth",
+      "sourcePage": "https://opengameart.org/content/contemplation-0",
+      "originalFilename": "contemplation-original.mp3",
+      "originalSha256": "283962d3a975c93613c46cda30c9f0816176ae3e2899f961591a49e2d41b4bf3",
+      "originalOffsetSeconds": 20,
+      "onsets": { "version": "low-band-onsets-v1", "seconds": [4.68, 4.9, 5.12, 5.56, 5.78, 6.04, 6.26, 6.48, 6.7, 7.06, 7.28, 7.5, 7.72, 7.94, 8.2, 8.42, 8.64, 9.08, 9.3, 9.66, 9.88, 10.14, 10.44, 10.8, 11.02, 11.24, 11.46, 11.82, 44.82, 45.34, 45.68, 46.2, 46.7, 47.14, 47.56, 48, 48.5, 48.86] }
+    },
+    {
+      "id": "quiet-synthwave",
+      "title": "Calm Ambient 1: Synthwave 4k",
+      "filename": "quiet-synthwave.m4a",
+      "sha256": "53d55410b9c96eb2206b3191d2ce278c4eb2b48e8bfbb71340e60075931e5d26",
+      "bytes": 736017,
+      "durationSeconds": 60,
+      "moods": [
+        "reflective",
+        "warm",
+        "journey"
+      ],
+      "style": "quiet-instrumental",
+      "artist": "The Cynic Project (cynicmusic)",
+      "sourcePage": "https://opengameart.org/content/calm-ambient-1-synthwave-4k",
+      "originalFilename": "synthwave-4k-original.mp3",
+      "originalSha256": "56b31f997020da1abd4092f5e82457592323717a23e4d560c5f8135d26c3b8be",
+      "originalOffsetSeconds": 20,
+      "onsets": { "version": "low-band-onsets-v1", "seconds": [1.84, 2.36, 4, 4.52, 4.78, 5, 5.8, 6.16, 8.5, 9.68, 10.48, 10.72, 10.96, 11.7, 14.12, 14.5, 14.78, 16.98, 17.54, 17.76, 18.14, 18.82, 19.34, 23.14, 23.66, 24.08, 24.36, 24.62, 25.26, 25.52, 25.82, 28.9, 29.58, 30.02, 30.36, 30.6, 34.06, 34.68, 35.16, 35.38, 35.7, 36.04, 36.76, 37.04, 37.72, 38.06, 39.16, 39.66, 40.06, 40.56, 41.08, 41.44, 41.68, 41.92, 42.68, 42.9, 43.4, 43.96, 44.7, 44.92, 45.26, 45.78, 46.14, 46.42, 46.68, 46.96, 47.36, 47.74, 48.02, 48.4, 49.12, 49.6, 50.1, 50.74, 51.1, 51.34, 51.96, 52.58, 52.98, 53.26, 53.64, 53.96, 54.34, 54.7, 55.3, 55.7, 55.92, 56.32, 56.72, 56.94, 57.28, 58.2, 58.52, 58.78, 59.24, 59.56, 59.96] }
     }
   ]
 }

@@ -1,4 +1,4 @@
-// Actual FFmpeg/AAC proof using only tiny generated music, never owner media.
+// Actual FFmpeg/AAC proof using isolated music and bundled CC0 records, never owner media.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,14 +38,16 @@ async function main() {
       results.push({ mood, duration, beforeLufs: before.integratedLufs, afterLufs: after.integratedLufs, truePeakDb: after.truePeakDb });
     }
     for(const [index,track] of libraryManifest.recordings.entries()){
-      const selection={library:'cc0-lofi-v1',trackId:track.id,offsetSeconds:12};
-      const input=path.join(scratch,`recording-${index}.flac`),output=path.join(scratch,`recorded-master-${index}.m4a`),duration=[12,18,24,32,40,22][index];
+      const quiet=track.style==='quiet-instrumental',targetLufs=quiet?-20:-16;
+      const selection={library:'cc0-lofi-v1',trackId:track.id,offsetSeconds:12,...(quiet?{style:'quiet-instrumental'}:{})};
+      const input=path.join(scratch,`recording-${index}.flac`),output=path.join(scratch,`recorded-master-${index}.m4a`),duration=[12,18,24,32,40,22][index%6];
       await tool(recordings.stockRecordingPreparationArgs(await recordings.stockRecordingFile(selection),input,selection,duration));
-      const scan=filename=>tool(['-i',filename,'-vn','-af',`${music.STOCK_MUSIC_LOUDNESS_FILTER}:print_format=json`,'-f','null','-']).then(music.stockMusicLoudness);
+      const scan=filename=>tool(['-i',filename,'-vn','-af',`${music.STOCK_MUSIC_LOUDNESS_FILTER.replace('I=-16',`I=${targetLufs}`)}:print_format=json`,'-f','null','-']).then(music.stockMusicLoudness);
       const before=await scan(input);
-      await tool(['-y','-i',input,'-af',music.stockMusicMasteringFilter(before),'-c:a','aac','-threads','1','-ar','48000','-ac','2','-b:a','160k',output]);
-      const after=await scan(output);music.assertStockMusicLoudness(after);
-      results.push({recording:track.id,licence:'CC0-1.0',duration,beforeLufs:before.integratedLufs,afterLufs:after.integratedLufs,truePeakDb:after.truePeakDb});
+      await tool(['-y','-i',input,'-af',music.stockMusicMasteringFilter(before,targetLufs),'-c:a','aac','-threads','1','-ar','48000','-ac','2','-b:a','160k',output]);
+      const after=await scan(output);music.assertStockMusicLoudness({...after,...(quiet?{targetLufs:-20}:{})});
+      await tool(['-i',output,'-vn','-f','null','-']);
+      results.push({recording:track.id,licence:'CC0-1.0',duration,targetLufs,nativeTempo:true,decoded:true,beforeLufs:before.integratedLufs,afterLufs:after.integratedLufs,truePeakDb:after.truePeakDb});
     }
   }, 'Isolated audio loudness verification');
   assert.equal(result.acquired, true, 'Verification deferred: the heavy-work slot or its memory reserve is unavailable.');

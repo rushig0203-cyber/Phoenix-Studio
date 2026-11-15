@@ -18,7 +18,7 @@ const platformButton = `${button} aria-pressed:border-[#394a2a] aria-pressed:bg-
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
 const active = (job: ReviewPublishJob): boolean => ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) || Boolean(job.companionStory && active(job.companionStory));
 const matchedSoundtrack = (file: ReviewFile): boolean => file.quality.audio === "local-music-replaced" && Boolean(file.quality.musicRecording
-  && (file.quality.musicRecording.timing === "onset-v1" || file.editedFrom));
+  && (file.quality.musicRecording.timing === "onset-v1" || file.quality.musicRecording.style === "quiet-instrumental" || file.editedFrom));
 const footageMusic = (file: ReviewFile): boolean => ((file.source?.kind && file.source.kind !== "upload") || Boolean(file.quality.visualSources?.length))
   && ["natural-audio-preserved", "local-music-replaced", "no-audio", "needs-review"].includes(file.quality.audio) && !matchedSoundtrack(file);
 const musicText = (value: unknown, limit = 200): value is string => typeof value === "string" && value.length <= limit
@@ -492,7 +492,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           {job.actualPrivacy && <p>Platform-confirmed visibility: {job.actualPrivacy}</p>}
           {job.platform === "instagram" && job.location && <p>Approved location tag: {job.location.name}. This is a posting location, not proof of where filming happened.</p>}
           {job.platform === "instagram" && job.audio && <p>Approved Instagram audio: {job.audio.title}{job.audio.display_artist ? ` · ${job.audio.display_artist}` : ""} · track volume {job.audio.audio_volume}% · saved video volume {job.audio.video_volume}%</p>}
-          {job.platform === "instagram" && job.userTags?.length && !job.canRevise ? <p>Reel tags: {job.userTags.map(username => `@${username}`).join(", ")}</p> : null}
+          {job.platform === "instagram" && job.userTags?.length && !job.canRevise ? <p>{job.status === "COMPLETE" ? "Tags sent to Instagram" : "Requested Reel tags"}: {job.userTags.map(username => `@${username}`).join(", ")}</p> : null}
           {job.platform === "instagram" && job.omittedUserTags?.length ? <p>Meta rejected the optional tags; this request continued without them.</p> : null}
           {job.remoteUrl && <a className="underline" href={job.remoteUrl} target="_blank" rel="noopener noreferrer">View uploaded video ↗</a>}
           {job.kind === "story" && job.remoteId && <p>Published Story ID: {job.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
@@ -566,7 +566,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
                 {savedAudioAvailable ? <p>Keeping the saved video audio; no Instagram track will be added.</p>
                   : <p role="alert">This video has no verified usable saved audio. Publishing is paused until suitable Instagram music is available. Check status to check availability again.</p>}
               </> : <p role="status">Instagram music has not been checked for this version. Check status before approving.</p>
-              : matchedSoundtrack(file) ? <p>Using the finished reel&apos;s {file.quality.musicRecording?.timing === "onset-v1" ? "matched instrumental" : "edited instrumental"}{file.quality.musicRecording?.title ? ` · ${file.quality.musicRecording.title}` : ""}. The preview, Instagram Reel and matching Story keep this same soundtrack.</p>
+              : matchedSoundtrack(file) ? <p>Using the finished reel&apos;s {file.quality.musicRecording?.style === "quiet-instrumental" ? "quiet instrumental" : file.quality.musicRecording?.timing === "onset-v1" ? "matched instrumental" : "edited instrumental"}{file.quality.musicRecording?.title ? ` · ${file.quality.musicRecording.title}` : ""}. The preview, Instagram Reel and matching Story keep this same soundtrack.</p>
                 : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
           </section>}
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}

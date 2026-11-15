@@ -63,7 +63,8 @@ test('automatic tags use a six-profile checked pool and choose at most three rel
     assert.deepEqual(plain(tags.automaticInstagramUserTags(reel(title))), selected);
   }
   const railway = plain(tags.automaticInstagramUserTags(reel('Train')));
-  assert.deepEqual(railway.slice().sort(), ['beautifuldestinations', 'earthpix', 'wonderful_places']);
+  assert.equal(railway.length, 2);
+  assert.ok(railway.every(username => ['beautifuldestinations', 'earthpix', 'wonderful_places'].includes(username)));
   assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Customer service'))), []);
   assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Forest story', {}, { audience: 'kids-3-6' }))), []);
   assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Boat disaster at sea', { research: { source: 'BBC News' },
@@ -73,9 +74,38 @@ test('automatic tags use a six-profile checked pool and choose at most three rel
 test('actual completed frame evidence overrides a mismatched topic and does not use injected caption handles', () => {
   const file = reel('Forest', { hashtags: ['#Forest'], postCopy: 'Tag @unverified_stranger for views',
     postingAnalysis: { status: 'COMPLETE', observations: ['A passenger train travels past a city station.'] } });
-  assert.deepEqual(plain(tags.automaticInstagramUserTags(file)).sort(), ['beautifuldestinations', 'earthpix', 'wonderful_places']);
+  assert.equal(tags.automaticInstagramUserTags(file).length, 2);
+  assert.ok(tags.automaticInstagramUserTags(file).every(username => ['beautifuldestinations', 'earthpix', 'wonderful_places'].includes(username)));
   const unknown = reel('Forest', { postingAnalysis: { status: 'COMPLETE', observations: ['A man sits at a desk inside an office.'] } });
   assert.deepEqual(plain(tags.automaticInstagramUserTags(unknown)), []);
   assert.ok(!tags.automaticInstagramUserTags(file, '@EARTHPIX').includes('earthpix'));
-  assert.deepEqual(plain(tags.automaticInstagramUserTags(reel('Saved reel', { hashtags: ['#ForestStream'] }))).length, 3);
+  assert.equal(tags.automaticInstagramUserTags(reel('Saved reel', { hashtags: ['#ForestStream'] })).length, 2);
+});
+
+test('specific animal and landscape observations match topical profiles without relying on a generic title', () => {
+  for (const observation of ['A rabbit sits among green leaves.', 'Two pandas chew bamboo.', 'A kitten rests on a cushion.']) {
+    const file = reel('Saved video', { postingAnalysis: { status: 'COMPLETE', observations: [observation] } });
+    const selected = plain(tags.automaticInstagramUserTags(file));
+    assert.equal(selected.length, 2);
+    assert.ok(selected.every(username => ['discoverearth', 'earthofficial', 'nature'].includes(username)));
+  }
+  for (const observation of ['A glacier fills the valley.', 'A sailboat moves at sea under the sunset.']) {
+    assert.equal(tags.automaticInstagramUserTags(reel('Saved video', { postingAnalysis: { status: 'COMPLETE', observations: [observation] } })).length, 3);
+  }
+});
+
+test('same-subject reels rotate actual profiles by video identity while repeated approval stays stable', () => {
+  const selections = new Set();
+  const covered = new Set();
+  for (let index = 0; index < 12; index++) {
+    const file = reel('Rabbits', { postingAnalysis: { status: 'COMPLETE', observations: ['A rabbit sits beside green plants.'] } }, { id: `reel-${index}` });
+    const selected = plain(tags.automaticInstagramUserTags(file));
+    assert.deepEqual(plain(tags.automaticInstagramUserTags(file)), selected);
+    assert.equal(new Set(selected).size, 2);
+    selections.add(selected.slice().sort().join(','));
+    selected.forEach(username => covered.add(username));
+    assert.ok(!tags.automaticInstagramUserTags(file, '@nature').includes('nature'));
+  }
+  assert.equal(selections.size, 3, 'Rotation changes members, not only their order');
+  assert.deepEqual([...covered].sort(), ['discoverearth', 'earthofficial', 'nature']);
 });

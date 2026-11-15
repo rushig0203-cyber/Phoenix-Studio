@@ -44,17 +44,25 @@ export const AUTOMATIC_INSTAGRAM_TAG_PROFILES = [
 ] as const;
 
 /** No model/network work: select a few relevant profiles from saved visual evidence. */
-export function automaticInstagramUserTags(file: Pick<ReviewFile, "title" | "quality"> & Partial<Pick<ReviewFile, "audience">>, accountName?: string): string[] {
+export function automaticInstagramUserTags(file: Pick<ReviewFile, "title" | "quality"> & Partial<Pick<ReviewFile, "id" | "audience">>, accountName?: string): string[] {
   if ((file.audience && file.audience !== "general") || file.quality.research) return [];
   const analysis = file.quality.postingAnalysis;
   const observations = analysis?.status === "COMPLETE" ? analysis.observations?.filter(value => typeof value === "string").slice(0, 8).map(value => value.slice(0, 500)) : [];
   // Completed frame evidence wins over the requested topic and old posting copy.
   const evidence = observations?.length ? observations : [file.title.slice(0, 200), ...file.quality.hashtags.slice(0, 20).map(value => value.slice(0, 100))];
-  const topic = evidence.join(" ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  let topic = evidence.join(" ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  // Specific subjects in frame descriptions need the same topical coverage as
+  // generic "wildlife"/"landscape" wording, without consulting old captions.
+  if (/\b(?:animals?|wildlife|horses?|birds?|whales?|rabbits?|bunnies|bunny|pandas?|bears?|dogs?|pupp(?:y|ies)|cats?|kittens?|fox(?:es)?|deer|wolves|wolf|lions?|tigers?|elephants?|giraffes?|zebras?|monkeys?|apes?|penguins?|ducks?|eagles?|owls?|parrots?|goats?|sheep|cows?|fish|dolphins?|seals?|turtles?|butterfl(?:y|ies)|bees?)\b/.test(topic)) topic += " wildlife animals nature";
+  if (/\b(?:sunsets?|sunrises?|glaciers?|fjords?|valleys|valley|snow|deserts?|coast(?:s|line)?|sea|sailing|sailboats?|vineyards?|meadows?)\b/.test(topic)) topic += " nature scenic landscape travel";
+  if (/\b(?:leaves|foliage|plants?|blossoms?|petals?)\b/.test(topic)) topic += " nature forest";
   const ownUsername = instagramUsername(accountName);
   const eligible = AUTOMATIC_INSTAGRAM_TAG_PROFILES.filter(profile => profile.username !== ownUsername && profile.topics.test(topic));
   if (!eligible.length) return [];
   let rotation = 0;
-  for (const character of topic) rotation = (rotation * 31 + character.charCodeAt(0)) >>> 0;
-  return Array.from({ length: Math.min(3, eligible.length) }, (_, index) => eligible[(rotation + index) % eligible.length].username);
+  for (const character of `${topic}\n${file.id || ""}`) rotation = (rotation * 31 + character.charCodeAt(0)) >>> 0;
+  // Leave one candidate out of a three-profile subject pool so different reels
+  // rotate actual usernames, rather than only reordering the same complete list.
+  const count = eligible.length === 3 ? 2 : Math.min(3, eligible.length);
+  return Array.from({ length: count }, (_, index) => eligible[(rotation + index) % eligible.length].username);
 }

@@ -91,6 +91,17 @@ test('encoded output must be near its loudness target with true-peak headroom', 
   assert.doesNotThrow(() => loudness.assertStockMusicLoudness(good));
   for (const bad of [{ integratedLufs: -32 }, { integratedLufs: -10 }, { truePeakDb: .1 }, { integratedLufs: NaN }, { truePeakDb: Infinity }, { loudnessRangeLu: -1 }]) assert.throws(() => loudness.assertStockMusicLoudness({ ...good, ...bad }), /finished music failed/);
 });
+test('quiet recordings retain an explicit softer target without weakening the legacy loudness check', () => {
+  const quiet = { integratedLufs: -20.1, truePeakDb: -3, loudnessRangeLu: 3, targetLufs: -20 };
+  assert.doesNotThrow(() => loudness.assertStockMusicLoudness(quiet));
+  assert.throws(() => loudness.assertStockMusicLoudness({ ...quiet, integratedLufs: -16 }), /finished music failed/);
+  assert.throws(() => loudness.assertStockMusicLoudness({ ...quiet, targetLufs: -28 }), /finished music failed/);
+  assert.throws(() => loudness.assertStockMusicLoudness({ ...quiet, targetLufs: undefined }), /finished music failed/);
+  const measured={integratedLufs:-25,truePeakDb:-8,loudnessRangeLu:2,thresholdLufs:-35,offsetDb:0};
+  assert.match(loudness.stockMusicMasteringFilter(measured,-20), /^loudnorm=I=-20:TP=-2:LRA=7:/);
+  assert.match(loudness.stockMusicMasteringFilter(measured), /^loudnorm=I=-16:TP=-2:LRA=7:/);
+  assert.throws(() => loudness.stockMusicMasteringFilter(measured,-30), /supported loudness target/);
+});
 test('automatic sound fills only silent intervals and never adds music over usable original ambience', () => {
   const sections = audio.stockReelMusicSections(intervals, states, true, true), filter = audio.stockReelMusicVolume(sections);
   assert.deepEqual(Array.from(sections, section => section.gain), [0, 1, 0]);

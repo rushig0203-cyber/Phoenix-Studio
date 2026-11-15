@@ -1227,7 +1227,7 @@ test('automatic Reel tagging has no manual controls and sends only server-select
   assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
   h.submit(); await h.flush();
   assert.equal(saved.automaticTags, true); assert.equal(saved.userTags, undefined); assert.equal(h.posts.length, 1);
-  assert.match(h.text, /Reel tags: @nature/);
+  assert.match(h.text, /Tags sent to Instagram: @nature/);
 });
 
 test('automatic tag policy is Instagram-only and no manual tag entry appears on either platform', async t => {
@@ -1245,7 +1245,7 @@ test('an untagged Reel omits the optional parameter and continued uploads use on
   let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({platform:'instagram'}) }); } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); h.submit(); await h.flush(); assert.equal(saved.userTags,undefined); assert.equal(saved.automaticTags,true);
   const continued = uiHarness({ jobs:[job({platform:'instagram',status:'NEEDS_CHECK',canContinue:true,userTags:['saved.person']})], post() { return response({job:job({platform:'instagram'})}); } }); t.after(() => continued.unmount());
-  continued.choose('Post to Instagram'); await continued.flush(); assert.match(continued.text,/Reel tags: @saved.person/);
+  continued.choose('Post to Instagram'); await continued.flush(); assert.match(continued.text,/Requested Reel tags: @saved.person/);
   assert.equal(continued.control('Instagram usernames','input'),undefined);
   continued.change(continued.control('Continue this saved upload','input'),true); continued.render(); continued.click('Continue saved upload'); await continued.flush();
   assert.deepEqual(JSON.parse(continued.posts[0].body),{action:'continue',jobId:'saved-upload',confirm:true});
@@ -1278,6 +1278,16 @@ test('a manually trimmed recorded soundtrack is retained without claiming a meas
   h.choose('Post to Instagram');await h.flush();
   assert.match(text(automaticMusicPanel(h)),/edited instrumental · Old Saga/);
   assert.doesNotMatch(text(automaticMusicPanel(h)),/matched instrumental/);
+  assert.equal(h.requests.some(request=>request.url.includes('check=audio')),false);
+  assert.equal(h.button('Post to Instagram').props.disabled,false);
+});
+
+test('quiet ambient recordings keep their reviewed sound even when no timing grid is available', async t => {
+  const file=footageFile();
+  file.quality.musicRecording={trackId:'quiet-vaporware',title:'Calm Piano 1: Vaporware',style:'quiet-instrumental'};
+  const h=uiHarness({file,audio:[audioResult()]});t.after(()=>h.unmount());
+  h.choose('Post to Instagram');await h.flush();
+  assert.match(text(automaticMusicPanel(h)),/quiet instrumental · Calm Piano 1: Vaporware/);
   assert.equal(h.requests.some(request=>request.url.includes('check=audio')),false);
   assert.equal(h.button('Post to Instagram').props.disabled,false);
 });
@@ -1722,7 +1732,7 @@ test('defaults never alter saved uploads and malformed defaults cannot introduce
     defaults: { userTags: ['different.person'], location: { id: '999', name: 'Different location' } } }); t.after(() => existing.unmount());
   existing.choose('Post to Instagram'); await existing.flush();
   assert.equal(existing.requests.length, 2); assert.equal(existing.requests.some(request => request.url.includes('?check=posting-defaults')), false);
-  assert.match(existing.text, /Approved location tag: Approved location/); assert.match(existing.text, /Reel tags: @approved.person/);
+  assert.match(existing.text, /Approved location tag: Approved location/); assert.match(existing.text, /Tags sent to Instagram: @approved.person/);
   assert.equal(existing.button('Remember posting location'), undefined);
   for (const defaults of [null, [], { userTags: Array.from({ length: 21 }, (_, i) => `person${i}`), location: { id: 'not-numeric', name: 'Invalid location' } },
     { userTags: [], location: { id: '123456\n', name: 'Invalid location' } },

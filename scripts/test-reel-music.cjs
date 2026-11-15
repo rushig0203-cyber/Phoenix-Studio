@@ -33,15 +33,13 @@ test('recognized original reissue suffixes and known artist credits preserve ide
   assert.equal(musicSeedMatches(track('Holocene (Remastered)','A cover artist'),seed('Holocene')),false);
 });
 
-test('bounded discovery searches a fitting original recording as well as trends and a mood instrumental',()=>{
+test('peaceful discovery prioritizes quiet instrumentals while lively visuals can still use trends',()=>{
   const queries=musicCatalogQueries(brief());
-  assert.deepEqual(queries,['','Holocene Bon Iver','ambient instrumental']);
+  assert.deepEqual(queries,['saman Ólafur Arnalds','ambient instrumental','gentle piano instrumental']);
   assert.equal(musicCatalogQueries(brief('energetic','high'))[1],'Adventure Of A Lifetime Coldplay');
   assert.deepEqual(musicCatalogQueries(brief('uncertain','unknown')),[]);
   assert.ok(queries.length<=REEL_MUSIC_LOOKUP_LIMIT);
-  const choices=['1','2','3'].map(id=>musicCatalogQueries(brief(),id)[1]);
-  assert.equal(new Set(choices).size,3,'equally fitting recordings vary by video, without extra API reads');
-  assert.equal(musicCatalogQueries(brief(),'1')[1],choices[0],'the same saved video keeps its lookup');
+  assert.deepEqual(musicCatalogQueries(brief(),'1'),queries,'A quiet brief does not widen to vocals merely for variety');
   assert.equal(musicCatalogQueries(brief('calm','medium'))[1],'A Walk Tycho','the recording lookup respects the edit energy');
 });
 
@@ -55,11 +53,21 @@ test('therapy and sleep utilities do not become a reel soundtrack merely from ca
   assert.deepEqual(result.map(item=>item.audio_id),['4']);
 });
 
+test('peaceful reels reject vocals, dance beats and beat-led lofi even when a title also says calm',()=>{
+  const result=rankMusicCatalog([
+    track('Holocene','Bon Iver','11'),track('Banana Pancakes','Jack Johnson','12'),
+    track('Calm Lofi Beat Instrumental','Fixture','13'),track('Soft Piano Drums Instrumental','Fixture','14'),
+    track('Peaceful Ambient (Instrumental)','Fixture','15'),track('saman','Ólafur Arnalds','16'),
+  ],brief());
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['16','15']);
+  assert.ok(result.every(candidate=>candidate.recommendation.kind==='instrumental'));
+});
+
 test('non-seed catalog instrumentals with relevant descriptive styles can rank without an original-song allowlist',()=>{
   const result=rankMusicCatalog([
     track('Peaceful Meadow (Instrumental)','Fixture composer','201'),
     track('Quiet Rain - No Vocals','Fixture piano','202'),
-    track('Holocene - Remastered','Bon Iver','203'),
+    track('saman','Ólafur Arnalds','203'),
     track('Quiet Rain - No Vocals','Fixture piano','202'),
   ],brief());
   assert.equal(result.length,3);
@@ -107,7 +115,7 @@ test('instrumental labels reject conflicting vocals while preserving explicit no
 
 test('catalog ranking returns at most six stable, unique tracks after comparing the entire bounded input',()=>{
   const candidates=Array.from({length:20},(_,index)=>track(`Peaceful Meadow ${index} (Instrumental)`,'Fixture composer',`${400+index}`));
-  const result=rankMusicCatalog([...candidates,track('Holocene','Bon Iver','499')],brief());
+  const result=rankMusicCatalog([...candidates,track('saman','Ólafur Arnalds','499')],brief());
   assert.equal(result.length,6);assert.equal(result[0].audio_id,'499');
   assert.equal(new Set(result.map(value=>value.audio_id)).size,6);
   assert.deepEqual(result.map(value=>value.recommendation.rank),[1,2,3,4,5,6]);
@@ -116,7 +124,7 @@ test('catalog ranking returns at most six stable, unique tracks after comparing 
 test('a stronger editorial fit outranks weaker trending metadata without letting unrelated trends bypass fit',()=>{
   const fetchedAt='2026-10-18T10:20:30.000Z';
   const result=rankMusicCatalog([
-    {...track('Holocene','Bon Iver','501'),discovery:{source:'keyword-search',fetchedAt,position:0}},
+    {...track('saman','Ólafur Arnalds','501'),discovery:{source:'keyword-search',fetchedAt,position:0}},
     {...track('Calm Meadow (Instrumental)','Fixture composer','502'),discovery:{source:'meta-trending',fetchedAt,position:4}},
     {...track('Dance Party (Instrumental)','Fixture composer','503'),discovery:{source:'meta-trending',fetchedAt,position:0}},
     {...track('Calm English Song','Unknown singer','504'),discovery:{source:'meta-trending',fetchedAt,position:1}},
@@ -127,14 +135,14 @@ test('a stronger editorial fit outranks weaker trending metadata without letting
   assert.equal(result[0].discovery,undefined,'Provenance stays in recommendation metadata, outside the saved track configuration');
 });
 
-test('trending breaks a fit-score tie, never a clearly better visual-energy fit',()=>{
+test('trending vocals and a building cinematic track cannot displace quiet piano for peaceful visuals',()=>{
   const fetchedAt='2026-11-07T10:20:30.000Z';
   const result=rankMusicCatalog([
     {...track('saman','Ólafur Arnalds','510'),discovery:{source:'keyword-search',fetchedAt,position:0}},
     {...track('Experience','Ludovico Einaudi','511'),discovery:{source:'meta-trending',fetchedAt,position:0}},
     {...track('Holocene','Bon Iver','512'),discovery:{source:'meta-trending',fetchedAt,position:1}},
   ],brief('reflective','low'));
-  assert.deepEqual(result.map(candidate=>candidate.audio_id),['512','510','511']);
+  assert.deepEqual(result.map(candidate=>candidate.audio_id),['510']);
 });
 
 test('deduplication retains trending membership and provider order rather than alphabetical order',()=>{
@@ -189,7 +197,7 @@ test('a trending original cannot bypass a clearly opposite visual energy level',
 });
 
 test('different visual moods and energy levels change music ordering',()=>{
-  assert.equal(musicSeedsFor(brief('calm','low'))[0].title,'Holocene');
+  assert.equal(musicSeedsFor(brief('calm','low'))[0].title,'saman');
   assert.equal(musicSeedsFor(brief('energetic','high'))[0].title,'Adventure Of A Lifetime');
   assert.equal(musicSeedsFor(brief('uplifting','low'))[0].title,'Take Me Home, Country Roads');
   assert.equal(musicSeedsFor(brief('uplifting','high'))[0].title,'Adventure Of A Lifetime');
@@ -208,14 +216,13 @@ test('valid sampled-frame profiles retain their explanation and actual frame ref
   assert.equal(JSON.stringify(file),before,'Reading recommendations does not rewrite owner data');
 });
 
-test('actual brisk cut durations inform music energy without inventing subject motion or changing the visual mood',()=>{
+test('short picture cuts do not overwrite a peaceful low-energy visual soundtrack brief',()=>{
   const file=review(['Frame 1: Water beside green trees.'],brief());
   file.outputs.instagram.duration=10;
   file.quality.musicEdit={version:1,shotDurations:[1,2,3,2,2]};
   const before=JSON.stringify(file),result=musicBriefFromReview(file);
-  assert.equal(result.brief.mood,'calm');assert.equal(result.brief.energy,'medium');
-  assert.match(result.brief.reason,/measured cuts average 2.0 seconds/);
-  assert.match(result.brief.reason,/not measured subject motion or music tempo/);
+  assert.equal(result.brief.mood,'calm');assert.equal(result.brief.energy,'low');
+  assert.deepEqual(result.brief,brief());
   assert.equal(reelMusicBriefSchema.safeParse(result.brief).success,true);
   assert.equal(JSON.stringify(file),before);
   for(const invalid of [{version:1,shotDurations:[1,2,3,2,1]}, {version:1,shotDurations:[-1,3,4,4]}, {version:1,shotDurations:[2,2,NaN,2,2]}, {version:1,shotDurations:Array(50).fill(.2)}, {version:2,shotDurations:[2,2,2,2,2]}]) {

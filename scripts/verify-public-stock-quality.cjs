@@ -137,6 +137,8 @@ async function main() {
   assert.equal(file.quality.postingAnalysis.model,'isolated-fixture-no-provider');assert.equal(file.quality.postingAnalysis.status,'COMPLETE');
   assert.equal(file.quality.postCopy,'Take a moment for the greenery.');assert.equal(file.quality.postingAnalysis.musicBrief.mood,'warm');
   assert.equal(file.quality.musicRecording?.timing,'onset-v1');
+  assert.equal(file.quality.musicRecording?.style,'quiet-instrumental');
+  assert.equal(file.quality.audioMastering?.targetLufs,-20);
   assert.equal(file.quality.musicEdit?.version,1);
   assert.ok(Math.abs(file.quality.musicEdit.shotDurations.reduce((sum,duration)=>sum+duration,0)-info.videoDuration)<1e-5);
   assert.ok(file.quality.checks.some(check => /one continuous bed across every shot/.test(check)));

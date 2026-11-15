@@ -16,7 +16,7 @@ test('samples follow final cut order, original trim and acceleration rather than
 });
 const frames=[1,2,3].map(seconds=>({filename:'fixture.mp4',seconds,filter:'scale=720:1280'}));
 const response={...analysis.parseVisualPosting({observations:[{frame:1,visible:'Dogs resting on the grass.'}],caption:'A little pause in the grass.',captionVariants:[],hashtags:['#Dogs','#Nature'],confidence:'clear',musicBrief:{version:1,mood:'warm',energy:'low',reason:'Relaxed dogs resting on a sunny lawn.',evidenceFrames:[1]}},true),model:analysis.VISION_MODEL,provider:'groq'};
-async function job(){const bytes=Buffer.from('isolated stream fixture');return source.createStockReelJob([1,2,3,4].map(mediaId=>({provider:'pexels',mediaId:String(Math.floor(Math.random()*1e9)+mediaId),sourcePage:`https://www.pexels.com/video/${mediaId}/`,creator:'Fixture',title:'Dogs resting',start:0,end:8,trimMode:'auto',open:async()=>({stream:new ReadableStream({start(c){c.enqueue(bytes);c.close();}}),expectedBytes:bytes.length})})),{requestId:crypto.randomUUID(),caption:'',theme:'Dogs',maxDuration:20,options:{audio:'music',mood:'reflective',transition:'cut',framing:'auto',pacing:'cinematic',shotCadence:'adaptive-v3',musicLibrary:'cc0-lofi-v1'}});}
+async function job(quiet=false){const bytes=Buffer.from('isolated stream fixture');return source.createStockReelJob([1,2,3,4].map(mediaId=>({provider:'pexels',mediaId:String(Math.floor(Math.random()*1e9)+mediaId),sourcePage:`https://www.pexels.com/video/${mediaId}/`,creator:'Fixture',title:'Dogs resting',start:0,end:8,trimMode:'auto',open:async()=>({stream:new ReadableStream({start(c){c.enqueue(bytes);c.close();}}),expectedBytes:bytes.length})})),{requestId:crypto.randomUUID(),caption:'',theme:'Dogs',maxDuration:20,options:{audio:'music',mood:'reflective',transition:'cut',framing:'auto',pacing:'cinematic',shotCadence:'adaptive-v3',musicLibrary:'cc0-lofi-v1',...(quiet?{musicPolicy:'visual-calm-v1',audioMastering:'loudness-v1'}:{})}});}
 after(()=>{Object.assign(analysis,{visualPostingEnabled:originals.enabled,extractPostingFrame:originals.frame,requestVisualPosting:originals.request});process.chdir(project);assert.equal(fs.realpathSync(path.dirname(directory)),fs.realpathSync(os.tmpdir()));assert.match(path.basename(directory),/^phoenix-visual-music-test-/);fs.rmSync(directory,{recursive:true,force:true});});
 test('visual mood is reserved before rendering, retained on retry and reuses all three caption frames',async()=>{
   let extracted=0,requested=0;analysis.visualPostingEnabled=()=>true;analysis.extractPostingFrame=async()=>{extracted++;return Buffer.from([255,216,255,217]);};analysis.requestVisualPosting=async(images)=>{requested++;assert.equal(images.length,3);return response;};
@@ -42,4 +42,19 @@ test('uncertain visuals never force a different mood and the library mapping sta
   for(const mood of ['calm','reflective','uncertain'])assert.equal(library.stockRecordingMood({...response.musicBrief,mood},'reflective'),'reflective');
   assert.equal(library.stockRecordingMood({...response.musicBrief,mood:'playful'},'reflective'),'warm');
   assert.equal(library.stockRecordingMood({...response.musicBrief,mood:'energetic'},'reflective'),'journey');
+});
+
+test('new visual policy keeps quiet resting footage peaceful but selects livelier music for actual playful evidence',async()=>{
+  analysis.visualPostingEnabled=()=>true;analysis.extractPostingFrame=async()=>Buffer.from([255,216,255,217]);
+  analysis.requestVisualPosting=async()=>response;
+  const resting=await job(true);assert.equal(resting.stockSource.musicRecording.style,'quiet-instrumental');
+  const prepared=await source.prepareStockVisualMusic(resting,frames,'resting-final-cut',20,[2,4,6]);
+  assert.equal(prepared.musicRecording.style,'quiet-instrumental');
+  assert.deepEqual((await source.prepareStockVisualMusic({...resting,stockSource:prepared},frames,'resting-final-cut',20)).musicRecording,prepared.musicRecording);
+  analysis.requestVisualPosting=async()=>({...response,musicBrief:{...response.musicBrief,mood:'playful',energy:'medium',reason:'Dogs playing with a ball in the sampled frames.'}});
+  const active=await job(true),activePrepared=await source.prepareStockVisualMusic(active,frames,'playful-final-cut',20);
+  assert.equal(activePrepared.musicRecording.style,undefined,'Confident playful visuals can use the rhythmic pool, instead of forcing all videos quiet');
+  analysis.requestVisualPosting=async()=>{throw Error('Free quota reached');};
+  const limited=await job(true),fallback=await source.prepareStockVisualMusic(limited,frames,'quiet-fallback',20);
+  assert.deepEqual(fallback.musicRecording,limited.stockSource.musicRecording);assert.equal(fallback.musicRecording.style,'quiet-instrumental');
 });

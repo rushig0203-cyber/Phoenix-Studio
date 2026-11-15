@@ -72,7 +72,9 @@ async function main() {
   assert.ok(Math.abs(file.quality.musicEdit.shotDurations.reduce((sum,duration)=>sum+duration,0)-Number(picture.duration))<1e-5);
   assert.ok(file.quality.checks.some(check=>check.startsWith('Measured low-frequency recording attacks:')));
   assert.ok(!file.quality.checks.some(check=>check.includes('BPM instrumental')),'Unmeasured recording tempo cannot inherit the synthetic beat-grid claim.');
-  assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 16) <= 1.5);
+  assert.equal(file.quality.musicRecording.style,'quiet-instrumental');
+  assert.equal(file.quality.audioMastering.targetLufs,-20);
+  assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 20) <= 1.5);
   assert.ok(file.quality.audioMastering.truePeakDb <= -1);
   assert.ok(!file.quality.checks.some(check => /1\.25× playback/.test(check)), 'New v3 recipes never reuse the old automatic acceleration rule');
   assert.ok(file.quality.checks.some(check => /1× playback/.test(check)), 'Meaningful movement keeps native speed');
