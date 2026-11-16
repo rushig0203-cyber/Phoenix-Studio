@@ -66,6 +66,10 @@ jobs:
         run: python -B scripts/test-renderer-subtitle-canvas.py
       - name: Verify original editorial news illustration policy and raster output
         run: python -B scripts/test-renderer-editorial-illustrations.py
+      - name: Verify original news illustrations with real offline narration and captions
+        env:
+          PHOENIX_NEWS_PROOF_DIR: ${{ runner.temp }}/phoenix-news-quality-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python -B scripts/verify-news-illustrations.py
       - name: Run release regressions one file at a time
         # UI fixture compilation needs more heap than the application data tests.
         run: >-
@@ -261,10 +265,6 @@ jobs:
           node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
           node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
-      - name: Verify original news illustrations with real offline narration and captions
-        env:
-          PHOENIX_NEWS_PROOF_DIR: ${{ runner.temp }}/phoenix-news-quality-${{ github.run_id }}-${{ github.run_attempt }}
-        run: python -B scripts/verify-news-illustrations.py
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
       - name: Verify a real synthetic 49-minute episode survives interruption

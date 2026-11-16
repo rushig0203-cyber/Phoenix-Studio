@@ -563,7 +563,7 @@ index 2176fa1..2fc193a 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..56a62e8
+index 0000000..6589d9b
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
 @@ -0,0 +1,799 @@
@@ -1363,7 +1363,7 @@ index 0000000..56a62e8
 +        manifest = Path(temporary) / "concat.txt"
 +        manifest.write_text("".join(f"file '{name}'\n" for name in parts), encoding="utf-8")
 +        assembled = Path(temporary) / "combined.mp4"
-+        run(["-f", "concat", "-safe", "1", "-i", str(manifest), "-c", "copy", "-movflags", "+faststart", str(assembled)])
++        run(["-f", "concat", "-safe", "1", "-i", manifest.as_posix(), "-c", "copy", "-movflags", "+faststart", str(assembled)])
 +        os.replace(assembled, output)
 +    return str(output)
 diff --git a/app/services/phoenix_artifacts.py b/app/services/phoenix_artifacts.py

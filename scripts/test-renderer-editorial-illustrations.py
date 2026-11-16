@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 def shipped_renderer():
@@ -47,6 +48,33 @@ class TestEditorialIllustrations(unittest.TestCase):
         for value in ({**valid, "prompt": "fake event photograph"}, {**valid, "subject": "people"}, {**valid, "label": "News footage"}, None):
             with self.assertRaisesRegex(ValueError, "Invalid original editorial"):
                 self.renderer["editorial_illustration"](value)
+
+    def test_concat_resolves_existing_shots_beside_a_forward_slash_manifest(self):
+        with tempfile.TemporaryDirectory(prefix="phoenix-editorial-concat-test-") as temporary:
+            root = Path(temporary)
+            source, encoder = root / "original.png", root / "encoder-fixture"
+            source.write_bytes(b"fixture original image")
+            encoder.write_bytes(b"fixture encoder identity")
+            concatenated = []
+            def render(arguments, **_kwargs):
+                destination = Path(arguments[-1])
+                if "-frames:v" in arguments:
+                    frames = int(arguments[arguments.index("-frames:v") + 1])
+                    destination.write_bytes(b"fixture encoded frames")
+                    return subprocess.CompletedProcess(arguments, 0, stdout=f"frame={frames}\n".encode(), stderr=b"")
+                manifest = arguments[arguments.index("-i") + 1]
+                self.assertNotIn("\\", manifest, "Windows FFmpeg resolves relative concat entries only with a forward-slash manifest URL")
+                manifest = Path(manifest)
+                self.assertEqual(manifest.read_text(encoding="utf-8"), "file 'shot-000.mp4'\n")
+                self.assertTrue((manifest.parent / "shot-000.mp4").is_file(), "Rendered shots remain beside the manifest until concatenation")
+                concatenated.append(True)
+                destination.write_bytes(b"fixture combined video")
+                return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
+            shot = {"start": 0, "end": 2/30, "sourceStart": 0, "path": str(source), "playbackRate": 1,
+                    "illustration": {"kind": "editorial-2d-v1", "subject": "documents", "label": "Illustration"}}
+            with patch.dict(self.renderer, {"_shot_cache_directory": lambda: root / "cache"}), patch.object(self.renderer["subprocess"], "run", side_effect=render):
+                self.renderer["render_timeline"]([shot], str(root / "result.mp4"), (64, 64), str(encoder))
+            self.assertEqual(concatenated, [True])
 
     def test_video_proof_rejects_laptop_and_unsafe_output_before_media_imports(self):
         script = Path(__file__).with_name("verify-news-illustrations.py")
