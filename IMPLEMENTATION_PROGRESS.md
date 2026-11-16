@@ -1,5 +1,43 @@
 # Phoenix Studio implementation and verified releases
 
+## November 16 — installed measured attention experiments for footage Reels
+
+- Read the owner's actual Instagram results: 78 saved videos, 66 eligible for
+  age/exposure comparisons and 35 of 36 matched Reels with average watch time
+  below half their runtime. The paired median watch/runtime ratio was 13%, with
+  median average watch of 2.38 seconds and runtime of 17 seconds. This is not a
+  completion rate, a drop-off curve or evidence of why viewers left. Six existing
+  Rabbit/Panda/Owl frames showed small landscape openings with large blurred
+  areas; Rabbit and Owl already had clear portrait alternatives shortly afterward.
+- Fresh, exact source-performance guidance now enables a saved experiment on
+  eligible new automatic requests. UUID-based assignment compares a four-source
+  native-playback version with the existing montage. The focused version skips
+  twelve-second filling and can promote a native portrait opening from decoded
+  dimensions while retaining the chosen reference and every source's provenance.
+  It does not identify a semantic best moment. Greenery validation retains its
+  larger source pool; manual, legacy and control timing stay unchanged.
+- A compact visible Insights diagnosis shows the watch figures, the next test
+  and comments/saves/shares totals. Future recipe comparisons require at least
+  three mature posts per version in the same age/exposure band. Missing metrics
+  remain unknown. Only exact accepted original publications with unchanged output
+  fingerprints supply recipe markers; edited or unlabelled historical outputs
+  are not experimental controls. There is no declared winner or assumed growth.
+- Installed source `a8b93dfb99f77ba775d736d5a9ee4b1adc62b6df` passed Windows
+  run `43874910626`: 1,680 Node tests, 58 Python checks, lint, full TypeScript/build,
+  real speech/music/video exports, bounded worker scans and interrupted long-job
+  recovery. Both Vercel source deployments passed. The isolated focused export
+  produced 173 frames / 7.208 seconds, promoted its decoded portrait opening and
+  retained its experiment/output byte-for-byte on retry. This is a mechanics
+  proof, not an audience or aesthetic-quality test.
+- Selected and serving bundle `.next-build-gh-43874910626-1`, build ID
+  `i00y-XDfOPqNusKPW9qNA`, returns dashboard HTTP 200 with healthy manager/worker
+  and a ready renderer. Live API and browser checks confirmed the diagnosis and
+  enabled source experiment. Activation preserved the review index, all 237
+  output-video files, all 117 publication JSON records and the exact owner
+  `97AF40D8…` configuration hash; no archives changed, owner jobs were created or
+  retried, or videos published. The live screenshot and activation/data proofs
+  remain in session artifacts. Future posted results are needed to assess benefit.
+
 ## November 16 — installed personalised suggestions and original news illustrations
 
 - Create and Make a Reel now use one bounded local context reader for recent
