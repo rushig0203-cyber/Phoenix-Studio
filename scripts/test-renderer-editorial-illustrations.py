@@ -50,10 +50,12 @@ class TestEditorialIllustrations(unittest.TestCase):
 
     def test_video_proof_rejects_laptop_and_unsafe_output_before_media_imports(self):
         script = Path(__file__).with_name("verify-news-illustrations.py")
-        with tempfile.TemporaryDirectory(prefix="phoenix-news-quality-guard-") as existing:
+        with tempfile.TemporaryDirectory(prefix="phoenix-news-guard-test-") as temporary:
+            existing = Path(temporary) / "phoenix-news-quality-existing"
+            existing.mkdir()
             cases = [({}, "only on an isolated CI runner"),
                      ({"CI": "true", "PHOENIX_NEWS_PROOF_DIR": "relative"}, "absolute isolated"),
-                     ({"CI": "true", "PHOENIX_NEWS_PROOF_DIR": existing}, "must be new and outside"),
+                     ({"CI": "true", "PHOENIX_NEWS_PROOF_DIR": str(existing)}, "must be new and outside"),
                      ({"CI": "true", "PHOENIX_NEWS_PROOF_DIR": str(script.parent.parent / "phoenix-news-quality-guard")}, "must be new and outside")]
             for changes, message in cases:
                 environment = {key: value for key, value in os.environ.items() if key not in ("CI", "PHOENIX_NEWS_PROOF_DIR")}
