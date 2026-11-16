@@ -19,9 +19,11 @@ function load(filename, mocks = {}) {
   return module.exports;
 }
 const playback = load('src/lib/stockPlayback.ts');
+const brief = load('src/lib/stockBrief.ts');
+const newsPolicy = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
 const shots = load('src/lib/stockStoryboard.ts', {
   './footageSemantics': { actionMismatch: () => undefined },
-  './newsVisualPolicy': { newsStockQueryIssue: () => undefined, newsStockVisualInstructions: () => '' },
+  './newsVisualPolicy': newsPolicy,
   './writingModel': { generateWritingModel: () => { throw new Error('No writer allowed'); }, withWritingSession: () => { throw new Error('No writer allowed'); } },
 });
 const reels = load('src/lib/stockReel.ts');
@@ -49,6 +51,14 @@ test('slowdown, speedup and old visual-stretch declarations are rejected', () =>
   }
   assert.throws(() => shots.readStockShots([{ ...shot, playbackRate: 1, visualStretch: 1.025 }], 5, true), /original-speed/);
   assert.equal(shots.readStockShots([shot], 5).length, 1, 'legacy records can still be read, without certifying normal playback');
+});
+
+test('original editorial illustration metadata uses the real policy helper and keeps native-speed checks', () => {
+  const illustration = { kind: 'editorial-2d-v1', subject: 'maritime', label: 'Illustration' };
+  const original = { ...shot, sourcePage: undefined, playbackRate: 1, illustration };
+  const result = shots.readStockShots([original], 5, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result[0].illustration)), illustration);
+  assert.throws(() => shots.readStockShots([{ ...original, playbackRate: .5 }], 5, true), /original-speed/);
 });
 
 test('short real footage stays short under a longer cap; another shot supplies actual footage time', () => {
