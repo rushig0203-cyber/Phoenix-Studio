@@ -1,5 +1,44 @@
 # Phoenix Studio implementation and verified releases
 
+## November 16 — installed personalised suggestions and original news illustrations
+
+- Create and Make a Reel now use one bounded local context reader for recent
+  original videos, confirmed Instagram/YouTube/Facebook posts, saved reviews and
+  fresh comparable results when available. Foreground wildlife takes precedence
+  over incidental greenery. Actual owner data produced relevant wildlife,
+  nature, travel and outdoor ideas; no owner rating or performance win was invented.
+- Six concise cards show a title and reason, with longer premises optional.
+  Ideas reconsider current saved work every 15 days, on reopening and through
+  More ideas. The last 48 shown IDs are remembered to avoid recycling the same
+  batch; unavailable browser storage retains history for that visit. Live UI
+  checks confirmed different relevant batches and exact selected-topic/premise
+  insertion. The superseded separate two-topic Instagram panel was removed.
+- New news jobs try bounded, suitable context footage first, then save explicit
+  original neutral 2D illustrations when no eligible footage is available.
+  Illustrations remain labelled, preserve measured narration timing and use a
+  truthful visual disclosure. Legacy saved recipes and approvals stay unchanged.
+  No event photographs, people or flags are fabricated; no new model or photo
+  importer was added. This is static editorial art, not full character animation.
+- Actual export verification exposed and fixed a Windows FFmpeg concat-path
+  bug affecting scene assembly. Forward-slash manifest paths now resolve the
+  generated scene files correctly. Both a tiny actual production-function test
+  and the remote three-section illustrated-news export passed after the fix.
+- Installed source `eac6ad3df28fed867d734a34f2ef3e858a35b8fc` passed Windows
+  run `43813082830`: all 1,660 Node tests, 58 Python checks, lint, full
+  TypeScript/build, real speech/audio/video exports, bounded worker scans and
+  interrupted 49-minute episode recovery. Both Vercel source deployments passed.
+  The 11.79-second synthetic news proof fully decoded and preserved its complete
+  spoken/caption ending without duration padding. It exercises the shared
+  artwork/timeline with FFmpeg captions; it does not certify production MoviePy
+  caption layout, mixed stock/illustration artifact retention or editorial appeal.
+- Selected and serving bundle `.next-build-gh-43813082830-1`, build ID
+  `gB7Qyh7WSaAGFyQWrt1Qp`, returns dashboard HTTP 200 with healthy manager/worker
+  and a ready renderer explicitly advertising the new news policy. Activation
+  preserved the review index, all 237 output-video files, all 117 publication
+  JSON records and the owner's exact `97AF40D8…` configuration hash. No history
+  archives changed, owner job was retried or video published. Proofs, the exported
+  news test and the live suggestions screenshot are retained in session artifacts.
+
 ## November 15 — installed quieter video-matched music and varied Reel tags
 
 - New automatic footage reels reserve a genuine quiet instrumental, then reuse
