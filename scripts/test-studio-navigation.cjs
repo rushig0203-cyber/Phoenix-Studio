@@ -51,7 +51,7 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   assert.match(info, /Updates every three seconds[\s\S]*Active includes preparation and rendering/);
 });
 
-test('creation embeds six compact mixed recommendations with suitability tooltips and no automatic generation', () => {
+test('creation loads compact recommendations from saved work without automatic generation', () => {
   const { creationRecommendations } = require('../src/lib/creationRecommendations');
   const first = creationRecommendations(), next = creationRecommendations(first.memory);
   assert.equal(first.ideas.length, 6);
@@ -59,8 +59,9 @@ test('creation embeds six compact mixed recommendations with suitability tooltip
   assert.ok(next.ideas.every(idea => !first.ideas.some(prior => prior.topicKey === idea.topicKey)));
   const html = renderToStaticMarkup(React.createElement(require('../src/components/RecommendedIdeas').default, { onChoose: () => {} }));
   assert.match(html, /More ideas/);
-  assert.match(html, /General audience/);
-  assert.match(html, /Working adults/);
+  assert.match(html, /Finding ideas from your saved videos/);
+  assert.match(html, /aria-busy="true"/);
+  assert.doesNotMatch(html, /Use idea:/, 'Do not flash unrelated catalogue ideas before saved context arrives');
   assert.match(html, /nothing starts until you click Create video/);
   assert.match(html, /not live trends/);
   const creation = renderToStaticMarkup(React.createElement(require('../src/components/AICreation').default, { onClose() {}, onStarted() {} }));

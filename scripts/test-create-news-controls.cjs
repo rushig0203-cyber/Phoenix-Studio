@@ -25,7 +25,7 @@ function harness(name, fetch) {
   };
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
     'lucide-react': {}, '@/components/ui/button': { Button: 'button' }, '@/components/RecommendedIdeas': { default: 'Recommendations' },
-    '@/components/NewsIdeas': { default: 'NewsIdeas' }, '@/components/InstagramTopicSuggestions': { default: 'InstagramTopics' },
+    '@/components/NewsIdeas': { default: 'NewsIdeas' },
     '@/lib/creationRecommendations': recommendations, '@/lib/krishnaStory': krishna,
     '@/lib/creationIntent': { creationIntent: topic => krishna.isKrishnaStoryTopic(topic) ? "Children's short story" : 'General video' },
     '@/lib/publishingFormats': { publishingProfile: () => ({ defaultDuration: 75 }) } };

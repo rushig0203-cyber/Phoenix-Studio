@@ -46,7 +46,7 @@ function memoryStorage(initial = {}) {
 }
 function harness(options = {}) {
   let active, uuid = 0, time = 0, timerId = 0, mounted = true, closed = 0;
-  const requests = [], deadlines = [], started = [], timers = new Map();
+  const requests = [], suggestionRequests = [], deadlines = [], started = [], timers = new Map();
   const renderer = { index: 0, slots: [], effects: [], pending: [], dirty: true, tree: undefined };
   const hooks = {
     useState(initial) {
@@ -74,13 +74,13 @@ function harness(options = {}) {
   };
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('FixtureFragment') },
-    'next/image': 'img', './ui/button': { Button: 'button' }, './InstagramTopicSuggestions': { default: 'fixture-instagram-topic-suggestions' } };
+    'next/image': 'img', './ui/button': { Button: 'button' } };
   const clock = {
     setTimeout(callback, milliseconds = 0) { const id = ++timerId; timers.set(id, { at: time + milliseconds, callback }); return id; },
     clearTimeout(id) { timers.delete(id); },
   };
   const shared = {
-    Error, AbortController, localStorage: options.storage || memoryStorage(),
+    Error, AbortController, URLSearchParams, localStorage: options.storage || memoryStorage(),
     setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout },
     crypto: { randomUUID() { return 'fixture-request-' + ++uuid; } },
     AbortSignal: {
@@ -88,6 +88,11 @@ function harness(options = {}) {
       any(signals) { return AbortSignal.any(signals); },
     },
     fetch(url, init = {}) {
+      if (typeof url === 'string' && url.startsWith('/api/content-suggestions?')) {
+        const request = { url, ...init, method: init.method || 'GET' }; suggestionRequests.push(request);
+        assert.equal(request.method, 'GET', 'Reading saved suggestion context never mutates content');
+        return Promise.resolve(options.suggestions ? options.suggestions(request) : response({ error: 'Context unavailable in this fallback fixture' }, 503));
+      }
       assert.ok(typeof url === 'string' && (url === '/api/stock-reels' || url.startsWith('/api/stock-reels?')), 'Only the mocked stock endpoint is allowed');
       const request = { url, ...init, method: init.method || 'GET' }; requests.push(request);
       if (request.method === 'GET') return Promise.resolve(options.search ? options.search(request) : successfulSearch(options.videos || fixtures));
@@ -131,7 +136,7 @@ function harness(options = {}) {
   function button(label) { return find(node => node.type === 'button' && text(node) === label, 'Button ' + label); }
   function input() { return find(node => node.type === 'input', 'Topic input'); }
   const h = {
-    requests, deadlines, started, render, flush, button, input,
+    requests, suggestionRequests, deadlines, started, render, flush, button, input,
     get tree() { return renderer.tree; }, get closed() { return closed; },
     get gets() { return requests.filter(request => request.method === 'GET'); },
     get posts() { return requests.filter(request => request.method === 'POST'); },

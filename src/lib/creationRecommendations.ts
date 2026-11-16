@@ -1,4 +1,4 @@
-import { CONTENT_IDEAS } from "./contentIdeas";
+import { CONTENT_IDEAS, type SuggestionContext, type SuggestionReason } from "./contentIdeas";
 import { publishingProfile, type PublishingFormat } from "./publishingFormats";
 
 export const CREATION_KINDS = ["Children's short story", "Children's song", "Business video", "General video"] as const;
@@ -17,7 +17,7 @@ export type CreationRecommendation = {
 
 export const RECOMMENDATION_STORAGE_KEY = "phoenix-recommendations-v1";
 export const RECOMMENDATION_HISTORY_LIMIT = 256;
-export const RECOMMENDATION_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+export const RECOMMENDATION_REFRESH_MS = 15 * 24 * 60 * 60 * 1000;
 export type RecommendationMemory = { version: 1; shown: string[]; cursor: number };
 export const emptyRecommendationMemory = (): RecommendationMemory => ({ version: 1, shown: [], cursor: 0 });
 
@@ -160,6 +160,30 @@ const additions: Array<[string, string, RecommendationGroup, CreationKind, strin
   ["windmill-design", "mechanism", "Science & curiosity", "General video", "What a windmill's turning sails actually do — Explain the visible mechanism with matching windmill footage and finish on the transfer of movement."],
   ["japan-train-platform", "observation", "Nature & places", "General video", "A railway journey through Japan's changing landscapes — Use verified Japanese source descriptions, connect matching train views and end on one clear landscape detail; do not substitute an unrelated country."],
   ["iceland-waterfall-landscape", "comparison", "Nature & places", "General video", "What shapes the landscape around Iceland's waterfalls — Connect source-supported Iceland scenery and one geological explanation, ending on a visible feature rather than a list of destinations."],
+  ["elephant-trunk", "adaptation", "Nature & places", "General video", "How an elephant uses its trunk — Explain one visible feeding or drinking action with matching elephant footage and finish on that action."],
+  ["giraffe-feeding", "adaptation", "Nature & places", "General video", "How a giraffe reaches its next mouthful — Connect its height and feeding posture using clear footage, without inventing a chase or rescue."],
+  ["turtle-swimming", "adaptation", "Nature & places", "General video", "A sea turtle's flippers at work — Follow underwater movement and explain how the broad flippers help it swim."],
+  ["squirrel-balance", "adaptation", "Nature & places", "General video", "What a squirrel's tail does while it moves — Explain balance through visible climbing or branch footage, ending on a stable perch."],
+  ["flamingo-feeding", "adaptation", "Nature & places", "General video", "Why a flamingo feeds with its head upside down — Explain its feeding position with matching footage and one clear visual takeaway."],
+  ["deer-ears", "observation", "Nature & places", "General video", "Watch how a deer's ears turn — Explain the visible movement while the animal listens, without claiming to know what it heard."],
+  ["zebra-stripes", "observation", "Nature & places", "General video", "Look closely at a zebra's stripes — Compare visible patterns on zebras and explain that each animal's pattern differs."],
+  ["duck-feathers", "adaptation", "Nature & places", "General video", "How a duck cares for its feathers — Follow visible preening and explain one part of feather maintenance using the same species."],
+  ["frog-skin", "adaptation", "Nature & places", "General video", "Why a frog stays close to moisture — Use matching frog footage to explain its permeable skin and the importance of a suitable habitat."],
+  ["hummingbird-hover", "adaptation", "Nature & places", "General video", "How a hummingbird pauses in midair — Follow visible hovering beside a flower and explain the movement without pretending ordinary footage is slow motion."],
+  ["dragonfly-flight", "observation", "Nature & places", "General video", "A dragonfly's four wings at work — Use clear flying or perched details to explain its two pairs of wings and end on the same insect."],
+  ["ladybird-wing", "observation", "Nature & places", "General video", "The wings hidden under a ladybird's shell — Explain its wing covers with matching close-up footage, without promising an unavailable takeoff shot."],
+  ["snail-movement", "adaptation", "Nature & places", "General video", "How a snail moves without legs — Follow a close view of its glide and explain the muscular foot with one concise observation."],
+  ["crab-walking", "adaptation", "Nature & places", "General video", "Why many crabs walk sideways — Explain the visible leg arrangement using matching crab footage and finish on its movement."],
+  ["jellyfish-pulse", "adaptation", "Nature & places", "General video", "A jellyfish moves one pulse at a time — Connect the bell's visible contractions to movement through water, keeping one matching species."],
+  ["octopus-arms", "observation", "Nature & places", "General video", "How an octopus explores with its arms — Follow visible arm movement and explain its suckers, without inventing a problem-solving experiment."],
+  ["seal-swimming", "adaptation", "Nature & places", "General video", "How a seal changes direction underwater — Explain a visible turn using matching seal footage and a clear final movement."],
+  ["chameleon-feet", "adaptation", "Nature & places", "General video", "The grip of a chameleon's feet — Use close climbing footage to explain how its toes hold a branch, without an invented color-change story."],
+  ["hedgehog-spines", "adaptation", "Nature & places", "General video", "What a hedgehog's spines are for — Explain the visible protective covering with matching footage and avoid staging a threat."],
+  ["moss-moisture", "observation", "Nature & places", "General video", "A tiny forest of moss — Use close moss textures to explain moisture and small-scale habitat, ending on a visible detail."],
+  ["fern-fronds", "process", "Nature & places", "General video", "The curled shape of a young fern — Compare clear fern details and explain how a new frond opens without fabricating a time-lapse."],
+  ["bamboo-stems", "structure", "Nature & places", "General video", "Why bamboo stems have visible joints — Follow the repeated nodes and explain one structural feature using matching bamboo footage."],
+  ["cactus-water", "adaptation", "Nature & places", "General video", "How a cactus saves water — Explain a visible feature such as its thick stem or spines, using matching desert-plant footage."],
+  ["mangrove-roots", "adaptation", "Nature & places", "General video", "The roots that rise around mangrove trees — Connect clear root details and the wet habitat, explaining one adaptation without guessing the filming location."],
 ];
 
 const RECOMMENDATIONS: CreationRecommendation[] = [...seedRecommendations, ...additions.map(([topicKey, angleKey, category, kind, title]) => ({
@@ -169,6 +193,107 @@ const RECOMMENDATIONS: CreationRecommendation[] = [...seedRecommendations, ...ad
 const recommendationById = new Map(RECOMMENDATIONS.map(idea => [idea.id, idea]));
 
 export function recommendationPool(): CreationRecommendation[] { return [...RECOMMENDATIONS]; }
+
+export type PersonalizedCreationRecommendation = CreationRecommendation & SuggestionReason;
+const subjectPatterns = [
+  "rabbit|bunny", "panda", "cat|kitten", "dog|puppy", "otter", "penguin", "bee|bees|pollen", "bird|birds|nest|shorebird|shorebirds", "butterfly|butterflies",
+  "elephant", "giraffe", "turtle", "squirrel", "flamingo", "deer", "zebra", "duck", "frog", "hummingbird", "dragonfly", "ladybird|ladybug", "snail", "crab", "jellyfish", "octopus", "seal", "chameleon", "hedgehog", "horse|horses",
+  "waterfall|waterfalls", "forest|woodland|canopy", "ocean|wave|waves|coast|coastal|shore", "mountain|mountains|alpine", "river|rivers", "lake|lakes", "desert|dune|dunes", "snow", "rain|rainy", "moss", "fern", "bamboo", "cactus", "mangrove",
+  "train|railway", "bread|bakery|kneading", "coffee|latte", "pottery|clay|ceramic", "drawing|sketch|sketching", "herb|herbs", "sewing|button", "guitar", "bicycle|cycling", "skateboard", "magnet", "bubble|bubbles", "windmill", "bridge|bridges",
+].map(pattern => new RegExp(`\\b(?:${pattern})(?:s)?\\b`, "i"));
+const subjects = (value: string) => subjectPatterns.flatMap((pattern, index) => pattern.test(value) ? [index] : []);
+type Interest = "wildlife" | "nature" | "food" | "practical" | "science" | "hobby" | "business" | "children";
+const wildlife = /\b(?:wildlife|animals?|rabbits?|bunn(?:y|ies)|pandas?|cats?|kittens?|dogs?|pupp(?:y|ies)|otters?|penguins?|bees?|birds?|shorebirds?|butterfl(?:y|ies)|elephants?|giraffes?|turtles?|squirrels?|flamingos?|deer|zebras?|ducks?|frogs?|hummingbirds?|dragonfl(?:y|ies)|ladybirds?|ladybugs?|snails?|crabs?|jellyfish|octop(?:us|uses)|seals?|chameleons?|hedgehogs?|horses?|parrots?|owls?|fox(?:es)?|lions?|dolphins?|whales?|peacocks?|fish|camels?|cows?|sheep|goats?)\b/i;
+function interests(value: string, workflow: string): Interest[] {
+  if (workflow.startsWith("children")) return ["children"];
+  if (workflow === "business") return ["business"];
+  // An animal eating among plants is wildlife evidence, not a gardening preference.
+  if (wildlife.test(value)) return ["wildlife"];
+  const found: Interest[] = [];
+  if (/\b(nature|wildlife|animal|rabbit|bunny|panda|cat|kitten|dog|puppy|otter|penguin|bee|bird|shorebird|butterfly|elephant|giraffe|turtle|squirrel|flamingo|deer|zebra|duck|frog|hummingbird|dragonfly|ladybird|snail|crab|jellyfish|octopus|seal|chameleon|hedgehog|horse|forest|woodland|waterfall|ocean|wave|coast|mountain|alpine|river|lake|desert|snow|moss|fern|bamboo|cactus|mangrove|garden|leaf|leaves|seed)(?:s)?\b/i.test(value)) found.push("nature");
+  if (/\b(food|bread|bakery|dough|coffee|latte|cook|cooking|fruit|vegetable|pottery|clay|ceramic|weaving)\b/i.test(value)) found.push("food");
+  if (/\b(organizing|desk|drawer|laundry|shelf|shelves|entryway|packing|bag|lost|leftovers|instructions|lamp|route)\b/i.test(value)) found.push("practical");
+  if (/\b(science|experiment|magnet|bubble|reflection|shadow|evaporation|droplet|spinning|bridge|windmill)\b/i.test(value)) found.push("science");
+  if (/\b(hobby|drawing|sketch|guitar|photograph|camera|sewing|cycling|bicycle|climbing|skateboard|herb)\b/i.test(value)) found.push("hobby");
+  return found;
+}
+const recommendationWorkflow = (idea: CreationRecommendation) => idea.kind === "Business video" ? "business" : idea.kind === "Children's short story" ? "children-story" : idea.kind === "Children's song" ? "children-song" : "general";
+const headline = (title: string) => title.split(" — ")[0];
+const interestLabel = (interest: Interest) => interest === "food" ? "food and craft" : interest;
+const kindForWorkflow = (workflow: string): CreationKind => workflow === "business" ? "Business video" : workflow === "children-story" ? "Children's short story" : workflow === "children-song" ? "Children's song" : "General video";
+
+/** Rank supported premises from saved subjects and reviews; changing the date never invents a trend. */
+export function personalizedCreationRecommendations(context: SuggestionContext, cursor = 0, seen: string[] = []): { ideas: PersonalizedCreationRecommendation[]; nextCursor: number } {
+  const safeCursor = Number.isSafeInteger(cursor) && cursor >= 0 ? cursor % RECOMMENDATIONS.length : 0;
+  const recent = context.recent.filter(item => !item.news).slice(0, 120).map((item, index) => ({ ...item,
+    interests: interests(`${item.title} ${item.observations.join(" ")}`, item.workflow),
+    subjects: subjects(`${item.title} ${item.observations.join(" ")}`), weight: Math.max(1, 6 - Math.floor(index / 8)) * (item.posted ? 2 : 1),
+  }));
+  const feedback = new Map(context.feedback.map(item => [item.reviewId, item]));
+  const evidenceRecent = recent.some(item => item.posted) ? recent.filter(item => item.posted) : recent;
+  const kindWeights = new Map<CreationKind, number>();
+  const interestWeights = new Map<Interest, number>();
+  for (const item of evidenceRecent) {
+    const review = feedback.get(item.reviewId);
+    // A visual/audio revision is not a rejection of the story's subject.
+    const weight = item.weight * (review && review.storyRating >= 4 ? 2 : review && review.decision === "revise" && review.storyRating <= 2 ? 0.25 : 1);
+    const kind = kindForWorkflow(item.workflow);
+    kindWeights.set(kind, (kindWeights.get(kind) || 0) + weight);
+    for (const interest of item.interests) interestWeights.set(interest, (interestWeights.get(interest) || 0) + weight);
+  }
+  const preferredKind = [...kindWeights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "General video";
+  const leadingInterest = [...interestWeights].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const seenTopics = new Set(seen.slice(-48).flatMap(id => recommendationById.has(id) ? [recommendationById.get(id)!.topicKey] : []));
+  const recentSubjects = new Set(recent.flatMap(item => item.subjects));
+  const recentTitles = new Set(recent.map(item => canonicalRecommendationKey(headline(item.title))));
+  const epoch = Math.floor(context.now / RECOMMENDATION_REFRESH_MS);
+  const candidates = RECOMMENDATIONS.filter(idea => idea.kind === preferredKind && !seenTopics.has(idea.topicKey)
+    && !recentTitles.has(canonicalRecommendationKey(headline(idea.title)))
+    && !subjects(`${idea.topicKey} ${headline(idea.title)}`).some(subject => recentSubjects.has(subject))).map((idea, index) => {
+    const tags = interests(`${idea.topicKey} ${headline(idea.title)}`, recommendationWorkflow(idea));
+    const matched = evidenceRecent.filter(item => item.interests.some(interest => tags.includes(interest)));
+    const kept = matched.find(item => (feedback.get(item.reviewId)?.storyRating || 0) >= 4);
+    const strong = context.strongerTopics.find(item => item.evidenceCount >= 2 && kindForWorkflow(item.workflow) === idea.kind
+      && interests(item.topic, item.workflow).some(interest => tags.includes(interest)));
+    const score = tags.reduce((total, interest) => total + (interestWeights.get(interest) || 0), 0) + (strong ? Math.min(6, strong.evidenceCount) * 2 : 0)
+      + (leadingInterest === "wildlife" && tags.includes("wildlife") && ["adaptation", "observation", "process"].includes(idea.angleKey) ? 1 : 0);
+    const family = interestLabel(tags.find(tag => matched.some(item => item.interests.includes(tag))) || tags[0] || "nature");
+    const basis: SuggestionReason = kept ? { basis: "owner-feedback", reason: `Related to a ${family} video you rated ${feedback.get(kept.reviewId)!.storyRating}/5 for story, with a fresh subject.` }
+      : strong ? { basis: "observed-response", reason: `A fresh ${family} subject related to stronger saved results from ${strong.evidenceCount} posts.` }
+      : matched[0] ? { basis: "recent-content", reason: `Related to your ${matched.some(item => item.posted) ? "posted" : "recent"} ${family} videos, with a fresh subject.` }
+      : { basis: "explore", reason: leadingInterest ? `A nearby ${tags[0] || "general"} subject to explore alongside your ${leadingInterest} videos.` : "A new subject to explore; your saved work will guide future ideas." };
+    return { idea: { ...idea, ...basis }, score, tags, order: (index - safeCursor - epoch % RECOMMENDATIONS.length + RECOMMENDATIONS.length * 2) % RECOMMENDATIONS.length };
+  }).sort((a, b) => b.score - a.score || a.order - b.order);
+  const ideas: PersonalizedCreationRecommendation[] = [];
+  const used = new Set<string>();
+  const relevant = candidates.filter(item => leadingInterest === "wildlife" ? item.tags.includes("wildlife") : item.score > 0 || !leadingInterest);
+  for (const candidate of relevant) {
+    if (used.has(candidate.idea.topicKey)) continue;
+    ideas.push(candidate.idea); used.add(candidate.idea.topicKey);
+    if (ideas.length === 5) break;
+  }
+  const nearby = candidates.find(item => !used.has(item.idea.topicKey) && (leadingInterest === "wildlife"
+    ? !item.tags.includes("wildlife") && item.tags.includes("nature") && ["Nature & places", "Science & curiosity"].includes(item.idea.category)
+    : item.score === 0 && (!leadingInterest || leadingInterest !== "nature" || item.tags.includes("science"))));
+  if (nearby) { ideas.push(nearby.idea); used.add(nearby.idea.topicKey); }
+  for (const candidate of relevant) {
+    if (ideas.length === 6) break;
+    if (!used.has(candidate.idea.topicKey)) { ideas.push(candidate.idea); used.add(candidate.idea.topicKey); }
+  }
+  return { ideas, nextCursor: (safeCursor + 6) % RECOMMENDATIONS.length };
+}
+
+export const PERSONALIZED_RECOMMENDATION_STORAGE_KEY = "phoenix-creation-suggestions-v2";
+export type PersonalizedRecommendationMemory = { shown: string[]; cursor: number };
+export function parsePersonalizedRecommendationMemory(raw: string | null): PersonalizedRecommendationMemory {
+  try {
+    const value = raw && raw.length <= 16_384 ? JSON.parse(raw) : null;
+    if (!value || !Array.isArray(value.shown)) return { shown: [], cursor: 0 };
+    const known = value.shown.slice(-48).filter((id: unknown): id is string => typeof id === "string" && recommendationById.has(id)) as string[];
+    const shown = [...new Set(known.slice().reverse())].reverse();
+    return { shown, cursor: Number.isSafeInteger(value.cursor) && value.cursor >= 0 ? value.cursor % RECOMMENDATIONS.length : 0 };
+  } catch { return { shown: [], cursor: 0 }; }
+}
 
 export function parseRecommendationMemory(raw: string | null): RecommendationMemory {
   if (!raw || raw.length > 32_768) return emptyRecommendationMemory();

@@ -14,11 +14,11 @@ function nodes(node, predicate, found = []) {
   else if (node && typeof node === 'object') { if (predicate(node)) found.push(node); nodes(node.props?.children, predicate, found); }
   return found;
 }
-function harness(status = 'FAILED', createdAt = '2026-10-11T08:30:00Z') {
+function harness(status = 'FAILED', createdAt = '2026-10-11T08:30:00Z', scenes = []) {
   let position = 0, dirty = true, tree, mode = 'ok', requeued = 0, refreshes = 0;
   const slots = [], requests = [], order = [];
   const fixtureModule = { exports: {} };
-  const draft = { id: 'mock-draft', status, createdAt, version: 3, stage: 'Preparation failed', input: { topic: 'Local fixture', duration: 75, aspect: '9:16' } };
+  const draft = { id: 'mock-draft', status, createdAt, version: 3, scenes, stage: 'Preparation failed', input: { topic: 'Local fixture', duration: 75, aspect: '9:16' } };
   const react = {
     useState(initial) { const index = position++; if (!(index in slots)) slots[index] = { value: initial }; return [slots[index].value, value => { slots[index].value = typeof value === 'function' ? value(slots[index].value) : value; dirty = true; }]; },
     useRef(initial) { const index = position++; return slots[index] ||= { current: initial }; },
@@ -82,4 +82,13 @@ test('active preparations cannot be deleted or recovered, and legacy dates never
     assert.doesNotMatch(h.text, /Invalid Date/);
     assert.equal(h.requests.length, 0);
   }
+});
+
+test('an original editorial illustration is disclosed without stock selection or approval controls', () => {
+  const h = harness('QUEUED', '2026-10-11T08:30:00Z', [{ narration: 'The court heard the case.', query: 'editorial legal illustration', illustration: { kind: 'editorial-2d-v1', subject: 'legal', label: 'Illustration' } }]);
+  assert.match(h.text, /Illustration · original editorial 2D: legal/);
+  assert.match(h.text, /each illustration is labelled in the finished video/);
+  assert.equal(nodes(h.tree, node => node.type === 'video' || node.type === 'input' || node.type === 'select').length, 0);
+  assert.equal(h.button('Approve'), undefined);
+  assert.equal(h.requests.length, 0);
 });

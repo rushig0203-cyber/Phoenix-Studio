@@ -2,17 +2,18 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { NaturalStock } from "@/lib/naturalStock";
-import type { ContentIdea } from "@/lib/contentIdeas";
-import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, stockFootageSuggestions } from "@/lib/stockFootageSuggestions";
+import type { ContentIdea, SuggestionReason } from "@/lib/contentIdeas";
+import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
-import InstagramTopicSuggestions from "./InstagramTopicSuggestions";
 
 type Results = { query: string; version: number; videos: NaturalStock[]; cursor: string | null; limited: boolean };
 type Selection = { video: NaturalStock; results: Results };
 const emptyResults = (): Results => ({ query: "", version: 0, videos: [], cursor: null, limited: false });
 const identity = (video: NaturalStock) => `${video.provider}:${video.id}`;
 const providerLabels = { pexels: "Pexels", pixabay: "Pixabay", commons: "Wikimedia Commons", nasa: "NASA" };
+const suggestionCatalogue = new Map(stockTopicPool().map(idea => [idea.id, idea]));
+type SuggestedTopic = ContentIdea & Partial<SuggestionReason>;
 
 export default function StockReels({ initialQuery = "", onClose, onStarted }: { initialQuery?: string; onClose: () => void; onStarted: (message: string) => void }) {
   const [query, setQuery] = useState(initialQuery);
@@ -28,15 +29,60 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   const requestIds = useRef(new Map<string, string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequest = useRef<{ query: string; controller: AbortController; version: number } | null>(null);
-  const [suggestions, setSuggestions] = useState(() => stockFootageSuggestions());
+  const [suggestions, setSuggestions] = useState<SuggestedTopic[]>([]);
   const [suggestionsRemembered, setSuggestionsRemembered] = useState(true);
-  const suggestionCursor = useRef(0), suggestionsInitialized = useRef(false), suggestionStorageWorking = useRef(true);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionBasis, setSuggestionBasis] = useState("Starter ideas");
+  const suggestionCursor = useRef(0), suggestionStorageWorking = useRef(true);
+  const suggestionMemory = useRef(new Map<string, string>());
+  const suggestionRequest = useRef<AbortController | null>(null);
 
-  function moreSuggestions() {
-    if (creationBusy.current) return;
-    const next = nextStoredFootageSuggestions({ getItem: key => suggestionStorageWorking.current ? localStorage.getItem(key) : null, setItem: (key, value) => localStorage.setItem(key, value) }, suggestionCursor.current);
+  async function moreSuggestions() {
+    if (creationBusy.current || suggestionRequest.current || !mounted.current) return;
+    const storage = {
+      getItem(key: string) {
+        if (suggestionStorageWorking.current) {
+          try { const value = localStorage.getItem(key); if (value && value.length <= 8192) suggestionMemory.current.set(key, value); return value; }
+          catch { suggestionStorageWorking.current = false; }
+        }
+        return suggestionMemory.current.get(key) || null;
+      },
+      setItem(key: string, value: string) {
+        suggestionMemory.current.set(key, value);
+        if (!suggestionStorageWorking.current) throw new Error("Browser suggestion history is unavailable.");
+        localStorage.setItem(key, value);
+      },
+    };
+    const next = nextStoredFootageSuggestions(storage, suggestionCursor.current);
     suggestionStorageWorking.current = next.remembered; suggestionCursor.current = next.nextCursor;
-    setSuggestions(next.ideas); setSuggestionsRemembered(next.remembered);
+    setSuggestionsRemembered(next.remembered); setSuggestionsLoading(true);
+    const controller = new AbortController(); suggestionRequest.current = controller;
+    try {
+      const parameters = new URLSearchParams({ workflow: "footage", cursor: String(next.cursor % 1_000_000) });
+      if (next.seen.length) parameters.set("seen", next.seen.join(","));
+      const response = await fetch(`/api/content-suggestions?${parameters}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data?.ideas) || data.ideas.length > 6 || !Number.isSafeInteger(data?.nextCursor) || data.nextCursor < 0 || data.nextCursor >= 1_000_000) throw new Error("Suggestion context unavailable.");
+      const ids = new Set<string>();
+      const personalized: SuggestedTopic[] = data.ideas.map((idea: { id?: unknown; reason?: unknown; basis?: unknown }) => {
+        const registered = typeof idea?.id === "string" ? suggestionCatalogue.get(idea.id) : undefined;
+        if (!registered || ids.has(registered.id) || typeof idea.reason !== "string" || !idea.reason.trim() || idea.reason.length > 240
+          || /[\u0000-\u001f\u007f]/.test(idea.reason) || !["recent-content", "owner-feedback", "observed-response", "explore"].includes(String(idea.basis))) throw new Error("Invalid suggestion response.");
+        ids.add(registered.id); return { ...registered, reason: idea.reason, basis: idea.basis as SuggestionReason["basis"] };
+      });
+      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return;
+      const recorded = recordStoredFootageSuggestions(storage, personalized, data.nextCursor);
+      suggestionStorageWorking.current = recorded.remembered; suggestionCursor.current = data.nextCursor;
+      setSuggestionsRemembered(recorded.remembered); setSuggestions(personalized);
+      setSuggestionBasis(personalized.some(idea => idea.basis !== "explore") ? "Based on your videos and available feedback" : "New directions to explore");
+    } catch {
+      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return;
+      const recorded = recordStoredFootageSuggestions(storage, next.ideas, next.nextCursor);
+      suggestionStorageWorking.current = recorded.remembered; setSuggestionsRemembered(recorded.remembered);
+      setSuggestions(next.ideas); setSuggestionBasis("Starter ideas · your page context could not load");
+    } finally {
+      if (suggestionRequest.current === controller) { suggestionRequest.current = null; if (mounted.current) setSuggestionsLoading(false); }
+    }
   }
   function cancelSearch() {
     if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; }
@@ -95,11 +141,11 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   }
   useEffect(() => {
     mounted.current = true;
-    if (!suggestionsInitialized.current) { suggestionsInitialized.current = true; moreSuggestions(); }
+    void moreSuggestions();
     let suggestionTimer: number;
-    const refresh = () => { moreSuggestions(); suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS); };
+    const refresh = () => { void moreSuggestions(); suggestionTimer = window.setTimeout(refresh, creationBusy.current ? 60_000 : FOOTAGE_SUGGESTION_REFRESH_MS); };
     suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS);
-    return () => { window.clearTimeout(suggestionTimer); mounted.current = false; cancelSearch(); currentResults.current = null; };
+    return () => { window.clearTimeout(suggestionTimer); mounted.current = false; suggestionRequest.current?.abort(); suggestionRequest.current = null; cancelSearch(); currentResults.current = null; };
   }, []);
   useEffect(() => {
     const wanted = query.trim(); latestQuery.current = wanted;
@@ -146,9 +192,10 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       <p id="footage-topic-help" className="mt-2 text-xs text-[#657153]">Use a short place, subject or action. Matching videos appear as you type.</p>
     </form>
     <details className="mt-3 rounded-xl bg-[#f1f5e8] p-3"><summary className="cursor-pointer text-sm font-medium">Topic suggestions</summary>
-      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]">Mixed searchable topics, refreshed weekly—not live trends.</span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={moreSuggestions}>More topics</Button></div>
-      <div className="mt-2 flex flex-wrap gap-2">{suggestions.map(idea => <button key={idea.id} type="button" disabled={busy} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span>{idea.title}</span></button>)}</div>
-      <InstagramTopicSuggestions mode="stock" onChoose={chooseIdea} disabled={busy} />
+      <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-[#657153]" role="status">{suggestionsLoading ? "Finding ideas for your page…" : suggestionBasis}</span><Button type="button" variant="ghost" size="sm" disabled={busy || suggestionsLoading} onClick={() => void moreSuggestions()}>{suggestionsLoading ? "Updating…" : "More ideas"}</Button></div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{suggestions.map(idea => <button key={idea.id} type="button" disabled={busy} onClick={() => chooseIdea(idea)} aria-label={`Use topic: ${idea.title}`} className="rounded-xl border bg-white p-2 text-left text-sm hover:bg-[#e7eed8] disabled:opacity-50"><span className="block font-medium">{idea.title}</span>{idea.reason ? <span className="mt-1 block text-xs leading-4 text-[#657153]">{idea.reason}</span> : null}</button>)}</div>
+      {!suggestionsLoading && !suggestions.length ? <p className="mt-2 text-xs text-[#657153]">You have explored these suggestions. Type a new subject above to broaden the next reel.</p> : null}
+      <p className="mt-2 text-xs text-[#657153]">Reconsidered every 15 days and when you ask for more—not live trends. Selecting an idea searches footage; it does not start a video.</p>
       {!suggestionsRemembered ? <p className="mt-2 text-xs text-[#657153]">Browser storage is unavailable; ideas still rotate here but may repeat next visit.</p> : null}
     </details>
     {notice ? <p role="status" aria-live="polite" className="mt-4 text-sm">{notice}</p> : null}

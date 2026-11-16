@@ -3,21 +3,62 @@ import { visualWords } from "./stockBrief";
 import type { StockBeat, StockShot } from "./stockStoryboard";
 
 export const NEWS_STOCK_VISUAL_POLICY = "context-only-no-supplement-v1";
+export const NEWS_MIXED_VISUAL_POLICY = "context-stock-or-editorial-2d-v2";
+export const NEWS_VISUAL_DISCLOSURE = "Visuals are illustrative.";
+export function hasNewsVisualDisclosure(script: string) {
+  return /\billustrative (?:stock )?(?:footage|visuals|images)\b|\bvisuals\s+are\s+illustrative\b/i.test(script);
+}
+export type NewsVisualPolicy = typeof NEWS_STOCK_VISUAL_POLICY | typeof NEWS_MIXED_VISUAL_POLICY;
+export const NEWS_ILLUSTRATION_SUBJECTS = ["legal", "maritime", "health", "transport", "energy", "technology", "weather", "infrastructure", "documents"] as const;
+export type NewsIllustration = { kind: "editorial-2d-v1"; subject: typeof NEWS_ILLUSTRATION_SUBJECTS[number]; label: "Illustration" };
 
-export function supportsNewsStockVisualPolicy(properties: unknown): boolean {
+export function readNewsIllustration(value: unknown): NewsIllustration | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const illustration = value as Record<string, unknown>;
+  if (Object.keys(illustration).length !== 3 || illustration.kind !== "editorial-2d-v1" || illustration.label !== "Illustration" || !NEWS_ILLUSTRATION_SUBJECTS.includes(illustration.subject as NewsIllustration["subject"])) return undefined;
+  return { kind: "editorial-2d-v1", subject: illustration.subject as NewsIllustration["subject"], label: "Illustration" };
+}
+
+/** Original neutral objects, never a synthetic reconstruction of the reported event. */
+export function newsEditorialIllustration(research: NewsResearch, narration: string): NewsIllustration {
+  const subjects: Array<[NewsIllustration["subject"], RegExp]> = [
+    ["legal", /\b(?:courts?|jail\w*|prison\w*|legal|judicial|convict\w*|lawsuit\w*)\b/i],
+    ["maritime", /\b(?:sea|ocean|boats?|ships?|ferr(?:y|ies)|maritime|coast\w*|harbou?r\w*|drown\w*|capsiz\w*)\b/i],
+    ["health", /\b(?:health|medical|hospital\w*|disease\w*|patient\w*|surgery|doctors?)\b/i],
+    ["transport", /\b(?:evacuat\w*|evacuees?|displac\w*|rail\w*|train\w*|airport\w*|aircraft|flight\w*|roads?|transport)\b/i],
+    ["energy", /\b(?:electricity|energy|power|grid|substation\w*|solar|turbines?)\b/i],
+    ["technology", /\b(?:cyber\w*|hack\w*|servers?|networks?|computers?|software|internet)\b/i],
+    ["weather", /\b(?:weather|heatwave\w*|temperatures?|storms?|rain|snow|flood\w*|drought\w*)\b/i],
+    ["infrastructure", /\b(?:city|cities|towns?|buildings?|government|parliament|elections?|war|attack\w*|airstrikes?|infrastructure)\b/i],
+  ];
+  const report = `${research.title} ${research.summary} ${research.text.slice(0, 3000)}`;
+  const supported = subjects.filter(([, pattern]) => pattern.test(report));
+  const subject = supported.find(([, pattern]) => pattern.test(narration))?.[0] ?? supported[0]?.[0] ?? "documents";
+  return { kind: "editorial-2d-v1", subject, label: "Illustration" };
+}
+
+export function newsIllustrationQuery(illustration: NewsIllustration) {
+  return `editorial ${illustration.subject} illustration`;
+}
+
+export function supportsNewsStockVisualPolicy(properties: unknown, policy: NewsVisualPolicy = NEWS_STOCK_VISUAL_POLICY): boolean {
   type Field = { const?: unknown; enum?: unknown; type?: unknown; anyOf?: Field[] };
   const field = (properties as { phoenix_news_visual_policy?: Field } | undefined)?.phoenix_news_visual_policy;
   if (!field || typeof field !== "object" || (field.anyOf !== undefined && !Array.isArray(field.anyOf))) return false;
   const variants = field.anyOf ?? [field];
-  const exact = (variant: Field) => Boolean(variant && typeof variant === "object" && (variant.const === NEWS_STOCK_VISUAL_POLICY || (Array.isArray(variant.enum) && variant.enum.length === 1 && variant.enum[0] === NEWS_STOCK_VISUAL_POLICY)));
-  return variants.some(exact) && variants.every(variant => exact(variant) || variant?.type === "null");
+  const values = (variant: Field): unknown[] => variant && typeof variant === "object" ? variant.const !== undefined ? [variant.const] : Array.isArray(variant.enum) ? variant.enum : [] : [];
+  return variants.some(variant => values(variant).includes(policy)) && variants.every(variant => variant?.type === "null" || (values(variant).length > 0 && values(variant).every(value => value === NEWS_STOCK_VISUAL_POLICY || value === NEWS_MIXED_VISUAL_POLICY)));
 }
 
 export function assertNewsStockRender(policy: unknown, approved: StockBeat[] | undefined, shots: StockShot[]) {
-  if (policy !== NEWS_STOCK_VISUAL_POLICY || !approved?.length || shots.length !== approved.length || shots.some((shot, index) => {
+  if (![NEWS_STOCK_VISUAL_POLICY, NEWS_MIXED_VISUAL_POLICY].includes(policy as NewsVisualPolicy) || !approved?.length || shots.length !== approved.length || shots.some((shot, index) => {
     const beat = approved[index];
+    if (beat.illustration) {
+      const expected = readNewsIllustration(beat.illustration), actual = readNewsIllustration(shot.illustration);
+      return policy !== NEWS_MIXED_VISUAL_POLICY || !expected || !actual || JSON.stringify(expected) !== JSON.stringify(actual) || beat.assetId || shot.assetId || shot.sourcePage || shot.supplementalReason || shot.query !== beat.query || shot.narration !== beat.narration;
+    }
     const sourceId = shot.sourcePage?.match(/\/(?:[^/]*-)?(\d+)\/?$/)?.[1];
-    return !beat.assetId || sourceId !== String(beat.assetId) || shot.supplementalReason || shot.query !== beat.query || shot.narration !== beat.narration;
+    return !beat.assetId || shot.illustration || sourceId !== String(beat.assetId) || shot.supplementalReason || shot.query !== beat.query || shot.narration !== beat.narration;
   })) throw new Error("News render does not prove the approved contextual footage was retained without supplemental stock. The rendered files are retained, but no review-ready video was accepted. Create a new news plan with the updated renderer.");
 }
 

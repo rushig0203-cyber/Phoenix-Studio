@@ -21,8 +21,8 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
 - **Make a Reel:** enter a short, concrete subject, select a starting video and let
   Phoenix assemble related footage. Length follows usable content, not a padded
   duration. Automatic recipes do not slow, loop or freeze shots to fill time.
-  Each suggestion batch mixes wildlife, nature, places, movement and everyday
-  subjects; it does not scroll through a long country-only block.
+  Suggestions use your recent videos, confirmed posts and available feedback,
+  with related new subjects and a small mix of nearby ideas to explore.
 - **Jobs** sits below creation. It retains progress, failures and explicit retry.
   **Library** has Generated, Posted and Episode clips views with previews,
   posting copy, native editing and recoverable Trash. Episode folders use the
@@ -52,12 +52,18 @@ vision provider. Phoenix checks the returned evidence and preserves owner edits;
 quota or invalid evidence is shown rather than disguised as a successful analysis.
 Silent scenic reels do not need invented subtitles. New Create captions can
 start with a short, complete line from their own narration or lyrics. Report
-captions retain the source and identify illustrative footage. If a generated
-report shot plan fails its context checks, Phoenix tries relevant neutral
-catalogue searches while preserving the saved narration and selected clips.
+captions retain the source and identify illustrative visuals. New report plans
+try relevant neutral catalogue searches while preserving the saved narration
+and selected clips. When suitable footage is missing, a section can use an
+original editorial 2D illustration, visibly labelled **Illustration**.
 Court reports prefer unbranded legal objects, such as a gavel or documents,
 rather than a stock courthouse, flag or judge standing in for the reported
-jurisdiction. This remains illustrative stock, not verified footage of the event.
+jurisdiction. Stock remains illustrative context, not verified event footage.
+The fallback depicts neutral objects or infrastructure, without invented people,
+flags, event photos or statistics. It uses the existing renderer and offline voice,
+not a new image model or unlicensed internet photographs. These are original static
+illustrations rather than full animation. Older saved news recipes keep their
+original visual policy and approved choices.
 New news reports use a concise bulletin: one development, its necessary context
 and a complete qualified ending. Smaller white subtitles with a light outline and
 no background box sit above social controls. Short phrases follow measured speech events;
@@ -147,9 +153,14 @@ details collapsed. Hourly housekeeping soft-archives local failed history after
 seven days; originals, finished videos and protected publishing journals stay saved.
 Locked stores wait for a later idle pass. Active or uncertain provider work is
 excluded from this cleanup.
-Make Reel suggestions mix wildlife, nature, countries, movement, architecture and
-everyday subjects. Open suggestion panels rotate weekly; manual refresh changes
-the batch immediately. Report refresh bypasses the short news cache without
+Create and Make Reel suggestions reconsider your saved work every 15 days, when
+reopened and when you choose **More ideas**. Confirmed posts, recent visual subjects,
+structured story/visual feedback and fresh comparable Instagram results guide
+relevance; results do not invent trends or guaranteed growth. Recently posted
+subjects and the last 48 shown ideas are excluded when possible. Each concise
+card explains its basis; a longer creation premise stays optional. No extra model
+or provider search is used to load suggestions. Unavailable browser storage keeps
+history only for that visit. Report refresh bypasses the short news cache without
 inventing headlines when the source has not changed. Changed creation selections
 use a new request identity, and saved requests cannot silently return an older topic.
 Earlier custom narration, visual searches and lyrics remain saved when the topic

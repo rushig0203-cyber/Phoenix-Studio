@@ -4,6 +4,7 @@ import { generateWritingModel, withWritingSession, writingModelIdentity, isWriti
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { CREATIVE_DIRECTION_VERSION, STOCK_TOPIC_DIRECTION_VERSION, stockNarrationDirection, stockProductionNarrationIssue, stockTopicDirection } from "./creativeDirection";
 import { WritingOutputValidationError } from "./groqWriter";
+import { hasNewsVisualDisclosure } from "./newsVisualPolicy";
 
 export const EDITORIAL_VERSION = 7;
 export type EditorialFinding = { criterion: string; passed: boolean; severity: "blocker" | "warning"; evidence: string; reason: string };
@@ -98,7 +99,7 @@ function localFindings(input: Brief, retained: EditorialFinding[]) {
   if (lengthError) findings.push({ criterion: "completeLength", passed: false, evidence: "", reason: lengthError, severity: "blocker" });
   if (input.research) {
     if (!/BBC News/i.test(input.script)) findings.push({ criterion: "newsAttribution", passed: false, evidence: "", reason: "Attribute this report to BBC News in the narration; do not present it as independently verified reporting.", severity: "blocker" });
-    if (!/illustrative (?:stock )?(?:footage|visuals|images)/i.test(input.script)) findings.push({ criterion: "newsVisualDisclosure", passed: false, evidence: "", reason: "Tell viewers that the visuals are illustrative stock footage, not footage of the reported event.", severity: "blocker" });
+    if (!hasNewsVisualDisclosure(input.script)) findings.push({ criterion: "newsVisualDisclosure", passed: false, evidence: "", reason: "Tell viewers that the visuals are illustrative, not footage of the reported event.", severity: "blocker" });
   }
   return findings;
 }

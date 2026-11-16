@@ -1,4 +1,12 @@
 export type ContentIdea = { id: string; category: string; title: string; query: string; workflow: "stock-reel" | "business" | "general" | "children-story" };
+export type SuggestionWorkflow = ContentIdea["workflow"] | "children-song";
+export type SuggestionReason = { reason: string; basis: "recent-content" | "owner-feedback" | "observed-response" | "explore" };
+export type SuggestionContext = {
+  now: number;
+  recent: Array<{ reviewId: string; title: string; workflow: SuggestionWorkflow; createdAt: string; observations: string[]; news?: boolean; posted?: boolean }>;
+  feedback: Array<{ reviewId: string; decision: "keep" | "revise"; storyRating: number; visualRating: number }>;
+  strongerTopics: Array<{ topic: string; workflow: SuggestionWorkflow; evidenceCount: number }>;
+};
 const collections: Array<{ category: string; workflow: ContentIdea["workflow"]; ideas: Array<[string, string]> }> = [
   { category: "Nature & wildlife", workflow: "stock-reel", ideas: [["A quiet minute beside a waterfall", "forest waterfall"], ["Waves arriving one after another", "ocean waves beach"], ["Birds building their home", "bird nest"], ["Morning light through the forest", "forest sunlight"], ["A butterfly in the garden", "butterfly flower"]] },
   { category: "Places & travel", workflow: "stock-reel", ideas: [["A city waking up", "city sunrise"], ["A peaceful mountain trail", "mountain hiking trail"], ["Rainy evening streets", "rain city street"], ["A train journey through the countryside", "train countryside"]] },

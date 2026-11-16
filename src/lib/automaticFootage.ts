@@ -3,7 +3,7 @@ import { searchFootage } from "./stockCatalog";
 import { visualWords } from "./stockBrief";
 import { footageMetadataMismatch } from "./footageSemantics";
 import type { NewsResearch } from "./newsResearch";
-import { newsContextSearches, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms } from "./newsVisualPolicy";
+import { NEWS_MIXED_VISUAL_POLICY, newsContextSearches, newsEditorialIllustration, newsIllustrationQuery, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms, readNewsIllustration, type NewsVisualPolicy } from "./newsVisualPolicy";
 
 const generic = new Set(["person", "people", "woman", "women", "man", "men", "video", "young", "adult", "close", "shot"]);
 const tokens = (value: string) => visualWords(value).filter(word => !generic.has(word)).map(word => word.replace(/(?:ing|es|s)$/, ""));
@@ -33,7 +33,7 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
 }
 
 export async function selectAutomaticFootage(scenes: DraftScene[], duration: number, aspect: "9:16" | "16:9", onScene: (scenes: DraftScene[], stage: string) => Promise<unknown>, research?: NewsResearch,
-  repairQueries?: (scenes: DraftScene[], failedIndex: number, catalogTitles: string[]) => Promise<string[]>) {
+  repairQueries?: (scenes: DraftScene[], failedIndex: number, catalogTitles: string[]) => Promise<string[]>, newsPolicy?: NewsVisualPolicy) {
   const selected = scenes.map(scene => ({ ...scene }));
   let repairAttempted = false;
   const words = selected.reduce((sum, scene) => sum + scene.narration.split(/\s+/).length, 0);
@@ -41,6 +41,10 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
   const used = new Set(selected.flatMap(scene => scene.footage ? [scene.footage.id] : []));
   for (let index = 0; index < selected.length; index++) {
     const scene = selected[index];
+    if (scene.illustration) {
+      if (!research || newsPolicy !== NEWS_MIXED_VISUAL_POLICY || scene.footage || !readNewsIllustration(scene.illustration) || scene.query !== newsIllustrationQuery(scene.illustration)) throw new Error(`Section ${index + 1}: invalid saved editorial illustration. The saved plan was retained.`);
+      continue;
+    }
     const minimum = duration * scene.narration.split(/\s+/).length / words * 1.2 + 1;
     if (research && newsStockQueryIssue(scene.query, research)) throw new Error(`News section ${index + 1}: ${newsStockQueryIssue(scene.query, research)}. Saved work is retained; create a new visual plan.`);
     if (scene.footage) {
@@ -66,7 +70,7 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       return best;
     };
     let best = await search();
-    if (!best && research && repairQueries) {
+    if (!best && research && (repairQueries || newsPolicy === NEWS_MIXED_VISUAL_POLICY)) {
       const alternatives = newsContextSearches(research, scene.narration).filter(query => query !== scene.query.toLowerCase()).slice(0, 2);
       for (const query of alternatives) {
         await onScene(selected, `Checking report context ${index + 1}/${selected.length}: ${query}`);
@@ -76,6 +80,13 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
           break;
         }
       }
+    }
+    if (!best && research && newsPolicy === NEWS_MIXED_VISUAL_POLICY) {
+      scene.illustration = newsEditorialIllustration(research, scene.narration);
+      scene.query = newsIllustrationQuery(scene.illustration);
+      scene.footageReason = "No eligible licensed stock matched after bounded contextual searches. Original neutral 2D objects will be rendered with an Illustration label.";
+      await onScene(selected, `Editorial illustration saved ${index + 1}/${selected.length}`);
+      continue;
     }
     if (!best && repairQueries && !repairAttempted) {
       repairAttempted = true;

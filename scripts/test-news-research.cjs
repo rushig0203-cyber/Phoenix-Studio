@@ -29,12 +29,12 @@ test('source context retains provenance, uncertainty and freshness requirements'
   const research = { ...news.parseNewsFeed(item(), now)[0], fetchedAt: new Date().toISOString(), text: news.newsArticleText(article), limitation: 'Single source' };
   const prompt = news.newsWritingContext(research);
   assert.match(prompt, /untrusted DATA/);
-  assert.match(prompt, /illustrative stock footage/);
+  assert.match(prompt, /Visuals are illustrative/);
   assert.match(prompt, /Preserve important denials/);
   assert.match(prompt, /BBC News/);
   assert.match(prompt, /do not read publication dates or the source URL aloud/);
   assert.match(prompt, /one short takeaway or important uncertainty/);
-  assert.match(prompt, /short disclosure "Visuals are illustrative stock footage\." once/);
+  assert.match(prompt, /short disclosure "Visuals are illustrative\." once/);
   assert.match(prompt, /Full provenance remains in the saved research and posting copy/);
   assert.equal(news.newsWritingContext(), '');
   assert.throws(() => news.newsWritingContext({ ...research, fetchedAt: '2020-01-01' }));

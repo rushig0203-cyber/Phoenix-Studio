@@ -5,7 +5,6 @@ import { Loader2, ShieldCheck, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RecommendedIdeas from "@/components/RecommendedIdeas";
 import NewsIdeas from "@/components/NewsIdeas";
-import InstagramTopicSuggestions from "@/components/InstagramTopicSuggestions";
 import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
@@ -246,7 +245,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><InstagramTopicSuggestions mode="creation" onChoose={chooseRecommendation} disabled={busy} /><NewsIdeas onChoose={chooseNews} />
+              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><NewsIdeas onChoose={chooseNews} />
                 <div className="mt-3 flex flex-wrap gap-2">
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
                 </div></> : null}

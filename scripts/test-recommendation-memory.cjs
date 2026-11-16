@@ -5,6 +5,7 @@ const {
   CREATION_KINDS, RECOMMENDATION_GROUPS, RECOMMENDATION_HISTORY_LIMIT,
   recommendationPool, canonicalRecommendationKey, creationRecommendations,
   emptyRecommendationMemory, parseRecommendationMemory, nextStoredRecommendations, applyRecommendationToForm,
+  personalizedCreationRecommendations, parsePersonalizedRecommendationMemory,
 } = require('../src/lib/creationRecommendations');
 const { publishingProfile } = require('../src/lib/publishingFormats');
 
@@ -165,4 +166,79 @@ test('invalid displayed titles leave the form unchanged even for a known recomme
   for (const title of invalidTitles) {
     assert.equal(applyRecommendationToForm(current, { ...known, title }), current, `accepted invalid title ${JSON.stringify(title)}`);
   }
+});
+
+const suggestionContext = (recent = [], feedback = [], strongerTopics = []) => ({ now: Date.parse('2026-11-15T12:00:00Z'), recent, feedback, strongerTopics });
+const recentItem = (reviewId, title, workflow = 'stock-reel', extra = {}) => ({ reviewId, title, workflow, createdAt: '2026-11-15T10:00:00Z', observations: [], ...extra });
+
+test('posted nature subjects guide general explainers, exclude finished topics and allow one nearby exploration', () => {
+  const context = suggestionContext([
+    recentItem('panda', 'Pandas eating bamboo', 'stock-reel', { posted: true }),
+    recentItem('rabbit', 'A rabbit in a meadow', 'stock-reel', { posted: true }),
+    recentItem('waterfall', 'A quiet minute beside a waterfall', 'stock-reel', { posted: true }),
+    ...Array.from({ length: 30 }, (_, index) => recentItem('draft-' + index, 'Customer order update', 'business')),
+  ]);
+  const first = personalizedCreationRecommendations(context);
+  assert.equal(first.ideas.length, 6); assert.ok(first.ideas.every(idea => idea.kind === 'General video'));
+  assert.ok(first.ideas.slice(0, 5).every(idea => idea.basis === 'recent-content'));
+  assert.ok(/nature|science/.test(first.ideas.at(-1).reason), 'The sixth idea may explore an adjacent nature/science subject');
+  assert.ok(first.ideas.every(idea => !/panda|rabbit|waterfall|bamboo/i.test(idea.title)));
+  const second = personalizedCreationRecommendations(context, first.nextCursor, first.ideas.map(idea => idea.id));
+  assert.ok(second.ideas.every(idea => !first.ideas.some(prior => prior.topicKey === idea.topicKey)));
+});
+
+test('story feedback changes topic relevance while a visual revision does not reject the subject', () => {
+  const recent = [recentItem('nature', 'An otter by the river'), recentItem('food', 'Making bread by hand', 'general')];
+  const visualRevision = personalizedCreationRecommendations(suggestionContext(recent, [
+    { reviewId: 'nature', decision: 'revise', storyRating: 5, visualRating: 1 },
+    { reviewId: 'food', decision: 'keep', storyRating: 3, visualRating: 5 },
+  ]));
+  assert.ok(visualRevision.ideas.slice(0, 4).every(idea => idea.basis === 'owner-feedback' && /wildlife/.test(idea.reason)));
+  const rejectedStory = personalizedCreationRecommendations(suggestionContext(recent, [
+    { reviewId: 'nature', decision: 'revise', storyRating: 1, visualRating: 5 },
+    { reviewId: 'food', decision: 'keep', storyRating: 5, visualRating: 5 },
+  ]));
+  assert.ok(rejectedStory.ideas.slice(0, 4).every(idea => /food and craft/.test(idea.reason)));
+});
+
+test('foreground wildlife outranks incidental green backgrounds and does not imply rabbit-specific evidence', () => {
+  const context = suggestionContext([
+    recentItem('rabbits', 'Rabbits', 'stock-reel', { posted: true, observations: ['White rabbits nibble leaves beside grass and small plants.', 'Green garden foliage fills the background.'] }),
+    recentItem('panda', 'Panda', 'stock-reel', { posted: true, observations: ['A panda eats bamboo leaves.', 'Trees, green foliage and plants surround the animal.'] }),
+    recentItem('parrots', 'Parrots', 'stock-reel', { posted: true, observations: ['Colorful parrots sit on branches in a garden.', 'Green leaves form the background.'] }),
+    recentItem('flamingos', 'Flamingos', 'stock-reel', { posted: true, observations: ['Flamingos stand beside water, grass and plants.'] }),
+  ]);
+  const animals = /otter|penguin|bee|bird|butterfly|elephant|giraffe|turtle|squirrel|deer|zebra|duck|frog|hummingbird|dragonfly|ladybird|snail|crab|jellyfish|octopus|seal|chameleon|hedgehog|horse|cat|dog/i;
+  const practical = /herb|windowsill|laundry|desk|drawer|bookshelf|entryway|tidy|leftovers/i;
+  const seen = [];
+  for (let batch = 0, cursor = 0; batch < 3; batch++) {
+    const result = personalizedCreationRecommendations(context, cursor, seen);
+    assert.equal(result.ideas.length, 6);
+    assert.ok(result.ideas.slice(0, 5).every(idea => animals.test(idea.title)), result.ideas.map(idea => idea.title).join('\n'));
+    assert.ok(result.ideas.every(idea => !practical.test(idea.title)), 'A nearby nature subject must not become a windowsill, gardening or housework task');
+    assert.ok(['Nature & places', 'Science & curiosity'].includes(result.ideas.at(-1).category));
+    assert.ok(result.ideas.slice(0, 5).every(idea => /posted wildlife videos/.test(idea.reason)));
+    assert.ok(result.ideas.every(idea => !/rabbit|panda|parrot|flamingo/i.test(idea.reason)), 'Family evidence must not imply an exact rabbit-to-herb or rabbit-to-other-species match');
+    assert.ok(result.ideas.every(idea => idea.kind === 'General video'));
+    seen.push(...result.ideas.map(idea => idea.id)); cursor = result.nextCursor;
+  }
+});
+
+test('saved response evidence is used only with enough matching workflow evidence and never called popular', () => {
+  for (const [workflow, count, expected] of [['general', 2, true], ['general', 1, false], ['children-story', 8, false]]) {
+    const result = personalizedCreationRecommendations(suggestionContext([], [], [{ topic: 'Wildlife panda videos', workflow, evidenceCount: count }]));
+    assert.equal(result.ideas.some(idea => idea.basis === 'observed-response'), expected);
+    assert.ok(result.ideas.every(idea => !/popular|trending|viral/i.test(idea.reason)));
+  }
+});
+
+test('personalized history accepts only 48 registered IDs, bounds cursors and retains latest duplicates', () => {
+  const pool = recommendationPool();
+  const parsed = parsePersonalizedRecommendationMemory(JSON.stringify({ shown: [...pool.map(idea => idea.id), 'unknown', null, pool.at(-2).id], cursor: Number.MAX_SAFE_INTEGER }));
+  assert.ok(parsed.shown.length <= 48); assert.equal(parsed.shown.at(-1), pool.at(-2).id);
+  assert.ok(parsed.shown.every(id => pool.some(idea => idea.id === id)));
+  assert.ok(parsed.cursor >= 0 && parsed.cursor < pool.length);
+  for (const invalid of [null, '{bad', '[]', 'null', 'x'.repeat(16385)]) assert.deepEqual(parsePersonalizedRecommendationMemory(invalid), { shown: [], cursor: 0 });
+  const noNews = personalizedCreationRecommendations(suggestionContext([recentItem('news', 'Panda news', 'stock-reel', { news: true })]));
+  assert.ok(noNews.ideas.every(idea => idea.basis === 'explore'));
 });

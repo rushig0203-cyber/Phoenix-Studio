@@ -2,8 +2,8 @@ import { actionMismatch } from "./footageSemantics";
 import type { CreativeBrief } from "./creativeBrief";
 import { generateWritingModel, withWritingSession } from "./writingModel";
 import type { NewsResearch } from "./newsResearch";
-import { newsContextSearches, newsStockQueryIssue, newsStockVisualInstructions } from "./newsVisualPolicy";
-export type StockBeat = { narration: string; query: string; assetId?: number };
+import { NEWS_MIXED_VISUAL_POLICY, newsContextSearches, newsEditorialIllustration, newsIllustrationQuery, newsStockQueryIssue, newsStockVisualInstructions, readNewsIllustration, type NewsIllustration, type NewsVisualPolicy } from "./newsVisualPolicy";
+export type StockBeat = { narration: string; query: string; assetId?: number; illustration?: NewsIllustration };
 export type StockShot = StockBeat & { start: number; end: number; sourcePage?: string; timing: "subtitle-boundary" | "within-caption-estimate"; playbackRate?: 1; supplementalReason?: string };
 
 /** Catch explicit subject/action swaps; this is not a semantic vision score. */
@@ -34,7 +34,9 @@ export function readStockShots(value: unknown, duration: number, requireNativeSp
       const url = new URL(item.sourcePage);
       if (url.protocol === "https:" && /^(www\.)?(pexels\.com|pixabay\.com)$/.test(url.hostname) && !url.username && !url.password) sourcePage = `${url.origin}${url.pathname}`;
     }
-    return { narration: item.narration.slice(0, 4000), query: item.query.slice(0, 80), start: item.start, end: item.end, timing: item.timing, sourcePage, ...(item.playbackRate === 1 ? { playbackRate: 1 as const } : {}), ...(typeof item.supplementalReason === "string" ? { supplementalReason: item.supplementalReason.slice(0, 600) } : {}) };
+    const illustration = readNewsIllustration(item.illustration);
+    if (item.illustration !== undefined && (!illustration || item.assetId || item.sourcePage)) throw new Error("The renderer returned an invalid editorial illustration record.");
+    return { narration: item.narration.slice(0, 4000), query: item.query.slice(0, 80), start: item.start, end: item.end, timing: item.timing, sourcePage, ...(illustration ? { illustration } : {}), ...(item.playbackRate === 1 ? { playbackRate: 1 as const } : {}), ...(typeof item.supplementalReason === "string" ? { supplementalReason: item.supplementalReason.slice(0, 600) } : {}) };
   });
   if (Math.abs(end - duration) > 0.15) throw new Error("The footage plan does not cover the finished video's duration.");
   return shots;
@@ -64,10 +66,12 @@ export function narrationBeats(script: string, count: number): string[] {
   return groups;
 }
 
-export async function createStockStoryboard(input: { topic: string; script: string; duration: number; visualTerms?: string[]; storyboard?: StockBeat[]; creativeBrief?: CreativeBrief; research?: NewsResearch }): Promise<StockBeat[]> {
+export async function createStockStoryboard(input: { topic: string; script: string; duration: number; visualTerms?: string[]; storyboard?: StockBeat[]; creativeBrief?: CreativeBrief; research?: NewsResearch; newsVisualPolicy?: NewsVisualPolicy }): Promise<StockBeat[]> {
   const validateNewsQueries = (plan: StockBeat[]) => {
     if (!input.research) return plan;
-    const index = plan.findIndex(beat => newsStockQueryIssue(beat.query, input.research));
+    const index = plan.findIndex(beat => beat.illustration
+      ? input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY || beat.assetId || !readNewsIllustration(beat.illustration) || beat.query !== newsIllustrationQuery(beat.illustration)
+      : newsStockQueryIssue(beat.query, input.research));
     if (index >= 0) throw new Error(`News section ${index + 1}: ${newsStockQueryIssue(plan[index].query, input.research)}. The saved narration is retained; unsafe footage was not substituted. Create a new visual plan.`);
     return plan;
   };
@@ -76,6 +80,15 @@ export async function createStockStoryboard(input: { topic: string; script: stri
   const beats = narrationBeats(input.script, supplied?.length || Math.ceil(input.duration / 6));
   if (!beats.length) throw new Error("The narration has no complete visual sections.");
   if (supplied?.length) return validateNewsQueries(beats.map((narration, index) => ({ narration, query: supplied[Math.floor(index * supplied.length / beats.length)] })));
+  if (input.research && input.newsVisualPolicy === NEWS_MIXED_VISUAL_POLICY) {
+    // Supported literal contexts avoid another model call that can repeat an unsafe event query.
+    return beats.map((narration, index) => {
+      const searches = newsContextSearches(input.research!, narration);
+      if (searches.length) return { narration, query: searches[index % searches.length] };
+      const illustration = newsEditorialIllustration(input.research!, narration);
+      return { narration, query: newsIllustrationQuery(illustration), illustration };
+    });
+  }
   return withWritingSession(async () => {
   const continuity = `Selected structure: ${input.creativeBrief?.structure || "follow the narration"}. Preserve subjects, object states and setting when consecutive sections describe one continuing action. Explanations and comparisons may use different relevant subjects and settings; do not invent a recurring character or force a fictional shop story. Keep a coherent visual treatment, not an identical cast. Different stock actors must not be treated as proof of the same person's identity. ${input.research ? newsStockVisualInstructions(input.research) : ""}`;
   const depiction = input.research ? "For news, use only relevant neutral contextual subjects/settings; do NOT depict the reported event or people literally." : "Depict ONLY what that section says.";

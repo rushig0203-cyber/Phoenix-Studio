@@ -22,7 +22,7 @@ import type { CreativeGuidance } from "./managerTypes";
 import { generateWritingModel, withWritingSession, isWritingWaitError, WritingQuotaWaitError, isWriterQuotaWaiting, writerQuotaBackupReady } from "./writingModel";
 import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
-import { NEWS_STOCK_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender } from "./newsVisualPolicy";
+import { NEWS_STOCK_VISUAL_POLICY, NEWS_MIXED_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender, type NewsVisualPolicy } from "./newsVisualPolicy";
 import { newsPresentation, supportsNewsPresentation } from "./newsPresentation";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
@@ -44,7 +44,7 @@ export type { PublishingFormat } from "./publishingFormats";
 
 export type GenerationInput = {
   research?: NewsResearch;
-  newsVisualPolicy?: typeof NEWS_STOCK_VISUAL_POLICY;
+  newsVisualPolicy?: NewsVisualPolicy;
   reviewMode?: "final" | "storyboard";
   scriptLocked?: boolean;
   scriptApproved?: boolean;
@@ -385,7 +385,7 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
-export async function requireStockStoryboardRenderer(approvedFootage = false, news = false, localVoice = false) {
+export async function requireStockStoryboardRenderer(approvedFootage = false, news = false, localVoice = false, newsPolicy: NewsVisualPolicy = NEWS_STOCK_VISUAL_POLICY) {
   const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
   const api = response.ok ? await response.json() : null;
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
@@ -394,7 +394,8 @@ export async function requireStockStoryboardRenderer(approvedFootage = false, ne
   if (approvedFootage && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.assetId) throw new Error("Restart the local renderer with the approved-footage update before rendering. Phoenix will not ignore your selected clips.");
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_artifacts_version) throw new Error("The local renderer needs the editable-artifacts update. Apply the current integrations patch and restart it before creating a video; existing exports are retained.");
   if (!supportsNativeStockPlayback(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for original-speed footage. Phoenix will not slow down or freeze clips to fill narration; existing exports are retained.");
-  if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for news footage. Phoenix will not let a longer narration silently add unrelated supplemental stock; existing exports are retained.");
+  if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties, newsPolicy)) throw new Error("Update and restart the local renderer for news footage and original editorial illustrations. Existing narration, approved shots and exports are retained.");
+  if (newsPolicy === NEWS_MIXED_VISUAL_POLICY && news && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.illustration) throw new Error("Update and restart the local renderer for the exact saved editorial illustration plan before creating this report.");
   if (news && !supportsNewsPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for measured news captions before creating this report. Existing videos and narration are retained.");
   if (localVoice && !supportsLocalStockVoice(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the stock renderer for offline local narration. The selected local voice will not be replaced with an online voice.");
 }
@@ -872,22 +873,25 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   const textCheck = checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model", input.autoDuration);
   const actualShots = input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined;
   if (input.research) assertNewsStockRender(input.newsVisualPolicy, input.storyboard, actualShots || []);
+  const illustrationCount = actualShots?.filter(shot => shot.illustration).length || 0;
+  const hasStock = Boolean(actualShots?.some(shot => !shot.illustration));
+  const visualRights = illustrationCount ? `${illustrationCount} original local editorial 2D illustration(s), labelled Illustration${hasStock ? "; remaining shots use Pexels free licensed stock" : "; no external visual media"}` : "Pexels free stock footage assembled by the local MoneyPrinterTurbo service";
   const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts, input.script) : undefined;
   const review = makeReviewFile({
     id: job.id,
     title: input.topic.slice(0, 120),
     targets: [target],
-    source: { kind: "pexels", filename: safeFilename(`stock-${job.id}.mp4`), licence: "Pexels free stock footage assembled by the local MoneyPrinterTurbo service" },
+    source: { kind: illustrationCount && !hasStock ? "upload" : "pexels", filename: safeFilename(`stock-${job.id}.mp4`), licence: visualRights },
     audience: "general",
     quality: {
       audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
       captions: retained ? retained.cues.map(cue => cue.text) : captionLines(input.script),
       hashtags: topicHashtags(input.research?.title || input.topic, input.script || ""),
-      postCopy: stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\nIllustrative stock footage; not footage of this event. Single-source summary; verify developments before posting.` : ""),
+      postCopy: stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\n${illustrationCount ? "Original editorial illustrations and any contextual stock are illustrative;" : "Illustrative stock footage;"} not footage of this event. Single-source summary; verify developments before posting.` : ""),
       research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
       editorial: input.editorial,
       managerGuidance: input.managerGuidance,
-      checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
+      checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), illustrationCount ? visualRights : "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
       storyboard: actualShots,
       warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
@@ -905,8 +909,8 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     monetizationReview: {
       status: "NOT_REVIEWED",
       madeForKids: false,
-      originality: "licensed-transformed",
-      rightsBasis: "Pexels free-stock footage with an original local script, narration, music, captions, and edit.",
+      originality: illustrationCount && !hasStock ? "original-local" : "licensed-transformed",
+      rightsBasis: illustrationCount ? `${visualRights}. Original narration, captions and edit; review any music separately.` : "Pexels free-stock footage with an original local script, narration, music, captions, and edit.",
       checks: ["Confirm every stock clip still matches its provider licence", "Watch the complete export for factual and visual accuracy", "Confirm title, thumbnail, and upload copy are original"],
       manualReviewRequired: true,
       syntheticDisclosureReview: "REVIEW_REQUIRED",
@@ -1057,12 +1061,12 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
-  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research), input.voice === "local-windows-voice");
+  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research), input.voice === "local-windows-voice", input.newsVisualPolicy);
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
   const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, duration: saved.duration, requestedDuration: saved.requestedDuration ?? saved.duration, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
   const storyboard = plan.input.storyboard!;
-  const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
+  const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? plan.input.newsVisualPolicy || NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
   await updateJob(job.id, { progress: 12, stage: "Submitting the script to the local stock-video renderer", requestJson: JSON.stringify(prepared) });
   let response: Response;
   await retainExternalRender(job.id);

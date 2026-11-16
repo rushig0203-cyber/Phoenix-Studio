@@ -1,5 +1,6 @@
 import type { GenerationInput } from "./generation";
 import type { HostedSongOutput } from "./hostedSinging";
+import type { NewsIllustration } from "./newsVisualPolicy";
 
 export type FootageChoice = {
   id: number;
@@ -11,7 +12,7 @@ export type FootageChoice = {
   sourcePage: string;
   creator: string;
 };
-export type DraftScene = { narration: string; query: string; footage?: FootageChoice; footageReason?: string };
+export type DraftScene = { narration: string; query: string; footage?: FootageChoice; footageReason?: string; illustration?: NewsIllustration };
 export type CreationDraft = {
   id: string;
   requestKey: string;

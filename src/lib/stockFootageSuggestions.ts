@@ -1,8 +1,8 @@
-import { CONTENT_IDEAS, type ContentIdea } from "./contentIdeas";
+import { CONTENT_IDEAS, type ContentIdea, type SuggestionContext, type SuggestionReason } from "./contentIdeas";
 
 export const FOOTAGE_SUGGESTION_STORAGE_KEY = "phoenix-footage-suggestions-v1";
 export const FOOTAGE_SUGGESTION_COUNT = 6;
-export const FOOTAGE_SUGGESTION_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+export const FOOTAGE_SUGGESTION_REFRESH_MS = 15 * 24 * 60 * 60 * 1000;
 // Keep the existing IDs/cursor order; append visual keywords rather than scripted premises.
 const topics: Record<string, readonly [string, string]> = {
   "0-0": ["Nature", "nature"], "0-1": ["Ocean", "ocean"], "0-2": ["Birds", "birds"],
@@ -82,18 +82,125 @@ export function stockFootageSuggestions(cursor = 0): ContentIdea[] {
   return pools.map(pool => pool[batch % pool.length]);
 }
 export function stockTopicPool(): ContentIdea[] { return [...ideas]; }
-export function nextStoredFootageSuggestions(storage: Pick<Storage, "getItem" | "setItem">, fallbackCursor = 0) {
+const byId = new Map(ideas.map(idea => [idea.id, idea]));
+type SuggestionStorage = Pick<Storage, "getItem" | "setItem">;
+function storedFootageSuggestions(storage: SuggestionStorage, fallbackCursor = 0) {
   let cursor = validCursor(fallbackCursor) ? fallbackCursor : 0;
-  let remembered = true;
+  let seen: string[] = [], remembered = true;
   try {
     const raw = storage.getItem(FOOTAGE_SUGGESTION_STORAGE_KEY);
-    if (raw && raw.length <= 256) {
+    if (raw && raw.length <= 8192) {
       const saved = JSON.parse(raw);
-      if (saved?.version === 1 && validCursor(saved.cursor)) cursor = saved.cursor;
+      if (saved?.version === 1 && validCursor(saved.cursor)) {
+        cursor = saved.cursor;
+        if (Array.isArray(saved.seen)) {
+          const known: string[] = saved.seen.filter((id: unknown): id is string => typeof id === "string" && byId.has(id));
+          seen = [...new Set(known)].slice(-48);
+        }
+      }
     }
-  } catch { remembered = false; /* Continue in memory if browser storage is unavailable/corrupt. */ }
+  } catch { remembered = false; }
+  return { cursor, seen, remembered };
+}
+export function nextStoredFootageSuggestions(storage: Pick<Storage, "getItem" | "setItem">, fallbackCursor = 0) {
+  const { cursor, seen, remembered: loaded } = storedFootageSuggestions(storage, fallbackCursor);
+  let remembered = loaded;
   const nextCursor = (cursor + FOOTAGE_SUGGESTION_COUNT) % cursorLimit;
-  try { storage.setItem(FOOTAGE_SUGGESTION_STORAGE_KEY, JSON.stringify({ version: 1, cursor: nextCursor })); }
+  try { storage.setItem(FOOTAGE_SUGGESTION_STORAGE_KEY, JSON.stringify({ version: 1, cursor: nextCursor, seen })); }
   catch { remembered = false; }
-  return { ideas: stockFootageSuggestions(cursor), nextCursor, remembered };
+  return { ideas: stockFootageSuggestions(cursor), cursor, nextCursor, seen, remembered };
+}
+/** Record the batch actually displayed; a pending request has shown no new topics. */
+export function recordStoredFootageSuggestions(storage: SuggestionStorage, batch: Array<{ id: string } | string>, nextCursor: number) {
+  const saved = storedFootageSuggestions(storage, nextCursor);
+  const shown = batch.slice(0, FOOTAGE_SUGGESTION_COUNT).map(idea => typeof idea === "string" ? idea : idea.id).filter(id => byId.has(id));
+  const seen = [...saved.seen.filter(id => !shown.includes(id)), ...new Set(shown)].slice(-48);
+  const cursor = validCursor(nextCursor) ? nextCursor : saved.cursor;
+  let remembered = saved.remembered;
+  try { storage.setItem(FOOTAGE_SUGGESTION_STORAGE_KEY, JSON.stringify({ version: 1, cursor, seen })); }
+  catch { remembered = false; }
+  return { seen, cursor, remembered };
+}
+
+const subjectWords = (value: string) => value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const subjectPhrase = (value: string) => subjectWords(value).replace(/\b(?:bunny|bunnies)\b/g, "rabbit").replace(/\bbutterflies\b/g, "butterfly")
+  .replace(/\bcities\b/g, "city").replace(/\bleaves\b/g, "leaf").replace(/\b([a-z]{3,})s\b/g, "$1");
+const familyNames = ["wildlife", "nature", "travel", "outdoor movement", "architecture", "hands-on"];
+const familyCues = [
+  /\b(?:animals?|wildlife|birds?|butterfl(?:y|ies)|cats?|kittens?|dogs?|pupp(?:y|ies)|horses?|dolphins?|turtles?|deer|fox(?:es)?|owls?|penguins?|elephants?|jellyfish|otters?|whales?|seals?|giraffes?|lions?|pandas?|rabbits?|bunn(?:y|ies)|flamingos?|parrots?|squirrels?|dragonfl(?:y|ies)|bees?)\b/,
+  /\b(?:nature|forests?|woodlands?|trees?|leaves|foliage|gardens?|parks?|waterfalls?|lakes?|rivers?|ocean|sea|beach(?:es)?|sunsets?|sunrises?|aurora|deserts?|dunes?|cliffs?|islands?|meadows?|snow|rainforests?|tulips?|lavender|autumn|spring|mountains?|glaciers?|fjords?|landscapes?)\b/,
+  /\b(?:travel|scenery|scenic|alps|dolomites|countryside|coastal|villages?|journey|switzerland|norway|iceland|italy|japan|canada|scotland|austria|zealand|france|germany|portugal|spain|greece|croatia|slovenia|finland|sweden|netherlands|ireland|nepal|indonesia|thailand|australia|chile)\b/,
+  /\b(?:trains?|railway|trams?|sailing|sailboats?|kayak(?:ing)?|skiing|surfing|hiking|cycling|bicycle|climbing|skating|skateboard)\b/,
+  /\b(?:architecture|bridges?|castles?|skyscrapers?|libraries|library|museums?|courtyards?|staircases?|town|streets?|windmills?|greenhouses?|lighthouses?|buildings?|houses?|city|cities)\b/,
+  /\b(?:bak(?:e|ing)|bread|pottery|clay|coffee|drawing|sketch|markets?|craft|cooking|kitchen|weaving)\b/,
+];
+const countryNames = [...countryTopics.map(([name]) => name), "New Zealand"];
+function subjectKey(value: string) {
+  const text = subjectWords(value);
+  const country = countryNames.find(name => new RegExp(`\\b${name.toLowerCase()}\\b`).test(text));
+  if (country) return `country:${country.toLowerCase()}`;
+  if (/\b(?:steam train|trains?|railway)\b/.test(text)) return "train";
+  return subjectPhrase(text);
+}
+const ideaGroup = new Map(pools.flatMap((pool, group) => pool.map(idea => [idea.id, group] as const)));
+const hash = (value: string) => [...value].reduce((result, character) => (result * 31 + character.charCodeAt(0)) >>> 0, 0);
+function mentionedSubjects(value: string) {
+  const phrase = ` ${subjectPhrase(value)} `;
+  return ideas.filter(idea => phrase.includes(` ${subjectPhrase(idea.query)} `)).map(idea => subjectKey(idea.query));
+}
+
+/** Relevance comes from saved content, not a generic rotating country list or an extra model call. */
+export function personalizedStockSuggestions(context: SuggestionContext, cursor = 0, seen: string[] = []): { ideas: Array<ContentIdea & SuggestionReason>; nextCursor: number } {
+  const safeCursor = Number.isSafeInteger(cursor) && cursor >= 0 && cursor < 1_000_000 ? cursor : 0;
+  const period = Math.floor(context.now / FOOTAGE_SUGGESTION_REFRESH_MS);
+  const recent = context.recent.filter(record => record.workflow === "stock-reel" && !record.news).slice(0, 120);
+  const blocked = new Set(recent.flatMap(record => [subjectKey(record.title), ...mentionedSubjects(`${record.title} ${record.observations.slice(0, 3).join(" ")}`)]));
+  for (const id of seen.slice(-48)) { const idea = byId.get(id); if (idea) blocked.add(subjectKey(idea.query)); }
+  const feedback = new Map(context.feedback.slice(0, 120).map(record => [record.reviewId, record]));
+  const rankingHistory = recent.some(record => record.posted)
+    ? recent.filter(record => record.posted || feedback.get(record.reviewId)?.decision === "keep") : recent;
+  const scores = familyNames.map(() => 0), kept = familyNames.map(() => 0), posted = familyNames.map(() => 0), measured = familyNames.map(() => 0);
+  for (const record of rankingHistory.slice(0, 30)) {
+    const age = Math.max(0, (context.now - Date.parse(record.createdAt)) / 86_400_000);
+    const weight = Number.isFinite(age) ? (record.posted ? 8 : 4) / (1 + age / 15) : 0;
+    const literal = subjectWords(record.observations.length ? record.observations.slice(0, 3).join(" ") : record.title);
+    const review = feedback.get(record.reviewId);
+    const approved = review?.decision === "keep" && review.storyRating >= 3 && review.visualRating >= 3;
+    familyCues.forEach((cue, group) => { if (cue.test(literal)) {
+      scores[group] += weight + (approved ? 4 : 0);
+      if (approved) kept[group]++;
+      if (record.posted) posted[group]++;
+    } });
+  }
+  for (const preference of context.strongerTopics.slice(0, 12)) {
+    if (preference.workflow !== "stock-reel" || preference.evidenceCount < 2) continue;
+    familyCues.forEach((cue, group) => { if (cue.test(subjectWords(preference.topic))) { scores[group] += Math.min(4, preference.evidenceCount); measured[group] += preference.evidenceCount; } });
+  }
+  const hasProfile = scores.some(score => score > 0);
+  const affinity = scores.map((score, group) => score + (group === 1 ? scores[0] * .35 : group === 2 ? scores[1] * .15 : 0)
+    + [0.006, 0.005, 0.003, 0.004, 0.002, 0.001][group]);
+  const candidates = ideas.filter(idea => !blocked.has(subjectKey(idea.query)) && (!hasProfile || idea.title !== "Nature"))
+    .map(idea => ({ idea, group: ideaGroup.get(idea.id)!, tie: hash(`${period}:${safeCursor}:${idea.id}`) }))
+    .sort((a, b) => (hasProfile ? affinity[b.group] - affinity[a.group] : 0) || a.tie - b.tie || a.idea.id.localeCompare(b.idea.id));
+  const selected: typeof candidates = [], usedGroups = new Map<number, number>(), usedSubjects = new Set<string>();
+  const variety = Math.min(hasProfile ? 4 : 6, new Set(candidates.map(candidate => candidate.group)).size);
+  let countryUsed = false;
+  while (selected.length < FOOTAGE_SUGGESTION_COUNT) {
+    const choice = candidates.find(candidate => !usedSubjects.has(subjectKey(candidate.idea.query))
+      && (usedGroups.get(candidate.group) || 0) < 2
+      && (usedGroups.size >= variety || !usedGroups.has(candidate.group))
+      && (!countryUsed || !subjectKey(candidate.idea.query).startsWith("country:")));
+    if (!choice) break;
+    selected.push(choice); usedSubjects.add(subjectKey(choice.idea.query));
+    usedGroups.set(choice.group, (usedGroups.get(choice.group) || 0) + 1);
+    countryUsed ||= subjectKey(choice.idea.query).startsWith("country:");
+  }
+  const exploration = ["A fresh wildlife subject with one consistent setting.", "Explore a different natural setting and visual thread.", "A new place to explore with source-supported footage.", "Follow one journey or outdoor activity to its natural ending.", "A visual change of pace using related buildings and details.", "Try one clear hands-on process and its finished result."];
+  return { ideas: selected.map(({ idea, group }) => ({ ...idea,
+    basis: measured[group] ? "observed-response" as const : kept[group] ? "owner-feedback" as const : scores[group] > 0 ? "recent-content" as const : "explore" as const,
+    reason: measured[group] ? `Try a new ${familyNames[group]} angle related to your measured Instagram results.`
+      : kept[group] ? `Related to ${familyNames[group]} reels you kept, with a different subject.`
+        : posted[group] ? `Related to your posted ${familyNames[group]} reels, with a fresh subject.`
+          : scores[group] > 0 ? `Based on your recent ${familyNames[group]} reels, with a fresh subject.` : exploration[group],
+  })), nextCursor: (safeCursor + FOOTAGE_SUGGESTION_COUNT) % 1_000_000 };
 }

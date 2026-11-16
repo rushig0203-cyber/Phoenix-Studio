@@ -23,100 +23,130 @@ const component = compile('src/components/RecommendedIdeas.tsx');
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' || !tree.props ? [] : [tree, ...nodes(tree.props.children)];
 const plain = value => JSON.parse(JSON.stringify(value));
-function memoryStorage(initial = {}) {
-  const values = new Map(Object.entries(initial));
+function memoryStorage() {
+  const values = new Map();
   return { getItem(key) { return values.get(key) ?? null; }, setItem(key, value) { values.set(key, value); } };
 }
+const natureContext = () => ({ now: Date.parse('2026-11-15T12:00:00Z'), recent: [
+  { reviewId: 'panda', title: 'A panda eating bamboo', workflow: 'stock-reel', observations: ['Giant panda eats bamboo'], createdAt: '2026-11-15', posted: true },
+  { reviewId: 'rabbit', title: 'A rabbit in the meadow', workflow: 'stock-reel', observations: [], createdAt: '2026-11-14', posted: true },
+  { reviewId: 'waterfall', title: 'Waterfall', workflow: 'stock-reel', observations: ['Water falls into a pool'], createdAt: '2026-11-13', posted: true },
+], feedback: [], strongerTopics: [] });
 
-// The real component and catalogue, inert JSX, local fixture storage. Never
-// mounts a browser, imports owner state, starts a timer or calls a provider/job.
-function harness(options = {}) {
-  let index = 0, tree, networkCalls = 0;
-  let clock=0,nextTimer=0;const timers=new Map();
-  const slots = [], effects = [], pending = [], chosen = [];
+// Exercise the real component and selector against an inert, local API fixture.
+// No owner files, providers, jobs, browser, real timers or server are started.
+async function harness(options = {}) {
+  let index = 0, tree, clock = 0, nextTimer = 0, context = natureContext();
+  const timers = new Map(), slots = [], effects = [], pending = [], cleanups = [], chosen = [], requests = [];
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
     useRef(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: initial }; return slots[at]; },
     useEffect(callback, dependencies) { const at = index++, previous = effects[at]; if (!previous || dependencies.some((value, offset) => !Object.is(value, previous[offset]))) { effects[at] = [...dependencies]; pending.push(callback); } },
   };
   const jsx = (type, props, key) => ({ type, props, key });
-  const decorate = result => options.decorate ? { ...result, ideas: result.ideas.map(options.decorate) } : result;
-  const helpers = { ...recommendations,
-    creationRecommendations: (...args) => decorate(recommendations.creationRecommendations(...args)),
-    nextStoredRecommendations: (...args) => decorate(recommendations.nextStoredRecommendations(...args)),
+  const sandbox = { URLSearchParams, AbortController, AbortSignal,
+    window: { setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { at: clock + delay, callback }); return id; }, clearTimeout(id) { timers.delete(id); } },
+    async fetch(url, init) {
+      const parsed = new URL(url, 'http://local.test');
+      assert.equal(parsed.pathname, '/api/content-suggestions'); assert.equal(parsed.searchParams.get('workflow'), 'creation'); assert.equal(init.cache, 'no-store');
+      requests.push(parsed);
+      const seen = parsed.searchParams.get('seen').split(',').filter(Boolean); assert.ok(seen.length <= 48);
+      if (options.fail?.()) return { ok: false };
+      const result = recommendations.personalizedCreationRecommendations(context, Number(parsed.searchParams.get('cursor')), seen);
+      return { ok: true, async json() { return { ...result, ideas: result.ideas.map(idea => options.decorate ? options.decorate(idea) : idea) }; } };
+    },
   };
-  const sandbox = { window:{setTimeout(callback,delay){const id=++nextTimer;timers.set(id,{at:clock+delay,callback});return id;},clearTimeout(id){timers.delete(id);}},fetch() { networkCalls++; assert.fail('Recommendations must never call a network, job or provider'); } };
   if (options.propertyDenied) Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Browser property blocked'); } });
   else sandbox.localStorage = options.storage || memoryStorage();
-  const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/lib/creationRecommendations': helpers }, sandbox).default;
-  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea) }); while (pending.length) pending.shift()(); return tree; }
+  const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/lib/creationRecommendations': recommendations }, sandbox).default;
+  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea) }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } return tree; }
+  async function settle() { for (let count = 0; count < 8; count++) await Promise.resolve(); render(); }
   const cards = () => nodes(tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Use idea: '));
-  const ids = () => cards().map(node => node.key);
-  const more = () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'More ideas').props.onClick(); render(); };
-  render(); render();
-  const advance=milliseconds=>{const target=clock+milliseconds;for(let passes=0;;passes++){assert.ok(passes<20);const next=[...timers.entries()].filter(([,timer])=>timer.at<=target).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;clock=next[1].at;timers.delete(next[0]);next[1].callback();render();}clock=target;};
-  return { render, cards, ids, more, chosen, advance,tree: () => tree, networkCalls: () => networkCalls };
+  const ids = () => cards().map(node => node.props['aria-label']);
+  const more = async () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'More ideas').props.onClick(); await settle(); };
+  render(); await settle();
+  async function advance(milliseconds) { const target = clock + milliseconds; for (let passes = 0; ; passes++) { assert.ok(passes < 20); const next = [...timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0]; if (!next) break; clock = next[1].at; timers.delete(next[0]); next[1].callback(); await settle(); } clock = target; }
+  return { cards, ids, more, chosen, advance, requests, tree: () => tree, setContext(value) { context = value; }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
 }
 
-test('readable complete history with blocked writes does not replay stale cards on More ideas', () => {
-  const saved = JSON.stringify({ version: 1, cursor: 0, shown: recommendations.recommendationPool().map(idea => idea.id) });
-  let reads = 0, writes = 0;
-  const ui = harness({ storage: { getItem() { reads++; return saved; }, setItem() { writes++; throw new Error('Storage quota exceeded'); } } });
-  assert.equal(ui.cards().length, 6);
-  let previous = ui.ids();
-  for (let click = 0; click < 3; click++) {
-    ui.more(); const current = ui.ids();
-    assert.notDeepEqual(plain(current), plain(previous));
-    assert.ok(current.every(id => !previous.includes(id)), 'A failed write must not reset the in-session rotation');
-    previous = current;
-  }
-  assert.equal(reads, 1, 'Stop loading the stale saved history after its first failed write');
-  assert.equal(writes, 4); assert.match(text(ui.tree()), /Browser history storage is unavailable/);
-  assert.equal(ui.chosen.length, 0); assert.equal(ui.networkCalls(), 0);
-});
-
-test('healthy storage preserves the latest rotation when the recommendations reopen', () => {
-  const storage = memoryStorage(), first = harness({ storage });
-  first.more(); const previous = first.ids();
-  const reopened = harness({ storage });
+test('creation fetches local recent subjects on open and remembers them across visits', async () => {
+  const storage = memoryStorage(), first = await harness({ storage });
+  assert.equal(first.cards().length, 6); assert.equal(first.requests.length, 1);
+  assert.ok(first.cards().slice(0, 5).every(card => /posted wildlife/.test(text(card))));
+  assert.ok(first.cards().every(card => !/panda|rabbit|waterfall|bamboo/i.test(card.props['aria-label'])));
+  await first.more(); const previous = first.ids(); first.unmount();
+  const reopened = await harness({ storage });
   assert.ok(reopened.ids().every(id => !previous.includes(id)));
-  assert.equal(reopened.cards().length, 6); assert.match(text(reopened.tree()), /Recently shown topics are remembered/);
-  const details = nodes(reopened.tree()).find(node => node.type === 'details');
-  assert.equal(details.props.open, undefined); assert.equal(reopened.networkCalls(), 0);
+  assert.equal(reopened.chosen.length, 0); assert.match(text(reopened.tree()), /Recently shown subjects are remembered/);
+  assert.ok(reopened.requests[0].searchParams.get('seen').split(',').length >= 12);
 });
 
-test('denied methods or the localStorage property still rotate during this visit without creating work', () => {
+test('blocked browser storage preserves in-session history without replaying stale cards', async () => {
+  let reads = 0;
   for (const options of [
-    { storage: { getItem() { throw new Error('Denied'); }, setItem() { throw new Error('Denied'); } } },
+    { storage: { getItem() { reads++; return null; }, setItem() { throw new Error('Quota'); } } },
     { propertyDenied: true },
   ]) {
-    const ui = harness(options), first = ui.ids(); ui.more();
-    assert.ok(ui.ids().every(id => !first.includes(id)));
-    const second = ui.ids(); ui.more(); assert.ok(ui.ids().every(id => !second.includes(id)));
-    assert.match(text(ui.tree()), /topics may repeat on your next visit/);
-    assert.equal(ui.chosen.length, 0); assert.equal(ui.networkCalls(), 0);
+    const ui = await harness(options);
+    for (let click = 0; click < 3; click++) { const before = ui.ids(); await ui.more(); assert.ok(ui.ids().every(id => !before.includes(id))); }
+    assert.match(text(ui.tree()), /Browser history storage is unavailable/);
+    assert.equal(ui.chosen.length, 0); assert.equal(ui.requests.length, 4);
   }
+  assert.equal(reads, 1, 'Do not reload stale saved history after a failed write');
 });
 
-test('headline and visible brief select the exact complete premise, including a second divider', () => {
-  const ui = harness({ decorate: idea => ({ ...idea, title: `Visible topic ${idea.id} — Explain a concrete comparison — keep its full payoff.` }) });
+test('concise cards show one evidence reason and preserve the entire selected premise', async () => {
+  const ui = await harness({ decorate: idea => ({ ...idea, title: `Visible topic ${idea.id} — Explain a concrete comparison — keep its full payoff.` }) });
   for (const card of ui.cards()) {
     const premise = card.props['aria-label'].slice('Use idea: '.length);
     const spans = nodes(card).filter(node => node.type === 'span');
-    assert.equal(spans[0].props.children, premise.slice(0, premise.indexOf(' — ')));
-    assert.equal(text(spans[0]) + text(spans[1]), premise);
-    assert.match(spans[1].props.className, /text-xs/);
-    card.props.onClick();
-    const selected = ui.chosen.at(-1);
-    assert.equal(selected.title, premise); assert.equal(selected.id, card.key);
+    assert.equal(spans.length, 2); assert.equal(spans[0].props.children, premise.slice(0, premise.indexOf(' — ')));
+    assert.doesNotMatch(text(card), /Explain a concrete comparison/);
+    assert.ok(spans[1].props.children); card.props.onClick();
+    assert.equal(ui.chosen.at(-1).title, premise);
   }
-  assert.equal(ui.chosen.length, 6); assert.equal(ui.networkCalls(), 0);
+  const premises = nodes(ui.tree()).filter(node => node.type === 'details' && text(node).startsWith('Video premise'));
+  assert.equal(premises.length, 6); assert.ok(premises.every(node => !node.props.open));
+  assert.equal(ui.chosen.length, 6);
 });
 
-test('weekly creation ideas rotate without overwriting or choosing a topic',()=>{
-  const ui=harness(),before=ui.ids();ui.advance(recommendations.RECOMMENDATION_REFRESH_MS-1);
-  assert.deepEqual(plain(ui.ids()),plain(before));ui.advance(1);
-  assert.ok(ui.ids().every(id=>!before.includes(id)));
-  assert.equal(ui.chosen.length,0);assert.equal(ui.networkCalls(),0);
-  const weekly=ui.ids();ui.more();assert.ok(ui.ids().every(id=>!weekly.includes(id)));
+test('More ideas uses newly saved subjects rather than shuffling the previous profile', async () => {
+  const ui = await harness(); const previous = ui.ids();
+  ui.setContext({ ...natureContext(), recent: [{ reviewId: 'bread', title: 'Bread kneaded by hand', workflow: 'general', observations: [], createdAt: '2026-11-15', posted: true }] });
+  await ui.more();
+  assert.ok(ui.ids().every(id => !previous.includes(id)));
+  assert.ok(ui.cards().slice(0, 5).every(card => /food and craft/.test(text(card))));
+  assert.ok(ui.cards().every(card => !/bread|bakery|kneading/i.test(card.props['aria-label'])));
+});
+
+test('automatic refresh checks the local context after 15 days and never chooses an idea', async () => {
+  assert.equal(recommendations.RECOMMENDATION_REFRESH_MS, 15 * 24 * 60 * 60 * 1000);
+  const ui = await harness(), before = ui.ids(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS - 1);
+  assert.deepEqual(plain(ui.ids()), plain(before)); assert.equal(ui.requests.length, 1);
+  await ui.advance(1); assert.ok(ui.ids().every(id => !before.includes(id)));
+  assert.equal(ui.requests.length, 2); assert.equal(ui.chosen.length, 0);
+  ui.unmount(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 2);
+});
+
+test('a failed refresh retains usable cards and does not record an unseen batch', async () => {
+  let fail = false;
+  const storage = memoryStorage(), ui = await harness({ storage, fail: () => fail });
+  const before = ui.ids(), saved = storage.getItem(recommendations.PERSONALIZED_RECOMMENDATION_STORAGE_KEY);
+  fail = true; await ui.more();
+  assert.deepEqual(plain(ui.ids()), plain(before)); assert.equal(storage.getItem(recommendations.PERSONALIZED_RECOMMENDATION_STORAGE_KEY), saved);
+  assert.match(text(ui.tree()), /Could not refresh ideas/);
+  fail = false; await ui.more(); assert.ok(ui.ids().every(id => !before.includes(id))); assert.doesNotMatch(text(ui.tree()), /Could not refresh ideas/);
+});
+
+test('a full in-session history preserves newer subjects shown in another open screen', async () => {
+  const storage = memoryStorage(), pool = recommendations.recommendationPool();
+  const key = recommendations.PERSONALIZED_RECOMMENDATION_STORAGE_KEY;
+  storage.setItem(key, JSON.stringify({ shown: pool.slice(0, 48).map(idea => idea.id), cursor: 0 }));
+  const ui = await harness({ storage });
+  const newer = pool.slice(-48).map(idea => idea.id);
+  storage.setItem(key, JSON.stringify({ shown: newer, cursor: 72 }));
+  await ui.more();
+  const request = ui.requests.at(-1);
+  assert.deepEqual(request.searchParams.get('seen').split(','), plain(newer), 'The newer shared browser history wins over a full stale in-session history');
+  assert.equal(request.searchParams.get('cursor'), '72');
 });

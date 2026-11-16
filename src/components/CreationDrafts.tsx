@@ -29,12 +29,14 @@ export default function CreationDrafts({ drafts, onRefresh, onRequeued }: { draf
       const active = ["PLANNING", "APPROVING"].includes(draft.status);
       const queued = ["QUEUED", "READY"].includes(draft.status);
       const dated = Number.isFinite(Date.parse(draft.createdAt));
+      const illustrations = draft.scenes?.filter(scene => scene.illustration) || [];
       return <article key={draft.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
         <div className="min-w-0"><details>
           <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{draft.input.topic}</span><span className="sr-only"> — {failed ? "Failed" : active ? "Preparing" : "Queued"}; job details</span><time dateTime={dated ? draft.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(draft.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time></summary>
           <div className="mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#657153]">
         <p>{failed ? "Failed" : draft.status === "APPROVING" ? "Starting render" : draft.status === "PLANNING" ? "Preparing" : "Queued"}</p>
         <p className="mt-1 text-xs text-[#657153]">{draft.input.duration}s · {draft.input.aspect}</p>
+        {illustrations.length ? <p className="mt-2 text-xs text-[#657153]">Illustration · original editorial 2D: {[...new Set(illustrations.map(scene => scene.illustration!.subject))].join(", ")}. Neutral context for the narration; each illustration is labelled in the finished video.</p> : null}
         <p role="status" className="mt-2 text-sm text-[#657153]">{draft.status === "READY" ? "Queued for automatic rendering" : draft.stage}</p>
         {draft.status === "QUEUED" && draft.nextAttemptAt && Number.isFinite(Date.parse(draft.nextAttemptAt)) ? <p className="mt-2 text-xs text-[#657153]">Next automatic check: <time dateTime={draft.nextAttemptAt}>{new Date(draft.nextAttemptAt).toLocaleString()}</time>. This is a retry time, not a guaranteed completion time. No need to click Generate again.</p> : null}
         {draft.status === "QUEUED" && /Groq|quota/.test(draft.stage) ? <p className="mt-2 text-xs text-[#657153]">While writing waits, <a className="underline" href="#create">Use stock footage</a> can still make a reel without an AI writer, subject to local rendering memory.</p> : null}

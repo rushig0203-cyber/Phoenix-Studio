@@ -38,14 +38,15 @@ class VideoParams:
         self.phoenix_storyboard = [SimpleNamespace(model_dump=lambda beat=beat: dict(beat)) for beat in values["phoenix_storyboard"]]
 
 
-names = {"words", "align_beats", "_supplement_metadata_matches", "prepare_timeline"}
+names = {"words", "align_beats", "_supplement_metadata_matches", "prepare_timeline", "editorial_illustration"}
 source = ast.parse(added_source("app/services/phoenix_storyboard.py"))
 functions = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name in names]
 assert {node.name for node in functions} == names
 fps = next(node for node in source.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_OUTPUT_FPS" for target in node.targets))
+subjects = next(node for node in source.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_EDITORIAL_SUBJECTS" for target in node.targets))
 storyboard = ModuleType("app.services.phoenix_storyboard")
-storyboard.__dict__.update(math=math, os=os, re=re, unquote=unquote, urlparse=urlparse, subtitle_cues=unexpected, approved_pexels_asset=unexpected, download_stock_video=unexpected)
-exec(compile(ast.Module(body=[fps, *functions], type_ignores=[]), "shipped-news-timeline", "exec"), storyboard.__dict__)
+storyboard.__dict__.update(math=math, os=os, re=re, unquote=unquote, urlparse=urlparse, subtitle_cues=unexpected, approved_pexels_asset=unexpected, download_stock_video=unexpected, render_editorial_illustration=unexpected)
+exec(compile(ast.Module(body=[fps, subjects, *functions], type_ignores=[]), "shipped-news-timeline", "exec"), storyboard.__dict__)
 
 # Timeline imports resolve exclusively to these tiny test doubles. The extracted
 # function's globals belong to the module so its real test mocks patch them.
@@ -72,6 +73,8 @@ modules["app.models"].schema = modules["app.models.schema"]
 tests = ast.parse(added_source("test/services/test_phoenix_storyboard.py"))
 test_class = next(node for node in tests.body if isinstance(node, ast.ClassDef) and node.name == "TestPhoenixStoryboard")
 selected = {
+    "test_news_original_illustration_keeps_exact_metadata_and_spoken_timing_without_search",
+    "test_news_v2_does_not_replace_approved_stock_after_download_failure",
     "test_news_shortfall_never_searches_unverified_swimming_river_stock",
     "test_news_requires_every_approved_asset_before_fetching_any_footage",
     "test_news_with_sufficient_approved_footage_keeps_one_native_speed_asset",

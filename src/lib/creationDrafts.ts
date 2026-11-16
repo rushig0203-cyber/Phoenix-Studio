@@ -17,6 +17,7 @@ import { prepareLocalSong } from "./localSinging";
 import { HostedSingingWaitError, prepareHostedSong } from "./hostedSinging";
 import { prepareStockCreation } from "./stockPreparation";
 import type { CreationDraft, DraftScene } from "./creationDraftTypes";
+import { NEWS_MIXED_VISUAL_POLICY, newsIllustrationQuery, readNewsIllustration } from "./newsVisualPolicy";
 import { isWritingWaitError, withWritingSession, writingModelIdentity, WritingQuotaWaitError, isWriterQuotaWaiting as quotaWaiting, writerQuotaBackupReady as quotaBackupReady } from "./writingModel";
 
 const storeFile = () => path.join(reviewRoot(), "creation-drafts.json");
@@ -60,6 +61,7 @@ export async function createCreationDrafts(inputs: GenerationInput[]) {
       return existing;
     }
     const now = new Date().toISOString();
+    if (input.research && !input.newsVisualPolicy) input = { ...input, newsVisualPolicy: NEWS_MIXED_VISUAL_POLICY };
     const draft: CreationDraft = { id: crypto.randomUUID(), requestKey, version: 1, status: "QUEUED", stage: input.reviewMode === "final" ? "Queued — automatic planning, then rendering; review only the finished video" : "Queued for story planning only — no video render", input, scenes: [], createdAt: now, updatedAt: now };
     drafts.push(draft);
     return draft;
@@ -98,11 +100,14 @@ export function validateDraftScenes(draft: CreationDraft, scenes: DraftScene[], 
     const error = stockNarrationError(script, draft.input.duration, draft.input.scriptOrigin !== "local-model", draft.input.autoDuration);
     if (error) throw new Error(error);
     if (scenes.some(s => s.query.trim().length < 2 || s.query.length > 80)) throw new Error("Each stock section needs a short visual search.");
+    if (scenes.some(s => s.illustration && (!draft.input.research || draft.input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY || s.footage || !readNewsIllustration(s.illustration) || s.query !== newsIllustrationQuery(s.illustration)))) throw new Error("The editorial illustration plan is invalid. Keep the saved original plan or create a new visual plan.");
     if (approval) {
-      if (scenes.some(s => !s.footage)) throw new Error("Choose and preview footage for every section before approving.");
-      if (new Set(scenes.map(s => s.footage!.id)).size !== scenes.length) throw new Error("Choose a different footage asset for each section to avoid repeating the same shot.");
+      if (scenes.some(s => !s.footage && !s.illustration)) throw new Error("Choose and preview footage for every section before approving.");
+      const stock = scenes.filter(s => s.footage);
+      if (new Set(stock.map(s => s.footage!.id)).size !== stock.length) throw new Error("Choose a different footage asset for each section to avoid repeating the same shot.");
       const words = script.split(/\s+/).length;
       for (const [index, scene] of scenes.entries()) {
+        if (scene.illustration) continue;
         const estimated = draft.input.duration * scene.narration.trim().split(/\s+/).length / words;
         if (scene.footage!.duration < estimated * 1.2 + 1) throw new Error(`Section ${index + 1} needs footage at least ${Math.ceil(estimated * 1.2 + 1)} seconds long, including a speech-timing margin. Choose a longer clip or shorten that section.`);
       }
@@ -124,7 +129,11 @@ export async function saveCreationDraft(id: string, version: number, scenes: Dra
     const draft = requireEditable(drafts.find(d => d.id === id), version);
     validateDraftScenes(draft, scenes);
     // Asset metadata comes only from a server-resolved selection, never from this edit payload.
-    draft.scenes = scenes.map((scene, index) => ({ narration: scene.narration.replace(/\s+/g, " ").trim(), query: scene.query.trim(), footage: draft.scenes[index]?.query === scene.query.trim() ? draft.scenes[index]?.footage : undefined }));
+    draft.scenes = scenes.map((scene, index) => {
+      const narration = scene.narration.replace(/\s+/g, " ").trim(), query = scene.query.trim(), saved = draft.scenes[index];
+      return { narration, query, footage: saved?.query === query ? saved?.footage : undefined,
+        ...(saved?.query === query && saved?.narration === narration && saved.illustration ? { illustration: { ...saved.illustration } } : {}) };
+    });
     // A manually saved shot plan is an owner visual brief, not permission to rewrite searches.
     if (isStockDraft(draft)) draft.input = { ...draft.input, visualTerms: draft.scenes.map(scene => scene.query) };
     draft.version++;
@@ -139,6 +148,7 @@ export async function chooseDraftFootage(id: string, version: number, index: num
     const draft = requireEditable(drafts.find(d => d.id === id), version);
     if (!isStockDraft(draft) || !draft.scenes[index]) throw new Error("This section does not accept stock footage.");
     draft.scenes[index].footage = choice;
+    delete draft.scenes[index].illustration;
     draft.version++;
     draft.updatedAt = new Date().toISOString();
     return draft;
@@ -149,7 +159,7 @@ async function dispatchApproved(draft: CreationDraft) {
   const script = draft.input.creationType === "children-song" ? draft.input.script! : draft.scenes.map(s => s.narration.trim()).join(" ");
   const automatic = draft.input.reviewMode === "final";
   const input: GenerationInput = { ...draft.input, script, scriptLocked: true, scriptApproved: !automatic, scriptOrigin: automatic ? draft.input.scriptOrigin : "owner", requestId: draft.id,
-    ...(isStockDraft(draft) ? { storyboard: draft.scenes.map(s => ({ narration: s.narration, query: s.query, assetId: s.footage!.id })) } : { sceneNarration: draft.scenes.map(s => s.narration) }),
+    ...(isStockDraft(draft) ? { storyboard: draft.scenes.map(s => ({ narration: s.narration, query: s.query, ...(s.illustration ? { illustration: { ...s.illustration } } : { assetId: s.footage!.id }) })) } : { sceneNarration: draft.scenes.map(s => s.narration) }),
   };
   const [job] = await createGenerationJobs("local-owner", [input]);
   return mutate(drafts => {

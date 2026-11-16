@@ -57,13 +57,15 @@ jobs:
         run: python scripts/test-renderer-local-voice.py
       - name: Verify real offline Windows speech and measured subtitle events
         run: |
-          python -m pip install --disable-pip-version-check --no-input edge-tts==7.2.7
+          python -m pip install --disable-pip-version-check --no-input edge-tts==7.2.7 Pillow==11.3.0
           if ($LASTEXITCODE -ne 0) { throw 'Speech-event test dependency could not install' }
           python scripts/verify-offline-stock-voice.py
       - name: Verify news renderer refuses unapproved supplemental stock without models or providers
         run: python -B scripts/test-renderer-news-policy.py
       - name: Verify subtitle placement uses the actual decoded picture size
         run: python -B scripts/test-renderer-subtitle-canvas.py
+      - name: Verify original editorial news illustration policy and raster output
+        run: python -B scripts/test-renderer-editorial-illustrations.py
       - name: Run release regressions one file at a time
         # UI fixture compilation needs more heap than the application data tests.
         run: >-
@@ -120,7 +122,7 @@ jobs:
           scripts/test-channel-insights-ui.cjs
           scripts/test-instagram-performance-boundaries.cjs
           scripts/test-instagram-learning-guidance.cjs
-          scripts/test-instagram-topic-suggestions.cjs
+          scripts/test-content-suggestions.cjs
           scripts/test-posting-automation.cjs
           scripts/test-posting-actions.cjs
           scripts/test-publish-settings-status.cjs
@@ -144,6 +146,7 @@ jobs:
           scripts/test-news-research.cjs
           scripts/test-news-presentation.cjs
           scripts/test-news-visuals.cjs
+          scripts/test-news-illustrations.cjs
           scripts/test-service-health.cjs
           scripts/test-stock-editorial.cjs
           scripts/test-stock-playback.cjs
@@ -214,7 +217,7 @@ jobs:
           src/lib/channelConnections.ts src/lib/instagramPerformanceTypes.ts src/lib/instagramPerformance.ts
           src/lib/posting.ts src/lib/reviewPublicationSummary.ts src/app/api/channels/[platform]/route.ts
           src/lib/instagramPerformanceLearning.ts src/lib/instagramLearningGuidance.ts src/lib/instagramPublishedReviews.ts
-          src/lib/instagramTopicSuggestions.ts src/components/InstagramPerformance.tsx src/components/InstagramTopicSuggestions.tsx
+          src/lib/contentSuggestionContext.ts src/app/api/content-suggestions/route.ts src/components/InstagramPerformance.tsx
           src/app/api/instagram-performance/route.ts
           src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx
           src/lib/failedJobHistory.ts src/components/JobProgress.tsx src/components/CreationDrafts.tsx
@@ -258,6 +261,10 @@ jobs:
           node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
           node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
+      - name: Verify original news illustrations with real offline narration and captions
+        env:
+          PHOENIX_NEWS_PROOF_DIR: ${{ runner.temp }}/phoenix-news-quality-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python -B scripts/verify-news-illustrations.py
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
       - name: Verify a real synthetic 49-minute episode survives interruption
@@ -277,7 +284,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PHOENIX_ARTIFACT_DIR: ${{ runner.temp }}/phoenix-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           PHOENIX_QUALITY_PROOF_DIR: ${{ runner.temp }}/phoenix-public-quality-${{ github.run_id }}-${{ github.run_attempt }}
+          PHOENIX_NEWS_PROOF_DIR: ${{ runner.temp }}/phoenix-news-quality-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           $tag = "phoenix-build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          gh release create $tag "$env:PHOENIX_ARTIFACT_DIR/phoenix-build.tar.gz" "$env:PHOENIX_ARTIFACT_DIR/phoenix-build-manifest.json" "$env:PHOENIX_QUALITY_PROOF_DIR/coherent-reel.mp4" "$env:PHOENIX_QUALITY_PROOF_DIR/after.jpg" "$env:PHOENIX_QUALITY_PROOF_DIR/proof.json" --draft --target $env:GITHUB_SHA --title "Phoenix verified Windows build $env:GITHUB_RUN_ID" --notes "Temporary local-installation bundle and edited public-Pexels quality proof from exact commit $env:GITHUB_SHA. No credentials, owner files, downloaded originals or models are included. This draft is not published."
+          gh release create $tag "$env:PHOENIX_ARTIFACT_DIR/phoenix-build.tar.gz" "$env:PHOENIX_ARTIFACT_DIR/phoenix-build-manifest.json" "$env:PHOENIX_QUALITY_PROOF_DIR/coherent-reel.mp4" "$env:PHOENIX_QUALITY_PROOF_DIR/after.jpg" "$env:PHOENIX_QUALITY_PROOF_DIR/proof.json" "$env:PHOENIX_NEWS_PROOF_DIR/news-illustrations.mp4" "$env:PHOENIX_NEWS_PROOF_DIR/news-illustrations.jpg" "$env:PHOENIX_NEWS_PROOF_DIR/news-illustrations-proof.json" --draft --target $env:GITHUB_SHA --title "Phoenix verified Windows build $env:GITHUB_RUN_ID" --notes "Temporary verified installation bundle, public-Pexels reel and original illustrated-news proof from exact commit $env:GITHUB_SHA. No credentials, owner files, downloaded originals or models are included. This draft is not published."
           if ($LASTEXITCODE -ne 0) { throw 'Could not save the verified installation bundle' }
