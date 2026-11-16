@@ -13,7 +13,7 @@ import { JobHistoryConflictError } from "./jobHistory";
 import { STOCK_REUSE_POLICY, assertStockReuseAvailable, stockReuseBlocked } from "./stockReuse";
 import { DEFAULT_STOCK_REEL_OPTIONS, MAX_STOCK_REEL_BYTES, MAX_STOCK_SHOTS, STOCK_REEL_FPS, STOCK_REEL_EDIT_VERSION, STOCK_MUSIC_LOUDNESS_FILTER, assertStockReelMinimum, assertStockMusicLoudness, stockMusicLoudness, stockMusicMasteringFilter, planStockIntervals, reorderStockIntervals, alignStockIntervalsToOnsets, stockAudioUsable, stockFraming, stockMusicArrangement, stockMusicArrangementDescription, stockMusicMixGain, stockMusicWav, stockShotFades, type StockInterval, type StockReelOptions } from "./stockReel";
 import { stockMotionSamples, stockMotionArgs, stockMotionScore, stockSustainedMotionScore, stockGreeneryArgs, stockGreeneryEvidence, stockGreenerySelection, STOCK_COLOUR_MAX_BYTES, stockPlaybackFilters, stockSpeechSampleArgs, type StockMotionWindow } from "./stockMotion";
-import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, type StockAppearancePair } from "./stockVisualContinuity";
+import { stockAppearanceArgs, stockAppearance, validStockAppearance, stockVisualOrder, stockReadableOpening, type StockAppearancePair } from "./stockVisualContinuity";
 import { selectStockRecording, quietStockRecording, stockRecordingMood, stockRecordingMetadata, stockRecordingFile, stockRecordingPreparationArgs, stockRecordingOnsets, type StockRecordingSelection } from "./stockMusicLibrary";
 import { applyPlannedVisualPosting, extractPostingFrame, requestVisualPosting, sampleTimes, visualPostingEnabled, type VisualPostingResult } from "./videoPostingAnalysis";
 import { cleanupStockTemporaries } from "./stockTemporaryCleanup";
@@ -1395,7 +1395,7 @@ export async function createStockReelJob(
   if (input.options.musicLibrary !== undefined && (input.options.musicLibrary !== "cc0-lofi-v1" || input.options.audio !== "music" || input.maxDuration > 40)) throw new Error("The licensed music library supports automatic music-only reels up to 40 seconds.");
   if (input.options.musicPolicy !== undefined && (input.options.musicPolicy !== "visual-calm-v1" || !input.options.musicLibrary || input.options.audioMastering !== "loudness-v1")) throw new Error("Visual music matching needs the saved licensed catalogue and mastering policy.");
   assertStockReuseAvailable(downloads, await readJobsUnlocked());
-  planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence, undefined, input.options.openingExperiment);
+  planStockIntervals(downloads.map(shot => ({ duration: shot.end, start: shot.start, end: shot.end, trimMode: shot.trimMode })), input.maxDuration, input.options.pacing, input.options.minDuration, input.options.shotCadence, undefined, input.options.openingExperiment, input.options.sequenceExperiment);
   await ensure();
   const id = crypto.randomUUID(), staged: string[] = [], shots: StockReelShot[] = [];
   let bytes = 0;
@@ -1738,7 +1738,7 @@ async function processStockReel(
   }
   const rhythm = !recording && options.continuity === "visual-v1" && options.audio === "music" && options.musicVersion === 2
     ? { bpm: stockMusicArrangement(options.mood, job.id).bpm } : undefined;
-  const plan = () => planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(adaptive ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence, rhythm, options.openingExperiment);
+  const plan = () => planStockIntervals(pictureBounds.map((bounds, index) => ({ ...bounds, ...(adaptive ? { motionWindows: motionWindows[index] } : {}) })), stock.maxDuration, options.pacing, options.minDuration, options.shotCadence, rhythm, options.openingExperiment, options.sequenceExperiment);
   let intervals = plan(), continuityCheck: string | undefined, reordered = false;
   if (options.continuity === "visual-v1" && adaptive) {
     const appearances: Array<StockAppearancePair | undefined> = [];
@@ -1764,7 +1764,8 @@ async function processStockReel(
       }
       appearances.push(pair);
     }
-    const order = stockVisualOrder(appearances);
+    const readableOpening = options.sequenceExperiment === "focus-four-v1" ? stockReadableOpening(infos) : 0;
+    const order = stockVisualOrder(appearances, readableOpening);
     const complete = appearances.every(Boolean);
     reordered = order.some((index, position) => index !== position);
     shots = order.map(index => shots[index]); infos = order.map(index => infos[index]);
@@ -1773,8 +1774,9 @@ async function processStockReel(
     // may nudge final endpoints slightly, while retaining those chosen moments.
     intervals = reorderStockIntervals(intervals, order);
     continuityCheck = complete
-      ? `Selected opening retained; companions ordered by sampled boundary light/colour similarity (source order ${order.map(index => index + 1).join(", ")}); this does not recognize subjects or verify one location`
-      : "Visual continuity samples incomplete; catalogue order retained without guessing";
+      ? `${readableOpening ? "Native portrait opening chosen from decoded dimensions; selected reference retained" : "Selected opening retained"}; companions ordered by sampled boundary light/colour similarity (source order ${order.map(index => index + 1).join(", ")}); this does not recognize subjects or verify one location`
+      : readableOpening ? "Native portrait opening chosen from decoded dimensions; selected reference retained. Incomplete colour samples preserve the remaining catalogue order."
+        : "Visual continuity samples incomplete; catalogue order retained without guessing";
   }
   const duration = intervals[intervals.length - 1].outputEnd;
   const plannedSamples = stock.visualMusic ? stockPostingSamples(intervals) : [];
@@ -1909,6 +1911,7 @@ async function processStockReel(
   const files = await readReviewFiles(), existing = findMatchingReview(files, job, part, format.name, new Set());
   const item = buildReviewItem(job, part, format, cues, existing, subtitleDecision);
   if (stock.managerGuidance) item.quality.managerGuidance = stock.managerGuidance;
+  if (options.sequenceExperiment) item.quality.sequenceExperiment = options.sequenceExperiment;
   const signature = clipSignature(job, part, format.name, cues), reuse = reusableReview(existing, signature);
   const retainedPosting = reuse ? { copy: existing?.quality.postCopy, hashtags: existing?.quality.hashtags } : undefined;
   const credits = shots.map((shot, index) => `Shot ${index + 1}: ${shot.creator} / ${shot.provider} — ${shot.sourcePage}`);
@@ -1930,7 +1933,12 @@ async function processStockReel(
     `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${adaptive ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
     useMusic ? recording ? `CC0 recording: ${recording.credit.title} — ${recording.credit.artist}; ${recording.credit.sourcePage}; one continuous bed across every shot. Recorded instrumental, not AI music or a verified trending track; ${stock.musicRecording?.timing === "onset-v1" ? "start chosen from offline-measured recording attacks, without tempo changes" : "tempo/beat phase were not measured"}` : `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
     ...(useMusic && options.musicVersion === 2 && !recording ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
-    ...(options.openingExperiment ? ["Watch-time opening experiment v1: the opening targets 1.2 rather than 1.6 seconds when genuine picture and the minimum allow it; the chosen subject, measured window and native/bounded playback stay intact. This tests an observational signal, not a proven cause of low watch time"] : []),
+    ...(options.openingExperiment ? [options.sequenceExperiment === "focus-four-v1"
+      ? "Watch-time reference-cut test: the original reference cut targets 1.2 rather than 1.6 seconds when genuine picture allows it. A promoted portrait opening keeps its own measured window and duration; no first-cut duration or growth result is guaranteed."
+      : "Watch-time opening experiment v1: the opening targets 1.2 rather than 1.6 seconds when genuine picture and the minimum allow it; the chosen subject, measured window and native/bounded playback stay intact. This tests an observational signal, not a proven cause of low watch time"] : []),
+    ...(options.sequenceExperiment ? [options.sequenceExperiment === "focus-four-v1"
+      ? "Attention experiment: four related source shots at native playback, with no twelve-second filling. A different structure to measure, not a proven engagement improvement."
+      : "Attention experiment comparison: the saved automatic montage cadence is retained. Results will be compared only with measured, mature posts carrying a saved experiment choice."] : []),
     subtitleDecision.reason,
     `Stock plan identity ${planIdentity}`,
     ...(stock.visualMusic?.detail ? [stock.visualMusic.detail] : []),

@@ -1,7 +1,7 @@
 import type { NaturalStock } from "./naturalStock";
 import { AUTOMATIC_STOCK_PROVIDERS, stockMediaIdentity } from "./stockProviders";
 import { footageMetadataMismatch } from "./footageSemantics";
-import { planStockIntervals, stockPortraitScore, type StockReelOptions } from "./stockReel";
+import { planStockIntervals, stockPortraitScore, STOCK_SEQUENCE_EXPERIMENTS, type StockReelOptions } from "./stockReel";
 
 export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
@@ -313,7 +313,9 @@ type CatalogAccess = {
 };
 
 /** Resolve IDs again before download; a search result never supplies trusted trims or media. */
-export async function automaticStockSources(anchor: NaturalStock, query: string, providers: NaturalStock["provider"][], catalog: CatalogAccess, recentlyUsed: ReadonlySet<string> = new Set(), unavailable: ReadonlySet<string> = new Set()) {
+export async function automaticStockSources(anchor: NaturalStock, query: string, providers: NaturalStock["provider"][], catalog: CatalogAccess, recentlyUsed: ReadonlySet<string> = new Set(), unavailable: ReadonlySet<string> = new Set(), sequenceExperiment?: StockReelOptions["sequenceExperiment"]) {
+  if (sequenceExperiment !== undefined && !STOCK_SEQUENCE_EXPERIMENTS.includes(sequenceExperiment)) throw new Error("Unknown automatic sequence experiment.");
+  const maximumSources = sequenceExperiment === "focus-four-v1" ? 4 : AUTOMATIC_STOCK_REEL_MAX_SOURCES;
   // Reject an unrelated selected ID before asking either catalog for companions.
   automaticStockCompanions(anchor, [], query, recentlyUsed, unavailable);
   const companionQuery = automaticStockCompanionQuery(anchor, query);
@@ -323,7 +325,7 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
   const preferredPhase = anchorPhase || candidates.map(candidate => explicitDayPhase(catalogDescription(candidate))).find(Boolean);
   const sources = [anchor];
   for (const candidate of candidates.slice(0, MAX_COMPANION_RESOLUTIONS)) {
-    if (sources.length >= AUTOMATIC_STOCK_REEL_MAX_SOURCES) break;
+    if (sources.length >= maximumSources) break;
     try {
       const authoritative = await catalog.resolve(candidate.provider, candidate.id);
       if (authoritative.provider !== candidate.provider || authoritative.id !== candidate.id) continue;
@@ -344,7 +346,7 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
     } catch { /* Skip missing, animated or changed catalog entries; never add unrelated filler. */ }
   }
   if (sources.length < AUTOMATIC_STOCK_REEL_MIN_SOURCES) throw new Error("Not enough related footage at native 720p was found in the starting video's context for a coherent reel. Clips at their four-use/18-month limit are excluded. Try another starting video; Phoenix will not add unrelated filler, upscale, slow or repeat footage.");
-  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence, undefined, undefined, sequenceExperiment);
   return sources;
 }
 

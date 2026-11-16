@@ -42,6 +42,35 @@ const automaticPayload = { automatic: true, provider: 'pexels', id: 1, query: 'S
 const request = payload => new Request('http://localhost/api/stock-reels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 const baselineGuidance = { revision: 'stock-v1-123456abcdef', feedbackCount: 0, rules: ['Fixed automatic stock policy.'], historyLimit: 10 };
 
+test('fresh attention guidance assigns saved focus/control recipes without changing manual or existing work', async () => {
+  const guidance = { ...baselineGuidance, attentionExperiment: 'focus-four-v1' };
+  for (const [tail, profile, count] of [['2', 'focus-four-v1', 4], ['1', 'montage-control-v1', 8]]) {
+    const h = harness({ guidance }), payload = { ...automaticPayload, requestId: automaticPayload.requestId.slice(0, -1) + tail };
+    assert.equal((await h.api.POST(request(payload))).status, 201);
+    assert.equal(h.queued[0].input.options.sequenceExperiment, profile);
+    assert.equal(h.queued[0].downloads.length, count);
+    assert.equal(h.queued[0].input.options.minDuration, undefined);
+  }
+  const saved = harness({ guidance, existing: { id: 'saved', stockSource: { shots: [{}, {}] } } });
+  assert.equal((await saved.api.POST(request(automaticPayload))).status, 200);
+  assert.equal(saved.calls.some(call => call[0] === 'guidance'), false);
+  const manual = harness({ guidance });
+  assert.equal((await manual.api.POST(request({ requestId: automaticPayload.requestId, theme: 'Sun City', duration: 60,
+    shots: [{ provider: 'pexels', id: 1, start: 1, end: 8, trimMode: 'manual' }, { provider: 'pixabay', id: 2, start: 1, end: 8, trimMode: 'manual' }] }))).status, 201);
+  assert.equal(manual.queued[0].input.options.sequenceExperiment, undefined);
+});
+
+test('attention experiments preserve the larger source pool required by greenery validation', async () => {
+  const title = 'Lush green forest trees', h = harness({ guidance: { ...baselineGuidance, attentionExperiment: 'focus-four-v1' },
+    resolve: async (provider, id) => video(id, title, { provider }),
+    search: async provider => Array.from({ length: 8 }, (_, index) => video(index + 2, title, { provider })) });
+  const result = await h.api.POST(request({ ...automaticPayload, query: 'forest', requestId: automaticPayload.requestId.slice(0, -1) + '2' }));
+  assert.equal(result.status, 201);
+  assert.equal(h.queued[0].input.options.sequenceExperiment, undefined);
+  assert.equal(h.queued[0].input.options.sceneFocus, 'greenery');
+  assert.ok(h.queued[0].downloads.length >= 8);
+});
+
 test('new automatic soundtrack uses compact adaptive timing without changing manual/legacy defaults', () => {
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_DURATION, 40);
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);

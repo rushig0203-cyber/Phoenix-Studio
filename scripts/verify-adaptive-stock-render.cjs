@@ -96,6 +96,36 @@ async function main() {
   assert.deepEqual(retried.reviewIds, done.reviewIds);
   assert.deepEqual(retried.stockSource.musicRecording,done.stockSource.musicRecording,'Retry must keep the exact measured recording start');
   assert.deepEqual(fs.readFileSync(output), before, 'Retry reuses verified output and stable sampled movement');
+  const portrait = path.join(temp, 'focused-native-portrait.mp4');
+  await tool(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', ...resources.FFMPEG_FILTER_RESOURCE_ARGS,
+    '-f', 'lavfi', '-i', 'color=c=orange:s=720x1280:r=24', '-t', '4', '-an', '-c:v', 'libx264', '-preset', 'veryfast',
+    ...resources.FFMPEG_ENCODER_RESOURCE_ARGS, '-pix_fmt', 'yuv420p', portrait]);
+  const focusedDownloads = downloads.slice(0, 4).map((shot, index) => index === 1
+    ? { ...shot, end: 4, open: async () => ({ stream: Readable.toWeb(fs.createReadStream(portrait)), expectedBytes: fs.statSync(portrait).size }) }
+    : shot);
+  const focus = await source.createStockReelJob(focusedDownloads, { requestId: crypto.randomUUID(), caption: '', theme: 'isolated focused mechanics', maxDuration: 40,
+    options: { ...automatic.automaticStockReelOptions('animals'), background: 'soft-v1', openingExperiment: 'watch-time-v1', sequenceExperiment: 'focus-four-v1' } });
+  await source.processNextSourceJob();
+  const focused = await source.getSourceJob(focus.id);
+  assert.equal(focused.status, 'COMPLETED', focused.error);
+  const focusedFile = await reviews.getReviewFile(focused.reviewIds[0]), focusedOutput = reviews.outputPath(focusedFile.id, 'instagram');
+  const focusedMedia = JSON.parse(await tool(ffprobe, ['-v', 'error', '-count_frames', '-show_entries', 'stream=codec_type,duration,nb_read_frames,width,height', '-of', 'json', focusedOutput]));
+  const focusedPicture = focusedMedia.streams.find(stream => stream.codec_type === 'video');
+  assert.ok(Number(focusedPicture.duration) > 0 && Number(focusedPicture.duration) < 12, 'Focused cut ends naturally without filling twelve seconds');
+  assert.equal(Number(focusedPicture.nb_read_frames), Math.round(Number(focusedPicture.duration) * 24));
+  assert.equal(focusedFile.quality.sequenceExperiment, 'focus-four-v1');
+  assert.equal(focusedFile.quality.musicEdit.shotDurations.length, 4);
+  assert.ok(focusedFile.quality.checks.some(check => check.includes('Native portrait opening chosen from decoded dimensions')));
+  assert.equal(focused.stockSource.shots[0].sourcePage, downloads[0].sourcePage, 'Selected reference provenance survives opening promotion');
+  const focusedBytes = fs.readFileSync(focusedOutput);
+  await source.updateJob(focus.id, { status: 'FAILED', error: 'Synthetic focused interruption' });
+  await source.retrySourceJob(focus.id); await source.processNextSourceJob();
+  const focusedRetry = await source.getSourceJob(focus.id);
+  assert.equal(focusedRetry.status, 'COMPLETED', focusedRetry.error);
+  assert.equal(focusedRetry.stockSource.options.sequenceExperiment, 'focus-four-v1');
+  assert.deepEqual(fs.readFileSync(focusedOutput), focusedBytes, 'Focused retry keeps its saved output and experiment');
+  console.log(JSON.stringify({ focusedMechanicsOnly: true, duration: Number(focusedPicture.duration), frames: Number(focusedPicture.nb_read_frames),
+    sources: 4, nativePortraitOpening: true, noTwelveSecondFilling: true, savedExperimentAndRetry: true, providerCalls: 0 }));
   console.log(JSON.stringify({ syntheticMechanicsOnly: true, duration: Number(picture.duration), frames: Number(picture.nb_read_frames), audioMastering: file.quality.audioMastering, musicRecording:file.quality.musicRecording,musicEdit:file.quality.musicEdit, speedAndAudioVerified: true, retryIdempotent: true, providerCalls: 0 }));
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => {

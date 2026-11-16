@@ -60,7 +60,8 @@ function checkedVideo(value: unknown): InstagramPerformanceVideo | undefined {
   return { id: value.id, caption: text(value.caption, 600), timestamp: date(value.timestamp)!, mediaProductType: product(value.mediaProductType), metrics,
     ...(link ? { permalink: link } : {}), ...(updated ? { metricsUpdatedAt: updated } : {}),
     ...(metricIssues.length ? { metricIssues: metricNames.filter(metric => metricIssues.includes(issue(metric))).map(issue) } : {}),
-    ...(reviewId ? { reviewId, ...(text(value.topic, 200) ? { topic: text(value.topic, 200) } : {}), ...(text(value.creationType, 40) ? { creationType: text(value.creationType, 40) } : {}), ...(count(value.durationSeconds) !== null ? { durationSeconds: count(value.durationSeconds)! } : {}) } : {}) };
+    ...(reviewId ? { reviewId, ...(text(value.topic, 200) ? { topic: text(value.topic, 200) } : {}), ...(text(value.creationType, 40) ? { creationType: text(value.creationType, 40) } : {}), ...(count(value.durationSeconds) !== null ? { durationSeconds: count(value.durationSeconds)! } : {}),
+      ...(["focus-four-v1", "montage-control-v1"].includes(value.sequenceExperiment as string) ? { sequenceExperiment: value.sequenceExperiment as InstagramPerformanceVideo["sequenceExperiment"] } : {}) } : {}) };
 }
 async function readStore(): Promise<Store | undefined> {
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
@@ -313,7 +314,7 @@ export async function syncInstagramPerformance(force = false): Promise<Instagram
     state.detail = detailFor(state.status); state.nextSyncAt = new Date(Date.now() + failure.delay).toISOString();
   }
   for (const video of state.videos) {
-    delete video.reviewId; delete video.topic; delete video.creationType; delete video.durationSeconds;
+    delete video.reviewId; delete video.topic; delete video.creationType; delete video.durationSeconds; delete video.sequenceExperiment;
     const matched = matches.get(video.id);
     if (matched) Object.assign(video, matched);
   }

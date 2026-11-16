@@ -34,6 +34,11 @@ async function queueAutomaticStockReel(input: { provider: AutomaticStockProvider
   const unavailable = await readStockReuseBlocked();
   const { query, provider } = input, anchor = await resolveNaturalStock(provider, input.id);
   if (anchor.provider !== provider || anchor.id !== input.id) throw new Error("This starting video is no longer available.");
+  // Greenery validation can omit sources; keep its established larger pool.
+  const sequenceExperiment = managerGuidance.attentionExperiment === "focus-four-v1" && !automaticStockGreeneryFocus(anchor)
+    ? Number.parseInt(input.requestId.slice(-1), 16) % 2 === 0 ? "focus-four-v1" as const : "montage-control-v1" as const
+    : undefined;
+  const sourceTarget = sequenceExperiment === "focus-four-v1" ? 4 : AUTOMATIC_STOCK_REEL_MAX_SOURCES;
   const configured = configuredStock();
   const providers = AUTOMATIC_STOCK_PROVIDERS.filter(name => configured[name]);
   const recentlyUsed = recentStockMediaIdentities(await readSourceJobs(), managerGuidance.historyLimit);
@@ -45,19 +50,20 @@ async function queueAutomaticStockReel(input: { provider: AutomaticStockProvider
           const aspect = video.width / video.height, target = 720 / 1280;
           return Math.min(aspect / target, target / aspect) >= .92;
         }).length;
-        return related.length >= AUTOMATIC_STOCK_REEL_MAX_SOURCES - 1 && fullFrame >= 7;
+        return related.length >= sourceTarget - 1 && fullFrame >= Math.min(7, sourceTarget - 1);
       }),
     resolve: resolveNaturalStock,
-  }, recentlyUsed, unavailable);
+  }, recentlyUsed, unavailable, sequenceExperiment);
   const downloads: StockReelDownload[] = sources.map(video => {
     const url = trustedStockUrl(video.previewUrl, video.provider);
     return { provider: video.provider, mediaId: String(video.id), sourcePage: video.sourcePage, creator: video.creator, title: video.title, licence: video.licence, start: 0, end: video.duration, trimMode: "auto", open: () => openStockVideo(url) };
   });
   const options = automaticStockReelOptions(query);
+  if (sequenceExperiment) options.sequenceExperiment = sequenceExperiment;
   if (managerGuidance.openingExperiment) options.openingExperiment = managerGuidance.openingExperiment;
   options.background = "soft-v1";
   if (automaticStockGreeneryFocus(anchor)) options.sceneFocus = "greenery";
-  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence, undefined, options.openingExperiment);
+  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence, undefined, options.openingExperiment, options.sequenceExperiment);
   return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration, options,
     managerGuidance: { revision: managerGuidance.revision, feedbackCount: managerGuidance.feedbackCount, rules: managerGuidance.rules } });
 }

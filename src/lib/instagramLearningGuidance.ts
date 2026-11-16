@@ -3,7 +3,7 @@ import { readInstagramPerformance } from "./instagramPerformance";
 import { instagramPerformanceSummary } from "./instagramPerformanceLearning";
 import type { InstagramPerformanceState } from "./instagramPerformanceTypes";
 
-type LearningGuidance = { revision: string; rules: string[]; maxDuration?: number; openingExperiment?: "watch-time-v1" };
+type LearningGuidance = { revision: string; rules: string[]; maxDuration?: number; openingExperiment?: "watch-time-v1"; attentionExperiment?: "focus-four-v1" };
 const EMPTY: LearningGuidance = { revision: "", rules: [] };
 const types = ["source", "general", "business", "children-story", "children-song"];
 
@@ -23,8 +23,9 @@ export function instagramLearningGuidanceFromState(state: InstagramPerformanceSt
   const maxDuration = creationType === "source" && Number.isInteger(summary.durationExperimentSeconds)
     && summary.durationExperimentSeconds! >= 15 && summary.durationExperimentSeconds! <= 40 ? summary.durationExperimentSeconds : undefined;
   const openingExperiment = creationType === "source" && rules.some(rule => rule.startsWith("In ")) ? "watch-time-v1" as const : undefined;
-  const revision = createHash("sha256").update(JSON.stringify([2, state.account?.id, state.account?.connectionRevision, creationType, rules, maxDuration, openingExperiment])).digest("hex").slice(0, 12);
-  return { revision, rules, ...(maxDuration !== undefined ? { maxDuration } : {}), ...(openingExperiment ? { openingExperiment } : {}) };
+  const attentionExperiment = openingExperiment && summary.attentionExperiment === "focus-four-v1" ? "focus-four-v1" as const : undefined;
+  const revision = createHash("sha256").update(JSON.stringify([3, state.account?.id, state.account?.connectionRevision, creationType, rules, maxDuration, openingExperiment, attentionExperiment])).digest("hex").slice(0, 12);
+  return { revision, rules, ...(maxDuration !== undefined ? { maxDuration } : {}), ...(openingExperiment ? { openingExperiment } : {}), ...(attentionExperiment ? { attentionExperiment } : {}) };
 }
 
 /** Reads the current-account cache only; optional statistics never block content creation. */

@@ -25,6 +25,7 @@ export type StockProductionGuidance = {
   performanceMaxDuration?: number;
   automaticCaptionFeedbackCount?: number;
   openingExperiment?: "watch-time-v1";
+  attentionExperiment?: "focus-four-v1";
 };
 
 /** Fixed production rules, never commands/prompts extracted from free-text notes. */
@@ -93,7 +94,7 @@ export async function getStockProductionGuidance(filename?: string): Promise<Sto
   base = withCaptionRevisionGuidance(base, await readCaptionRevisionFeedback(), "source");
   if (base.automaticCaptionFeedbackCount) base = { ...base, shorterPostingCaption: true };
   const learning = await getInstagramLearningGuidance("source"), merged = mergeInstagramLearningGuidance(base, learning);
-  return merged !== base ? { ...merged, ...(learning.maxDuration !== undefined ? { performanceMaxDuration: learning.maxDuration } : {}), ...(learning.openingExperiment ? { openingExperiment: learning.openingExperiment } : {}) } : merged;
+  return merged !== base ? { ...merged, ...(learning.maxDuration !== undefined ? { performanceMaxDuration: learning.maxDuration } : {}), ...(learning.openingExperiment ? { openingExperiment: learning.openingExperiment } : {}), ...(learning.attentionExperiment ? { attentionExperiment: learning.attentionExperiment } : {}) } : merged;
 }
 
 /** Recognize a fixed saved preference, never forward arbitrary rules or notes. */

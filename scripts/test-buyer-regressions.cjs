@@ -139,7 +139,7 @@ test('stock Create needs no manual description and leaves posting copy for video
   topic.props.onChange({ target: { value: 'forest' } }); render();
   nodes(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
   await flush();
-  const button = nodes(tree, node => node.props?.['aria-label'] === `Make reel starting with: ${video.title}`)[0];
+  const button = nodes(tree, node => node.props?.['aria-label'] === `Make reel with: ${video.title}`)[0];
   assert.ok(button); assert.equal(button.props.disabled, false);
   button.props.onClick();
   await flush();

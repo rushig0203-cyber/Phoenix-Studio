@@ -24,6 +24,8 @@ export type InstagramPerformanceVideo = {
   topic?: string;
   creationType?: string;
   durationSeconds?: number;
+  /** Recorded only for a matched, unchanged published experiment recipe. */
+  sequenceExperiment?: "focus-four-v1" | "montage-control-v1";
 };
 
 export type InstagramPerformanceState = {
@@ -59,7 +61,23 @@ export type InstagramPerformanceSummary = {
   rules: string[];
   topicPreferences: Array<{ topic: string; evidenceCount: number; reviewIds: string[] }>;
   durationExperimentSeconds?: number;
+  attentionDiagnostic?: InstagramAttentionDiagnostic;
+  attentionCohorts?: InstagramAttentionCohort[];
+  attentionExperiment?: "focus-four-v1";
 };
+
+export type InstagramAttentionDiagnostic = {
+  measuredCount: number; belowHalfCount: number;
+  medianWatchSeconds: number; medianRuntimeSeconds: number; medianWatchRatio: number;
+};
+
+export type InstagramAttentionCohort = {
+  recipe: "focus-four-v1" | "montage-control-v1";
+  ageBand: string; exposureMeasure: "reach" | "views"; videoCount: number; comparable: boolean;
+  attention?: InstagramAttentionDiagnostic;
+  rates: { comments: InstagramObservedRate; saves: InstagramObservedRate; shares: InstagramObservedRate };
+};
+type InstagramObservedRate = { measuredCount: number; medianPer100: number | null };
 
 export type InstagramPerformanceResponse = InstagramPerformanceState & {
   summary: InstagramPerformanceSummary;

@@ -86,13 +86,16 @@ test('a malformed provider row cannot echo a credential in saved caption or perm
 test('only exact same-account published media matches supply Phoenix topic and duration attribution', async () => {
   publications.instagramPublishedReviews = async id => {
     assert.equal(id, account.accountId);
-    return new Map([['180000000000001', { reviewId: '12345678-1234-1234-1234-123456789abc', topic: 'Mountain sunrise', creationType: 'source', durationSeconds: 23 }],
+    return new Map([['180000000000001', { reviewId: '12345678-1234-1234-1234-123456789abc', topic: 'Mountain sunrise', creationType: 'source', durationSeconds: 23, sequenceExperiment: 'focus-four-v1' }],
       ['180000000000999', { reviewId: '12345678-1234-1234-1234-123456789aaa', topic: 'Unrelated', creationType: 'business' }]]);
   };
   const result = await collector.syncInstagramPerformance(); assert.equal(result.videos[0].topic, 'Mountain sunrise'); assert.equal(result.videos[0].durationSeconds, 23);
   assert.equal(result.videos[0].reviewId, '12345678-1234-1234-1234-123456789abc');
+  assert.equal(result.videos[0].sequenceExperiment, 'focus-four-v1');
+  assert.equal((await collector.readInstagramPerformance()).videos[0].sequenceExperiment, 'focus-four-v1');
   publications.instagramPublishedReviews = async () => new Map();
   const refreshed = await collector.syncInstagramPerformance(true); assert.equal(refreshed.videos[0].reviewId, undefined);
+  assert.equal(refreshed.videos[0].sequenceExperiment, undefined);
 });
 test('all paginated videos including manually posted videos eventually sync across bounded four-video turns', async () => {
   fetcher = url => {

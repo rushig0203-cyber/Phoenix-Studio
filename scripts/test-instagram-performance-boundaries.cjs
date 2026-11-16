@@ -91,6 +91,17 @@ test('failed uploads, Stories and deleted reviews cannot become content evidence
   }
   fixture({ trashedAt: '2026-10-13T12:00:00Z' }); assert.equal((await matcher.instagramPublishedReviews(accountId)).size, 0);
 });
+
+test('only known experiment choices on exact original published outputs enter the experiment cohorts', async () => {
+  for (const sequenceExperiment of ['focus-four-v1', 'montage-control-v1']) {
+    fixture({ quality: { sequenceExperiment } });
+    assert.equal((await matcher.instagramPublishedReviews(accountId)).get('180000000000123').sequenceExperiment, sequenceExperiment);
+  }
+  for (const extra of [{ quality: { sequenceExperiment: 'invented-winner' } }, { quality: { sequenceExperiment: 'focus-four-v1' }, editedFrom: id }]) {
+    fixture(extra);
+    assert.equal((await matcher.instagramPublishedReviews(accountId)).get('180000000000123').sequenceExperiment, undefined);
+  }
+});
 test('invalid IDs, corrupt or oversized local indexes cannot trigger path traversal or unbounded attribution', async () => {
   fixture({ id: '../private' }); assert.equal((await matcher.instagramPublishedReviews(accountId)).size, 0);
   fs.writeFileSync(path.join(reviews, 'index.json'), '{invalid'); assert.equal((await matcher.instagramPublishedReviews(accountId)).size, 0);

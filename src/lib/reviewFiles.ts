@@ -41,6 +41,7 @@ export type ReviewFile = {
   };
   outputs: Partial<Record<ReviewTarget, { filename: string; duration: number; width: number; height: number }>>;
   quality: {
+    sequenceExperiment?: "focus-four-v1" | "montage-control-v1";
     /** Owner-written posting text is not replaced by background frame analysis. */
     postingTextOrigin?: "automatic" | "owner";
     subtitles?: { decision: "speech" | "none" | "uncertain"; reason: string };

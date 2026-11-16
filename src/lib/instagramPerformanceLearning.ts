@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { InstagramPerformanceAssessment, InstagramPerformanceState, InstagramPerformanceSummary, InstagramPerformanceVideo } from "./instagramPerformanceTypes";
+import type { InstagramAttentionCohort, InstagramPerformanceAssessment, InstagramPerformanceState, InstagramPerformanceSummary, InstagramPerformanceVideo } from "./instagramPerformanceTypes";
 
 const DAY = 86_400_000;
 const FRESHNESS = 2 * DAY;
@@ -17,6 +17,37 @@ const rounded = (value: number) => Math.round(value * 100) / 100;
 const ageBucket = (days: number) => days < 3 ? "1–3 days" : days < 7 ? "3–7 days" : days < 30 ? "7–30 days" : "30+ days";
 
 type Candidate = { video: InstagramPerformanceVideo; row: InstagramPerformanceAssessment; exposure: number; actions: number; group: string; actionNames: string; ageDays: number };
+
+function attentionDiagnostic(candidates: Candidate[]) {
+  const watched = candidates.filter(({ video }) => measuredTime(video.metrics.averageWatchTimeMs) && typeof video.durationSeconds === "number" && Number.isFinite(video.durationSeconds) && video.durationSeconds >= 5);
+  if (!watched.length) return undefined;
+  return { measuredCount: watched.length,
+    belowHalfCount: watched.filter(({ video }) => video.metrics.averageWatchTimeMs! / 1000 < video.durationSeconds! / 2).length,
+    medianWatchSeconds: rounded(median(watched.map(({ video }) => video.metrics.averageWatchTimeMs! / 1000))),
+    medianRuntimeSeconds: rounded(median(watched.map(({ video }) => video.durationSeconds!))),
+    medianWatchRatio: rounded(median(watched.map(({ video }) => video.metrics.averageWatchTimeMs! / 1000 / video.durationSeconds!))),
+  };
+}
+
+function attentionCohorts(candidates: Candidate[]): InstagramAttentionCohort[] {
+  const groups = new Map<string, Candidate[]>();
+  for (const candidate of candidates) {
+    const recipe = candidate.video.sequenceExperiment;
+    if (candidate.video.creationType !== "source" || !["focus-four-v1", "montage-control-v1"].includes(recipe || "")) continue;
+    const key = `${ageBucket(candidate.ageDays)}/${candidate.group.split("/")[1]}/${recipe}`;
+    groups.set(key, [...(groups.get(key) || []), candidate]);
+  }
+  const cohorts = [...groups.values()].map(rows => {
+    const rate = (name: "comments" | "saves" | "shares") => {
+      const measured = rows.filter(({ video }) => count(video.metrics[name]));
+      return { measuredCount: measured.length, medianPer100: measured.length ? rounded(median(measured.map(row => row.video.metrics[name]! / row.exposure * 100))) : null };
+    };
+    return { recipe: rows[0].video.sequenceExperiment!, ageBand: ageBucket(rows[0].ageDays), exposureMeasure: rows[0].group.split("/")[1] as "reach" | "views", videoCount: rows.length, comparable: false,
+      attention: attentionDiagnostic(rows), rates: { comments: rate("comments"), saves: rate("saves"), shares: rate("shares") } };
+  });
+  return cohorts.map(cohort => ({ ...cohort, comparable: cohort.videoCount >= 3 && cohorts.some(other => other.recipe !== cohort.recipe && other.ageBand === cohort.ageBand && other.exposureMeasure === cohort.exposureMeasure && other.videoCount >= 3) }))
+    .sort((a, b) => a.ageBand.localeCompare(b.ageBand) || a.exposureMeasure.localeCompare(b.exposureMeasure) || a.recipe.localeCompare(b.recipe)).slice(0, 16);
+}
 
 /** Observational comparisons only. Missing insights never mean zero or prove why a video performed differently. */
 export function instagramPerformanceSummary(state: InstagramPerformanceState, now = Date.now()): InstagramPerformanceSummary {
@@ -86,6 +117,10 @@ export function instagramPerformanceSummary(state: InstagramPerformanceState, no
   }
   const eligible = candidates.filter(candidate => candidate.row.peerCount >= MIN_PEERS);
   const known = eligible.filter(candidate => !!candidate.video.reviewId && !!candidate.video.creationType);
+  const knownReels = known.filter(candidate => candidate.video.mediaProductType === "REELS");
+  const attention = attentionDiagnostic(knownReels), cohorts = attentionCohorts(knownReels);
+  const sourceAttention = attentionDiagnostic(knownReels.filter(candidate => candidate.video.creationType === "source"));
+  const attentionExperiment = sourceAttention && sourceAttention.measuredCount >= 3 && sourceAttention.belowHalfCount / sourceAttention.measuredCount >= .75 ? "focus-four-v1" as const : undefined;
   const stronger = known.filter(candidate => candidate.row.label === "stronger");
   const topics = new Map<string, { topic: string; reviewIds: Set<string>; total: number }>();
   for (const candidate of known) {
@@ -105,7 +140,7 @@ export function instagramPerformanceSummary(state: InstagramPerformanceState, no
   if (eligible.length >= 4) {
     rules.push(`Treat ${eligible.length} age/exposure-comparable Instagram videos as observational evidence, not proof of what caused their results. Keep the owner's topic, accuracy and quality review ahead of performance preferences.`);
     if (topicPreferences.length) rules.push("For an unspecified next topic, test another angle from the separately supplied, quoted local topic evidence. Keep at least one in three ideas outside those preferences; a repeated subject is not a proven formula.");
-    const watched = known.filter(candidate => measuredTime(candidate.video.metrics.averageWatchTimeMs) && typeof candidate.video.durationSeconds === "number" && Number.isFinite(candidate.video.durationSeconds) && candidate.video.durationSeconds >= 5);
+    const watched = knownReels.filter(candidate => measuredTime(candidate.video.metrics.averageWatchTimeMs) && typeof candidate.video.durationSeconds === "number" && Number.isFinite(candidate.video.durationSeconds) && candidate.video.durationSeconds >= 5);
     const lowWatch = watched.filter(candidate => candidate.video.metrics.averageWatchTimeMs! / 1000 < candidate.video.durationSeconds! / 2);
     if (watched.length >= 3 && lowWatch.length / watched.length >= .75) rules.push(`In ${lowWatch.length} of ${watched.length} locally matched videos, reported average watch time was below half the runtime. Test a clearer first visual and fewer nonessential beats; this is not a measured drop-off curve or proof of the reason viewers left.`);
     const winnersWithDuration = stronger.filter(candidate => typeof candidate.video.durationSeconds === "number" && Number.isFinite(candidate.video.durationSeconds) && candidate.video.durationSeconds >= 5);
@@ -120,6 +155,7 @@ export function instagramPerformanceSummary(state: InstagramPerformanceState, no
       }
     }
   }
-  const revision = createHash("sha256").update(JSON.stringify([1, state.account?.id || "", state.account?.connectionRevision || "", rules, topicPreferences])).digest("hex").slice(0, 12);
-  return { revision, evaluatedAt: new Date(now).toISOString(), eligibleCount: eligible.length, assessments, rules, topicPreferences, ...(durationExperimentSeconds !== undefined ? { durationExperimentSeconds } : {}) };
+  const revision = createHash("sha256").update(JSON.stringify([2, state.account?.id || "", state.account?.connectionRevision || "", rules, topicPreferences, attention, cohorts, attentionExperiment])).digest("hex").slice(0, 12);
+  return { revision, evaluatedAt: new Date(now).toISOString(), eligibleCount: eligible.length, assessments, rules, topicPreferences, attentionCohorts: cohorts,
+    ...(attention ? { attentionDiagnostic: attention } : {}), ...(attentionExperiment ? { attentionExperiment } : {}), ...(durationExperimentSeconds !== undefined ? { durationExperimentSeconds } : {}) };
 }

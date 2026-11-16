@@ -70,6 +70,11 @@ jobs:
         env:
           PHOENIX_NEWS_PROOF_DIR: ${{ runner.temp }}/phoenix-news-quality-${{ github.run_id }}-${{ github.run_attempt }}
         run: python -B scripts/verify-news-illustrations.py
+      - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
+        run: |
+          node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
+          node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Run release regressions one file at a time
         # UI fixture compilation needs more heap than the application data tests.
         run: >-
@@ -122,6 +127,7 @@ jobs:
           scripts/test-facebook-performance.cjs
           scripts/test-instagram-performance.cjs
           scripts/test-instagram-performance-learning.cjs
+          scripts/test-instagram-attention.cjs
           scripts/test-instagram-performance-ui.cjs
           scripts/test-channel-insights-ui.cjs
           scripts/test-instagram-performance-boundaries.cjs
@@ -184,6 +190,8 @@ jobs:
           scripts/test-startup.cjs
           scripts/test-desktop-session.cjs
           scripts/test-automatic-stock-reel.cjs
+          scripts/test-stock-sequence-experiment.cjs
+          scripts/test-stock-readable-opening.cjs
           scripts/test-automatic-stock-pool.cjs
           scripts/test-stock-catalog-paging.cjs
           scripts/test-natural-stock-relevance.cjs
@@ -260,11 +268,6 @@ jobs:
           src/app/admin/users/page.tsx src/app/dashboard/project/[id]/editor/page.tsx src/app/dashboard/review/[id]/page.tsx
           src/lib/session.ts src/lib/workerReadiness.ts src/lib/studioHealth.ts
           src/components/NewsIdeas.tsx src/lib/rumbleWindow.ts
-      - name: Verify real FFmpeg adaptive editing in an isolated synthetic fixture
-        run: |
-          node --max-old-space-size=192 scripts/verify-stock-music-mastering.cjs
-          if ($LASTEXITCODE -ne 0) { throw 'Actual music mastering verification failed' }
-          node --max-old-space-size=192 scripts/verify-adaptive-stock-render.cjs
       - name: Compile with existing RAM guard and full TypeScript checks
         run: npm run build
       - name: Verify a real synthetic 49-minute episode survives interruption

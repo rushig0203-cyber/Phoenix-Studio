@@ -25,9 +25,9 @@ async function reviewIndex(): Promise<ReviewFile[]> {
 
 /** Match an exact accepted media ID, account and output, not a similar caption. */
 export async function instagramPublishedReviews(accountId: string): Promise<Map<string, {
-  reviewId: string; topic: string; creationType: string; durationSeconds?: number;
+  reviewId: string; topic: string; creationType: string; durationSeconds?: number; sequenceExperiment?: "focus-four-v1" | "montage-control-v1";
 }>> {
-  const matched = new Map<string, { reviewId: string; topic: string; creationType: string; durationSeconds?: number }>();
+  const matched = new Map<string, { reviewId: string; topic: string; creationType: string; durationSeconds?: number; sequenceExperiment?: "focus-four-v1" | "montage-control-v1" }>();
   if (!/^\d{1,40}$/.test(accountId)) return matched;
   const root = process.env.PHOENIX_PUBLISH_STORAGE || path.join(process.cwd(), "storage", "private", "review-publications");
   for (const file of await reviewIndex()) {
@@ -50,7 +50,8 @@ export async function instagramPublishedReviews(accountId: string): Promise<Map<
       if (!current.isFile() || current.isSymbolicLink() || !(["size", "mtimeMs", "ctimeMs", "ino", "dev"] as const)
         .every(key => typeof record.fingerprint[key] === "number" && record.fingerprint[key] === current[key])) continue;
       matched.set(record.remoteId, { reviewId: file.id, topic: file.title.slice(0, 300),
-        creationType: file.delivery?.creationType || "source", durationSeconds: file.outputs[record.renderTarget as "instagram" | "youtube"]?.duration });
+        creationType: file.delivery?.creationType || "source", durationSeconds: file.outputs[record.renderTarget as "instagram" | "youtube"]?.duration,
+        ...(!file.editedFrom && ["focus-four-v1", "montage-control-v1"].includes(file.quality?.sequenceExperiment || "") ? { sequenceExperiment: file.quality.sequenceExperiment } : {}) });
     } catch {
       // Optional attribution cannot break insights or treat a corrupt journal as evidence.
     } finally { await handle?.close(); }

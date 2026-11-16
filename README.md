@@ -174,9 +174,16 @@ permission is granted. Collection runs in small background batches; fresh,
 age/exposure-comparable measured videos can guide experiments while older history
 is still scanning. Incomplete history is labelled, missing metrics remain unknown,
 and disconnected/stale data cannot teach new work. No manual rating is required.
-For source reels, a sufficiently supported low-watch-time signal can enable a
-saved shorter-opening experiment; footage capacity and the meaningful-picture
-floor still take priority. Existing recipes are never changed by new statistics.
+For source reels, a fresh low-watch-time signal can enable a saved attention
+experiment. Eligible new requests test four related native-speed shots against
+the existing montage; the four-shot version ends naturally without twelve-second
+filling and can open with a native portrait shot verified from decoded dimensions.
+The selected reference stays in the reel. Greenery validation retains its larger
+source pool. UUID assignment stays fixed on retries; manual and saved recipes
+remain unchanged. Insights shows the measured watch diagnosis and collects
+separate outcomes only for exact published outputs carrying an experiment marker.
+Comparisons require mature posts in the same age/exposure band; historical
+unlabelled posts are not controls, and no view or engagement improvement is assumed.
 Neither mechanism retrains a model, edits app code by
 itself, proves causation or guarantees views, monetization or income.
 

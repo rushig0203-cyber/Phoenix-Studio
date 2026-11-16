@@ -145,7 +145,7 @@ function harness(options = {}) {
     changeTopic(value) { input().props.onChange({ target: { value: String(value) } }); render(); },
     click(label) { button(label).props.onClick(); render(); },
     async enter() { find(node => node.type === 'form', 'Topic form').props.onSubmit({ preventDefault() {} }); render(); await flush(); },
-    candidates() { return nodes(renderer.tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Make reel starting with: ')); },
+    candidates() { return nodes(renderer.tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Make reel with: ')); },
     choose(id) { const key = (id % 2 ? 'pexels' : 'pixabay') + ':' + id; find(node => node.type === 'button' && node.key === key, 'Candidate ' + id).props.onClick(); render(); },
     async advance(milliseconds) {
       const target = time + milliseconds;
@@ -180,7 +180,7 @@ test('opening is idle; typing waits 600ms and only a meaningful topic starts one
 
 test('automatic footage explains adaptive timing without new controls or padded playback', async () => {
   const gate = deferred(), h = harness({ post: () => gate.promise });
-  assert.match(text(h.tree), /tighter cuts and a natural length/);
+  assert.match(text(h.tree), /a suitable opening and a natural length/);
   assert.match(text(h.tree), /not a fixed timer/);
   assert.doesNotMatch(text(h.tree), /40–45|for 40 seconds/);
   assert.doesNotMatch(text(h.tree), /two or three related clips/);
