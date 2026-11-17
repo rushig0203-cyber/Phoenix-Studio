@@ -464,6 +464,25 @@ test("disconnect during an expired YouTube final Post cannot renew the removed c
   assert.equal((await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube").publishReady, false);
 }));
 
+test("a delayed YouTube Post refresh cannot erase an overlapping failed connection check or queue its video", async () => withExpiredYouTubeAccess(async () => {
+  const { id } = await fixture("youtube", 100); let enteredRefresh, releaseRefresh, refreshes = 0;
+  const entered = new Promise(resolve => { enteredRefresh = resolve; }), pending = new Promise(resolve => { releaseRefresh = resolve; });
+  global.fetch = async target => {
+    assert.equal(String(target), "https://oauth2.googleapis.com/token"); refreshes++;
+    if (refreshes === 1) { enteredRefresh(); return pending; }
+    assert.equal(refreshes, 2); return Response.json({ error: "invalid_grant" }, { status: 400 });
+  };
+  const posted = route.POST(request(id, settings()), context(id)); await entered;
+  await assert.rejects(channels.verifyChannel("youtube"), /invalid, expired, or revoked/);
+  const rejected = (await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube");
+  assert.equal(rejected.publishReady, false); assert.ok(rejected.error);
+  releaseRefresh(Response.json({ access_token: "fixture-late-success", expires_in: 3600 }));
+  assert.equal((await posted).status, 403); assert.equal(scheduled.length, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  const retained = (await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube");
+  assert.equal(retained.publishReady, false); assert.equal(retained.error, rejected.error); assert.equal(retained.connected, false);
+  assert.equal((await route.POST(request(id, settings()), context(id))).status, 403); assert.equal(refreshes, 2);
+}));
+
 const requiredStockCredit = 'Fixture footage by Fixture Creator — https://dareful.com/mountain/ — CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ — edited and cropped.';
 async function creditedFixture(target = 'instagram') {
   const value = await fixture(target, 100);

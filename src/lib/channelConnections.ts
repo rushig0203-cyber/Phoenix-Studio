@@ -646,6 +646,7 @@ export async function getChannelPublishAccess(platform: ChannelPlatform, expecte
         const current = latest.accounts?.[platform], currentConfig = credentials(latest, platform);
         if (!current || revision(current) !== revision(original) || current.id !== original.id || currentConfig.clientId !== config.clientId || currentConfig.clientSecret !== config.clientSecret) throw new Error("The connection changed while renewing access. Review the upload destination again.");
         if (current.accessToken !== original.accessToken) return current;
+        if (current.error) throw new Error("This connection failed another check while renewing access. Check or reconnect before uploading.");
         latest.accounts![platform] = renewed;
         await writeVault(latest);
         return renewed;
