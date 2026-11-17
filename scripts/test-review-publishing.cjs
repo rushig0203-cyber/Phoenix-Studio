@@ -398,6 +398,72 @@ test("create is durable, reviewed caption is immutable, provenance stays in file
   const publicJson = JSON.stringify(first.job); assert.ok(!publicJson.includes(temporary)); assert.ok(!publicJson.includes("fixture-secret-token")); assert.ok(!publicJson.includes("accessToken"));
 });
 
+async function withExpiredYouTubeAccess(run) {
+  const previous = process.env.PHOENIX_CHANNEL_STORAGE;
+  const mocked = Object.fromEntries(Object.keys(originalChannelExports).map(key => [key, channels[key]]));
+  const directory = path.join(temporary, `expired-youtube-${crypto.randomUUID()}`), filename = path.join(directory, "channels.enc");
+  process.env.PHOENIX_CHANNEL_STORAGE = directory; fs.mkdirSync(directory);
+  const key = crypto.randomBytes(32), iv = crypto.randomBytes(12), cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const timestamp = new Date().toISOString();
+  const vault = { credentials: { youtube: { clientId: "fixture-client", clientSecret: "fixture-client-secret" } }, accounts: { youtube: {
+    id: "fixture-owning-channel", name: "Fixture channel", profileUrl: "https://www.youtube.com/channel/fixture-owning-channel",
+    loginType: "youtube", connectionRevision: "fixture-revision", accessToken: "fixture-expired-access", refreshToken: "fixture-refresh-token",
+    expiresAt: Date.now() - 1000, connectedAt: timestamp, verifiedAt: timestamp,
+    grantedScopes: ["https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/youtube.upload"],
+  } } };
+  const data = Buffer.concat([cipher.update(JSON.stringify(vault), "utf8"), cipher.final()]);
+  fs.writeFileSync(filename + ".key", key); fs.writeFileSync(filename, JSON.stringify({ kind: "aes-256-gcm", iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), data: data.toString("base64") }));
+  Object.assign(channels, originalChannelExports);
+  try { return await run(); }
+  finally { Object.assign(channels, mocked); if (previous === undefined) delete process.env.PHOENIX_CHANNEL_STORAGE; else process.env.PHOENIX_CHANNEL_STORAGE = previous; }
+}
+
+test("expired YouTube final Post renews once under duplicate protection and queues only the reviewed request", async () => withExpiredYouTubeAccess(async () => {
+  const { id } = await fixture("youtube", 100);
+  const status = (await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube");
+  assert.equal(status.publishReady, true); assert.equal(status.connected, false); assert.match(status.publishReason, /renewed when you click Post/);
+  assert.equal((await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish`), context(id))).status, 200);
+  let enteredRefresh, releaseRefresh, refreshes = 0;
+  const entered = new Promise(resolve => { enteredRefresh = resolve; }), pending = new Promise(resolve => { releaseRefresh = resolve; });
+  global.fetch = async (target, options) => {
+    refreshes++; assert.equal(String(target), "https://oauth2.googleapis.com/token");
+    const body = new URLSearchParams(options.body); assert.equal(body.get("grant_type"), "refresh_token"); assert.equal(body.get("refresh_token"), "fixture-refresh-token");
+    assert.equal(body.has("scope"), false, "A final Post never expands the Google grant"); enteredRefresh(); return pending;
+  };
+  const first = route.POST(request(id, settings()), context(id)); await entered;
+  const duplicate = route.POST(request(id, settings("youtube", { caption: "Unapproved replacement" })), context(id));
+  releaseRefresh(Response.json({ access_token: "fixture-renewed-access", expires_in: 3600 }));
+  const results = await Promise.all([first, duplicate]); assert.deepEqual(results.map(result => result.status), [202, 200]);
+  const accepted = await results[0].json(), repeated = await results[1].json();
+  assert.equal(accepted.job.id, repeated.job.id); assert.equal(refreshes, 1); assert.equal(scheduled.length, 1);
+  assert.equal(readStored(id).caption, "Fixture caption"); assert.equal(readStored(id).privacy, "private");
+  assert.equal((await route.POST(request(id, settings()), context(id))).status, 200); assert.equal(refreshes, 1);
+  assert.equal((await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube").connected, true);
+  await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish`), context(id)); assert.equal(refreshes, 1);
+}));
+
+test("revoked YouTube renewal blocks later final Posts without recontacting Google or creating upload jobs", async () => {
+  for (const reason of ["invalid_grant", "invalid_client"]) await withExpiredYouTubeAccess(async () => {
+    const { id } = await fixture("youtube", 100); let refreshes = 0;
+    global.fetch = async target => { refreshes++; assert.equal(String(target), "https://oauth2.googleapis.com/token"); return Response.json({ error: reason }, { status: 400 }); };
+    assert.equal((await route.POST(request(id, settings()), context(id))).status, 403);
+    const status = (await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube");
+    assert.equal(status.publishReady, false); assert.ok(status.error);
+    assert.equal((await route.POST(request(id, settings()), context(id))).status, 403);
+    assert.equal(refreshes, 1); assert.equal(scheduled.length, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  });
+});
+
+test("disconnect during an expired YouTube final Post cannot renew the removed connection or queue its video", async () => withExpiredYouTubeAccess(async () => {
+  const { id } = await fixture("youtube", 100); let enteredRefresh, releaseRefresh;
+  const entered = new Promise(resolve => { enteredRefresh = resolve; }), pending = new Promise(resolve => { releaseRefresh = resolve; });
+  global.fetch = async target => { assert.equal(String(target), "https://oauth2.googleapis.com/token"); enteredRefresh(); return pending; };
+  const posted = route.POST(request(id, settings()), context(id)); await entered; await channels.disconnectChannel("youtube");
+  releaseRefresh(Response.json({ access_token: "fixture-cancelled-access", expires_in: 3600 }));
+  assert.equal((await posted).status, 403); assert.equal(scheduled.length, 0); assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+  assert.equal((await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube").publishReady, false);
+}));
+
 const requiredStockCredit = 'Fixture footage by Fixture Creator — https://dareful.com/mountain/ — CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ — edited and cropped.';
 async function creditedFixture(target = 'instagram') {
   const value = await fixture(target, 100);

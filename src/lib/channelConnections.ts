@@ -66,7 +66,10 @@ function publishCapability(platform: ChannelPlatform, account?: Account, allowRe
     if (account.loginType !== "facebook" || !account.pageId) return { publishReady: false, publishReason: "Check or reconnect Instagram using a Facebook Login token for its linked professional account." };
     if (!account.permissionsVerifiedAt || !facebookPublishScopes.every(scope => account.grantedScopes?.includes(scope))) return { publishReady: false, publishReason: account.publishPermissionError || "Instagram identity verified, but publishing permission was not granted. Reconnect with instagram_basic, instagram_content_publish and pages_read_engagement." };
   }
-  if (account.expiresAt && account.expiresAt <= Date.now() && !(allowRenewal && platform === "youtube" && account.refreshToken)) return { publishReady: false, publishReason: "Connection expired. Check or reconnect before uploading." };
+  if (account.expiresAt && account.expiresAt <= Date.now()) {
+    if (allowRenewal && platform === "youtube" && account.refreshToken) return { publishReady: true, publishReason: "YouTube access will be renewed when you click Post. The saved upload permission and destination will be checked again." };
+    return { publishReady: false, publishReason: "Connection expired. Check or reconnect before uploading." };
+  }
   return { publishReady: true, publishReason: "Upload permission verified. Each video still requires your final confirmation." };
 }
 export const channelPlatforms: ChannelPlatform[] = ["youtube", "instagram", "facebook"];
@@ -175,16 +178,17 @@ export function assertLocalChannelRequest(request: Request, mutation = false) {
 function status(vault: Vault, platform: ChannelPlatform, origin: string): ChannelStatus {
   const config = credentials(vault, platform), account = vault.accounts?.[platform];
   const expired = account?.expiresAt && account.expiresAt <= Date.now();
+  const capability = publishCapability(platform, account, platform === "youtube" && Boolean(config.clientId && config.clientSecret));
   return {
     platform, configured: Boolean(config.clientId && config.clientSecret), clientId: config.clientId,
     hasClientSecret: Boolean(config.clientSecret), connected: Boolean(account && !account.error && !expired),
     state: !account ? "not_connected" : account.error || expired ? "needs_attention" : "connected",
     name: account?.name, profileUrl: account?.profileUrl, verifiedAt: account?.verifiedAt,
-    error: account?.error || (expired ? "Connection expired. Reconnect this channel." : undefined),
+    error: account?.error || (expired && !capability.publishReady ? "Connection expired. Reconnect this channel." : undefined),
     redirectUri: `${origin}/api/channels/${platform}/callback`,
     oauthAvailable: platform === "youtube" || platform === "instagram" && origin.startsWith("https://"),
     accountId: account?.id, connectionRevision: account ? revision(account) : undefined, pageId: account?.pageId,
-    loginType: account?.loginType, instagramAccountId: account?.instagramAccountId, ...publishCapability(platform, account),
+    loginType: account?.loginType, instagramAccountId: account?.instagramAccountId, ...capability,
   };
 }
 export async function listChannels(origin: string): Promise<ChannelStatus[]> {
@@ -625,7 +629,18 @@ export async function getChannelPublishAccess(platform: ChannelPlatform, expecte
   if (!capability.publishReady) throw new Error(capability.publishReason);
   let account = original;
   if (platform === "youtube") {
-    const config = credentials(vault, platform), renewed = await renewedYouTubeAccount(original, config);
+    const config = credentials(vault, platform);
+    let renewed: Account;
+    try { renewed = await renewedYouTubeAccount(original, config); }
+    catch (error) {
+      if (error instanceof ProviderRequestError && ["authorization", "configuration"].includes(error.kind)) await withVault(async latest => {
+        const current = latest.accounts?.youtube, currentConfig = credentials(latest, "youtube");
+        if (!current || revision(current) !== revision(original) || current.accessToken !== original.accessToken
+            || currentConfig.clientId !== config.clientId || currentConfig.clientSecret !== config.clientSecret) return;
+        latest.accounts!.youtube = { ...current, error: channelError(error) }; await writeVault(latest);
+      });
+      throw error;
+    }
     if (renewed !== original) {
       account = await withVault(async (latest) => {
         const current = latest.accounts?.[platform], currentConfig = credentials(latest, platform);

@@ -690,6 +690,38 @@ test("approved YouTube access is server-only, revision bound, and cancelled by d
   await assert.rejects(channels.assertChannelPublishAccessCurrent(access), /changed or disconnected/);
 });
 
+test("expired YouTube status permits only proven refresh-capable uploads without renewing or changing the vault", async () => {
+  const crypto = require("node:crypto"), filename = path.join(temporary, "private/channels.enc"), keyFile = filename + ".key";
+  const oldVault = fs.existsSync(filename) ? fs.readFileSync(filename) : null, oldKey = fs.existsSync(keyFile) ? fs.readFileSync(keyFile) : null;
+  const key = crypto.randomBytes(32), timestamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(keyFile, key);
+  const baseline = { accessToken: "fixture-expired-access", refreshToken: "fixture-refresh", expiresAt: Date.now() - 1000,
+    id: "fixture-owning-channel", name: "Fixture upload destination", profileUrl: "https://www.youtube.com/channel/fixture-owning-channel",
+    connectedAt: timestamp, verifiedAt: timestamp, loginType: "youtube", connectionRevision: "fixture-revision", grantedScopes: [readonlyScope, uploadScope] };
+  global.fetch = async () => assert.fail("Status reads cannot renew tokens or contact a provider");
+  try {
+    for (const [account, configured, ready] of [[baseline, true, true], [{ ...baseline, refreshToken: undefined }, true, false],
+      [{ ...baseline, grantedScopes: [readonlyScope] }, true, false], [{ ...baseline, error: "Fixture revoked grant" }, true, false],
+      [baseline, false, false], [null, true, false]]) {
+      const iv = crypto.randomBytes(12), cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+      const vault = { accounts: account ? { youtube: account } : {}, credentials: configured ? { youtube: { clientId: "fixture-client", clientSecret: "fixture-secret" } } : {} };
+      const data = Buffer.concat([cipher.update(JSON.stringify(vault), "utf8"), cipher.final()]);
+      fs.writeFileSync(filename, JSON.stringify({ kind: "aes-256-gcm", iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), data: data.toString("base64") }));
+      const before = fs.readFileSync(filename);
+      const result = await require("../src/app/api/channels/route.ts").GET(new Request("http://localhost:3000/api/channels"));
+      assert.equal(result.status, 200);
+      const status = (await result.json()).channels.find(item => item.platform === "youtube");
+      assert.equal(status.connected, false); assert.equal(status.publishReady, ready);
+      assert.deepEqual(fs.readFileSync(filename), before);
+      if (ready) { assert.match(status.publishReason, /renewed when you click Post/); assert.equal(status.error, undefined); }
+      assert.ok(!JSON.stringify(status).includes("fixture-expired-access")); assert.ok(!JSON.stringify(status).includes("fixture-refresh"));
+    }
+  } finally {
+    if (oldVault) fs.writeFileSync(filename, oldVault); else fs.rmSync(filename, { force: true });
+    if (oldKey) fs.writeFileSync(keyFile, oldKey); else fs.rmSync(keyFile, { force: true });
+  }
+});
+
 test("YouTube upload renewal retains proven scopes but respects a provider's explicit narrower grant", async () => {
   for (const narrowed of [false, true]) {
     const status = await connectFixtureYouTube(`${readonlyScope} ${uploadScope}`, 1);

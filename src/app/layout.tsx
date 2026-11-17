@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Phoenix Studio — Free local video production",
-  description: "Plan, produce, review, and export videos locally for manual posting.",
+  description: "Create, edit and review videos locally, then explicitly publish to connected channels.",
 };
 
 export default function RootLayout({

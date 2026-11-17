@@ -364,6 +364,19 @@ test('final review reports a pending caption without substituting the title and 
   h.submit(); await h.flush(); assert.equal(submitted.caption, 'Owner caption #SavedTag'); assert.equal(submitted.confirm, true);
 });
 
+test('final YouTube Post stays reachable for proven renewable access and explains renewal without doing it on mount', async t => {
+  const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'youtube' } }),
+    channels: [channel('youtube', { connected: false, state: 'needs_attention',
+      publishReason: 'YouTube access will be renewed when you click Post. The saved upload permission and destination will be checked again.' })],
+    post: () => response({ job: job({ status: 'QUEUED', percent: 0 }) }),
+  }); t.after(() => h.unmount()); await h.flush();
+  assert.match(h.text, /renewed when you click Post/); assert.doesNotMatch(h.text, /Reconnect this channel|Upload permission verified/);
+  assert.equal(h.button('Post to YouTube').props.disabled, false); assert.equal(h.posts.length, 0);
+  assert.ok(h.requests.every(request => request.method === 'GET'));
+  h.submit(); await h.flush(); assert.equal(h.posts.length, 1);
+  assert.equal(JSON.parse(h.posts[0].body).confirm, true); assert.equal(JSON.parse(h.posts[0].body).connectionRevision, 'revision-youtube');
+});
+
 test('mount is inert and opening or checking a platform only reads accounts and saved jobs', async t => {
   const h = uiHarness(); t.after(() => h.unmount());
   await h.flush();
