@@ -5,7 +5,22 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 require('ts-node').register({ project: path.resolve(__dirname, '../tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node', jsx: 'react-jsx' } });
 const JobProgress = require('../src/components/JobProgress').default;
+const StudioActivity = require('../src/components/StudioActivity').default;
 const render = props => renderToStaticMarkup(React.createElement(JobProgress, { label: 'Fixture job progress', ...props }));
+
+test('shared activity is accessible inside actions and never invents measured progress', () => {
+  for (const percent of [undefined, NaN, Infinity]) {
+    const html = renderToStaticMarkup(React.createElement('button', { disabled: true }, React.createElement(StudioActivity, { label: 'Checking YouTube…', percent })));
+    assert.match(html, /role="status"/); assert.match(html, /aria-busy="true"/);
+    assert.match(html, /aria-label="Checking YouTube…"/); assert.match(html, /Progress not measured/);
+    assert.doesNotMatch(html, /<div|value="|\d+%/);
+  }
+  for (const [percent, expected] of [[0, 0], [37.8, 37], [120, 100], [-5, 0]]) {
+    const html = renderToStaticMarkup(React.createElement(StudioActivity, { label: 'Uploading', percent }));
+    assert.match(html, new RegExp('value="' + expected + '"'));
+    assert.match(html, new RegExp(expected + '%'));
+  }
+});
 test('visible progress represents actual queue values and clamps invalid bounds without exposing details', () => {
   for (const [progress, expected] of [[42.8, 42], [-10, 0], [150, 100], [0, 0]]) {
     const html = render({ progress }); assert.match(html, new RegExp(`value="${expected}"`)); assert.ok(html.includes(`${expected}%`));

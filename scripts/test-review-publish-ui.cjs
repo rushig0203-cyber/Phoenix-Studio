@@ -20,6 +20,7 @@ function compiled(relative) {
   }).outputText };
 }
 const componentSource = compiled('src/components/ReviewPublishActions.tsx');
+const activitySource = compiled('src/components/StudioActivity.tsx');
 const postingSource = compiled('src/lib/posting.ts');
 const postingPolicySource = compiled('src/lib/postingCopyPolicy.ts');
 const providersSource = compiled('src/lib/stockProviders.ts');
@@ -67,7 +68,7 @@ const recommendationResult = (extra = {}) => ({
 });
 
 function uiHarness(options = {}) {
-  let active, nextInterval = 0;
+  let active, nextInterval = 0, selectedPlatform;
   const requests = [], intervals = new Map(), cleared = [], deadlines = [], copied = [], downloads = [];
   const document = { hidden: false, createElement(tag) {
     assert.equal(tag, 'a', 'The handoff creates only a local download link');
@@ -174,6 +175,7 @@ function uiHarness(options = {}) {
   dependencies['@/lib/instagramLocationSuggestions'] = load(locationSuggestionsSource);
   dependencies['@/lib/instagramAudio'] = load(instagramAudioSource);
   dependencies['@/lib/instagramTags'] = load(instagramTagsSource);
+  dependencies['./StudioActivity'] = load(activitySource);
   const Component = load(componentSource).default;
   const renderer = { index: 0, slots: [], effects: [], pending: [], dirty: true, mounted: true, tree: undefined };
   const root = renderer, children = new Map();
@@ -225,6 +227,7 @@ function uiHarness(options = {}) {
     }
   }
   render();
+  const selectedScope = () => selectedPlatform && nodes(renderer.tree).find(node => node.type === 'section' && node.props['aria-label'] === `${selectedPlatform} upload confirmation`) || renderer.tree;
   const h = {
     get file() { return file; }, endpoint, requests, intervals, cleared, deadlines, copied, downloads, document, render,
     updateFile(next) { file = next; renderer.dirty = true; render(); },
@@ -237,14 +240,14 @@ function uiHarness(options = {}) {
       for (const instance of children.values()) cleanup(instance);
     },
     panel(name) { return nodes(renderer.tree).find(node => node.type === 'section' && node.props['aria-label'] === `${name} upload confirmation`); },
-    button(label, scope = renderer.tree) { const matches = nodes(scope).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0]; },
-    control(label, type, scope = renderer.tree) {
+    button(label, scope) { const matches = nodes(scope || selectedScope()).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0] || (!scope && nodes(renderer.tree).find(node => node.type === 'button' && text(node) === label)); },
+    control(label, type, scope = selectedScope()) {
       const parent = nodes(scope).find(node => node.type === 'label' && text(node).startsWith(label));
       return parent && nodes(parent).find(node => node.type === type);
     },
     confirmation() { return h.control('I have reviewed this video', 'input'); },
-    form(scope = renderer.tree) { return nodes(scope).find(node => node.type === 'form'); },
-    click(label, scope = renderer.tree) {
+    form(scope = selectedScope()) { return nodes(scope).find(node => node.type === 'form'); },
+    click(label, scope) {
       const target = h.button(label, scope);
       assert.ok(target, `Expected button: ${label}`);
       assert.equal(Boolean(target.props.disabled), false, `User can click ${label}`);
@@ -256,6 +259,7 @@ function uiHarness(options = {}) {
       const target = nodes(chooser).find(node => node.type === 'button' && text(node) === label);
       assert.ok(target, `Expected platform: ${label}`); assert.equal(Boolean(target.props.disabled), false);
       target.props.onClick();
+      selectedPlatform = /YouTube/.test(label) ? 'YouTube' : /Facebook/.test(label) ? 'Facebook Page' : /Instagram|Story/.test(label) ? 'Instagram' : undefined;
     },
     change(control, value) {
       assert.ok(control, 'Expected a visible form control');
@@ -275,6 +279,72 @@ function uiHarness(options = {}) {
   };
   return h;
 }
+
+test('Instagram, Facebook and YouTube remain independent rows with retained drafts and saved upload progress', async t => {
+  const instagramJob = job({ id: 'saved-instagram', platform: 'instagram', status: 'FAILED', percent: 0, canRevise: true,
+    caption: 'Saved Instagram caption #One', detail: 'Instagram request stopped before transfer.' });
+  const youtubeJob = job({ id: 'saved-youtube', platform: 'youtube', status: 'UPLOADING', percent: 37, detail: 'Uploading saved YouTube video.' });
+  const h = uiHarness({ channels: [channel('instagram'), channel('facebook'), channel('youtube')], jobs: [instagramJob, youtubeJob],
+    post: () => response({ job: job({ id: 'saved-facebook', platform: 'facebook', status: 'QUEUED', percent: 0 }) }),
+  }); t.after(() => h.unmount());
+  h.choose('Post to Instagram'); await h.flush();
+  h.change(h.control('Corrected caption and hashtags', 'textarea'), 'Owner Instagram caption #Keep'); h.render();
+  h.choose('Post to Facebook Page'); await h.flush();
+  h.change(h.control('Caption and hashtags', 'textarea'), 'Owner Facebook caption #Two'); h.render();
+  h.choose('Upload to YouTube'); await h.flush();
+  const area = nodes(h.tree).find(node => node.props['data-posting-destinations']);
+  assert.equal(nodes(area).filter(node => node.props['data-posting-destination']).length, 3);
+  assert.ok(h.panel('Instagram')); assert.ok(h.panel('Facebook Page')); assert.ok(h.panel('YouTube'));
+  assert.equal(h.control('Corrected caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Owner Instagram caption #Keep');
+  assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')).props.value, 'Owner Facebook caption #Two');
+  assert.match(text(h.panel('Instagram')), /Instagram request stopped before transfer/);
+  assert.match(text(h.panel('YouTube')), /UPLOADING.*37%/);
+  assert.equal((text(h.panel('YouTube')).match(/37%/g) || []).length, 1, 'Measured progress is shown once in the shared activity row');
+  assert.equal(nodes(h.panel('YouTube')).find(node => node.type === 'progress').props.value, 37);
+  assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 0);
+  const reads = h.requests.length; h.choose('Post to Instagram'); await h.flush(); assert.equal(h.requests.length, reads);
+  h.submit(h.form(h.panel('Facebook Page'))); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(JSON.parse(h.posts[0].body).platform, 'facebook');
+  assert.equal(JSON.parse(h.posts[0].body).caption, 'Owner Facebook caption #Two'); assert.equal(JSON.parse(h.posts[0].body).confirm, true);
+  assert.equal(h.control('Corrected caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Owner Instagram caption #Keep');
+  assert.match(text(h.panel('YouTube')), /UPLOADING.*37%/); assert.equal(h.intervals.size, 2);
+});
+
+test('posting preflight and submission use shared indeterminate activity while saved jobs show measured progress', async t => {
+  const accountRead = deferred(), accepted = deferred();
+  const h = uiHarness({ read(request) { if (request.url === '/api/channels') return accountRead.promise; }, post: () => accepted.promise });
+  t.after(() => h.unmount()); h.choose('Upload to YouTube'); await h.flush();
+  const progress = () => nodes(h.panel('YouTube')).find(node => node.type === 'progress');
+  assert.match(text(h.panel('YouTube')), /Checking account and saved video/);
+  assert.equal(progress().props.value, undefined); assert.equal(progress().props['aria-valuetext'], 'Progress not measured');
+  assert.ok(nodes(h.panel('YouTube')).some(node => node.props.role === 'status' && node.props['aria-busy'] === 'true'));
+  assert.equal(h.posts.length, 0);
+  const youtubeReads = h.requests.slice(); h.choose('Post to Instagram'); await h.flush();
+  assert.ok(h.panel('Instagram')); assert.ok(youtubeReads.every(request => !request.signal.aborted), 'Another destination cannot cancel YouTube preflight');
+  assert.equal(progress().props.value, undefined);
+  accountRead.resolve(response({ channels: [channel('youtube'), channel('instagram')] })); await h.flush();
+  assert.equal(progress(), undefined); h.submit(h.form(h.panel('YouTube'))); await h.flush();
+  assert.equal(h.posts.length, 1); assert.equal(h.button('Saving upload request…').props.disabled, true);
+  assert.equal(progress().props.value, undefined);
+  h.choose('Post to Instagram'); await h.flush();
+  assert.match(text(h.panel('YouTube')), /Saving upload request/); assert.equal(h.button('Post to Instagram', h.panel('Instagram')).props.disabled, false);
+  accepted.resolve(response({ job: job({ status: 'UPLOADING', percent: 24, detail: 'Uploading the saved video.' }) })); await h.flush();
+  assert.equal(progress().props.value, 24); assert.equal(h.posts.length, 1);
+});
+
+test('default posting rows keep final choices visible while secondary publishing explanations stay collapsed', async t => {
+  const h = uiHarness({ channels: [channel('facebook', { name: 'Verified Page' })] }); t.after(() => h.unmount());
+  h.choose('Post to Facebook Page'); await h.flush();
+  const visible = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(visible).join('')
+    : typeof node !== 'object' ? String(node) : node.props.hidden ? '' : node.type === 'details' && !node.props.open
+      ? text(nodes(node).find(child => child.type === 'summary')) : visible(node.props.children);
+  const shown = visible(h.panel('Facebook Page'));
+  assert.match(shown, /Destination: Verified Page/); assert.match(shown, /Saved caption/); assert.match(shown, /Public Reel.*saved video soundtrack/);
+  assert.match(shown, /Post approves this video, posting text and required rights/); assert.match(shown, /Post to Facebook Page/);
+  assert.doesNotMatch(shown, /3–90 seconds|No video is re-rendered|will not trim|Closing this panel/);
+  assert.match(text(nodes(h.panel('Facebook Page')).find(node => node.props['data-posting-details'])), /3–90 seconds.*24–60 fps/);
+  assert.equal(h.posts.length, 0);
+});
 
 test('final video review opens the saved destination directly and one Post approves a durable YouTube request', async t => {
   const pending = deferred();
@@ -388,7 +458,7 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   assert.equal(h.button('Post / export').props['aria-expanded'], true);
   assert.equal(nodes(h.tree).filter(node => node.type === 'a').length, 0);
   h.choose('Upload to YouTube'); h.render();
-  assert.match(h.text, /Checking saved account and previous uploads/);
+  assert.match(h.text, /Checking account and saved video/);
   await h.flush();
   assert.deepEqual(h.requests.map(request => [request.method, request.url]), [
     ['GET', '/api/channels'], ['GET', '/api/review-files/review%20video%2Fone/publish'],
@@ -424,11 +494,11 @@ test('Facebook Page review reads only verified setup and jobs, shows saved MP4 a
   const h = uiHarness({ channels: [channel('instagram'), channel('facebook', { name: 'Verified linked Page' })] }); t.after(() => h.unmount());
   h.choose('Post to Facebook Page'); await h.flush();
   assert.deepEqual(h.requests.map(request => [request.method, request.url]), [['GET', '/api/channels'], ['GET', h.endpoint]]);
-  assert.match(h.text, /Facebook Page · final posting review/); assert.match(h.text, /Destination: Verified linked Page/);
+  assert.ok(h.panel('Facebook Page')); assert.match(h.text, /Destination: Verified linked Page/);
   assert.match(h.text, /1080 × 1920 · 12 seconds/); assert.match(h.text, /Saved MP4/);
   assert.match(h.text, /3–90 seconds/); assert.match(h.text, /24–60 fps/); assert.match(h.text, /will not trim, stretch or re-render/);
   assert.equal(h.control('Caption and hashtags', 'textarea').props.value, 'Saved caption\n\n#fixture #video');
-  assert.match(h.text, /Clicking Post approves publishing this Reel publicly to Verified linked Page/);
+  assert.match(h.text, /Post approves this video, posting text and required rights/); assert.match(h.text, /Public Reel/);
   assert.equal(h.confirmation(), undefined); assert.equal(h.control('Privacy', 'select'), undefined);
   assert.equal(h.button('Post to Facebook Page').props.type, 'submit'); assert.equal(h.button('Post to Facebook Page').props.disabled, false);
   assert.equal(h.control('Place name or Facebook location Page ID', 'input'), undefined);
@@ -452,7 +522,7 @@ test('one final Facebook Page action creates one public job with reviewed captio
   assert.equal(submitted.caption, 'Owner-reviewed Facebook caption #One #Two #Three #Four #Five #Six');
   for (const key of ['companionStory', 'location', 'audio', 'automaticTags', 'userTags']) assert.equal(submitted[key], undefined);
   waiting.resolve(response({ job: job({ platform: 'facebook', accountName: 'Verified linked Page', privacy: 'public', status: 'QUEUED', percent: 0, detail: 'Saved Facebook Page request.' }) })); await h.flush();
-  assert.match(h.text, /Verified linked Page · QUEUED · 0%/); assert.match(h.text, /saved Facebook Page upload request/);
+  assert.match(h.text, /Verified linked Page · QUEUED.*0%/); assert.match(h.text, /saved Facebook Page upload request/);
   assert.equal(h.form(), undefined); assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 1);
 });
 
@@ -512,7 +582,7 @@ test('Facebook stays independent of Instagram and Rumble drafts, notices and sta
   for (const label of ['Post to Instagram', 'Post to Facebook Page', 'Rumble upload']) assert.equal(h.button(label, chooser).props['aria-pressed'], true);
 });
 
-test('Facebook opens and posts while Instagram music lookup stays pending and unaborted', async t => {
+test('Facebook and YouTube open while Instagram music lookup stays pending and Facebook can post independently', async t => {
   const waiting = deferred(); let signal;
   const h = uiHarness({ channels: [channel('instagram'), channel('facebook')],
     file: sampleFile({ source: { kind: 'pexels' }, quality: { audio: 'natural-audio-preserved', postCopy: 'Saved caption', hashtags: [], captions: [] } }),
@@ -521,6 +591,7 @@ test('Facebook opens and posts while Instagram music lookup stays pending and un
   }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); assert.equal(signal.aborted, false);
   h.choose('Post to Facebook Page'); await h.flush();
+  h.choose('Upload to YouTube'); await h.flush(); assert.ok(h.panel('Instagram')); assert.ok(h.panel('Facebook Page')); assert.ok(h.panel('YouTube'));
   assert.equal(signal.aborted, false); assert.match(text(h.panel('Instagram')), /Choosing Instagram music/);
   assert.equal(h.button('Post to Facebook Page', h.panel('Facebook Page')).props.disabled, false);
   h.submit(h.form(h.panel('Facebook Page'))); await h.flush();
@@ -877,7 +948,8 @@ test('one final YouTube Post sends reviewed title, copy, account revision, visib
   h.change(h.control('Description and hashtags', 'textarea'), 'Reviewed description\n\n#approved');
   await h.flush();
   assert.equal(h.confirmation(), undefined);
-  assert.match(h.text, /Clicking Post approves this reviewed video, title, description and required rights to upload as private to Owned YouTube channel/);
+  assert.match(h.text, /Post approves this video, posting text and required rights/);
+  assert.match(h.text, /Reviewed title.*private.*made for kids/); assert.match(h.text, /Destination: Owned YouTube channel/);
   assert.equal(h.posts.length, 0, 'Reviewing or editing alone does not upload');
   assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.submit(); await h.flush();
@@ -897,7 +969,8 @@ test('Instagram Post is the final approval and sends public privacy and automati
   assert.equal(h.control('YouTube title', 'input'), undefined);
   assert.equal(h.control('Privacy', 'select'), undefined);
   assert.equal(h.control('Caption and hashtags', 'textarea').props.maxLength, 2200);
-  assert.match(h.text, /publishing this Reel publicly to @owned_instagram/);
+  assert.match(h.text, /Destination: @owned_instagram/); assert.match(h.text, /Post approves this video, posting text and required rights/);
+  assert.match(text(nodes(h.form()).find(node => node.props['data-posting-summary'])), /Public.*Reel only/);
   assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false);
   h.change(h.control('Caption and hashtags', 'textarea'), 'Approved Reel caption #fixture'); await h.flush();
   assert.equal(h.posts.length, 0);
@@ -945,7 +1018,7 @@ test('two synchronous form submissions create one request and disable editing wh
   assert.equal(h.posts.length, 1, 'The ref guard protects before React can re-render a disabled button');
   assert.equal(h.button('Saving upload request…').props.disabled, true);
   assert.equal(h.button('Close').props.disabled, true);
-  assert.equal(h.button('Post to Instagram').props.disabled, true);
+  assert.equal(h.button('Post to Instagram').props.disabled, false, 'Another destination stays available during YouTube submission');
   assert.equal(h.control('YouTube title', 'input').props.disabled, true);
   assert.equal(h.confirmation(), undefined);
   pending.resolve(response({ job: job() })); await h.flush();
@@ -1066,17 +1139,17 @@ test('unmount aborts pending setup reads and prevents their late response from c
   assert.equal(h.intervals.size, 0);
 });
 
-test('switching panels aborts the old setup request and rejects its stale account or job response', async t => {
+test('changing Instagram mode aborts its old setup request and rejects stale account or job responses', async t => {
   const oldChannels = deferred(), oldJobs = deferred();
   const h = uiHarness({ read(request, requests) {
     if (requests.length <= 2) return request.url === '/api/channels' ? oldChannels.promise : oldJobs.promise;
   } });
   t.after(() => h.unmount());
-  h.choose('Upload to YouTube'); h.render();
+  h.choose('Post to Instagram'); h.render();
   const firstReads = h.requests.slice();
-  h.choose('Post to Instagram'); await h.flush();
+  h.choose('Post Story only'); await h.flush();
   assert.ok(firstReads.every(request => request.signal.aborted));
-  assert.match(h.text, /Instagram.*final posting review/);
+  assert.match(text(h.panel('Instagram')), /Instagram.*Story only/);
   assert.match(h.text, /Destination: @owned_instagram/);
   oldChannels.resolve(response({ channels: [channel('instagram', { name: '@stale_account' })] }));
   oldJobs.resolve(response({ jobs: [job({ platform: 'instagram', accountName: '@stale_account' })] }));
@@ -1096,8 +1169,11 @@ test('eligible matching Story defaults on and the final Post approves the visibl
   assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
   assert.equal(h.confirmation(), undefined);
   assert.equal(h.button('Post to Instagram').props.disabled, false);
-  assert.match(h.text, /publishing this Reel publicly and then its matching Story/);
+  const summary = () => nodes(h.form()).find(node => node.props['data-posting-summary']);
+  assert.match(text(summary()), /Public.*Reel \+ matching Story/);
+  assert.match(h.text, /Post approves this video, posting text and required rights/);
   h.change(h.control('Also publish one matching Story', 'input'), false); await h.flush();
+  assert.match(text(summary()), /Public.*Reel only/);
   assert.equal(h.posts.length, 0, 'Changing the Story choice never starts an upload');
   h.change(h.control('Also publish one matching Story', 'input'), true);
   await h.flush();
@@ -1177,7 +1253,7 @@ test('Story-only opening is inert and reads account, saved jobs and capability w
   assert.equal(h.requests.some(request=>/[?]check=(posting-defaults|audio|location)/.test(request.url)),false);
   for(const [label,type] of [['Caption and hashtags','textarea'],['Instagram usernames','input'],['Use Instagram music','input'],['Place name or Facebook location Page ID','input'],['Also publish one matching Story','input']]) assert.equal(h.control(label,type),undefined);
   assert.equal(h.confirmation(),undefined);assert.equal(h.button('Post Story only').props.disabled,false);
-  assert.match(h.text,/Destination: @owned_instagram/);assert.match(h.text,/rights to publish one Story publicly/);
+  assert.match(h.text,/Destination: @owned_instagram/);assert.match(h.text,/Public Story only.*saved soundtrack/);assert.match(h.text,/Post approves this reviewed video and the required rights/);
   assert.equal(h.posts.length,0);
 });
 
@@ -1605,13 +1681,13 @@ test('late Story eligibility updates visible choices but does not publish before
   assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false); assert.equal(h.posts.length, 0);
 });
 
-test('closing, switching platform or unmounting during automatic music lookup aborts and ignores late results', async t => {
-  for (const leave of ['close', 'youtube', 'unmount']) {
+test('closing, changing Instagram mode or unmounting during music lookup aborts and ignores late results', async t => {
+  for (const leave of ['close', 'story', 'unmount']) {
     const waiting = deferred();
     const h = uiHarness({ file: footageFile(), read(request) { if (request.url.includes('?check=audio-recommendations')) return waiting.promise; } });
     t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
     const search = h.requests.find(request => request.url.includes('?check=audio-recommendations')); assert.ok(search);
-    if (leave === 'close') h.click('Close'); else if (leave === 'youtube') h.choose('Upload to YouTube'); else h.unmount();
+    if (leave === 'close') h.click('Close'); else if (leave === 'story') h.choose('Post Story only'); else h.unmount();
     await h.flush(); assert.equal(search.signal.aborted, true);
     waiting.resolve(response({ audio: [audioResult({ title: 'Stale automatic track' })], recommendation: recommendationResult({ reason: 'Stale visual evidence.' }) })); await h.flush();
     assert.doesNotMatch(h.text, /Stale automatic track|Stale visual evidence/); assert.equal(h.posts.length, 0);
@@ -1763,12 +1839,12 @@ test('late posting defaults respect location edits and never reintroduce legacy 
   }
 });
 
-test('late defaults are aborted and ignored after closing, switching platform or unmounting', async t => {
-  for (const leave of ['close', 'youtube', 'unmount']) {
+test('late defaults are aborted and ignored after closing, changing Instagram mode or unmounting', async t => {
+  for (const leave of ['close', 'story', 'unmount']) {
     const waiting = deferred();
     const h = uiHarness({ read(request) { if (request.url.includes('?check=posting-defaults')) return waiting.promise; } }); t.after(() => h.unmount());
     h.choose('Post to Instagram'); await h.flush(); const request = h.requests.find(item => item.url.includes('?check=posting-defaults'));
-    if (leave === 'close') h.click('Close'); else if (leave === 'youtube') h.choose('Upload to YouTube'); else h.unmount();
+    if (leave === 'close') h.click('Close'); else if (leave === 'story') h.choose('Post Story only'); else h.unmount();
     await h.flush(); assert.equal(request.signal.aborted, true);
     waiting.resolve(response({ defaults: { userTags: ['stale.person'], location: { id: '123456', name: 'Stale location' }, locationReason: 'Stale default reason.' } })); await h.flush();
     assert.doesNotMatch(h.text, /stale.person|Stale location|Stale default reason/); assert.equal(h.posts.length, 0);
@@ -1927,16 +2003,16 @@ test('automatic Reel Post prevents synchronous duplicates and keeps all controls
   assert.equal(h.form(), undefined); assert.equal(h.posts.length, 1);
 });
 
-test('retained Reel form cannot post stale choices after checking status or switching platform', async t => {
+test('status checks reject stale Reel forms while opening another destination preserves its current approval action', async t => {
   let saved;
   const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); } }); t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush(); const oldForm = h.form();
   h.click('Check status'); await h.flush();
   h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
   const freshForm = h.form(); h.choose('Upload to YouTube'); await h.flush();
-  h.submit(freshForm); await h.flush(); assert.equal(h.posts.length, 0);
+  assert.ok(h.panel('Instagram')); assert.ok(h.panel('YouTube')); assert.equal(h.posts.length, 0);
   h.choose('Post to Instagram'); await h.flush(); h.submit(oldForm); await h.flush(); assert.equal(h.posts.length, 0);
-  h.submit(); await h.flush(); assert.equal(h.posts.length, 1); assert.equal(saved.platform, 'instagram');
+  h.submit(freshForm); await h.flush(); assert.equal(h.posts.length, 1); assert.equal(saved.platform, 'instagram');
 });
 
 test('automatic tag preview excludes the destination and reports omitted optional tags without new publication', async t => {

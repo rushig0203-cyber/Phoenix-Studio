@@ -9,6 +9,7 @@ import { reviewEpisode } from "@/lib/reviewEpisode";
 import ReviewPlayer, { reviewTarget } from "./ReviewPlayer";
 import PostingActions from "./PostingActions";
 import ReviewStorageSummary from "./ReviewStorageSummary";
+import StudioActivity from "./StudioActivity";
 import { STOCK_PROVIDER_NAMES, stockPostingCredits } from "@/lib/stockProviders";
 
 const pageSize = 6;
@@ -175,7 +176,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     {resultCount ? <p className="mt-3 text-xs text-[#687657]">Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, resultCount)} of {resultCount}{filtered ? " matching" : ""} {showFolders ? "folders" : episodeView ? "clips" : "videos"}.</p> : null}
     {notice ? <div role="status" className="mt-3 rounded-lg bg-[#edf3de] p-3 text-sm">{notice} {undoFile ? <button type="button" disabled={busy !== null} onClick={() => void move(undoFile, true)} className="ml-2 font-bold underline">Undo</button> : null}</div> : null}
     {error ? <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
-    {!resultCount ? <p className="mt-5 rounded-xl border border-dashed p-7 text-center text-sm text-[#687657]">{loading || trashLoading ? "Loading videos…" : filtered ? showFolders ? "No episode folders match this search." : "No videos match these filters. Clear filters to see videos in this view." : trashOpen ? "Trash is empty." : episodeView ? "No episode clips yet. Process an uploaded video to create a folder here." : view === "posted" ? "No confirmed Instagram, Facebook Page or YouTube posts yet. Story history is in Post / export." : posted.length ? "Open Posted to find finished videos with confirmed posts." : episodes.size ? "Open Episode clips to find finished clips from your uploads." : "No finished videos yet. Use Create to start a video."}</p> : showFolders ? <ul className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    {!resultCount ? loading || trashLoading ? <StudioActivity label="Loading videos…" /> : <p className="mt-5 text-sm text-[#687657]">{filtered ? showFolders ? "No episode folders match this search." : "No videos match these filters. Clear filters to see videos in this view." : trashOpen ? "Trash is empty." : episodeView ? "No episode clips yet. Process an uploaded video to create a folder here." : view === "posted" ? "No confirmed posts yet." : posted.length ? "Open Posted to find your posted videos." : episodes.size ? "Open Episode clips to find your clips." : "No finished videos yet."}</p> : showFolders ? <ul className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {folders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(([id, folder]) => <li key={id}>
         <button type="button" onClick={() => openFolder(id)} className="flex w-full items-center gap-3 rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-4 text-left hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-[#394a2a]">
           <FolderOpen aria-hidden="true" className="h-5 w-5 shrink-0 text-[#687657]" />

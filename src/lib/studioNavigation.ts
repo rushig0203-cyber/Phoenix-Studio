@@ -1,5 +1,11 @@
 export const STUDIO_SECTIONS = ["create", "library", "insights", "settings"] as const;
 export type StudioSection = typeof STUDIO_SECTIONS[number];
+export type CreationWorkspace = "reels" | "clips" | "video";
+export function creationWorkspace(hash: string): CreationWorkspace {
+  if (studioSection(hash) !== "create") return "reels";
+  const mode = new URLSearchParams(hash.split("?", 2)[1] || "").get("mode");
+  return mode === "clips" || mode === "video" ? mode : "reels";
+}
 export function studioSection(hash: string): StudioSection {
   const value = hash.replace(/^#/, "").split("?", 1)[0];
   if (value === "channels" || value === "writing-settings") return "settings";

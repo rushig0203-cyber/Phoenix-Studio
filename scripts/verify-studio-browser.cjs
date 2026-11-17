@@ -103,11 +103,16 @@ async function run() {
       if (!url.pathname.startsWith('/api/')) return route.continue();
       proof.apiReads.push(`${url.pathname}${url.search}`);
       if (url.pathname === '/api/review-files') return json(route, pendingTemplate ? [] : [file]);
-      if (url.pathname === '/api/source-processing') return json(route, { jobs: pendingTemplate ? [{ id: request.jobId, title: request.title, status: 'PROCESSING', progress: 37, stage: 'Preparing the next scene', createdAt: date }] : [] });
+      if (url.pathname === '/api/source-processing') return json(route, { preflight: { ready: true, summary: 'Synthetic video tools ready', dependencies: { ffmpeg: true, ffprobe: true, python: true, fasterWhisper: true }, details: {}, firstModelDownloadRequired: false, whisperModel: { message: '' } }, jobs: pendingTemplate ? [{ id: request.jobId, title: request.title, status: 'PROCESSING', progress: 37, stage: 'Preparing the next scene', createdAt: date }] : [] });
       if (['/api/generations', '/api/review-edits', '/api/creation-drafts'].includes(url.pathname)) return json(route, []);
       if (url.pathname === '/api/studio-health') return json(route, { build: directory, worker: { state: 'healthy', heartbeatAt: date }, resources: { busy: false, waitingForMemory: false, freeMiB: 4096, reason: 'Synthetic CI service status' },
         services: { writerProvider: 'groq', writer: { state: 'ready', detail: 'Fixture writer' }, renderer: { state: 'ready', detail: 'Fixture renderer' } } });
-      if (url.pathname === '/api/content-suggestions') { await suggestionsGate; return json(route, { ideas: templates, nextCursor: 6 }); }
+      if (url.pathname === '/api/content-suggestions') {
+        // Creation recommendations are a bounded local metadata read on this empty CI installation.
+        if (url.searchParams.get('workflow') === 'creation') return route.continue();
+        await suggestionsGate; return json(route, { ideas: templates, nextCursor: 6 });
+      }
+      if (url.pathname === '/api/singing/status') return json(route, { available: false, reason: 'Synthetic CI: no singing provider is contacted.' });
       if (url.pathname === '/api/channels') return json(route, { channels });
       if (url.pathname === '/api/writing-provider') return json(route, { provider: 'groq', model: 'fixture', configured: true, hasKey: false, freePlanConfirmed: true, detail: 'Synthetic CI writer settings. No provider requests are made.' });
       if (url.pathname === '/api/instagram-performance') return json(route, { status: 'ready', account: { name: '@fixture_wildlife' }, detail: 'Synthetic saved results for UI verification.', lastSuccessfulSyncAt: date, historyComplete: true, scannedVideos: 1,
@@ -135,6 +140,7 @@ async function run() {
     page = await context.newPage();
     await page.goto(`${origin}/dashboard#create`);
     await page.locator('[data-quick-templates][aria-busy="true"]').getByRole('status').waitFor();
+    verify('Recommendation loading uses shared indeterminate activity', await page.locator('[data-quick-templates] .studio-activity progress:not([value])').count() === 1);
     await capture('studio-loading');
     releaseSuggestions();
     await page.waitForFunction(() => document.querySelectorAll('[data-quick-template]').length === 6 && document.querySelector('[data-quick-templates]')?.getAttribute('aria-busy') === 'false');
@@ -145,6 +151,21 @@ async function run() {
     verify('Actual compiled CSS: open rows, warm canvas and keyboard focus', style.radius === '0px' && style.background === 'rgb(245, 243, 237)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
     await page.locator('[data-quick-template]').first().blur();
     await capture('studio-create-desktop');
+    const workflows = page.getByRole('navigation', { name: 'Creation workflows', exact: true });
+    await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
+    const highlights = page.getByRole('radio', { name: 'Best highlights', exact: true });
+    await highlights.check();
+    verify('Clipping has its own workspace with real mode suggestions and no automatic upload', await page.getByRole('heading', { level: 1, name: 'Clip your video', exact: true }).isVisible()
+      && await highlights.isChecked() && await page.getByRole('button', { name: /^Make video:/ }).count() === 0);
+    await capture('studio-clips');
+    await workflows.getByRole('link', { name: 'Create a Video', exact: true }).click();
+    await page.getByRole('button', { name: /^Use idea:/ }).first().waitFor();
+    verify('Create a Video has its own six registered suggestions', await page.getByRole('button', { name: /^Use idea:/ }).count() === 6
+      && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible());
+    await capture('studio-create-video');
+    await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
+    verify('Switching creation workspaces retains the selected clip style', await highlights.isChecked());
+    await workflows.getByRole('link', { name: 'Make a Reel', exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     const mobileNav = await page.locator('nav[aria-label="Studio sections"]').evaluate(nav => {
       const bounds = nav.getBoundingClientRect();
@@ -199,6 +220,21 @@ async function run() {
     verify('Mobile final review uses open posting surfaces', postingSurfaces.length === 2 && postingSurfaces.every(surface => surface.background === 'rgba(0, 0, 0, 0)'
       && surface.radius === '0px' && surface.borders.every(width => width === '0px') && surface.padding.every(width => width === '0px')), postingSurfaces);
     await capture('studio-final-review-mobile');
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    const instagram = dialog.getByRole('region', { name: 'Instagram upload confirmation', exact: true });
+    await instagram.locator('[data-posting-details] > summary').click();
+    await instagram.getByText('Edit caption and hashtags · optional', { exact: true }).click();
+    await instagram.getByLabel('Caption and hashtags', { exact: true }).fill('Owner-reviewed caption kept while choosing platforms.');
+    const destinations = dialog.getByRole('group', { name: 'Choose a platform', exact: true });
+    await destinations.getByRole('button', { name: 'Facebook Page', exact: true }).click();
+    await dialog.getByRole('region', { name: 'Facebook Page upload confirmation', exact: true }).waitFor();
+    await destinations.getByRole('button', { name: 'YouTube', exact: true }).click();
+    await dialog.getByRole('region', { name: 'YouTube upload confirmation', exact: true }).waitFor();
+    verify('Instagram Facebook and YouTube remain in one posting area together', await dialog.locator('[data-posting-panel]').count() === 1
+      && await dialog.locator('[data-posting-destinations] > [data-posting-destination]').count() === 3 && await instagram.isVisible());
+    verify('Opening more platforms retains the Instagram caption and ready final action', await instagram.getByLabel('Caption and hashtags', { exact: true }).inputValue() === 'Owner-reviewed caption kept while choosing platforms.'
+      && await instagram.getByRole('button', { name: 'Post to Instagram', exact: true }).isEnabled());
+    await capture('studio-parallel-posting');
     verify('No browser runtime errors', proof.pageErrors.length === 0, proof.pageErrors);
     verify('No provider, external or mutating browser requests', proof.deniedRequests.length === 0, proof.deniedRequests);
     verify('Actual built stylesheets loaded', stylesheetUrls.size > 0);

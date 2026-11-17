@@ -5,7 +5,7 @@ require('ts-node').register({transpileOnly:true,compilerOptions:{module:'commonj
 require('tsconfig-paths').register({baseUrl:path.resolve(__dirname,'..'),paths:{'@/*':['src/*']}});
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
-const Posting = require('../src/components/PostingActions').default;
+const { default: Posting, FinishedPostingActions } = require('../src/components/PostingActions');
 const { facebookReelPermalink, postingDownload, postingText } = require('../src/lib/posting');
 const base = { id:'fixture',title:'A waterfall',status:'READY',audience:'general',quality:{postCopy:'Water flowing over rocks. Credit: source creator.',hashtags:['#Waterfall','#Nature'],captions:['Water flowing.']},outputs:{youtube:{filename:'test.mp4'}} };
 function captionDisclosure(html) {
@@ -97,9 +97,25 @@ test('finished video status does not misrepresent missing failed or quota-waitin
   for(const status of ['FAILED','WAITING']){
     const file={...base,quality:{...base.quality,postCopy:'',postingAnalysis:{status,attempts:status==='FAILED'?3:0,updatedAt:'2026-10-10T07:00:00.000Z',nextAttemptAt:status==='WAITING'?'2026-10-10T12:00:00.000Z':undefined,detail:status==='WAITING'?"Groq's free quota is exhausted.":'Invalid evidence; retry explicitly.'}}};
     const html=renderToStaticMarkup(React.createElement(Posting,{file}));
-    assert.match(html,/Video finished · caption/);assert.match(html,/No analyzed caption yet/);assert.match(html,/title is not a finished posting caption/);
-    if(status==='WAITING')assert.match(html,/Next automatic check:/);
-    else assert.match(html,/caption analysis failed/);
+    assert.match(html,/No analyzed caption yet/);assert.match(html,/title is not a finished posting caption/);
+    if(status==='WAITING'){
+      assert.match(html,/Caption waiting/);assert.match(html,/role="status"/);assert.match(html,/aria-busy="true"/);
+      assert.match(captionDisclosure(html).html,/Groq&#x27;s free quota is exhausted\.|Groq&#39;s free quota is exhausted\./);
+      assert.match(captionDisclosure(html).html,/Next check:/);
+    } else assert.match(html,/caption analysis failed/);
     assert.match(html,/Post \/ export/);
+  }
+});
+
+test('finished output and pending captions use accessible activity without delaying posting controls',()=>{
+  const loading=renderToStaticMarkup(React.createElement(FinishedPostingActions,{id:'fixture'}));
+  assert.match(loading,/Opening video details/);assert.match(loading,/role="status"/);assert.match(loading,/aria-busy="true"/);
+  for(const [status,label] of [[undefined,'Caption queued'],['QUEUED','Caption queued'],['ANALYZING','Preparing caption']]){
+    const quality={...base.quality,...(status?{postingAnalysis:{status,attempts:1,updatedAt:'2026-11-17T12:00:00Z',detail:'Retained analysis details'}}:{})};
+    const html=renderToStaticMarkup(React.createElement(Posting,{file:{...base,quality}}));
+    assert.match(html,new RegExp(label));assert.match(html,/role="status"/);assert.match(html,/aria-busy="true"/);
+    assert.match(html,/Post \/ export/);assert.match(html,/Copy caption \+ hashtags/);
+    const outsideDetails=html.replace(captionDisclosure(html).html,'');
+    assert.doesNotMatch(outsideDetails,/No re-analysis click|checking frames for its own caption|Retained analysis details/);
   }
 });

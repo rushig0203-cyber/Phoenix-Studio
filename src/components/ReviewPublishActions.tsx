@@ -12,6 +12,7 @@ import { instagramAudioId, instagramAudioPreviewUrl, publicInstagramAudioDiscove
 import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/reelMusic";
 import { automaticInstagramUserTags } from "@/lib/instagramTags";
 import { openRumbleUpload } from "@/lib/rumbleWindow";
+import StudioActivity from "./StudioActivity";
 
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
 const platformButton = `${button} aria-pressed:border-[#394a2a] aria-pressed:bg-[#394a2a] aria-pressed:text-white`;
@@ -47,10 +48,13 @@ type PublishPanelRequest = { platform: ChannelPlatform; mode: "reel" | "story" }
 export default function ReviewPublishActions({ file, finalReview = false }: { file: ReviewFile; finalReview?: boolean }) {
   const [chooserOpen, setChooserOpen] = useState(finalReview);
   const postButton = useRef<HTMLButtonElement>(null);
-  const [primary, setPrimary] = useState<PublishPanelRequest | null>(null);
+  const [youtube, setYoutube] = useState<PublishPanelRequest | null>(null);
+  const [instagram, setInstagram] = useState<PublishPanelRequest | null>(null);
   const [facebook, setFacebook] = useState<PublishPanelRequest | null>(null);
-  const [primaryBusy, setPrimaryBusy] = useState(false);
+  const [youtubeBusy, setYoutubeBusy] = useState(false);
+  const [instagramBusy, setInstagramBusy] = useState(false);
   const [facebookBusy, setFacebookBusy] = useState(false);
+  const postingBusy = youtubeBusy || instagramBusy || facebookBusy;
   const [rumbleOpen, setRumbleOpen] = useState(false);
   const [rumbleNotice, setRumbleNotice] = useState("");
   const rumbleEpoch = useRef(0);
@@ -76,7 +80,8 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
       }).catch(() => preferred).then(destination => {
         if (abort.signal.aborted || destinationChosen.current) return;
         if (destination === "facebook") setFacebook({ platform: destination, mode: "reel" });
-        else setPrimary({ platform: destination, mode: "reel" });
+        else if (destination === "youtube") setYoutube({ platform: destination, mode: "reel" });
+        else setInstagram({ platform: destination, mode: "reel" });
       }).finally(() => { if (!abort.signal.aborted) setChoosingDestination(false); });
     return () => abort.abort();
   }, [file.id, finalReview]);
@@ -93,12 +98,13 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     destinationChosen.current = true;
     const update = (current: PublishPanelRequest | null) => current?.platform === platform && current.mode === mode ? current : { platform, mode };
     if (platform === "facebook") setFacebook(update);
-    else setPrimary(update);
+    else if (platform === "youtube") setYoutube(update);
+    else setInstagram(update);
   }
   function close() {
     postButton.current?.focus();
     rumbleEpoch.current++; rumblePreparing.current = false; setRumbleBusy(false);
-    setChooserOpen(false); setRumbleOpen(false); setPrimary(null); setFacebook(null);
+    setChooserOpen(false); setRumbleOpen(false); setYoutube(null); setInstagram(null); setFacebook(null);
   }
   async function copyRumbleText(value: string, label: string) {
     const version = rumbleEpoch.current, revision = videoRevision;
@@ -141,23 +147,27 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     }
   }
   return <>
-    {!finalReview && <button ref={postButton} type="button" className={button} disabled={primaryBusy || facebookBusy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => chooserOpen ? close() : setChooserOpen(true)}>Post / export</button>}
+    {!finalReview && <button ref={postButton} type="button" className={button} disabled={postingBusy} aria-expanded={chooserOpen} aria-controls={chooserId} onClick={() => chooserOpen ? close() : setChooserOpen(true)}>Post / export</button>}
     <section id={chooserId} data-posting-panel aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
       {chooserOpen && <>
-      <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">{finalReview ? "Ready to post" : "Posting & export"}</h5>{!finalReview && <button type="button" className={button} onClick={close} disabled={primaryBusy || facebookBusy}>Close</button>}</div>
+      <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post video</h5>{!finalReview && <button type="button" className={button} onClick={close} disabled={postingBusy}>Close</button>}</div>
       <div role="group" className="flex flex-wrap gap-2" aria-label="Choose a platform">
-        <button type="button" className={platformButton} disabled={primaryBusy} aria-pressed={primary?.platform === "youtube"} onClick={() => void open("youtube")}>{finalReview ? "YouTube" : "Upload to YouTube"}</button>
-        <button type="button" className={platformButton} disabled={primaryBusy} aria-pressed={primary?.platform === "instagram" && primary.mode === "reel"} onClick={() => void open("instagram")}>{finalReview ? "Instagram" : "Post to Instagram"}</button>
+        <button type="button" className={platformButton} disabled={youtubeBusy} aria-pressed={Boolean(youtube)} onClick={() => void open("youtube")}>{finalReview ? "YouTube" : "Upload to YouTube"}</button>
+        <button type="button" className={platformButton} disabled={instagramBusy} aria-pressed={instagram?.mode === "reel"} onClick={() => void open("instagram")}>{finalReview ? "Instagram" : "Post to Instagram"}</button>
         <button type="button" className={platformButton} disabled={facebookBusy} aria-pressed={Boolean(facebook)} onClick={() => void open("facebook")}>{finalReview ? "Facebook Page" : "Post to Facebook Page"}</button>
-        <button type="button" className={platformButton} disabled={primaryBusy} aria-pressed={primary?.platform === "instagram" && primary.mode === "story"} onClick={() => void open("instagram", "story")}>{finalReview ? "Story only" : "Post Story only"}</button>
+        <button type="button" className={platformButton} disabled={instagramBusy} aria-pressed={instagram?.mode === "story"} onClick={() => void open("instagram", "story")}>{finalReview ? "Story only" : "Post Story only"}</button>
         <button type="button" className={platformButton} aria-pressed={rumbleOpen} onClick={() => { destinationChosen.current = true; setRumbleOpen(true); setRumbleNotice(""); }}>{finalReview ? "Rumble · assisted" : "Rumble upload"}</button>
       </div>
-      {choosingDestination && !primary && !facebook && <p role="status" className="text-xs">Checking your saved posting destination…</p>}
-      {!choosingDestination && !primary && !facebook && !rumbleOpen && <p className="text-xs">Choose a platform to review posting choices or export the saved video. Opening this panel does not upload anything.</p>}
-      {rumbleOpen && <section aria-label="Rumble assisted upload" className="space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3 text-xs">
+      {choosingDestination && !youtube && !instagram && !facebook && <StudioActivity label="Checking destination…" />}
+      {!choosingDestination && !youtube && !instagram && !facebook && !rumbleOpen && <p className="text-xs">Choose a destination.</p>}
+      <div data-posting-destinations>
+      {instagram && <ReviewPublishPlatformPanel key="instagram" file={file} request={instagram} onBusyChange={setInstagramBusy} />}
+      {facebook && <ReviewPublishPlatformPanel key="facebook" file={file} request={facebook} onBusyChange={setFacebookBusy} />}
+      {youtube && <ReviewPublishPlatformPanel key="youtube" file={file} request={youtube} onBusyChange={setYoutubeBusy} />}
+      {rumbleOpen && <section data-posting-destination aria-label="Rumble assisted upload" className="space-y-3 border-t border-[#bdc7a5] py-3 text-xs">
         <h6 className="font-semibold">Rumble · assisted upload</h6>
-        <p>Opens your existing MP4 in File Explorer and copies the posting text. Drag the video onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
-        {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? "Opening saved video…" : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
+        <p>Drag the saved MP4 onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
+        {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? <StudioActivity label="Opening saved video…" /> : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
         {!file.quality.postCopy?.trim() && <p role="status">No analyzed posting caption is saved yet. The text below is a draft; review it before posting.</p>}
         <label className="block">Rumble title<input className={input} readOnly value={file.title.slice(0, 100)} /></label>
         <button type="button" className={button} onClick={() => void copyRumbleText(file.title.slice(0, 100), "Rumble title")}>Copy title</button>
@@ -173,8 +183,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
         </details>
         {rumbleNotice && <p role="status">{rumbleNotice}</p>}
       </section>}
-      {primary && <ReviewPublishPlatformPanel key="primary" file={file} request={primary} onBusyChange={setPrimaryBusy} />}
-      {facebook && <ReviewPublishPlatformPanel key="facebook" file={file} request={facebook} onBusyChange={setFacebookBusy} />}
+      </div>
       </>}
     </section>
   </>;
@@ -510,17 +519,16 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
     if (revisableCaption === undefined) return;
     setCaption(revisableCaption); setConfirmedRevision("");
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
-  return platform ? <section aria-label={`${name} upload confirmation`} className="space-y-3 rounded-lg border border-[#bdc7a5] bg-white p-3">
-      <h6 className="font-semibold">{name}{storyOnly ? " Story only" : ""} · final posting review</h6>
-      {loading ? <p role="status" className="text-xs">Checking saved account and previous uploads…</p> : <>
-        <p className="text-xs">Destination: {channel?.name || "No connected account"}. {publishReady ? channel?.publishReason || "Upload permission verified." : !setupChecked ? "Uploading setup could not be verified. Check status before confirming an upload." : channel?.publishReason || "Connect this account and grant uploading access in Settings."}</p>
+  return platform ? <section data-posting-destination aria-label={`${name} upload confirmation`} className="space-y-3 border-t border-[#bdc7a5] py-3">
+      <h6 className="font-semibold">{name}{storyOnly ? " · Story only" : ""}</h6>
+      {loading ? <StudioActivity label="Checking account and saved video…" /> : <>
+        <p className="text-xs">Destination: {channel?.name || "No connected account"}.{publishReady ? !channel?.connected && ` ${channel?.publishReason}` : ` ${!setupChecked ? "Uploading setup could not be verified. Check status before posting." : channel?.publishReason || "Connect this account in Settings."}`}</p>
         {!publishReady && <a className={`${button} underline`} href="/dashboard#settings">Open channel setup</a>}
-        {metadata && <p className="text-xs">{platform === "facebook" ? "Saved video" : `Using the ${output?.target} render`} · {metadata.width} × {metadata.height} · {Math.round(metadata.duration)} seconds. No video is re-rendered for uploading.</p>}
-        {platform === "facebook" && <p className="text-xs">Saved MP4{metadata?.filename ? `: ${metadata.filename}` : ""}. Facebook Page Reels use a vertical 9:16 MP4, 3–90 seconds, at least 540 × 960 and 24–60 fps. Phoenix checks the saved file before queuing; it will not trim, stretch or re-render it. The saved MP4 audio is used.</p>}
+        {metadata && <p className="text-xs">{metadata.width} × {metadata.height} · {Math.round(metadata.duration)} seconds</p>}
         {output && output.target !== (platform === "facebook" ? "instagram" : platform) && <p className="text-xs">This video only has another platform’s render. Check its framing in the preview before posting.</p>}
-        {platformJobs.map(job => <article key={job.id} className="space-y-2 rounded-lg bg-[#f7faef] p-3 text-xs">
-          <p className="font-semibold">{job.accountName} · {job.status.replaceAll("_", " ")} · {Math.round(job.percent)}%</p>
-          <p role="status">{job.detail}</p>
+        {platformJobs.map(job => <article key={job.id} className="space-y-2 py-2 text-xs">
+          <p className="font-semibold">{job.accountName} · {job.status.replaceAll("_", " ")}{!["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) && ` · ${Math.round(job.percent)}%`}</p>
+          {["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) ? <StudioActivity label={job.detail} percent={job.percent} /> : <p role="status">{job.detail}</p>}
           {job.privacy && <p>Requested visibility: {job.privacy}</p>}
           {job.actualPrivacy && <p>Platform-confirmed visibility: {job.actualPrivacy}</p>}
           {job.platform === "instagram" && job.location && <p>Approved location tag: {job.location.name}. This is a posting location, not proof of where filming happened.</p>}
@@ -533,17 +541,17 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           {storyOnly && job.canMakeStandalone ? <form className="space-y-2" onSubmit={event => { event.preventDefault(); void submit(job, false, true); }}>
             <p>This matching Story has not been sent, and its Reel failed before being accepted. Approve the same saved video as a Story only; the old request will be retained in private history.</p>
             <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={busy || !publishReady || storyCapability?.ready !== true} onChange={event => setConfirmed(event.target.checked)}/><span>I have reviewed this video, hold the required rights, and approve publishing this Story publicly to {job.accountName}, independently of the failed Reel.</span></label>
-            <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || storyCapability?.ready !== true}>{busy ? "Saving Story request…" : "Confirm Story only"}</button>
+            <button type="submit" className={button} disabled={busy || !confirmed || !publishReady || !output || storyCapability?.ready !== true}>{busy ? <StudioActivity label="Saving Story request…" /> : "Confirm Story only"}</button>
           </form> : platform === "instagram" && job.canRevise && typeof job.caption === "string" ? <form className="space-y-2" onSubmit={event => { event.preventDefault(); void submit(job, true); }}>
               <p>The previous request failed before any video transfer. Posting again keeps its saved location, audio, visibility and matching Story choice; the failed request stays in private history.</p>
               <details><summary className="cursor-pointer">Edit caption and hashtags · optional</summary><label className="block">Corrected caption and hashtags<textarea className={`${input} min-h-24`} maxLength={2200} value={caption} disabled={busy} onChange={event => { setCaptionEdited(true); setCaption(event.target.value); setConfirmed(false); }}/></label></details>
               <p className={instagramTags > INSTAGRAM_HASHTAG_LIMIT ? "text-red-800" : ""}>{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags.</p>
               <p>Automatic Reel tags · {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "No matching profiles"}. If Meta rejects optional tags, publish without them.</p>
               <p>Clicking Post approves publishing this Reel publicly{job.companionStoryApproved ? " and then its matching Story" : ""} to {job.accountName}, with the required rights.</p>
-              <button type="submit" className={button} disabled={busy || !publishReady || !output || locationBusy || audioBusy || instagramTags > INSTAGRAM_HASHTAG_LIMIT}>{busy ? "Saving upload request…" : "Post to Instagram"}</button>
+              <button type="submit" className={button} disabled={busy || !publishReady || !output || locationBusy || audioBusy || instagramTags > INSTAGRAM_HASHTAG_LIMIT}>{busy ? <StudioActivity label="Saving upload request…" /> : "Post to Instagram"}</button>
             </form> : job.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue this saved {job.kind === "story" ? "Story" : "upload"} to {job.accountName}, using its saved posting choices.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job)}>{job.kind === "story" ? job.standaloneStory ? "Continue Story only" : "Continue matching Story" : "Continue saved upload"}</button></>}
           {job.platform === "instagram" && job.companionStoryApproved && <div className="space-y-2 border-t border-[#bdc7a5] pt-2" aria-label="Matching Story status">
-            {job.companionStory ? <><p className="font-semibold">Matching Story · {job.companionStory.status.replaceAll("_", " ")} · {Math.round(job.companionStory.percent)}%</p><p role="status">{job.companionStory.detail}</p>
+            {job.companionStory ? <><p className="font-semibold">Matching Story · {job.companionStory.status.replaceAll("_", " ")}{!["QUEUED", "UPLOADING", "PROCESSING"].includes(job.companionStory.status) && ` · ${Math.round(job.companionStory.percent)}%`}</p>{["QUEUED", "UPLOADING", "PROCESSING"].includes(job.companionStory.status) ? <StudioActivity label={job.companionStory.detail} percent={job.companionStory.percent} /> : <p role="status">{job.companionStory.detail}</p>}
               {job.companionStory.remoteId && <p>Published Story ID: {job.companionStory.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
               {job.companionStory.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue only the matching Story. The completed Reel will not be published again.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job.companionStory)}>Continue matching Story</button></>}
             </> : <p>{savedStory?.standaloneStory ? "The Story now has a separate Story-only request. Check it with Post Story only; this Reel will not create another Story." : "Matching Story status is unavailable. Check the upload history; do not repost the completed Reel."}</p>}
@@ -551,19 +559,19 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
         </article>)}
         {platform === "instagram" && storyCapability?.requiresBusinessConfirmation && <details className="text-xs"><summary className="cursor-pointer">Confirm Business account for Stories</summary><p className="mt-2">Check Instagram → Settings → Business tools and controls. Creator accounts need a type switch first. This only records your confirmation; it does not change Instagram or post anything.</p><label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={businessConfirmed} disabled={busy} onChange={event => setBusinessConfirmed(event.target.checked)}/><span>I checked: {channel?.name} is a Business account.</span></label><button type="button" className={`${button} mt-2`} disabled={busy || !businessConfirmed || !publishReady} onClick={() => void enableStories()}>Enable matching Stories</button></details>}
         {existing ? <p className="text-xs">This output already has a saved {name}{storyOnly ? " Story" : ""} upload request. Check or continue that request instead of creating a duplicate.</p> : storyOnly ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
-          <p>Publish this saved video as one Story only. Its saved soundtrack will be used. No Reel, Reel caption, people tags, location tag or Instagram music configuration will be sent.</p>
-          <p>{storyCapability?.reason || "Checking Story eligibility. Stories require a confirmed Business account and a ready portrait video within Story limits."}</p>
-          <p className="text-xs">Clicking Post approves this reviewed video and the required rights to publish one Story publicly to {channel?.name || name}.</p>
-          <button type="submit" className={button} disabled={busy || !publishReady || !output || storyCapability?.ready !== true}>{busy ? "Saving Story request…" : "Post Story only"}</button>
+          <p>Public Story only · saved soundtrack</p>
+          {storyCapability?.ready !== true && (storyCapability ? <p>{storyCapability.reason}</p> : <StudioActivity label="Checking Story eligibility…" />)}
+          <p className="text-xs">Post approves this reviewed video and the required rights.</p>
+          <button type="submit" className={button} disabled={busy || !publishReady || !output || storyCapability?.ready !== true}>{busy ? <StudioActivity label="Saving Story request…" /> : "Post Story only"}</button>
         </form> : <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
           <div data-posting-summary className="space-y-1 text-xs" aria-live="polite">
             {platform === "youtube" && <p className="font-semibold">{title} · {privacy} · {madeForKids ? "made for kids" : "general audience"}</p>}
             <p className="line-clamp-3 whitespace-pre-wrap break-words">{caption || "No caption saved. Add one in Posting details if needed."}</p>
             {!file.quality.postCopy?.trim() && !captionEdited && <p role="status">No analyzed caption is saved yet. Add your own text in Posting details if needed.</p>}
             {platform === "instagram" && <>
-              <p>Location: {selectedLocation?.name || "none"} · Tags: {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "none"} · {includeStory ? "Reel + matching Story" : "Reel only"}</p>
-              <p>{audioBusy ? "Choosing music…" : selectedAudio ? `Music: ${selectedAudio.title}${selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}` : "Audio: saved video soundtrack"}</p>
-              {postingDefaultsBusy && <p role="status">Checking saved posting choices…</p>}
+              <p>Public · Location: {selectedLocation?.name || "none"} · Tags: {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "none"} · {includeStory ? "Reel + matching Story" : "Reel only"}</p>
+              {audioBusy ? <StudioActivity label="Choosing music…" /> : <p>{selectedAudio ? `Music: ${selectedAudio.title}${selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}` : "Audio: saved video soundtrack"}</p>}
+              {postingDefaultsBusy && <StudioActivity label="Checking saved posting choices…" />}
               {postingDefaultsReason && <p role="status">{postingDefaultsReason}</p>}
               {!audioBusy && !instagramAudioReady && <p role="alert">Music is not ready for this video. Open Posting details or check status.</p>}
             </>}
@@ -573,14 +581,15 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           {instagramTags > INSTAGRAM_HASHTAG_LIMIT && <p role="alert" className="text-xs text-red-800">{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags. Remove extra hashtags in Posting details.</p>}
           <details data-posting-details className="space-y-3 text-xs">
             <summary className="cursor-pointer">Posting details · optional</summary>
+          {metadata && <p>{platform === "facebook" ? "Saved video" : `Using the ${output?.target} render`}. No video is re-rendered for uploading.</p>}
+          {platform === "facebook" && <p>Saved MP4{metadata?.filename ? `: ${metadata.filename}` : ""}. Facebook Page Reels use a vertical 9:16 MP4, 3–90 seconds, at least 540 × 960 and 24–60 fps. Phoenix checks the saved file before queuing; it will not trim, stretch or re-render it. The saved MP4 audio is used.</p>}
           {platform === "youtube" && <label className="block text-xs">YouTube title<input className={input} maxLength={100} required value={title} onChange={event => { setTitle(event.target.value); setConfirmed(false); }} disabled={busy}/></label>}
-          {platform === "instagram" ? <details className="text-xs"><summary className="cursor-pointer">Edit caption and hashtags · optional</summary><label className="block">Caption and hashtags<textarea className={`${input} min-h-24`} maxLength={2200} value={caption} onChange={event => { setCaptionEdited(true); setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label></details> : <label className="block text-xs">{platform === "youtube" ? "Description and hashtags" : "Caption and hashtags"}<textarea className={`${input} min-h-24`} maxLength={platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200} value={caption} onChange={event => { setCaptionEdited(true); setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label>}
+          <label className="block text-xs">{platform === "youtube" ? "Description and hashtags" : "Caption and hashtags"}<textarea className={`${input} min-h-24`} maxLength={platform === "youtube" ? YOUTUBE_DESCRIPTION_BYTE_LIMIT : 2200} value={caption} onChange={event => { setCaptionEdited(true); setCaption(event.target.value); setConfirmed(false); }} disabled={busy}/></label>
           {youtubeTextIssue && <p role="alert" className="text-xs text-red-800">{youtubeTextIssue}</p>}
           {platform === "instagram" && <p className={`text-xs ${instagramTags > INSTAGRAM_HASHTAG_LIMIT ? "text-red-800" : ""}`}>{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags. The candidate bank stays saved; remove extra hashtags here before publishing.</p>}
           {platform === "instagram" && <div aria-label="Instagram posting choices" className="space-y-1 text-xs">
             <p>Posting location · {selectedLocation?.name || locationQuery || "None selected"}{!selectedLocation && locationQuery && " · pending Meta verification; no location tag attached"}{(selectedLocation || locationQuery) && " · your posting choice, not verified filming evidence"}</p>
             <p>Automatic Reel tags · {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "No matching profiles"}. If Meta rejects optional tags, publish without them.</p>
-            {postingDefaultsBusy && <p role="status">Checking saved posting choices…</p>}
             {postingDefaultsReason && <p role="status">{postingDefaultsReason}</p>}
           </div>}
           {platform === "youtube" && <><label className="block text-xs">Privacy<select className={input} value={privacy} onChange={event => { setPrivacy(event.target.value as typeof privacy); setConfirmed(false); }} disabled={busy}><option value="private">Private (recommended first upload)</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={madeForKids} onChange={event => { setMadeForKids(event.target.checked); setConfirmed(false); }} disabled={busy}/>This video is made for kids</label><p className="text-xs">YouTube may apply your channel&apos;s visibility settings. Phoenix reports the visibility returned by YouTube.</p></>}
@@ -592,13 +601,13 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
             {locationSuggestions.hints.length > 0 && <div><p className="mb-1 font-semibold">Mentioned in the video description · unverified</p><div className="flex flex-wrap gap-2">{locationSuggestions.hints.map(place => <button key={place} type="button" className={button} disabled={busy} onClick={() => changeLocationQuery(place)}>{place}</button>)}</div></div>}
             <div><p className="mb-1 font-semibold">Other places you can choose</p><div className="flex flex-wrap gap-2">{locationSuggestions.places.map(place => <button key={place} type="button" className={button} disabled={busy} onClick={() => changeLocationQuery(place)}>{place}</button>)}</div></div>
             <label className="block">Place name or Facebook location Page ID<input type="search" className={input} maxLength={100} value={locationQuery} disabled={busy} onChange={event => changeLocationQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void searchLocations(); } }}/></label>
-            <button type="button" className={button} disabled={busy || locationBusy || !publishReady || !locationQuery.trim()} onClick={() => void searchLocations()}>{locationBusy ? "Checking Meta locations…" : "Find location"}</button>
+            <button type="button" className={button} disabled={busy || locationBusy || !publishReady || !locationQuery.trim()} onClick={() => void searchLocations()}>{locationBusy ? <StudioActivity label="Checking Meta locations…" /> : "Find location"}</button>
             <p>Meta needs an eligible location Page with coordinates. Suggestions only fill the search; select a returned place to attach a real tag. This tags the Reel, not its matching Story.</p>
             {locations.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Eligible Meta locations">{locations.map(place => <button key={place.id} type="button" className={button} disabled={busy || locationBusy} aria-pressed={selectedLocation?.id === place.id} onClick={() => { locationEpoch.current++; setSelectedLocation(place); setConfirmed(false); }}>{place.name}</button>)}</div>}
             {selectedLocation ? <p>Selected: {selectedLocation.name} <button type="button" className="underline" disabled={busy} onClick={() => changeLocationQuery("")}>Remove location</button></p> : <p>No location selected. This Reel will post without a tag unless you select an eligible result; you can also add the location manually in Instagram.</p>}
             {locationError && <p role="status" className="text-amber-900">{locationError}</p>}
             <p>Remember this posting location for your Instagram account. Saving does not upload or publish a video.</p>
-            <button type="button" className={button} disabled={busy || postingDefaultsBusy || locationBusy || !publishReady} onClick={() => void rememberPostingChoices()}>{savingPostingDefaults ? "Remembering posting choices…" : "Remember posting location"}</button>
+            <button type="button" className={button} disabled={busy || postingDefaultsBusy || locationBusy || !publishReady} onClick={() => void rememberPostingChoices()}>{savingPostingDefaults ? <StudioActivity label="Remembering posting choices…" /> : "Remember posting location"}</button>
           </details>}
           {platform === "instagram" && <section aria-label="Automatic Reel music" className="space-y-1 rounded-lg bg-[#f7faef] px-3 py-2 text-xs" aria-live="polite">
             {footageMusic(file) ? audioBusy ? <p role="status">Choosing Instagram music for this video…</p>
@@ -621,14 +630,15 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           </section>}
           {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
           </details>
-          {platform === "youtube" ? <p className="text-xs">Clicking Post approves this reviewed video, title, description and required rights to upload as {privacy} to {channel?.name || name}.</p> : <p className="text-xs">Clicking Post approves publishing this Reel publicly{platform === "instagram" && includeStory ? " and then its matching Story" : ""} to {channel?.name || name}, with the required rights.</p>}
-          <button type="submit" className={button} disabled={busy || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…" : platform === "instagram" ? "Post to Instagram" : platform === "facebook" ? "Post to Facebook Page" : "Post to YouTube"}</button>
+          <p className="text-xs">Post approves this video, posting text and required rights.</p>
+          <button type="submit" className={button} disabled={busy || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? <StudioActivity label={savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…"} /> : platform === "instagram" ? "Post to Instagram" : platform === "facebook" ? "Post to Facebook Page" : "Post to YouTube"}</button>
         </form>}
         <button type="button" className={button} disabled={busy} onClick={() => void open(platform, instagramMode)}>Check status</button>
       </>}
       {error && <p role="alert" className="text-xs text-red-800">{error}</p>}
       <details className="space-y-2 text-xs">
         <summary className="cursor-pointer">Manual export options</summary>
+        {storyOnly && <p>Publish this saved video as one Story only. Its saved soundtrack will be used. No Reel, Reel caption, people tags, location tag or Instagram music configuration will be sent.</p>}
         <p>Download the saved MP4 and copy the {name} text, then select the file on the platform. These actions do not upload or publish automatically.</p>
         <div className="flex flex-wrap gap-2">
           {output && <a href={output.url} download={`${file.title}-${output.target}.mp4`} className={button}>Download for {name}</a>}
@@ -636,9 +646,9 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           <a href={platform === "youtube" ? "https://www.youtube.com/upload" : platform === "facebook" ? "https://business.facebook.com/" : "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer" className={button}>{platform === "youtube" ? "Open YouTube upload ↗" : platform === "facebook" ? "Open Meta Business Suite ↗" : "Open Instagram Create ↗"}</a>
         </div>
         {!output && <p>No saved video is available to export. Check the output in Library.</p>}
+        <p>Closing this panel does not cancel an accepted upload.</p>
       </details>
       {notice && <p role="status" className="text-xs">{notice}</p>}
       {platform === "instagram" && <details className="space-y-2 text-xs"><summary className="cursor-pointer">Everyday Story ideas</summary><p>Optional prompts based on this saved video. Add your own text or poll in Instagram; these ideas are not automatically uploaded and do not guarantee reach.</p><ul className="list-disc space-y-1 pl-4">{instagramStoryIdeas(file).map(idea => <li key={idea}>{idea}</li>)}</ul></details>}
-      <p className="text-xs">Closing this panel does not cancel an accepted upload.</p>
   </section> : null;
 }

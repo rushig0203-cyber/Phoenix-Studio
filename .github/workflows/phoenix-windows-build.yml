@@ -253,7 +253,7 @@ jobs:
           src/components/WritingProviderSettings.tsx src/components/StudioHealth.tsx
           src/app/api/writing-provider/route.ts
           src/app/dashboard/DashboardClient.tsx src/app/dashboard/loading.tsx
-          src/components/QuickTemplates.tsx src/lib/quickTemplates.ts
+          src/components/QuickTemplates.tsx src/components/StudioActivity.tsx src/lib/quickTemplates.ts src/lib/studioNavigation.ts
           src/components/CreationDrafts.tsx
           src/components/AICreation.tsx src/components/RecommendedIdeas.tsx
           src/components/QualityManager.tsx src/components/ChannelConnections.tsx

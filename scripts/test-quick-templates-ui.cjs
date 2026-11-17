@@ -17,6 +17,8 @@ function load(relative, dependencies = {}, globals = {}) {
 const content = load('src/lib/contentIdeas.ts');
 const suggestions = load('src/lib/stockFootageSuggestions.ts', { './contentIdeas': content });
 const saved = load('src/lib/quickTemplates.ts');
+const activityJsx = (type, props, key) => ({ type, props, key });
+const Activity = load('src/components/StudioActivity.tsx', { 'react/jsx-runtime': { jsx: activityJsx, jsxs: activityJsx } }).default;
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' || !tree.props ? [] : [tree, ...nodes(tree.props.children)];
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -37,9 +39,9 @@ async function harness(options = {}) {
     useRef(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: initial }; return slots[at]; },
     useEffect(callback, dependencies) { const at = index++, previous = effects[at]; if (!previous || dependencies.some((value, offset) => !Object.is(value, previous[offset]))) { effects[at] = [...dependencies]; pending.push(callback); } },
   };
-  const jsx = (type, props, key) => ({ type, props, key });
+  const jsx = (type, props, key) => type === Activity ? Activity(props) : ({ type, props, key });
   const Component = load('src/components/QuickTemplates.tsx', { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
-    '@/lib/stockFootageSuggestions': suggestions, './JobProgress': 'JobProgress' }, {
+    '@/lib/stockFootageSuggestions': suggestions, './JobProgress': 'JobProgress', './StudioActivity': { default: Activity } }, {
     Error, URLSearchParams, AbortController, AbortSignal,
     localStorage: { getItem(key) { return stored.get(key) ?? null; }, setItem(key, value) { stored.set(key, value); } },
     window: { setInterval() { return 1; }, clearInterval() {} },
@@ -79,7 +81,7 @@ test('one click submits the exact displayed topic and blocks repeated dispatch b
   card.props.onClick(); card.props.onClick(); h.render();
   const posts = h.requests.filter(request => request.method === 'POST');
   assert.equal(posts.length, 1); assert.deepEqual(JSON.parse(posts[0].body), { automatic: true, query: title, requestId: uuid });
-  assert.equal(h.started.length, 0); assert.match(text(h.tree), /Finding matching footage/);
+  assert.equal(h.started.length, 0); assert.match(text(h.tree), /Preparing your video/);
   assert.equal(h.states[0].title, title); assert.equal(h.request.jobId, undefined);
   confirm(response({ job: { id: 'exact-template-job' } }, 201)); await h.flush();
   assert.equal(h.request.jobId, 'exact-template-job'); assert.equal(h.started.length, 1);
@@ -122,9 +124,9 @@ test('durable requests reject malformed input and completed review selection req
 test('accepted tracking can return to templates without cancelling, retrying or creating a saved job', async () => {
   const request = { requestId: uuid, templateId: 'footage-owls', title: 'Owls', query: 'Owls', jobId: 'no-longer-in-visible-history' };
   const h = await harness({ request });
-  assert.match(text(h.tree), /Waiting for processing status/); assert.doesNotMatch(text(h.tree), /Queued\./);
+  assert.match(text(h.tree), /Checking your video/); assert.doesNotMatch(text(h.tree), /Queued\.|\d+%/);
   assert.equal(nodes(h.tree).filter(node => node.type === 'JobProgress').length, 0, 'Missing job data cannot invent Queued or zero percent progress');
-  assert.match(text(h.tree), /keeps your saved job and videos/);
+  assert.match(h.button('Back to templates').props.title, /saved job continues/);
   h.button('Back to templates').props.onClick(); await h.flush();
   assert.equal(h.request, null); assert.equal(h.cards().length, 6); assert.equal(h.retries, 0);
   assert.ok(h.requests.every(request => !request.method), 'Dismissal is UI-only and never changes saved work');

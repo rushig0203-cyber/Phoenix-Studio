@@ -19,7 +19,8 @@ import { QUICK_TEMPLATE_STORAGE_KEY, parseQuickTemplateRequest, quickTemplateRev
 import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
 import type { ReviewEditJob } from "@/lib/reviewEditTypes";
 import type { CreationDraft } from "@/lib/creationDraftTypes";
-import { insightReviewId, studioSection, type StudioSection } from "@/lib/studioNavigation";
+import { creationWorkspace, insightReviewId, studioSection, type CreationWorkspace, type StudioSection } from "@/lib/studioNavigation";
+import StudioActivity from "@/components/StudioActivity";
 import StudioHealth, { type StudioHealthState } from "@/components/StudioHealth";
 import ReviewPlayer from "@/components/ReviewPlayer";
 import { completedTransitions } from "@/lib/creationIntent";
@@ -97,12 +98,17 @@ function timing(job: DisplayJob) {
 
 export default function DashboardClient() {
   const [section, setSection] = useState<StudioSection>("create");
+  const [workspace, setWorkspace] = useState<CreationWorkspace>("reels");
   const [insightReview, setInsightReview] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<CreationDraft[]>([]);
   const navigate = useCallback((value: StudioSection) => { setSection(value); window.location.hash = value; }, []);
   useEffect(() => {
     const sync = () => {
       setSection(studioSection(window.location.hash));
+      const mode = creationWorkspace(window.location.hash);
+      setWorkspace(mode);
+      if (mode === "clips") setSourceOpen(true);
+      if (mode === "video") setAiOpen(true);
       setInsightReview(insightReviewId(window.location.hash));
       if (["#jobs", "#storyboards"].includes(window.location.hash)) document.getElementById("jobs")?.scrollIntoView({ block: "start" });
       else window.scrollTo(0, 0);
@@ -118,13 +124,23 @@ export default function DashboardClient() {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
+  const openWorkspace = useCallback((value: CreationWorkspace) => {
+    setWorkspace(value); setSection("create");
+    if (value === "clips") setSourceOpen(true);
+    if (value === "video") setAiOpen(true);
+    window.location.hash = value === "reels" ? "create" : `create?mode=${value}`;
+  }, []);
+  const closeWorkspace = useCallback((value: "clips" | "video") => {
+    if (value === "clips") setSourceOpen(false); else setAiOpen(false);
+    if (studioSection(window.location.hash) === "create" && creationWorkspace(window.location.hash) === value) openWorkspace("reels");
+  }, [openWorkspace]);
   const [stockQuery, setStockQuery] = useState("");
   const [idea, setIdea] = useState<ContentIdea | null>(null);
   useEffect(() => {
     const value = CONTENT_IDEAS.find(item => item.id === new URLSearchParams(window.location.search).get("ideaId"));
-    if (value?.workflow === "stock-reel") { setStockQuery(value.query); setStockOpen(true); setSection("create"); }
-    else if (value) { setIdea(value); setAiOpen(true); setSection("create"); }
-  }, []);
+    if (value?.workflow === "stock-reel") { setStockQuery(value.query); setStockOpen(true); openWorkspace("reels"); }
+    else if (value) { setIdea(value); openWorkspace("video"); }
+  }, [openWorkspace]);
   const [files, setFiles] = useState<ReviewFile[]>([]);
   const [preview, setPreview] = useState<ReviewFile | null>(null);
   const previewFile = preview ? files.find(file => file.id === preview.id) ?? preview : null;
@@ -151,7 +167,7 @@ export default function DashboardClient() {
   useEffect(() => {
     try { setTemplateRequest(parseQuickTemplateRequest(localStorage.getItem(QUICK_TEMPLATE_STORAGE_KEY))); } catch { /* Storage can be disabled. */ }
   }, []);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [jobFilter, setJobFilter] = useState<JobFilter | null>(null);
   const [jobPage, setJobPage] = useState(1);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -323,13 +339,13 @@ export default function DashboardClient() {
   }, [jobs, navigate, section, preview]);
 
   useEffect(() => {
-    if (section !== "create" || preview || document.hidden) return;
+    if (section !== "create" || workspace !== "reels" || preview || document.hidden) return;
     const completed = quickTemplateReview(files, templateRequest?.jobId);
     if (!completed) return;
     setPreview(completed);
     setNotice(`“${completed.title}” is ready. Review your video and choose where to post.`);
     updateTemplateRequest(null);
-  }, [files, templateRequest, section, preview, updateTemplateRequest]);
+  }, [files, templateRequest, section, workspace, preview, updateTemplateRequest]);
 
   function started(message: string, workflow: "source" | "stock" | "creation") {
     setNotice(message); setJobFilter("active"); setJobPage(1);
@@ -347,6 +363,7 @@ export default function DashboardClient() {
   ], jobFilter, jobPage), [jobs, drafts, jobFilter, jobPage]);
   const activeCount = queue.counts.active;
   const failedCount = queue.counts.failed;
+  const openingStudio = loading && !health && !monitorError;
   const sections = [
     { id: "create" as const, label: "Create", icon: Plus },
     { id: "library" as const, label: "Library", icon: FolderOpen },
@@ -362,40 +379,32 @@ export default function DashboardClient() {
       </aside>
       <main className={`${styles.main} mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12`}>
         <header className={`${styles.header} flex flex-wrap items-start justify-between gap-4`}>
-          <div><h1 className={`${styles.heading} font-semibold`}>{pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p> : null}</div>
-          <a href="#jobs" className={`${styles.queueBadge} flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium`}><span className={`h-2 w-2 rounded-full ${activeCount ? "bg-[#708a43]" : "bg-[#a8b395]"}`} />{activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
+          <div><h1 className={`${styles.heading} font-semibold`}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p> : null}</div>
+          <a href="#jobs" className={`${styles.queueBadge} flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium`}><span className={`h-2 w-2 rounded-full ${activeCount ? "bg-[#708a43]" : "bg-[#a8b395]"}`} />{openingStudio ? "Opening studio…" : activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
         </header>
         {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
           <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>
           <p className="mt-1">{offline ? "The local server is not responding. Open the Phoenix Studio shortcut on your Desktop, then retry the connection. Displayed lists are last received snapshots; previews, downloads and jobs need the server. Phoenix checks again every 15 seconds." : monitorError}</p>
           <Button type="button" variant="outline" className="mt-2" disabled={loading} onClick={() => void load()}>{loading ? "Checking connection…" : "Retry connection"}</Button>
         </div> : null}
-        {!offline ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
+        {!offline && !openingStudio ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
+        <nav aria-label="Creation workflows" className="studio-workspaces">
+          <a href="#create" aria-current={workspace === "reels" ? "page" : undefined}><Film aria-hidden="true" />Make a Reel</a>
+          <a href="#create?mode=clips" aria-current={workspace === "clips" ? "page" : undefined}><FileVideo aria-hidden="true" />Clip a Video</a>
+          <a href="#create?mode=video" aria-current={workspace === "video" ? "page" : undefined}><Sparkles aria-hidden="true" />Create a Video</a>
+        </nav>
+        <div hidden={workspace !== "reels"} data-creation-workspace="reels">
         <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }} />
-        <details data-advanced-create className="mt-7" open={sourceOpen || aiOpen || stockOpen || undefined}>
-        <summary className="cursor-pointer text-sm font-semibold">Other tools</summary>
-        <section aria-label="Creation workflows" className={`${styles.workflows} grid gap-4 lg:grid-cols-3`}>
-          <article className={styles.workflow}>
-            <div className={styles.artwork} aria-hidden="true"><FileVideo /></div>
-            <h2 className="font-semibold">Clip a Video</h2>
-            <Button type="button" aria-expanded={sourceOpen} onClick={() => { setSourceOpen(open => !open); setAiOpen(false); setStockOpen(false); }} className={`${styles.workflowButton} text-white`}>
-              {sourceOpen ? "Close processor" : "Choose a video"}<span aria-hidden="true">→</span>
-            </Button>
-          </article>
-          <article className={`${styles.workflow} ${styles.creation}`}>
-            <div className={styles.artwork} aria-hidden="true"><Sparkles /></div>
-            <h2 className="font-semibold">Create a Video</h2>
-            <Button type="button" aria-expanded={aiOpen} onClick={() => { setAiOpen(open => !open); setSourceOpen(false); setStockOpen(false); }} className={`${styles.workflowButton} text-white`}>
-              {aiOpen ? "Close creation" : "Create a video"}<span aria-hidden="true">→</span>
-            </Button>
-          </article>
-          <article className={`${styles.workflow} ${styles.reel}`}><div className={styles.artwork} aria-hidden="true"><Film /></div><h2 className="font-semibold">Make a Reel</h2><Button type="button" aria-expanded={stockOpen} className={`${styles.workflowButton} text-white`} onClick={() => { setStockOpen(value => !value); setSourceOpen(false); setAiOpen(false); }}>{stockOpen ? "Close footage" : "Find footage"}<span aria-hidden="true">→</span></Button></article>
-        </section>
-        {sourceOpen ? <SourceProcessor active={section === "create" && !offline} onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
+        <button type="button" className="mt-5 rounded-full border px-4 py-2 text-xs font-semibold" aria-expanded={stockOpen} onClick={() => setStockOpen(value => !value)}>{stockOpen ? "Close custom reel" : "Choose your own topic"}</button>
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
-        {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
-        </details>
+        </div>
+        <div hidden={workspace !== "clips"} data-creation-workspace="clips">
+          {sourceOpen ? <SourceProcessor active={section === "create" && workspace === "clips" && !offline} onClose={() => closeWorkspace("clips")} onStarted={() => started("Video queued. Follow its progress below.", "source")} /> : workspace === "clips" ? <Button onClick={() => setSourceOpen(true)}>Clip another video</Button> : null}
+        </div>
+        <div hidden={workspace !== "video"} data-creation-workspace="video">
+          {aiOpen ? <AICreation key={idea?.id || "custom"} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
+        </div>
         </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
         {section === "insights" ? <ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /> : null}
@@ -425,7 +434,7 @@ export default function DashboardClient() {
           {queue.total > 0 ? <p className="mt-2 text-xs text-[#687657]">Showing {(queue.page - 1) * JOB_PAGE_SIZE + 1}–{Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of {queue.total} {queue.filter === "active" ? "active jobs" : "saved jobs"}.</p> : null}
           <fieldset disabled={offline} aria-label="Job controls" className="min-w-0 border-0 p-0">
           {queue.total === 0 ? (
-            <p className="mt-5 rounded-xl border border-dashed border-[#bfcaa6] p-5 text-center text-sm text-[#778269]">{loading ? "Loading jobs…" : queue.filter === "active" ? "Nothing is processing or waiting right now. Finished videos are in Completed and Library." : queue.filter === "failed" ? "No jobs need attention." : queue.filter === "completed" ? "No finished jobs yet. Use Create to start a video." : "No saved jobs yet. Use Create to start a video."}</p>
+            loading ? <StudioActivity label="Loading jobs…" /> : <p className="mt-5 text-sm text-[#778269]">{queue.filter === "active" ? "No active jobs." : queue.filter === "failed" ? "No jobs need attention." : queue.filter === "completed" ? "No finished jobs yet." : "No saved jobs yet."}</p>
           ) : (
             <div aria-label="Job list" className="mt-2 divide-y divide-[#e0e5d5]">
               {queue.displayed.map((entry) => {

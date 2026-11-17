@@ -5,6 +5,7 @@ import type { ContentIdea, SuggestionReason } from "@/lib/contentIdeas";
 import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
 import type { QuickTemplateRequest } from "@/lib/quickTemplates";
 import JobProgress from "./JobProgress";
+import StudioActivity from "./StudioActivity";
 
 type Template = ContentIdea & SuggestionReason;
 type TemplateJob = { status: string; progress: number; stage?: string; error?: string };
@@ -88,13 +89,12 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
   if (request) return <section data-template-progress aria-label="Your template video" aria-busy={preparing}>
     <p className="text-xs font-semibold uppercase tracking-widest">Your video</p>
     <h2 className="mt-2 text-2xl font-semibold">{request.title}</h2>
-    <p role="status" className="mt-3 text-sm">{preparing ? "Finding matching footage and preparing your video…" : !request.jobId ? "Confirm this saved request to continue preparing your video." : failed ? "Your video needs attention." : job?.status === "COMPLETED" ? "Finishing your video for review…" : job?.stage || "Waiting for processing status. Phoenix will open your video when it is ready."}</p>
+    {preparing ? <StudioActivity label="Preparing your video…" /> : !job && request.jobId ? <StudioActivity label="Checking your video…" /> : <p role="status" className="mt-3 text-sm">{!request.jobId ? "Confirm your saved request to continue." : failed ? "Your video needs attention." : job?.status === "COMPLETED" ? "Opening your video…" : job?.stage || "Waiting for processing status."}</p>}
     {job ? <div className="mt-3"><JobProgress status={job.status} progress={job.progress} failed={!!failed} label={`${request.title} progress`} /></div> : null}
     {error || job?.error ? <p role="alert" className="mt-3 text-sm">{error || job?.error}</p> : null}
     {!request.jobId && !preparing ? <div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={disabled} onClick={() => void create()} className="rounded-full border px-4 py-2 text-sm font-semibold">Retry confirmation</button>{canChange ? <button type="button" onClick={() => { setError(""); setCanChange(false); onRequest(null); }} className="rounded-full border px-4 py-2 text-sm">Choose another template</button> : null}</div> : null}
     {failed ? <button type="button" disabled={disabled} onClick={onRetry} className="mt-4 rounded-full border px-4 py-2 text-sm font-semibold">Retry video</button> : null}
-    {request.jobId ? <div className="mt-4"><button type="button" onClick={() => { setError(""); onRequest(null); }} className="rounded-full border px-4 py-2 text-sm">Back to templates</button><p className="mt-2 text-xs opacity-70">This keeps your saved job and videos. You can follow them in Jobs or Library.</p></div> : null}
-    <p className="mt-4 text-xs opacity-70">Phoenix chooses the footage, pacing and music. Review the finished video before posting.</p>
+    {request.jobId ? <div className="mt-4"><button type="button" title="Your saved job continues in Jobs." onClick={() => { setError(""); onRequest(null); }} className="rounded-full border px-4 py-2 text-sm">Back to templates</button></div> : null}
   </section>;
 
   return <section data-quick-templates aria-label="Recommended video templates" aria-busy={loading}>
@@ -102,7 +102,7 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
       <div><h2 className="text-2xl font-semibold">Choose a template</h2><p className="mt-2 text-sm">Made for your page. One click prepares a complete video for review.</p></div>
       <button type="button" disabled={loading || disabled} onClick={() => void reload.current()} className="rounded-full border px-4 py-2 text-xs font-semibold disabled:opacity-50">More templates</button>
     </div>
-    {loading && !templates.length ? <p role="status" className="mt-5 text-sm">Finding templates from your saved videos…</p> : null}
+    {loading && !templates.length ? <StudioActivity label="Finding your next video…" /> : null}
     {error ? <p role="alert" className="mt-4 text-sm">{error}</p> : null}
     <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template type="button" disabled={disabled || preparing} onClick={() => void create(template)} aria-label={`Make video: ${template.title}`}>
       <span><span className="block text-lg font-semibold">{template.title}</span><span className="mt-2 block text-sm leading-6 opacity-70">{template.reason}</span></span>

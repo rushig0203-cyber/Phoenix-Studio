@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const ts = require('typescript');
 
 // Execute the real processor and shared poller with persistent isolated hooks.
-// No owner store, app dependency graph, DOM, media, upload or provider is loaded.
+// No owner store, app dependency graph, DOM, media, real upload or provider is loaded.
 const project = path.resolve(__dirname, '..');
 function compiled(relative, jsx = false) {
   const filename = path.join(project, relative);
@@ -22,17 +22,17 @@ const monitorSource = compiled('src/lib/dashboardMonitor.ts');
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes)
   : tree && typeof tree === 'object' && tree.props ? [tree, ...nodes(tree.props.children)] : [];
 const text = tree => tree == null || typeof tree === 'boolean' ? '' : Array.isArray(tree) ? tree.map(text).join('')
-  : typeof tree === 'object' ? text(tree.props?.children) : String(tree);
+  : typeof tree === 'object' ? tree.type === 'studio-activity' ? tree.props.label : text(tree.props?.children) : String(tree);
 const preflight = { ready: true, summary: 'Fixture tools ready', dependencies: { ffmpeg: true, ffprobe: true, python: true, fasterWhisper: true },
   details: {}, firstModelDownloadRequired: false, whisperModel: { message: 'Fixture' } };
 const job = (id, status) => ({ id, title: id, mode: 'coverage', status, progress: status === 'COMPLETED' ? 100 : 10,
   stage: status, completedClips: 0, totalClips: 1, elapsedSeconds: 1, estimatedRemainingSeconds: null });
 
-function harness(t, { active = true, hidden = false, defer = false } = {}) {
-  let position = 0, dirty = true, mounted = true, tree, nextTimer = 0, writes = 0, uploads = 0, maximumLive = 0;
-  let props = { active, onClose() {}, onStarted() { assert.fail('Polling must never dispatch or complete an upload'); } };
+function harness(t, { active = true, hidden = false, defer = false, allowUpload = false } = {}) {
+  let position = 0, dirty = true, mounted = true, tree, nextTimer = 0, writes = 0, uploads = 0, maximumLive = 0, started = 0;
+  let props = { active, onClose() {}, onStarted() { assert.ok(allowUpload, 'Polling must never dispatch or complete an upload'); started++; } };
   let payload = { preflight, jobs: [] };
-  const slots = [], effects = [], pendingEffects = [], timers = new Map(), listeners = new Map(), requests = [], scheduled = [];
+  const slots = [], effects = [], pendingEffects = [], timers = new Map(), listeners = new Map(), requests = [], scheduled = [], uploadRequests = [];
   const document = {
     hidden,
     addEventListener(name, callback) {
@@ -80,7 +80,12 @@ function harness(t, { active = true, hidden = false, defer = false } = {}) {
   const schedule = (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, delay }); scheduled.push(delay); return id; };
   const shared = { document, AbortController, AbortSignal: { any: AbortSignal.any, timeout: () => new AbortController().signal },
     setTimeout: schedule, clearTimeout: id => timers.delete(id), fetch: fixtureFetch,
-    XMLHttpRequest: class { constructor() { uploads++; assert.fail('No upload may start in processor resource tests'); } } };
+    XMLHttpRequest: class {
+      constructor() { uploads++; assert.ok(allowUpload, 'No upload may start in processor resource tests'); this.upload = {}; this.headers = {}; }
+      open(method, url) { this.method = method; this.url = url; }
+      setRequestHeader(name, value) { this.headers[name] = value; }
+      send(file) { this.file = file; uploadRequests.push(this); }
+    } };
   function load(source, dependencies) {
     const module = { exports: {} };
     new vm.Script(source.source, { filename: source.filename }).runInNewContext({ ...shared, module, exports: module.exports,
@@ -94,7 +99,7 @@ function harness(t, { active = true, hidden = false, defer = false } = {}) {
   function InertIcon() { assert.fail('Inert icons must not execute'); }
   const Component = load(processorSource, {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
-    'lucide-react': { Loader2: InertIcon, TriangleAlert: InertIcon, Upload: InertIcon },
+    'lucide-react': { TriangleAlert: InertIcon, Upload: InertIcon }, './StudioActivity': { __esModule: true, default: 'studio-activity' },
     '@/components/ui/button': { Button: InertButton }, '@/lib/dashboardMonitor': monitor,
   }).default;
   const h = {
@@ -123,22 +128,71 @@ function harness(t, { active = true, hidden = false, defer = false } = {}) {
       nodes(tree).filter(node => node.props.name === 'mode')[mode === 'coverage' ? 0 : 1].props.onChange();
       await h.flush();
     },
+    async submit() { nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await h.flush(); },
     setPayload(value) { payload = value; },
     unmount() { if (!mounted) return; mounted = false; for (const effect of effects) effect?.cleanup?.(); },
     get file() { return slots[0]?.value; }, get mode() { return slots[1]?.value; },
     get tree() { return tree; }, get text() { return text(tree); }, get writes() { return writes; },
     get maximumLive() { return maximumLive; }, get uploads() { return uploads; },
+    get started() { return started; }, uploadRequests,
     get listenerCount() { return listeners.get('visibilitychange')?.size || 0; },
     timers, scheduled, requests,
   };
   t.after(() => {
     h.unmount();
-    assert.equal(uploads, 0, 'Resource changes must never start an upload');
+    if (!allowUpload) assert.equal(uploads, 0, 'Resource changes must never start an upload');
+    else assert.ok(uploadRequests.every(request => request.method === 'POST' && request.url === '/api/source-processing'));
     assert.ok(requests.every(request => !request.options.method));
     assert.equal(h.listenerCount, 0); assert.equal(timers.size, 0);
   });
   return h;
 }
+
+test('compact clip choices only change the split mode and still require an actual video', async t => {
+  const h = harness(t, { active: false }); await h.flush();
+  const choices = nodes(h.tree).filter(node => node.type === 'label' && nodes(node).some(child => child.props.name === 'mode'));
+  assert.deepEqual(choices.map(choice => nodes(choice).find(node => node.props.name === 'mode').props['aria-label']), ['Full coverage', 'Best highlights']);
+  assert.match(h.text, /Suggested clip styles/); assert.match(text(choices[1]), /after you upload/);
+  nodes(h.tree).filter(node => node.props.name === 'mode')[1].props.onChange(); await h.flush();
+  assert.equal(h.mode, 'highlights'); assert.equal(h.file, null);
+  await h.submit();
+  assert.match(h.text, /Choose a video file first/);
+  assert.equal(h.requests.length, 0); assert.equal(h.uploads, 0); assert.equal(h.started, 0);
+});
+
+test('tool checks use shared startup activity while dependency and first-model warnings stay outside details', async t => {
+  const h = harness(t, { defer: true }); await h.flush();
+  assert.equal(nodes(h.tree).find(node => node.type === 'studio-activity').props.label, 'Checking video tools…');
+  h.requests[0].resolve({ preflight: { ...preflight, ready: false, summary: 'Install Python', dependencies: { ...preflight.dependencies, python: false }, details: { python: 'Python is unavailable.' } }, jobs: [] });
+  await h.flush(); assert.match(h.text, /Install Python/); assert.match(h.text, /Python is unavailable/);
+  await h.fireTimer();
+  h.requests[1].resolve({ preflight: { ...preflight, firstModelDownloadRequired: true, whisperModel: { message: 'The speech model must download first.' } }, jobs: [] });
+  await h.flush(); assert.match(h.text, /First transcription setup/); assert.match(h.text, /speech model must download first/);
+  assert.ok(nodes(h.tree).filter(node => node.type === 'details').every(node => !/Install Python|First transcription setup|speech model must download/.test(text(node))));
+});
+
+test('upload activity uses measured byte progress and successful acceptance keeps the chosen mode and one request', async t => {
+  const h = harness(t, { allowUpload: true }); await h.flush();
+  const selected = new File(['Fixture video bytes'], 'upload-proof.mp4', { type: 'video/mp4' });
+  await h.select(selected, 'highlights'); await h.submit(); await h.submit();
+  assert.equal(h.uploadRequests.length, 1);
+  const request = h.uploadRequests[0];
+  assert.equal(request.file, selected); assert.equal(request.headers['X-Phoenix-Mode'], 'highlights');
+  request.upload.onprogress({ lengthComputable: true, loaded: 5, total: 10 }); await h.flush();
+  const activity = nodes(h.tree).find(node => node.type === 'studio-activity' && node.props.label === 'Uploading video…');
+  assert.equal(activity.props.percent, 50);
+  request.status = 201; request.responseText = '{"message":"Queued for processing."}'; request.onload(); await h.flush();
+  assert.equal(h.started, 1); assert.match(h.text, /Queued for processing/);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'studio-activity').length, 0);
+});
+
+test('only active source jobs use busy activity with their actual progress', async t => {
+  const h = harness(t); h.setPayload({ preflight, jobs: [job('working', 'PROCESSING')] }); await h.flush();
+  const activity = nodes(h.tree).find(node => node.type === 'studio-activity');
+  assert.equal(activity.props.label, 'PROCESSING'); assert.equal(activity.props.percent, 10);
+  h.setPayload({ preflight, jobs: [job('done', 'COMPLETED')] }); await h.fireTimer();
+  assert.equal(nodes(h.tree).filter(node => node.type === 'studio-activity').length, 0);
+});
 
 test('an inactive mounted processor retains File and mode without polling, then wakes only when activated', async t => {
   const h = harness(t, { active: false }); await h.flush();

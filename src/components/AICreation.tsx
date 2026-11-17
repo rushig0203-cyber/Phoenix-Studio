@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, ShieldCheck, WandSparkles } from "lucide-react";
+import { ShieldCheck, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RecommendedIdeas from "@/components/RecommendedIdeas";
 import NewsIdeas from "@/components/NewsIdeas";
+import StudioActivity from "./StudioActivity";
 import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
@@ -20,7 +21,7 @@ function defaultFormat(kind: Kind): PublishingFormat {
   return kind === "Children's song" ? "youtube-full" : "youtube-short";
 }
 
-export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string }) {
+export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic, initialSuggestionsOpen = false }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string; initialSuggestionsOpen?: boolean }) {
   const [kind, setKind] = useState<Kind>(initialKind);
   const [topic, setTopic] = useState<string>(initialTopic || "");
   const [autoIdea, setAutoIdea] = useState(false);
@@ -41,8 +42,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [activeWriting, setActiveWriting] = useState({ narration: true, visualBrief: true, lyrics: true });
   const [uploadingSong, setUploadingSong] = useState(false);
   const [recommendationNotice, setRecommendationNotice] = useState("");
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [ideaOpen, setIdeaOpen] = useState(!initialTopic?.trim());
+  const [suggestionsOpen, setSuggestionsOpen] = useState(initialSuggestionsOpen);
+  const [ideaOpen, setIdeaOpen] = useState(!initialTopic?.trim() && !initialSuggestionsOpen);
   const [selectedNews, setSelectedNews] = useState<NewsIdea | null>(null);
   const submitInFlight = useRef(false);
   const requestId = useRef(crypto.randomUUID());
@@ -166,8 +167,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
       }
       requestId.current = crypto.randomUUID();
       onStarted(data?.count === 10
-        ? "Ten videos queued. Phoenix will plan and render them one at a time. Review only the finished videos in Review Files."
-        : "Video queued. Follow its progress below; review the finished video in Library.");
+        ? "10 videos queued. Follow progress in Jobs."
+        : "Video queued. Follow progress in Jobs.");
       onClose();
     } catch (cause) {
       setError(cause instanceof Error && cause.name === "TimeoutError"
@@ -208,6 +209,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
               : "Your selected writer plans the narration, or you supply it below. Phoenix selects real Pexels footage by the shot brief, duration and format, then renders locally. You review only the finished video. Groq writing sends text only; video files stay on this PC."}
             {" "}No paid AI provider or automatic posting is used.
             {" "}Laptop-safe rendering runs one Phoenix export at a time with at most two CPU threads.
+            {" "}Describe the subject and audience; Phoenix chooses the workflow. For children&apos;s animation or songs, include that in your idea.
+            {" "}Attention or earnings are never guaranteed.
           </p>
         </details>
 
@@ -219,9 +222,10 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             <option value="local-ace" disabled={!singing?.available}>Generate with local ACE-Step · {singing?.available ? "ready" : "unavailable on this PC"}</option>
           </select></label>
           <label className="block text-sm font-semibold">Song language<select value={songLanguage} onChange={event => setSongLanguage(event.target.value as typeof songLanguage)} className="mt-1 w-full rounded-lg border bg-white p-2"><option>English</option><option>Hindi</option></select></label>
-          <p className="text-xs leading-5 text-[#647451]">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason || "Checking the free local singing engine…"} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
+          {songMode !== "hosted-ace" && !singing ? <StudioActivity label="Checking singing engine" /> : null}
+          <p className="text-xs leading-5 text-[#647451]">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
           {songMode === "hosted-ace" ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={hostedSongConsent} onChange={event => setHostedSongConsent(event.target.checked)} className="mt-1"/><span>Allow this song&apos;s description and lyrics to be sent to official hosted ACE-Step on Hugging Face. Video files and recordings stay on this PC. No account, token or paid plan is used.</span></label> : null}
-          {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<p role="status" className="text-sm">Saving and checking song recording…</p>:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}</> : <label className="block text-sm font-semibold">Musical direction<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label>}
+          {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<StudioActivity label="Checking recording" />:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}</> : <label className="block text-sm font-semibold">Musical direction<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label>}
           <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>{setLyrics(e.target.value);setActiveWriting(current=>({...current,lyrics:true}));}} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : songLanguage === "Hindi" ? "Enter your original Hindi lyrics" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording" || songLanguage === "Hindi"}/></label>
           <p className="text-xs text-[#647451]">Listen to the complete finished video before posting. Caption timing is an estimate; adjust it in Edit video if needed. Use only audio and lyrics you have permission to publish.</p>
         </section> : null}
@@ -268,7 +272,6 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
               />
             </label>
             </details>
-            <p className="text-xs text-[#657153]">No category to choose. Describe the subject and audience; Phoenix picks the workflow. For children&apos;s animation or songs, say so in your idea.</p>
           </>
         ) : (
           <p className="rounded-xl border border-dashed border-[#bfcaa6] p-3 text-sm text-[#687657]">
@@ -306,15 +309,13 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </label>
         ) : null}
 
-        <div className="rounded-xl bg-[#f3f0e5] p-3 text-xs leading-5 text-[#5f654d]">
-          Review the finished video before posting. Attention or earnings are never guaranteed.
-        </div>
+        <p className="text-xs text-[#5f654d]">Review the finished video before posting.</p>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
+        {busy ? <StudioActivity label={selectedNews ? "Preparing report" : "Preparing video"} /> : null}
         <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent || (songLanguage === "Hindi" && !activeLyrics.trim()) : !singing?.available))} className="bg-[#26331f] px-5 text-white">
-          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {busy
-            ? selectedNews ? "Reading the report and checking creation…" : "Queuing your video…"
+            ? "Preparing…"
             : batchCount === 10
               ? "Create 10 story videos"
               : "Create video"}

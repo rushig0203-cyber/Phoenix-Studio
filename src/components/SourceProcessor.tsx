@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, TriangleAlert, Upload } from "lucide-react";
+import { TriangleAlert, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { startDashboardPolling } from "@/lib/dashboardMonitor";
+import StudioActivity from "./StudioActivity";
 
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
 
@@ -44,6 +45,7 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"coverage" | "highlights">("coverage");
   const [busy, setBusy] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | undefined>();
   const [retrying, setRetrying] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [pollError, setPollError] = useState("");
@@ -141,7 +143,8 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
 
     uploadInFlight.current = true;
     setBusy(true);
-    setNotice(`Uploading ${file.name}… 0%`);
+    setUploadPercent(0);
+    setNotice("");
     const request = new XMLHttpRequest();
     request.open("POST", "/api/source-processing");
     request.setRequestHeader("Content-Type", file.type || "video/mp4");
@@ -149,7 +152,7 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
     request.setRequestHeader("X-Phoenix-Title", encodeURIComponent(file.name.replace(/\.[^.]+$/, "")));
     request.setRequestHeader("X-Phoenix-Mode", mode);
     request.upload.onprogress = (progress) => {
-      if (progress.lengthComputable) setNotice(`Uploading ${file.name}… ${Math.round(progress.loaded / progress.total * 100)}%`);
+      if (progress.lengthComputable) setUploadPercent(Math.round(progress.loaded / progress.total * 100));
     };
     request.onerror = () => {
       uploadInFlight.current = false;
@@ -205,15 +208,12 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
   return <section className="mt-5 rounded-[1.5rem] border border-[#bfcaa6] bg-white p-5">
     <div className="flex items-start justify-between gap-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[.16em] text-[#75834f]">Source video processor</p>
-        <h3 className="mt-1 text-xl font-semibold">Turn an episode into local review clips</h3>
+        <h3 className="text-xl font-semibold">Clip your video</h3>
       </div>
       <Button type="button" variant="outline" onClick={onClose}>Close</Button>
     </div>
 
-    {!preflight && <div className="mt-4 flex gap-2 rounded-xl border border-[#d9dfc3] bg-[#f5f7ec] p-3 text-sm text-[#687657]">
-      <Loader2 className="h-5 w-5 shrink-0 animate-spin" />Checking FFmpeg, FFprobe, Python, and faster-whisper…
-    </div>}
+    {!preflight && <div className="mt-4"><StudioActivity label="Checking video tools…" /></div>}
     {preflight && !preflight.ready && <div className="mt-4 rounded-xl border border-[#f0c9a4] bg-[#fff5ea] p-3 text-sm text-[#85421f]">
       <div className="flex gap-2"><TriangleAlert className="h-5 w-5 shrink-0" /><span>{preflight.summary}</span></div>
       {missingDependencies.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-8 text-xs">
@@ -223,13 +223,9 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
     {preflight?.ready && preflight.firstModelDownloadRequired && <div className="mt-4 rounded-xl border border-[#d8cf9b] bg-[#fffbea] p-3 text-sm text-[#735f24]">
       <strong>First transcription setup:</strong> {preflight.whisperModel.message}
     </div>}
-    {preflight?.ready && <p className="mt-3 rounded-xl bg-[#f4f8e8] p-3 text-xs leading-5 text-[#647451]">
-      Laptop-safe mode is on: Phoenix processes one heavy export at a time, limits FFmpeg to two CPU threads, and gives it below-normal Windows priority. Processing will be slower so the laptop stays usable.
-    </p>}
-
     <form className="mt-5 space-y-4" onSubmit={submit}>
       <label htmlFor="episode-file" className="block text-sm font-semibold">
-        1. Choose episode video
+        Choose a video
         <input
           id="episode-file"
           className="mt-2 block w-full rounded-xl border border-dashed border-[#aebc88] p-4 text-sm font-normal"
@@ -239,24 +235,27 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
         />
       </label>
       <fieldset>
-        <legend className="text-sm font-semibold">2. Choose how to split it</legend>
-        <div className="mt-2 grid gap-2 md:grid-cols-2">
-          <label className={`cursor-pointer rounded-xl border p-3 text-sm ${mode === "coverage" ? "border-[#667443] bg-[#edf1dc]" : "border-[#c8d19f]"}`}>
-            <input className="mr-2" name="mode" type="radio" checked={mode === "coverage"} onChange={() => setMode("coverage")} />
-            <strong>Full episode coverage</strong>
-            <span className="mt-1 block text-xs text-[#687657]">Contiguous natural 2–3 minute clips with the final seconds included.</span>
+        <legend className="text-sm font-semibold">Suggested clip styles</legend>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm ${mode === "coverage" ? "border-[#667443] bg-[#edf1dc]" : "border-[#c8d19f]"}`}>
+            <input aria-label="Full coverage" className="mr-2" name="mode" type="radio" checked={mode === "coverage"} onChange={() => setMode("coverage")} />
+            <span><span className="block font-semibold">Full coverage</span><span className="mt-1 block text-xs text-muted-foreground">Keep the complete episode in natural clips.</span></span>
           </label>
-          <label className={`cursor-pointer rounded-xl border p-3 text-sm ${mode === "highlights" ? "border-[#667443] bg-[#edf1dc]" : "border-[#c8d19f]"}`}>
-            <input className="mr-2" name="mode" type="radio" checked={mode === "highlights"} onChange={() => setMode("highlights")} />
-            <strong>Best highlights</strong>
-            <span className="mt-1 block text-xs text-[#687657]">Ranked from hooks, transcript density, silence, and each clip’s audio.</span>
+          <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm ${mode === "highlights" ? "border-[#667443] bg-[#edf1dc]" : "border-[#c8d19f]"}`}>
+            <input aria-label="Best highlights" className="mr-2" name="mode" type="radio" checked={mode === "highlights"} onChange={() => setMode("highlights")} />
+            <span><span className="block font-semibold">Best highlights</span><span className="mt-1 block text-xs text-muted-foreground">Find standout moments after you upload.</span></span>
           </label>
         </div>
       </fieldset>
+      <details className="text-xs leading-5 text-[#647451]">
+        <summary className="cursor-pointer font-semibold">Clip details</summary>
+        <p className="mt-2">Full coverage produces contiguous natural 2–3 minute clips, including the final seconds. Best highlights ranks clips from hooks, transcript density, silence and audio after you upload the video.</p>
+        <p className="mt-2">Phoenix processes one heavy export at a time, limits FFmpeg to two CPU threads and uses below-normal Windows priority so the laptop stays usable.</p>
+      </details>
       <Button type="submit" disabled={busy || preflight?.ready !== true} className="bg-[#394a2a] px-5 text-white">
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-        {busy ? "Streaming upload…" : "3. Process source video"}
+        <Upload className="mr-2 h-4 w-4" />Process video
       </Button>
+      {busy && <StudioActivity label="Uploading video…" percent={uploadPercent} />}
       {notice && <p role="status" className="rounded-xl bg-[#f4f7ea] p-3 text-sm text-[#687657]">{notice}</p>}
       {pollError && <p role="alert" className="text-xs text-[#a75528]">{pollError}</p>}
     </form>
@@ -264,17 +263,18 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
     {jobs.length > 0 && <div className="mt-5 space-y-2">
       {jobs.slice(0, 8).map((job) => {
         const canRetry = job.status === "FAILED" || job.status === "BLOCKED";
+        const processing = ["QUEUED", "PROCESSING", "RUNNING"].includes(job.status);
         return <div key={job.id} className="rounded-xl bg-[#f5f7ec] p-3">
           <div className="flex justify-between gap-3 text-sm font-semibold">
             <span className="truncate">{job.title}</span>
-            <span>{job.status} · {Math.max(0, Math.min(100, job.progress))}%</span>
+            <span>{job.status}</span>
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded bg-[#d5ddb8]">
+          {processing ? <StudioActivity label={job.stage || "Processing clips…"} percent={job.progress} /> : <div className="mt-2 h-2 overflow-hidden rounded bg-[#d5ddb8]">
             <div
               className={`h-full transition-[width] ${job.status === "FAILED" || job.status === "BLOCKED" ? "bg-[#b55d3d]" : "bg-[#667b42]"}`}
               style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
             />
-          </div>
+          </div>}
           <p className="mt-1 text-xs text-[#687657]">
             {job.stage}{job.totalClips ? ` · ${job.completedClips}/${job.totalClips} clips` : ""}
             {job.status === "PROCESSING" ? ` · ${shortDuration(job.elapsedSeconds)} elapsed${job.estimatedRemainingSeconds === null ? " · estimating time remaining" : ` · about ${shortDuration(job.estimatedRemainingSeconds)} remaining`}` : ""}
@@ -286,7 +286,8 @@ export default function SourceProcessor({ onClose, onStarted, active = true }: {
             disabled={retrying !== null}
             className="mt-1 text-xs font-bold text-[#4f5c31] disabled:opacity-50"
             onClick={() => void retry(job.id)}
-          >{retrying === job.id ? "Queueing…" : "Retry processing"}</button>}
+          >Retry processing</button>}
+          {retrying === job.id && <StudioActivity label="Queueing clips…" />}
         </div>;
       })}
     </div>}

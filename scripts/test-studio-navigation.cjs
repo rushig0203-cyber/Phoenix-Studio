@@ -6,7 +6,7 @@ require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'c
 require('tsconfig-paths').register({ baseUrl: path.resolve(__dirname, '..'), paths: { '@/*': ['src/*'] } });
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
-const { insightReviewId, studioSection, STUDIO_SECTIONS } = require('../src/lib/studioNavigation');
+const { creationWorkspace, insightReviewId, studioSection, STUDIO_SECTIONS } = require('../src/lib/studioNavigation');
 test('section links restore the right screen and retain old bookmarks', () => {
   assert.deepEqual(STUDIO_SECTIONS, ['create', 'library', 'insights', 'settings']);
   for (const value of STUDIO_SECTIONS) assert.equal(studioSection('#' + value), value);
@@ -16,6 +16,11 @@ test('section links restore the right screen and retain old bookmarks', () => {
   assert.equal(studioSection('#channels'), 'settings');
   assert.equal(studioSection('#writing-settings'), 'settings');
   assert.equal(studioSection('#unknown'), 'create');
+  for (const mode of ['clips', 'video']) {
+    assert.equal(studioSection('#create?mode=' + mode), 'create');
+    assert.equal(creationWorkspace('#create?mode=' + mode), mode);
+  }
+  for (const hash of ['#create', '#create?mode=unknown', '#library?mode=clips', '#jobs']) assert.equal(creationWorkspace(hash), 'reels');
   const review = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
   assert.equal(studioSection('#insights?review=' + review), 'insights');
   assert.equal(insightReviewId('#insights?review=' + review), review);
@@ -26,6 +31,10 @@ test('home shows creation workflows followed by inline Jobs, with Library and ch
   const html = renderToStaticMarkup(React.createElement(Dashboard));
   assert.match(html, /What will you make today/);
   assert.match(html, /aria-label="Studio sections"/);
+  assert.match(html, /aria-label="Creation workflows"/);
+  assert.match(html, /href="#create\?mode=clips"/);
+  assert.match(html, /href="#create\?mode=video"/);
+  assert.doesNotMatch(html, /Studio health is not confirmed|No saved jobs yet|Queue is clear/);
   const nav = /<nav[^>]*aria-label="Studio sections"[\s\S]*?<\/nav>/.exec(html)[0];
   assert.doesNotMatch(nav, /href="#jobs"|>Jobs</);
   assert.match(nav, /href="#insights"/);

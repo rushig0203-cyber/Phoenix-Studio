@@ -184,7 +184,7 @@ test('a mismatched re-analysis response is rejected instead of confirming anothe
 test('missing automatic analysis polls saved results without submitting a reanalysis request', async t => {
   const completed = fixture(3, 'COMPLETE', 3, 'Light catches the moss beside this stream.', ['#MossyStream']);
   const h = harness(t, fixture(), async (_url, init) => { assert.equal(init.method, undefined); return Response.json(completed); });
-  await h.flush(); assert.match(h.text, /caption queued automatically/); assert.equal(h.requests.length, 0);
+  await h.flush(); assert.equal(nodes(h.tree, node => node.type?.name === 'StudioActivity' && node.props.label === 'Caption queued').length, 1); assert.equal(h.requests.length, 0);
   await h.tick(); assert.equal(h.requests.length, 1); assert.match(h.text, /Light catches the moss/);
   await h.tick(); assert.equal(h.requests.length, 1, 'Completed evidence stops polling');
 });

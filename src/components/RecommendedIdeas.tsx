@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import StudioActivity from "./StudioActivity";
 import {
   parsePersonalizedRecommendationMemory, PERSONALIZED_RECOMMENDATION_STORAGE_KEY, recommendationPool, RECOMMENDATION_REFRESH_MS,
   type CreationRecommendation, type PersonalizedCreationRecommendation, type PersonalizedRecommendationMemory,
@@ -58,7 +59,7 @@ export default function RecommendedIdeas({ onChoose }: { onChoose: (idea: Creati
       <h4 className="text-sm font-semibold">Ideas for your next video</h4>
       <button type="button" onClick={() => void reload.current()} disabled={loading} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">More ideas</button>
     </div>
-    {loading && !ideas.length ? <p role="status" className="mt-2 text-xs text-[#59634d]">Finding ideas from your saved videos…</p> : null}
+    {loading && !ideas.length ? <StudioActivity label="Finding ideas from your saved videos…" /> : null}
     {error ? <p role="status" className="mt-2 text-xs text-[#59634d]">{error}</p> : null}
     {!loading && !error && !ideas.length ? <p className="mt-2 text-xs text-[#59634d]">You have explored the current matching subjects. New saved videos and reviews will guide the next ideas.</p> : null}
     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{ideas.map(idea => {

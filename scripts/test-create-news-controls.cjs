@@ -15,7 +15,7 @@ function pure(relative,dependencies={}){
   return mod.exports;
 }
 const recommendations=pure('src/lib/creationRecommendations.ts',{'./contentIdeas':pure('src/lib/contentIdeas.ts'),'./publishingFormats':{publishingProfile:()=>({defaultDuration:75})}});
-function harness(name, fetch) {
+function harness(name, fetch, props = {}) {
   const slots = [], effects = [], pending = [], requests = [], started = [];
   let at, tree;
   const hooks = {
@@ -26,6 +26,7 @@ function harness(name, fetch) {
   const dependencies = { react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
     'lucide-react': {}, '@/components/ui/button': { Button: 'button' }, '@/components/RecommendedIdeas': { default: 'Recommendations' },
     '@/components/NewsIdeas': { default: 'NewsIdeas' },
+    './StudioActivity': { default: 'StudioActivity' },
     '@/lib/creationRecommendations': recommendations, '@/lib/krishnaStory': krishna,
     '@/lib/creationIntent': { creationIntent: topic => krishna.isKrishnaStoryTopic(topic) ? "Children's short story" : 'General video' },
     '@/lib/publishingFormats': { publishingProfile: () => ({ defaultDuration: 75 }) } };
@@ -37,7 +38,7 @@ function harness(name, fetch) {
     require(key) { assert.ok(Object.hasOwn(dependencies, key), key); return dependencies[key]; },
   });
   const h = { requests, started, get tree() { return tree; }, get text() { return text(tree); },
-    render() { at = 0; tree = mod.exports.default({ onClose() {}, onStarted: value => started.push(value), onChoose() {} }); for (const fn of pending.splice(0)) fn(); },
+    render() { at = 0; tree = mod.exports.default({ onClose() {}, onStarted: value => started.push(value), onChoose() {}, ...props }); for (const fn of pending.splice(0)) fn(); },
     async flush() { for (let i = 0; i < 30; i++) { await Promise.resolve(); h.render(); } },
     submit() { nodes(tree).find(n => n.type === 'form').props.onSubmit({ preventDefault() {} }); },
     unmount() { for (const effect of effects) effect?.cleanup?.(); },
@@ -48,6 +49,35 @@ test('empty Create gives an actionable inline message instead of silently failin
   h.submit(); await h.flush();
   assert.match(h.text, /Describe your video or choose an idea\/report first/); assert.equal(h.requests.length, 0);
   assert.equal(nodes(h.tree).find(n => n.type === 'form').props.noValidate, true);
+});
+test('the dedicated video workspace opens personalized ideas without creating until explicit submission', async () => {
+  const closed = harness('AICreation', () => assert.fail('Opening ideas must not create a video'));
+  assert.equal(nodes(closed.tree).filter(node => node.type === 'Recommendations').length, 0);
+  const h = harness('AICreation', async () => Response.json({ draftIds: ['12345678-1234-4234-8234-123456789abc'], count: 1 }), { initialSuggestionsOpen: true });
+  const suggestions = nodes(h.tree).find(node => node.type === 'Recommendations');
+  assert.ok(suggestions); assert.equal(h.requests.length, 0);
+  assert.equal(nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Describe your video')).props.open, false);
+  const idea = recommendations.recommendationPool().find(idea => idea.id === 'arched-bridge:structure');
+  suggestions.props.onChoose(idea); h.render();
+  assert.equal(h.requests.length, 0);
+  assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, idea.title);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'Recommendations').length, 0);
+  h.submit(); await h.flush();
+  assert.equal(h.requests.length, 1); assert.equal(JSON.parse(h.requests[0].body).topic, idea.title);
+  assert.equal(h.started.length, 1);
+});
+test('creation shows shared activity while pending and preserves a retryable service error', async () => {
+  let resolve;
+  const pending = new Promise(done => { resolve = done; });
+  const h = harness('AICreation', () => pending, { initialTopic: 'Otters swimming in a river' });
+  h.submit(); h.render();
+  assert.ok(nodes(h.tree).some(node => node.type === 'StudioActivity' && node.props.label === 'Preparing video'));
+  assert.equal(nodes(h.tree).find(node => node.type === 'button' && node.props.type === 'submit').props.disabled, true);
+  resolve(Response.json({ error: 'Renderer unavailable' }, { status: 503 })); await h.flush();
+  assert.match(h.text, /Renderer unavailable/);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'StudioActivity').length, 0);
+  assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, 'Otters swimming in a river');
+  assert.equal(nodes(h.tree).find(node => node.type === 'button' && node.props.type === 'submit').props.disabled, false);
 });
 test('selected news submits the displayed report once and only accepts a real durable draft confirmation', async () => {
   const h = harness('AICreation', async () => Response.json({ draftIds: ['12345678-1234-4234-8234-123456789abc'], count: 1 }));

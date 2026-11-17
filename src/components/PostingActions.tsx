@@ -4,6 +4,7 @@ import type { ReviewFile } from "@/lib/reviewFiles";
 import { postingCaption, postingDownload, postingHashtags, postingText } from "@/lib/posting";
 import { INSTAGRAM_HASHTAG_LIMIT } from "@/lib/postingCopyPolicy";
 import ReviewPublishActions from "./ReviewPublishActions";
+import StudioActivity from "./StudioActivity";
 
 function snapshotTime(value?: string) {
   const time = Date.parse(value || "");
@@ -38,7 +39,7 @@ export function FinishedPostingActions({ id }: { id: string }) {
     }).catch(() => { if (live) setError("Could not load posting details. Open Library to check the saved copy."); }).finally(() => clearTimeout(timeout));
     return () => { live = false; clearTimeout(timeout); controller.abort(); };
   }, [id]);
-  return file ? <PostingActions file={file} /> : <p className="mt-2 text-xs">{error || "Loading finished output and posting details…"}</p>;
+  return file ? <PostingActions file={file} /> : error ? <p role="alert" className="mt-2 text-xs text-destructive">{error}</p> : <StudioActivity label="Opening video details" />;
 }
 
 /** Keep offline handoff alongside explicitly confirmed connected uploads. */
@@ -78,18 +79,19 @@ export default function PostingActions({ file: supplied, finalReview = false }: 
       if (currentOutputId.current !== requestedId) return;
       if (value.id !== requestedId) throw new Error("The analysis response belongs to another video. Refresh this output before retrying.");
       setFile(current => current.id === requestedId ? mergePostingSnapshot(current, value) : current);
-      setNotice(value.quality?.postingAnalysis?.captionRevision ? "Caption feedback saved for the manager. A new video-specific caption is queued; the finished video stays available." : "Queued to analyze this video's frames. The finished video stays available.");
+      setNotice(value.quality?.postingAnalysis?.captionRevision ? "Caption feedback saved for the manager. New caption queued." : "Caption queued.");
     } catch (error) { if (currentOutputId.current === requestedId) setNotice(error instanceof Error ? error.message : "Could not queue video analysis."); }
     finally { requesting.current = false; setBusy(false); }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(postingText(file)); setNotice("Caption and hashtag bank copied. Choose a platform in Post / export for its posting text."); }
+    try { await navigator.clipboard.writeText(postingText(file)); setNotice("Caption and hashtag bank copied."); }
     catch { if (copyDetails.current) copyDetails.current.open = true; setNotice("Clipboard unavailable. Select and copy the caption and hashtags displayed here."); }
   }
   const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold";
   const hashtags = postingHashtags(file.quality.hashtags);
   return <section aria-label={`Posting tools for ${file.title}`} className="mt-3 space-y-3 rounded-xl border border-[#d5ddbe] bg-[#f7faef] p-3 text-sm">
-    {automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status)) ? <p role="status" className="text-xs text-[#657153]">{analysis?.status === "WAITING" ? `Video finished · caption waiting. ${analysis.detail}${analysis.nextAttemptAt ? ` Next automatic check: ${new Date(analysis.nextAttemptAt).toLocaleString()}.` : ""}` : analysis?.status === "ANALYZING" ? "Video finished · checking frames for its own caption…" : "Video finished · caption queued automatically. No re-analysis click is needed."}</p> : null}
+    {busy ? <StudioActivity label="Requesting caption" /> : automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status))
+      ? <StudioActivity label={analysis?.status === "WAITING" ? "Caption waiting" : analysis?.status === "ANALYZING" ? "Preparing caption" : "Caption queued"} /> : null}
     {analysis?.status === "FAILED" ? <p role="status" className="text-xs text-red-700">Video finished · caption analysis failed. {analysis.detail}</p> : null}
     <details ref={copyDetails} className="space-y-3">
       <summary className="cursor-pointer font-semibold">Caption & hashtags</summary>

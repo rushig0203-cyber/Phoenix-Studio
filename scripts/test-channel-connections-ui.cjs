@@ -7,6 +7,7 @@ require("tsconfig-paths").register({ baseUrl: path.resolve(__dirname, ".."), pat
 const React = require("react"), originalLoad = Module._load;
 let current;
 Module._load = function (name, parent, ...args) {
+  if (name === "./StudioActivity" && path.basename(parent?.filename || "") === "ChannelConnections.tsx") return { __esModule: true, default: "studio-activity" };
   if (name === "react" && path.basename(parent?.filename || "") === "ChannelConnections.tsx") return {
     ...React, useState: value => current.state(value), useRef: value => current.ref(value), useEffect: (effect, deps) => current.effect(effect, deps),
     useCallback: (callback, deps) => current.memo(() => callback, deps),
@@ -18,7 +19,7 @@ try { Component = require("../src/components/ChannelConnections.tsx").default; }
 finally { Module._load = originalLoad; }
 
 const text = node => node == null || typeof node === "boolean" ? "" : Array.isArray(node) ? node.map(text).join("")
-  : typeof node === "object" ? text(node.props?.children) : String(node);
+  : typeof node === "object" ? node.type === "studio-activity" ? node.props.label : text(node.props?.children) : String(node);
 function nodes(node, predicate, found = []) {
   if (Array.isArray(node)) node.forEach(child => nodes(child, predicate, found));
   else if (node && typeof node === "object") {
@@ -79,6 +80,31 @@ test("the intended Instagram handle stays separate from verified account identit
   const h = hooks(); await h.flush();
   assert.match(h.text, /Intended account: @__bitet\.hemap/);
   assert.match(h.text, /Not connected/);
+});
+
+test("initial channel loading uses the shared startup activity until account status arrives", async t => {
+  environment(t, [], async () => assert.fail("Loading must not modify a connection"));
+  let finish;
+  global.fetch = () => new Promise(resolve => { finish = resolve; });
+  const h = hooks(); await h.flush();
+  assert.equal(nodes(h.tree, node => node.type === "studio-activity")[0].props.label, "Loading channels…");
+  finish(Response.json({ channels: [status("youtube")] })); await h.flush();
+  assert.equal(nodes(h.tree, node => node.type === "studio-activity").length, 0);
+  assert.ok(button(h, "Connect YouTube"));
+});
+
+test("checking a channel keeps its controls disabled while startup activity runs and exposes a retryable failure", async t => {
+  let finish;
+  environment(t, [status("youtube", { connected: true, state: "connected", configured: true, name: "Owned channel" })],
+    () => new Promise(resolve => { finish = resolve; }));
+  const h = hooks(); await h.flush();
+  button(h, "Check connection").props.onClick(); await h.flush();
+  assert.equal(nodes(h.tree, node => node.type === "studio-activity")[0].props.label, "Checking YouTube…");
+  assert.equal(button(h, "Check connection").props.disabled, true);
+  finish(Response.json({ error: "Connection needs renewal. Try again." }, { status: 400 })); await h.flush();
+  assert.match(h.text, /Connection needs renewal\. Try again\./);
+  assert.equal(nodes(h.tree, node => node.type === "studio-activity").length, 0);
+  assert.equal(button(h, "Check connection").props.disabled, false);
 });
 
 test('linked Facebook Page setup checks the saved token without choosing another Page or starting OAuth', async t => {
@@ -287,5 +313,5 @@ test("an expired YouTube connection exposes explicit Check connection without fo
   assert.equal(requests.filter(request => request.method).length, 1);
   assert.equal(button(h, "Connect YouTube"), undefined);
   assert.match(h.text, /Connection verified successfully/);
-  assert.match(h.text, /Upload reviewed videos from their posting tools/);
+  assert.match(h.text, /Connect your channels for reviewed uploads/);
 });
