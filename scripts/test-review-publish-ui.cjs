@@ -1698,14 +1698,20 @@ test('new Instagram review preserves valid location but ignores legacy tag defau
   h.choose('Post to Instagram'); await h.flush();
   assert.equal(h.requests.filter(request => request.url === `${h.endpoint}?check=posting-defaults&connectionRevision=revision-instagram`).length, 1);
   assert.equal(h.requests.length, 4, 'New Instagram review reads accounts, saved jobs, defaults and Story capability');
-  const summary = nodes(h.form()).find(node => node.props['aria-label'] === 'Instagram posting choices');
-  assert.ok(summary); assert.match(text(summary), /Posting location · Switzerland/); assert.match(text(summary), /Automatic Reel tags · No matching profiles/);
-  assert.match(text(summary), /your posting choice, not verified filming evidence/);
+  const summary = nodes(h.form()).find(node => node.props['data-posting-summary']);
+  const details = nodes(h.form()).find(node => node.props['data-posting-details']);
+  assert.ok(summary); assert.match(text(summary), /Location: Switzerland/); assert.match(text(summary), /Tags: none/);
+  assert.match(text(summary), /Audio: saved video soundtrack/); assert.match(text(summary), /Reel only/);
+  assert.match(text(summary), /your saved posting choice, not a verified filming location/);
+  assert.equal(summary.props.hidden, undefined); assert.equal(details.type, 'details'); assert.equal(Boolean(details.props.open), false);
   assert.ok(nodes(h.form()).filter(node => node.type === 'details').every(details => !nodes(details).includes(summary)), 'Choices stay visible outside collapsed controls');
   assert.equal(h.control('Instagram usernames', 'input'), undefined); assert.doesNotMatch(h.text, /@owner|@allowed.page/);
   assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  assert.ok(h.requests.every(request => request.method === 'GET'), 'Loading saved choices never authorizes publication');
   h.submit(); await h.flush();
-  assert.equal(saved.action, 'create'); assert.deepEqual(saved.location, { id: '123456' }); assert.equal(saved.userTags, undefined); assert.equal(saved.automaticTags, true);
+  assert.equal(saved.action, 'create'); assert.equal(saved.confirm, true); assert.deepEqual(saved.location, { id: '123456' }); assert.equal(saved.userTags, undefined); assert.equal(saved.automaticTags, true);
+  assert.equal(saved.audio, undefined, 'The visible saved soundtrack choice sends no replacement track');
+  assert.equal(saved.companionStory, false, 'The visible Reel-only choice does not create a Story');
   assert.equal(h.posts.length, 1); assert.equal(h.button('Remember posting location'), undefined);
 });
 
