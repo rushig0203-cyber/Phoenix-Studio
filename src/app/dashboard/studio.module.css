@@ -59,8 +59,8 @@
   .main { padding-top: 2rem; padding-bottom: 2.5rem; }
   .header { margin-bottom: 2rem; }
   .sidebar { position: sticky; top: 0; z-index: 20; padding: .85rem 1.25rem; }
-  .sidebar nav { margin-top: .85rem; gap: .35rem; padding-block: .2rem; }
-  .navLink { padding: .65rem .85rem; gap: .5rem; }
+  .sidebar nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; margin-top: .85rem; gap: .25rem; padding-block: .2rem; }
+  .navLink { min-width: 0; flex-direction: column; justify-content: center; padding: .55rem .25rem; gap: .35rem; font-size: .75rem; line-height: 1.25; }
   .main :global([data-template-choices]) { column-gap: 1.25rem; }
   .main :global([data-quick-template]) { min-height: 12rem; }
 }

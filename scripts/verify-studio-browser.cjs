@@ -146,6 +146,15 @@ async function run() {
     await page.locator('[data-quick-template]').first().blur();
     await capture('studio-create-desktop');
     await page.setViewportSize({ width: 390, height: 844 });
+    const mobileNav = await page.locator('nav[aria-label="Studio sections"]').evaluate(nav => {
+      const bounds = nav.getBoundingClientRect();
+      return { viewport: innerWidth, scrollWidth: nav.scrollWidth, clientWidth: nav.clientWidth,
+        items: [...nav.querySelectorAll('a')].map(link => { const item = link.getBoundingClientRect(); return { label: link.innerText.trim(), left: item.left, right: item.right,
+          fits: link.scrollWidth <= link.clientWidth + 1 && item.left >= bounds.left - 1 && item.right <= bounds.right + 1 }; }) };
+    });
+    verify('All four mobile navigation labels fit without swiping', mobileNav.items.length === 4 && mobileNav.scrollWidth <= mobileNav.clientWidth + 1
+      && mobileNav.items.every(item => item.fits && item.left >= 0 && item.right <= mobileNav.viewport)
+      && mobileNav.items[3].label === 'Settings', mobileNav);
     await capture('studio-create-mobile');
     await page.setViewportSize({ width: 1440, height: 1000 });
     const navigate = async section => { await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"]`).click(); await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"][aria-current="page"]`).waitFor(); };
@@ -182,6 +191,13 @@ async function run() {
     await capture('studio-final-review');
     await page.setViewportSize({ width: 390, height: 844 });
     await post.scrollIntoViewIfNeeded();
+    const postingSurfaces = await dialog.locator('section[aria-label^="Posting tools for"], section[aria-label$="upload confirmation"]').evaluateAll(elements => elements.map(element => {
+      const style = getComputedStyle(element);
+      return { label: element.getAttribute('aria-label'), background: style.backgroundColor, radius: style.borderRadius,
+        borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth], padding: [style.paddingLeft, style.paddingRight] };
+    }));
+    verify('Mobile final review uses open posting surfaces', postingSurfaces.length === 2 && postingSurfaces.every(surface => surface.background === 'rgba(0, 0, 0, 0)'
+      && surface.radius === '0px' && surface.borders.every(width => width === '0px') && surface.padding.every(width => width === '0px')), postingSurfaces);
     await capture('studio-final-review-mobile');
     verify('No browser runtime errors', proof.pageErrors.length === 0, proof.pageErrors);
     verify('No provider, external or mutating browser requests', proof.deniedRequests.length === 0, proof.deniedRequests);
