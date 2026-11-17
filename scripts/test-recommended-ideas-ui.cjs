@@ -20,6 +20,8 @@ const publishing = load(compile('src/lib/publishingFormats.ts'));
 const content = load(compile('src/lib/contentIdeas.ts'));
 const recommendations = load(compile('src/lib/creationRecommendations.ts'), { './contentIdeas': content, './publishingFormats': publishing });
 const component = compile('src/components/RecommendedIdeas.tsx');
+const activityJsx = (type, props, key) => ({ type, props, key });
+const Activity = load(compile('src/components/StudioActivity.tsx'), { 'react/jsx-runtime': { jsx: activityJsx, jsxs: activityJsx } }).default;
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : !tree || typeof tree !== 'object' || !tree.props ? [] : [tree, ...nodes(tree.props.children)];
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -43,7 +45,7 @@ async function harness(options = {}) {
     useRef(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: initial }; return slots[at]; },
     useEffect(callback, dependencies) { const at = index++, previous = effects[at]; if (!previous || dependencies.some((value, offset) => !Object.is(value, previous[offset]))) { effects[at] = [...dependencies]; pending.push(callback); } },
   };
-  const jsx = (type, props, key) => ({ type, props, key });
+  const jsx = (type, props, key) => type === Activity ? Activity(props) : ({ type, props, key });
   const sandbox = { URLSearchParams, AbortController, AbortSignal,
     window: { setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { at: clock + delay, callback }); return id; }, clearTimeout(id) { timers.delete(id); } },
     async fetch(url, init) {
@@ -58,7 +60,7 @@ async function harness(options = {}) {
   };
   if (options.propertyDenied) Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Browser property blocked'); } });
   else sandbox.localStorage = options.storage || memoryStorage();
-  const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/lib/creationRecommendations': recommendations }, sandbox).default;
+  const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, './StudioActivity': { __esModule: true, default: Activity }, '@/lib/creationRecommendations': recommendations }, sandbox).default;
   function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea) }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } return tree; }
   async function settle() { for (let count = 0; count < 8; count++) await Promise.resolve(); render(); }
   const cards = () => nodes(tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Use idea: '));

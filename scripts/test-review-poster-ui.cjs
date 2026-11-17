@@ -102,6 +102,7 @@ function uiHarness() {
     './ReviewPlayer': { __esModule: true, default: MockReviewPlayer, reviewTarget: () => 'source' },
     './PostingActions': { __esModule: true, default: MockPostingActions },
     './ReviewStorageSummary': { __esModule: true, default: function MockStorageSummary() { throw new Error('Storage UI must stay inert'); } },
+    './StudioActivity': { __esModule: true, default: 'studio-activity' },
     '@/lib/stockProviders': providersModule.exports,
     '@/lib/reviewEpisode': episodeModule.exports,
   };
