@@ -14,6 +14,7 @@ on:
       - scripts/build-vercel.cjs
       - scripts/next-build-selection.cjs
       - scripts/test-vercel-build.cjs
+      - scripts/test-studio-css-build.cjs
       - scripts/test-next-build-selection.cjs
       - .github/workflows/phoenix-vercel-build.yml
 
@@ -44,7 +45,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Verify cloud output and unchanged desktop safety
-        run: node --max-old-space-size=128 --test --test-concurrency=1 scripts/test-next-build-selection.cjs scripts/test-build-safety.cjs scripts/test-vercel-build.cjs
+        run: node --max-old-space-size=128 --test --test-concurrency=1 scripts/test-next-build-selection.cjs scripts/test-build-safety.cjs scripts/test-vercel-build.cjs scripts/test-studio-css-build.cjs
       - name: Build the exact Vercel output without owner data or local services
         env:
           VERCEL: '1'

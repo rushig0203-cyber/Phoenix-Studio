@@ -1,4 +1,4 @@
-// CI-only proof of the built UI. Every API response and media item is synthetic.
+// CI-only UI proof with synthetic APIs and WebM preview; real MP4 export is verified separately.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -61,7 +61,7 @@ async function run() {
   const origin = `http://127.0.0.1:${port}`;
   fs.mkdirSync(output, { recursive: true });
   const temporaryMedia = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ui-smoke-'));
-  const movie = path.join(temporaryMedia, 'synthetic.mp4');
+  const movie = path.join(temporaryMedia, 'synthetic.webm');
   let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions;
   const suggestionsGate = new Promise(resolve => { releaseSuggestions = resolve; });
   const proof = { status: 'running', synthetic: true, source: process.env.GITHUB_SHA, directory, buildId,
@@ -70,7 +70,7 @@ async function run() {
   const json = (route, value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
   try {
     const rendered = spawnSync(require('@ffmpeg-installer/ffmpeg').path,
-      ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x657f78:s=360x640:r=12', '-t', '2', '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', movie],
+      ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x657f78:s=360x640:r=12', '-t', '2', '-an', '-c:v', 'libvpx', '-deadline', 'realtime', '-threads', '1', '-pix_fmt', 'yuv420p', movie],
       { windowsHide: true, encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024 });
     assert.equal(rendered.status, 0, rendered.stderr || rendered.error?.message);
     const media = fs.readFileSync(movie);
@@ -114,7 +114,7 @@ async function run() {
         videos: [{ id: 'fixture-post', topic: 'A quiet river', timestamp: date, metricsUpdatedAt: date, metrics: { views: 120, likes: 8, comments: 2, saves: 3, shares: 1, reach: 100, averageWatchTimeMs: 5200 } }], summary: { assessments: [], rules: [], attentionCohorts: [] } });
       if (url.pathname === `/api/review-files/${file.id}`) return json(route, file);
       if (url.pathname === `/api/review-files/${file.id}/poster`) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
-      if (url.pathname === `/api/review-files/${file.id}/media`) return route.fulfill({ status: 200, contentType: 'video/mp4', headers: { 'Content-Length': String(media.length), 'Accept-Ranges': 'bytes' }, body: media });
+      if (url.pathname === `/api/review-files/${file.id}/media`) return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Content-Length': String(media.length), 'Accept-Ranges': 'bytes' }, body: media });
       if (url.pathname === `/api/review-files/${file.id}/publish`) {
         if (url.searchParams.get('check') === 'story') return json(route, { story: { ready: false, reason: 'Synthetic fixture: optional Stories are unavailable.' } });
         if (url.searchParams.get('check') === 'posting-defaults') return json(route, { defaults: { userTags: [] } });

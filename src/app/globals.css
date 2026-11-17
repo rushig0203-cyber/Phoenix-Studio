@@ -165,9 +165,9 @@ body [data-posting-details] > summary { width: fit-content; cursor: pointer; fon
 dialog[aria-label^="Preview:"] { border: 0; border-radius: 1.5rem; background: var(--card) !important; }
 dialog[aria-label^="Preview:"]::backdrop { background: #182129b8; }
 dialog[aria-label^="Preview:"] > div:has(> video),
-body button[aria-label^="Preview "] { background: #151e24 !important; }
+body button[aria-label^="Preview"] { background: #151e24 !important; }
 dialog[aria-label^="Preview:"] > div:first-child { border-color: var(--border) !important; }
-body button[aria-label^="Preview "] { border-radius: 1.15rem; }
+body button[aria-label^="Preview"] { border-radius: 1.15rem; }
 
 progress { appearance: none; border: 0; border-radius: 999px; background: var(--muted); color: var(--primary); accent-color: var(--primary); }
 progress::-webkit-progress-bar { border-radius: 999px; background: var(--muted); }
