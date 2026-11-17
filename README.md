@@ -253,7 +253,15 @@ keeps its own draft, approval and progress; selecting an open box preserves it.
   Google Cloud requires 2-Step Verification; an account-verification rejection
   must be resolved on Google's side before credential setup can continue.
   Request only `youtube.readonly` and `youtube.upload` for this workflow. An
-  External Google app left in Testing receives a seven-day refresh token for
+  expired short-lived access token with proven upload permission and a saved
+  refresh grant stays eligible for the final Post action, which renews access
+  and checks the saved destination again. Opening a screen does not refresh
+  credentials. A rejected grant or disconnected account remains blocked.
+  The public [About](https://phoenix-studio-theta.vercel.app/about),
+  [Privacy](https://phoenix-studio-theta.vercel.app/privacy) and
+  [Terms](https://phoenix-studio-theta.vercel.app/terms) pages describe this
+  personal installation and its Google data handling.
+  An external Google app left in Testing receives a seven-day refresh token for
   these scopes; normal token refresh cannot extend that account policy. Complete
   production configuration and any required Google verification before relying
   on long-lived unattended access. See

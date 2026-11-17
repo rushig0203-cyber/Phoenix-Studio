@@ -1,5 +1,35 @@
 # Phoenix Studio implementation and verified releases
 
+## November 17 — installed YouTube renewal and completed personal Production setup
+
+- The owner approved moving Phoenix Studio Publisher to Google's In production
+  audience and renewing Bite Map / `@mapbite30` with the same `youtube.readonly`
+  and `youtube.upload` scopes. Public About, Privacy and Terms pages are live on
+  the existing free Vercel domain and saved in Google Branding. Personal-use
+  authorization retains Google's unverified-app warning; no Google verification,
+  permanent token lifetime, billing or test-video upload is claimed.
+- Expired short-lived YouTube access with a configured client, proven upload
+  scope, saved refresh grant and no known error no longer disables the final
+  Post. Renewal happens on an explicit action, never screen/status reads.
+  Rejected grants, disconnects and overlapping failed checks remain blocked.
+  Immutable saved choices and duplicate protection are preserved.
+- Installed source `1dbc3a62aebadcc6cd6f7750d6120be9ac9a2234` passed Windows run
+  `44116588970`: 1,708 Node tests, 58 Python checks, lint, TypeScript/build,
+  actual speech/music/video exports, interrupted long-job recovery and bounded
+  worker checks. Nine compiled browser screenshots passed 29 assertions. Both
+  Vercel source deployments passed. Heavy tests/builds ran on the existing free
+  public runner, without a local build or owner video job.
+- Selected and serving `.next-build-gh-44116588970-1`, build ID
+  `XJUYWLB6rRB2oUOo9ujsV`, returns dashboard HTTP 200 with healthy manager/worker
+  and a ready renderer. Activation preserved all 237 output MP4s, review
+  index/history, all 117 publication JSON records and the exact owner
+  `97AF40D8…` configuration hash. The live browser confirms six recommendations
+  and connected YouTube, Instagram and Facebook destinations.
+- Bite Map's access token expired naturally during the wait. The installed
+  status correctly kept it eligible for renewal; an explicit provider-backed
+  connection check then renewed access and verified the same channel at
+  `2026-11-17T18:10:23.790Z`. No video was uploaded or published as a test.
+
 ## November 17 — installed six-template creation and direct final posting
 
 - Create opens with six recommendations from saved content, confirmed posts and
