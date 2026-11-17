@@ -252,6 +252,12 @@ keeps its own draft, approval and progress; selecting an open box preserves it.
   channel account. A channel URL or an open upload page alone does not connect it.
   Google Cloud requires 2-Step Verification; an account-verification rejection
   must be resolved on Google's side before credential setup can continue.
+  Request only `youtube.readonly` and `youtube.upload` for this workflow. An
+  External Google app left in Testing receives a seven-day refresh token for
+  these scopes; normal token refresh cannot extend that account policy. Complete
+  production configuration and any required Google verification before relying
+  on long-lived unattended access. See
+  [Google's OAuth expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
 - **Facebook Page:** connect only the Page already verified as linked to your
   Instagram account. The same Meta app needs `pages_show_list`,
   `pages_read_engagement` and `pages_manage_posts`, and the authorizing person

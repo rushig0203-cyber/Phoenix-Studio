@@ -1,5 +1,42 @@
 # Phoenix Studio implementation and verified releases
 
+## November 17 — installed six-template creation and direct final posting
+
+- Create opens with six recommendations from saved content, confirmed posts and
+  available feedback. One click discovers eligible related footage and uses the
+  existing automatic queue. A durable request identity prevents duplicate retries;
+  the exact READY output opens for review. Unknown job status never invents a
+  percentage. Returning to templates retains saved jobs and videos. Other tools
+  remain available in one collapsed section.
+- Video review selects a verified available destination and exposes its final
+  Post action directly. The visible summary retains posting text, visibility,
+  soundtrack, location/tags and Story choice; optional edits stay collapsed.
+  New analysis updates untouched copy while preserving owner edits and immutable
+  saved requests. Existing upload progress, independent Facebook/Instagram work,
+  duplicate protection and assisted Rumble handling remain intact.
+- Open layouts, capsule actions and calmer loading/progress replace many nested
+  rectangles across Create, Library, Insights, Settings and review. Mobile shows
+  every navigation label. Actual compiled browser checks caught and corrected a
+  production selector-minifier issue and two mobile/review layout defects.
+- Installed source `06b9a570d7d4484531418743a8f469327a9c50ab` passed Windows run
+  `44079236030`: 1,702 Node tests, 58 Python checks, lint, TypeScript/build,
+  real speech/music/video exports, bounded worker scans and interrupted long-job
+  recovery. Nine synthetic browser screenshots passed 29 checks using the actual
+  compiled pages/CSS. Both Vercel source deployments passed. Heavy compilation
+  and browser testing ran remotely; no local build or provider job was started.
+- Selected and serving `.next-build-gh-44079236030-1`, build ID
+  `gC7Jp81pBG7gkV92aN7KE`, returns dashboard HTTP 200 with healthy manager/worker
+  and ready renderer. Activation preserved all 237 output-video files, review
+  index/history, 117 publication JSON records and the exact owner `97AF40D8…`
+  configuration hash. Live browser verification confirmed six template actions.
+- After the owner completed Google's security step and approved the API/client,
+  scopes and public channel creation, Bite Map / `@mapbite30` was connected.
+  Phoenix's live status verifies its channel and upload permission; Instagram
+  and Facebook remain ready. Credentials are protected locally, never committed.
+  No video was uploaded or published as a test. Google's app remains in Testing,
+  whose seven-day refresh-token rule is a remaining account-configuration limit;
+  this is not a production-verification or permanent-authorization claim.
+
 ## November 16 — installed measured attention experiments for footage Reels
 
 - Read the owner's actual Instagram results: 78 saved videos, 66 eligible for
