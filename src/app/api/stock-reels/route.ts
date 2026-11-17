@@ -25,33 +25,48 @@ async function openStockVideo(url: string) {
   return { stream: response.body, expectedBytes };
 }
 
-async function queueAutomaticStockReel(input: { provider: AutomaticStockProvider; id: number | string; query: string; requestId: string }) {
+async function queueAutomaticStockReel(input: { provider?: AutomaticStockProvider; id?: number | string; query: string; requestId: string }) {
   if (!(await ffmpegAvailable())) throw new StockProcessingUnavailableError(processingUnavailable);
   // Read only bounded local structured choices. A corrupt store is actionable,
   // not a reason to pretend the manager learned or silently discard preferences.
   const managerGuidance = await getStockProductionGuidance();
   const maxDuration = Math.min(AUTOMATIC_STOCK_REEL_MAX_DURATION, managerGuidance.performanceMaxDuration || AUTOMATIC_STOCK_REEL_MAX_DURATION);
   const unavailable = await readStockReuseBlocked();
-  const { query, provider } = input, anchor = await resolveNaturalStock(provider, input.id);
-  if (anchor.provider !== provider || anchor.id !== input.id) throw new Error("This starting video is no longer available.");
+  const { query } = input;
+  const configured = configuredStock();
+  const providers = AUTOMATIC_STOCK_PROVIDERS.filter(name => configured[name]);
+  const recentlyUsed = recentStockMediaIdentities(await readSourceJobs(), managerGuidance.historyLimit);
+  function enoughCompanions(anchor: NaturalStock, pool: NaturalStock[], target = AUTOMATIC_STOCK_REEL_MAX_SOURCES) {
+    const related = automaticStockCompanions(anchor, pool, query, recentlyUsed, unavailable);
+    const fullFrame = related.filter(video => {
+      const aspect = video.width / video.height, portrait = 720 / 1280;
+      return Math.min(aspect / portrait, portrait / aspect) >= .92;
+    }).length;
+    return related.length >= target - 1 && fullFrame >= Math.min(7, target - 1);
+  }
+  let selected = input.provider && input.id ? { provider: input.provider, id: input.id } : undefined;
+  let discovery: Map<AutomaticStockProvider, Promise<NaturalStock[]>> | undefined;
+  if (!selected) {
+    discovery = new Map(providers.map(provider => [provider, searchNaturalStockPool(provider, query,
+      pool => automaticStockChoices(pool, query, unavailable).some(anchor => enoughCompanions(anchor, pool)))]));
+    const searches = await Promise.allSettled(discovery.values());
+    const pool = portraitFirstStock(searches.flatMap(result => result.status === "fulfilled" ? result.value : []), query);
+    const choices = portraitFirstStock(automaticStockChoices(pool, query, unavailable)
+      .sort((left, right) => Number(recentlyUsed.has(`${left.provider}:${left.id}`)) - Number(recentlyUsed.has(`${right.provider}:${right.id}`))), query);
+    selected = choices.find(video => enoughCompanions(video, pool))
+      || choices.find(video => automaticStockCompanions(video, pool, query, recentlyUsed, unavailable).length >= 3);
+    if (!selected) throw new Error("Not enough related eligible footage is available for this template right now. Try again later or choose another template.");
+  }
+  const anchor = await resolveNaturalStock(selected.provider, selected.id);
+  if (anchor.provider !== selected.provider || anchor.id !== selected.id) throw new Error("This starting video is no longer available.");
   // Greenery validation can omit sources; keep its established larger pool.
   const sequenceExperiment = managerGuidance.attentionExperiment === "focus-four-v1" && !automaticStockGreeneryFocus(anchor)
     ? Number.parseInt(input.requestId.slice(-1), 16) % 2 === 0 ? "focus-four-v1" as const : "montage-control-v1" as const
     : undefined;
   const sourceTarget = sequenceExperiment === "focus-four-v1" ? 4 : AUTOMATIC_STOCK_REEL_MAX_SOURCES;
-  const configured = configuredStock();
-  const providers = AUTOMATIC_STOCK_PROVIDERS.filter(name => configured[name]);
-  const recentlyUsed = recentStockMediaIdentities(await readSourceJobs(), managerGuidance.historyLimit);
   const sources = await automaticStockSources(anchor, query, providers, {
-    search: (name, companionQuery) => searchNaturalStockPool(name, companionQuery,
-      pool => {
-        const related = automaticStockCompanions(anchor, pool, query, recentlyUsed, unavailable);
-        const fullFrame = related.filter(video => {
-          const aspect = video.width / video.height, target = 720 / 1280;
-          return Math.min(aspect / target, target / aspect) >= .92;
-        }).length;
-        return related.length >= sourceTarget - 1 && fullFrame >= Math.min(7, sourceTarget - 1);
-      }),
+    search: (name, companionQuery) => companionQuery === query && discovery?.has(name) ? discovery.get(name)! : searchNaturalStockPool(name, companionQuery,
+      pool => enoughCompanions(anchor, pool, sourceTarget)),
     resolve: resolveNaturalStock,
   }, recentlyUsed, unavailable, sequenceExperiment);
   const downloads: StockReelDownload[] = sources.map(video => {
@@ -122,8 +137,8 @@ export async function POST(request: Request) {
       automatic: z.boolean().default(false), query: z.string().trim().min(2).max(100).optional(),
       provider: providerSchema.optional(), id: mediaIdSchema.optional(), requestId: z.string().uuid(), caption: z.string().trim().max(150).default(""), duration: z.number().int().min(15).max(105).default(60), theme: z.string().trim().max(100).default(""), options: optionsSchema.default({ audio: "auto", mood: "reflective", transition: "cut", framing: "auto" }),
       shots: z.array(z.object({ provider: providerSchema, id: mediaIdSchema, start: z.number().finite().nonnegative(), end: z.number().finite().positive(), trimMode: z.enum(["auto", "manual"]).optional() }).refine(shot => shot.end > shot.start, "A shot must end after it starts.")).min(1).max(MAX_STOCK_SHOTS).optional(),
-    }).refine(value => value.shots || (value.provider && value.id), "Choose footage before creating a reel.").refine(value => !value.shots || value.shots.length < 2 || value.theme.length >= 2, "Related shots need a shared subject or place.").refine(value => !value.automatic || (!value.shots && value.provider && value.id && value.query), "Automatic reels need a topic and one starting video.").parse(await request.json());
-    if ((input.shots || [{ provider: input.provider, id: input.id }]).some(shot => !stockMediaIdentity(shot.provider, shot.id)
+    }).refine(value => value.shots || (value.provider && value.id) || (value.automatic && value.query), "Choose footage before creating a reel.").refine(value => !value.shots || value.shots.length < 2 || value.theme.length >= 2, "Related shots need a shared subject or place.").refine(value => !value.automatic || (!value.shots && value.query && ((value.provider && value.id) || (!value.provider && !value.id))), "Automatic reels need a topic and either a complete starting video or automatic footage selection.").parse(await request.json());
+    if ((input.shots || (input.provider || input.id ? [{ provider: input.provider, id: input.id }] : [])).some(shot => !stockMediaIdentity(shot.provider, shot.id)
       || (shot.provider !== "nasa" && typeof shot.id !== "number") || (shot.provider === "nasa" && typeof shot.id !== "string"))) throw new Error("This media ID does not match its stock provider.");
     if (input.automatic) {
       // Share the complete preparation/download promise, not only the saved job.

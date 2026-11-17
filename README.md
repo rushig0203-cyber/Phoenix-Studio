@@ -9,6 +9,12 @@ putting local files in a container would not move their storage or RAM elsewhere
 Open **Phoenix Studio** from the Desktop shortcut, then use
 [the dashboard](http://localhost:3000/dashboard).
 
+- **Choose a template:** start from six recommendations based on your saved
+  videos, confirmed posts and available feedback. One click finds related footage
+  and queues the existing automatic reel workflow. The exact finished video opens
+  for review; interrupted confirmations reuse their saved request rather than
+  creating a second job. **More templates** rotates the choices. The tools below
+  remain available under **Other tools**.
 - **Clip a Video:** stream a local episode to disk, select coverage or highlights,
   and produce real source-video clips. Highlights favor a clear speech opening
   and complete lines when reliable local transcripts are available. Find each
@@ -31,6 +37,13 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
   Page Reel counts. Posted videos open their matching publication's results.
   Other platforms show their actual connection or service-access limits.
 - **Settings** holds private writer/channel setup and content-quality feedback.
+
+The video review opens its posting controls directly at a verified available
+destination. Check the visible destination, posting text, visibility, soundtrack
+and optional tags/location, then use the final **Post** button. Less common edits
+stay in **Posting details**. Opening a review or changing destinations never posts
+a video. Existing upload requests retain their saved approval and duplicate
+protection; Rumble remains an assisted upload rather than an automatic connection.
 
 Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Commons
 and NASA footage. Commons/NASA results require supported rights and source

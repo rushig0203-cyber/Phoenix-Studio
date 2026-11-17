@@ -211,7 +211,7 @@ function uiHarness(options = {}) {
       renderer.dirty = false; renderer.index = 0; renderer.pending = [];
       active = renderer;
       let rendered;
-      try { rendered = Component({ file }); }
+      try { rendered = Component({ file, finalReview: options.finalReview }); }
       finally { active = undefined; }
       const visited = new Set();
       renderer.tree = resolve(rendered, 'root', visited);
@@ -276,6 +276,94 @@ function uiHarness(options = {}) {
   return h;
 }
 
+test('final video review opens the saved destination directly and one Post approves a durable YouTube request', async t => {
+  const pending = deferred();
+  const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'youtube' } }), post: () => pending.promise });
+  t.after(() => h.unmount());
+  await h.flush();
+  assert.equal(h.button('Post / export'), undefined);
+  assert.equal(h.button('Close'), undefined);
+  const destinations = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
+  assert.deepEqual(nodes(destinations).filter(node => node.type === 'button').map(text), ['YouTube', 'Instagram', 'Facebook Page', 'Story only', 'Rumble · assisted']);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.posts.length, 0, 'Opening final review only reads verified setup and saved jobs');
+  assert.ok(h.requests.every(request => request.method === 'GET'));
+  assert.match(h.text, /Destination: Owned YouTube channel/);
+  const details = nodes(h.tree).find(node => node.props['data-posting-details']);
+  assert.equal(details.type, 'details'); assert.equal(Boolean(details.props.open), false);
+  assert.ok(h.control('YouTube title', 'input', details));
+  assert.ok(h.control('Description and hashtags', 'textarea', details));
+  assert.ok(h.control('Privacy', 'select', details));
+  const summary = nodes(h.tree).find(node => node.props['data-posting-summary']);
+  assert.match(text(summary), /Saved review video.*private.*general audience/);
+  assert.match(text(summary), /Saved caption/);
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
+  const form = h.form(); h.submit(form); h.submit(form); await h.flush();
+  assert.equal(h.posts.length, 1);
+  const submitted = JSON.parse(h.posts[0].body);
+  assert.equal(submitted.action, 'create'); assert.equal(submitted.confirm, true);
+  assert.equal(submitted.platform, 'youtube'); assert.equal(submitted.connectionRevision, 'revision-youtube');
+  pending.resolve(response({ job: job({ status: 'QUEUED', percent: 0 }) })); await h.flush();
+  assert.equal(h.form(), undefined); assert.equal(h.intervals.size, 1);
+});
+
+test('final review falls back from an unready saved YouTube destination to verified Instagram with saved choices', async t => {
+  let submitted;
+  const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'youtube' } }),
+    channels: [channel('youtube', { publishReady: false }), channel('instagram')],
+    defaults: { location: { id: '12345', name: 'Remembered place' } },
+    story: { ready: true, reason: 'Saved MP4 is eligible.' },
+    post(request) { submitted = JSON.parse(request.body); return response({ job: job({ platform: 'instagram' }) }); },
+  }); t.after(() => h.unmount()); await h.flush();
+  assert.ok(h.panel('Instagram')); assert.equal(h.panel('YouTube'), undefined);
+  assert.equal(h.posts.length, 0); assert.equal(h.confirmation(), undefined);
+  assert.match(text(nodes(h.tree).find(node => node.props['data-posting-summary'])), /Remembered place.*Reel \+ matching Story/);
+  h.submit(); await h.flush();
+  assert.equal(submitted.platform, 'instagram'); assert.equal(submitted.confirm, true);
+  assert.deepEqual(submitted.location, { id: '12345' }); assert.equal(submitted.automaticTags, true);
+  assert.equal(submitted.companionStory, true); assert.equal(submitted.caption, 'Saved caption\n\n#fixture #video');
+});
+
+test('final review never replaces a destination the owner chooses while its default lookup is pending', async t => {
+  const waiting = deferred();
+  const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'instagram' } }),
+    read(request) { if (request.url === '/api/channels') return waiting.promise; },
+  }); t.after(() => h.unmount());
+  h.choose('YouTube'); await h.flush();
+  waiting.resolve(response({ channels: [channel('instagram'), channel('youtube')] })); await h.flush();
+  assert.ok(h.panel('YouTube')); assert.equal(h.panel('Instagram'), undefined);
+  assert.equal(h.posts.length, 0); assert.ok(h.requests.every(request => request.method === 'GET'));
+});
+
+test('final review uses a later saved caption and hashtags until the owner edits its posting text', async t => {
+  for (const ownerEdited of [false, true]) {
+    let submitted;
+    const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'youtube' } }),
+      post(request) { submitted = JSON.parse(request.body); return response({ job: job() }); },
+    }); t.after(() => h.unmount()); await h.flush();
+    if (ownerEdited) { h.change(h.control('Description and hashtags', 'textarea'), 'Owner-reviewed caption #KeepMine'); h.render(); }
+    h.updateFile({ ...h.file, quality: { ...h.file.quality, postCopy: 'Later video-specific caption', hashtags: ['#Updated'],
+      postingAnalysis: { status: 'COMPLETE', updatedAt: '2026-10-03T00:01:00Z' } } }); await h.flush();
+    const expected = ownerEdited ? 'Owner-reviewed caption #KeepMine' : 'Later video-specific caption\n\n#Updated';
+    assert.equal(h.control('Description and hashtags', 'textarea').props.value, expected);
+    assert.match(text(nodes(h.tree).find(node => node.props['data-posting-summary'])), ownerEdited ? /Owner-reviewed caption #KeepMine/ : /Later video-specific caption/);
+    assert.equal(h.posts.length, 0, 'Updating the saved text never approves publication');
+    h.submit(); await h.flush(); assert.equal(submitted.caption, expected); assert.equal(submitted.confirm, true);
+  }
+});
+
+test('final review reports a pending caption without substituting the title and still permits explicit owner text', async t => {
+  let submitted;
+  const h = uiHarness({ finalReview: true, file: sampleFile({ delivery: { platform: 'youtube' },
+    quality: { postCopy: '', hashtags: ['#SavedTag'], captions: [], postingAnalysis: { status: 'QUEUED' } } }),
+    post(request) { submitted = JSON.parse(request.body); return response({ job: job() }); },
+  }); t.after(() => h.unmount()); await h.flush();
+  assert.equal(h.control('Description and hashtags', 'textarea').props.value, '#SavedTag');
+  assert.match(h.text, /No analyzed caption is saved yet/); assert.equal(h.posts.length, 0);
+  h.change(h.control('Description and hashtags', 'textarea'), 'Owner caption #SavedTag'); h.render();
+  h.submit(); await h.flush(); assert.equal(submitted.caption, 'Owner caption #SavedTag'); assert.equal(submitted.confirm, true);
+});
+
 test('mount is inert and opening or checking a platform only reads accounts and saved jobs', async t => {
   const h = uiHarness(); t.after(() => h.unmount());
   await h.flush();
@@ -294,8 +382,8 @@ test('mount is inert and opening or checking a platform only reads accounts and 
   ]);
   assert.ok(h.requests.every(request => request.cache === 'no-store' && request.signal));
   assert.match(h.text, /Destination: Owned YouTube channel/);
-  assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.button('Confirm upload').props.disabled, true);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.click('Check status'); await h.flush();
   assert.equal(h.requests.length, 4);
   assert.ok(h.requests.every(request => request.method === 'GET'));
@@ -624,18 +712,17 @@ test('saved location cannot be edited on continuation, and YouTube never shows o
   assert.ok(!h.requests.some(request => request.url.includes('?check=location')));
 });
 
-test('editing reviewed title, copy, privacy or kids audience invalidates previous final approval', async t => {
+test('editing title, copy, privacy or kids audience updates the summary without posting or an approval checkbox', async t => {
   const h = uiHarness(); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
   for (const [label, type, value] of [['YouTube title', 'input', 'New title'], ['Description and hashtags', 'textarea', 'New reviewed copy'], ['Privacy', 'select', 'public'], ['This video is made for kids', 'input', true]]) {
-    h.change(h.confirmation(), true); h.render();
-    assert.equal(h.button('Confirm upload').props.disabled, false);
+    assert.equal(h.button('Post to YouTube').props.disabled, false);
     h.change(h.control(label, type), value); h.render();
-    assert.equal(h.confirmation().props.checked, false, `${label} resets approval`);
-    assert.equal(h.button('Confirm upload').props.disabled, true);
-    h.submit(); await h.flush();
-    assert.equal(h.posts.length, 0, 'A stale approval never submits');
+    assert.equal(h.confirmation(), undefined);
+    assert.equal(h.button('Post to YouTube').props.disabled, false);
+    assert.equal(h.posts.length, 0, 'Editing does not approve a post');
   }
+  assert.match(text(nodes(h.tree).find(node => node.props['data-posting-summary'])), /New title.*public.*made for kids/);
 });
 
 test('YouTube uses its 5000-byte metadata limit and rejects forbidden brackets before a confirmed POST', async t => {
@@ -650,52 +737,44 @@ test('YouTube uses its 5000-byte metadata limit and rejects forbidden brackets b
     h.change(h.control('YouTube title', 'input'), 'Reviewed title');
     h.change(h.control('Description and hashtags', 'textarea'), 'Reviewed description'); h.render();
     h.change(h.control(label, type), value); h.render();
-    h.change(h.confirmation(), true); h.render();
     assert.match(h.text, issue);
-    assert.equal(h.button('Confirm upload').props.disabled, true);
+    assert.equal(h.button('Post to YouTube').props.disabled, true);
     h.submit(); await h.flush();
     assert.equal(h.posts.length, 0, 'Invalid metadata never reaches the local publishing API');
   }
   const caption = 'é'.repeat(2500);
   h.change(h.control('YouTube title', 'input'), 'Reviewed title');
   h.change(h.control('Description and hashtags', 'textarea'), caption); h.render();
-  h.change(h.confirmation(), true); h.render();
-  assert.equal(h.button('Confirm upload').props.disabled, false);
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.submit(); await h.flush();
   assert.equal(h.posts.length, 1); assert.equal(JSON.parse(h.posts[0].body).caption, caption);
 });
 
-test('a changed video revision invalidates approval and a retained old submit handler cannot upload it', async t => {
+test('a changed video revision rejects a retained old submit handler and requires a current Post click', async t => {
   const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
-  h.change(h.confirmation(), true); h.render();
-  assert.equal(h.button('Confirm upload').props.disabled, false);
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
   const oldForm = h.form();
   h.updateFile({ ...h.file, updatedAt: '2026-10-04T00:00:00Z', outputs: { ...h.file.outputs,
     youtube: { ...h.file.outputs.youtube, duration: 18 } } });
-  assert.equal(h.confirmation().props.checked, false);
-  assert.equal(h.button('Confirm upload').props.disabled, true);
-  h.submit(oldForm); h.submit(); await h.flush();
-  assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render();
+  assert.equal(h.confirmation(), undefined);
   h.submit(oldForm); await h.flush();
-  assert.equal(h.posts.length, 0, 'The old form cannot borrow approval for the changed video');
+  assert.equal(h.posts.length, 0);
   h.submit(); await h.flush();
-  assert.equal(h.posts.length, 1, 'The current video can be explicitly approved again');
+  assert.equal(h.posts.length, 1, 'The current video is approved by its final Post action');
 });
 
-test('irrelevant new prop object does not cancel approval but unavailable output does', async t => {
+test('unavailable output blocks the final Post while an irrelevant prop object leaves it ready', async t => {
   const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
-  h.change(h.confirmation(), true); h.render();
   const available = h.file;
   h.updateFile({ ...h.file, quality: { ...h.file.quality } });
-  assert.equal(h.confirmation().props.checked, true);
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.updateFile({ ...h.file, status: 'NEEDS_RENDERER', outputs: {} });
-  assert.equal(h.confirmation().props.checked, false);
+  assert.equal(h.button('Post to YouTube').props.disabled, true);
   h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
   h.updateFile(available);
-  assert.equal(h.confirmation().props.checked, false, 'Restoring the old metadata cannot restore an old approval');
+  assert.equal(h.posts.length, 0, 'Restoring metadata never dispatches an upload');
 });
 
 test('missing or unready publishing permission offers setup without starting authorization or an upload', async t => {
@@ -704,8 +783,8 @@ test('missing or unready publishing permission offers setup without starting aut
     h.choose('Upload to YouTube'); await h.flush();
     const setup = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Open channel setup');
     assert.equal(setup.props.href, '/dashboard#settings');
-    assert.equal(h.confirmation().props.disabled, true);
-    assert.equal(h.button('Confirm upload').props.disabled, true);
+    assert.equal(h.confirmation(), undefined);
+    assert.equal(h.button('Post to YouTube').props.disabled, true);
     h.submit(); await h.flush();
     assert.equal(h.posts.length, 0);
     assert.ok(h.requests.every(request => request.method === 'GET'));
@@ -743,11 +822,11 @@ test('a failed status check disables cached upload permission while retaining ma
   const h = uiHarness({read(_request,requests){if(requests.length>2)return response({error:'Account checks unavailable.'},503);}});
   t.after(()=>h.unmount());
   h.choose('Upload to YouTube');await h.flush();
-  assert.equal(h.confirmation().props.disabled,false);
+  assert.equal(h.button('Post to YouTube').props.disabled,false);
   h.click('Check status');await h.flush();
   assert.match(h.text,/Account checks unavailable/);
   assert.match(h.text,/Uploading setup could not be verified/);
-  assert.equal(h.confirmation().props.disabled,true);assert.equal(h.button('Confirm upload').props.disabled,true);
+  assert.equal(h.confirmation(),undefined);assert.equal(h.button('Post to YouTube').props.disabled,true);
   assert.ok(nodes(h.tree).some(node=>node.type==='a'&&text(node)==='Download for YouTube'));
   h.click('Copy YouTube text');await h.flush();
   assert.equal(h.copied.length,1);assert.match(h.text,/Account checks unavailable/);
@@ -764,16 +843,16 @@ test('clipboard failure preserves editable text and does not trigger a submissio
   assert.equal(h.copied.length,0);assert.equal(h.posts.length,0);
 });
 
-test('an unavailable render cannot submit even after reviewing the rights checkbox', async t => {
+test('an unavailable render cannot submit from the final Post action', async t => {
   const h = uiHarness({ file: sampleFile({ status: 'NEEDS_RENDERER', outputs: {} }) }); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
-  if (!h.confirmation().props.disabled) { h.change(h.confirmation(), true); await h.flush(); }
-  assert.equal(h.button('Confirm upload').props.disabled, true);
+  assert.equal(h.confirmation(), undefined);
+  assert.equal(h.button('Post to YouTube').props.disabled, true);
   h.submit(); await h.flush();
   assert.equal(h.posts.length, 0);
 });
 
-test('YouTube sends the reviewed title, copy, account revision, private privacy and kids choice only after final confirmation', async t => {
+test('one final YouTube Post sends reviewed title, copy, account revision, visibility, kids choice and explicit approval', async t => {
   const h = uiHarness({ file: sampleFile({ audience: 'kids-story', title: 'A'.repeat(130) }), post: () => response({ job: job() }) });
   t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
@@ -784,12 +863,10 @@ test('YouTube sends the reviewed title, copy, account revision, private privacy 
   h.change(h.control('YouTube title', 'input'), 'Reviewed title');
   h.change(h.control('Description and hashtags', 'textarea'), 'Reviewed description\n\n#approved');
   await h.flush();
-  h.submit(); await h.flush();
-  assert.equal(h.posts.length, 0, 'A form submit without the final checkbox cannot upload');
-  assert.match(h.text, /approve uploading this video as private to Owned YouTube channel/);
-  h.change(h.confirmation(), true); await h.flush();
-  assert.equal(h.posts.length, 0, 'Checking the box alone does not upload');
-  assert.equal(h.button('Confirm upload').props.disabled, false);
+  assert.equal(h.confirmation(), undefined);
+  assert.match(h.text, /Clicking Post approves this reviewed video, title, description and required rights to upload as private to Owned YouTube channel/);
+  assert.equal(h.posts.length, 0, 'Reviewing or editing alone does not upload');
+  assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.submit(); await h.flush();
   assert.equal(h.posts.length, 1);
   assert.equal(h.posts[0].headers['Content-Type'], 'application/json');
@@ -850,7 +927,6 @@ test('two synchronous form submissions create one request and disable editing wh
   const pending = deferred();
   const h = uiHarness({ post: () => pending.promise }); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
-  h.change(h.confirmation(), true); await h.flush();
   const form = h.form();
   h.submit(form); h.submit(form); h.render();
   assert.equal(h.posts.length, 1, 'The ref guard protects before React can re-render a disabled button');
@@ -858,7 +934,7 @@ test('two synchronous form submissions create one request and disable editing wh
   assert.equal(h.button('Close').props.disabled, true);
   assert.equal(h.button('Post to Instagram').props.disabled, true);
   assert.equal(h.control('YouTube title', 'input').props.disabled, true);
-  assert.equal(h.confirmation().props.disabled, true);
+  assert.equal(h.confirmation(), undefined);
   pending.resolve(response({ job: job() })); await h.flush();
   assert.equal(h.posts.length, 1);
   assert.equal(h.form(), undefined);
@@ -873,7 +949,7 @@ test('a previous upload displays actual saved status and its link instead of off
   assert.match(h.text, /Platform-confirmed visibility: private/);
   assert.match(h.text, /already has a saved YouTube upload request/);
   assert.equal(h.form(), undefined);
-  assert.equal(h.button('Confirm upload'), undefined);
+  assert.equal(h.button('Post to YouTube'), undefined);
   const link = nodes(h.tree).find(node => node.type === 'a' && text(node).startsWith('View uploaded video'));
   assert.equal(link.props.href, 'https://www.youtube.com/watch?v=fixture');
   assert.equal(link.props.target, '_blank');
@@ -1087,16 +1163,16 @@ test('Story-only opening is inert and reads account, saved jobs and capability w
   assert.ok(h.requests.every(request=>request.method==='GET'));
   assert.equal(h.requests.some(request=>/[?]check=(posting-defaults|audio|location)/.test(request.url)),false);
   for(const [label,type] of [['Caption and hashtags','textarea'],['Instagram usernames','input'],['Use Instagram music','input'],['Place name or Facebook location Page ID','input'],['Also publish one matching Story','input']]) assert.equal(h.control(label,type),undefined);
-  assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Story only').props.disabled,true);
-  assert.match(h.text,/Destination: @owned_instagram/);assert.match(h.text,/publishing this Story publicly/);
-  h.submit();await h.flush();assert.equal(h.posts.length,0);
+  assert.equal(h.confirmation(),undefined);assert.equal(h.button('Post Story only').props.disabled,false);
+  assert.match(h.text,/Destination: @owned_instagram/);assert.match(h.text,/rights to publish one Story publicly/);
+  assert.equal(h.posts.length,0);
 });
 
-test('an eligible Story-only upload requires explicit fresh approval and sends no Reel configuration', async t => {
+test('an eligible Story-only final Post is explicit approval and sends no Reel configuration', async t => {
   let saved;
   const h=uiHarness({story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'},post(request){saved=JSON.parse(request.body);return response({job:standaloneStoryJob({status:'QUEUED',percent:0})});}});t.after(()=>h.unmount());
-  h.choose('Post Story only');await h.flush();h.submit();await h.flush();assert.equal(h.posts.length,0);
-  h.change(h.confirmation(),true);h.render();assert.equal(h.button('Confirm Story only').props.disabled,false);
+  h.choose('Post Story only');await h.flush();assert.equal(h.posts.length,0);
+  assert.equal(h.confirmation(),undefined);assert.equal(h.button('Post Story only').props.disabled,false);
   h.submit();await h.flush();
   assert.deepEqual(saved,{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});
   assert.equal(h.posts.length,1);assert.equal(h.form(),undefined);assert.match(h.text,/Saved standalone Story status/);
@@ -1104,10 +1180,10 @@ test('an eligible Story-only upload requires explicit fresh approval and sends n
 
 test('two synchronous Story-only submissions create one request and disable editing while it is pending', async t => {
   const waiting=deferred();const h=uiHarness({story:{ready:true,reason:'Confirmed Business account.'},post(){return waiting.promise;}});t.after(()=>h.unmount());
-  h.choose('Post Story only');await h.flush();h.change(h.confirmation(),true);h.render();const form=h.form();
+  h.choose('Post Story only');await h.flush();const form=h.form();
   h.submit(form);h.submit(form);h.render();assert.equal(h.posts.length,1);
   assert.deepEqual(JSON.parse(h.posts[0].body),{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});
-  assert.equal(h.confirmation().props.disabled,true);assert.equal(h.button('Post to Instagram').props.disabled,true);assert.equal(h.button('Post Story only').props.disabled,true);
+  assert.equal(h.confirmation(),undefined);assert.equal(h.button('Post to Instagram').props.disabled,true);assert.equal(h.button('Post Story only').props.disabled,true);
   waiting.resolve(response({job:standaloneStoryJob({status:'QUEUED',percent:0})}));await h.flush();assert.equal(h.posts.length,1);
 });
 
@@ -1119,7 +1195,7 @@ test('unverified Business type, unavailable Story media and missing upload permi
   ]) {
     const h=uiHarness(fixture);t.after(()=>h.unmount());h.choose('Post Story only');await h.flush();
     const approval=h.confirmation();if(approval&&!approval.props.disabled){h.change(approval,true);h.render();}
-    assert.equal(h.button('Confirm Story only').props.disabled,true);
+    assert.equal(h.button('Post Story only').props.disabled,true);
     if(h.form()){h.submit();await h.flush();}assert.equal(h.posts.length,0);
     assert.match(h.text,fixture.story?.requiresBusinessConfirmation?/Confirm the Instagram Business account type/:fixture.story?/exceeds the Story duration limit/:/publishing permission is unavailable/);
   }
@@ -1129,9 +1205,9 @@ test('a failed or completed saved Reel does not prevent a separately approved St
   for(const status of ['FAILED','COMPLETE']) {
     let saved;const h=uiHarness({jobs:[job({platform:'instagram',status,canContinue:status==='FAILED',detail:'Existing Reel status.'})],
       story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'},post(request){saved=JSON.parse(request.body);return response({job:standaloneStoryJob({status:'QUEUED',percent:0})});}});t.after(()=>h.unmount());
-    h.choose('Post Story only');await h.flush();assert.ok(h.form(),status);assert.equal(h.confirmation().props.checked,false);
+    h.choose('Post Story only');await h.flush();assert.ok(h.form(),status);assert.equal(h.confirmation(),undefined);
     assert.equal(h.requests.filter(request=>request.url.includes('?check=story&')).length,1,status);
-    h.change(h.confirmation(),true);h.render();h.submit();await h.flush();
+    h.submit();await h.flush();
     assert.deepEqual(saved,{action:'create-story',confirm:true,connectionRevision:'revision-instagram'});assert.equal(h.posts.length,1,status);
     assert.equal(JSON.parse(h.posts[0].body).jobId,undefined,'Creating a standalone Story never continues the saved Reel');
   }
@@ -1191,15 +1267,15 @@ test('an untouched matching Story can become Story only only with fresh approval
   h.choose('Post to Instagram'); await h.flush(); assert.equal(h.confirmation(), undefined, 'The original saved Reel is never automatically dispatched');
 });
 
-test('switching between Story-only, Reel and YouTube resets final approval before any upload', async t => {
+test('switching between Story-only, Reel and YouTube never approves or submits an upload', async t => {
   const h=uiHarness({story:{ready:true,reason:'Confirmed Business account; saved MP4 eligible.'}});t.after(()=>h.unmount());
-  h.choose('Post Story only');await h.flush();h.change(h.confirmation(),true);h.render();assert.equal(h.confirmation().props.checked,true);
+  h.choose('Post Story only');await h.flush();assert.equal(h.confirmation(),undefined);
   h.choose('Post to Instagram');await h.flush();assert.equal(h.confirmation(),undefined);assert.ok(h.control('Caption and hashtags','textarea'));
   assert.equal(h.button('Post to Instagram').props.disabled,false);
-  h.choose('Post Story only');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.control('Caption and hashtags','textarea'),undefined);
-  assert.equal(h.button('Confirm Story only').props.disabled,true);h.change(h.confirmation(),true);h.render();
-  h.choose('Upload to YouTube');await h.flush();assert.equal(h.confirmation().props.checked,false);assert.equal(h.button('Confirm Story only'),undefined);
-  assert.equal(h.button('Confirm upload').props.disabled,true);assert.equal(h.posts.length,0);
+  h.choose('Post Story only');await h.flush();assert.equal(h.confirmation(),undefined);assert.equal(h.control('Caption and hashtags','textarea'),undefined);
+  assert.equal(h.button('Post Story only').props.disabled,false);
+  h.choose('Upload to YouTube');await h.flush();assert.equal(h.confirmation(),undefined);assert.equal(h.button('Confirm Story only'),undefined);
+  assert.equal(h.button('Post to YouTube').props.disabled,false);assert.equal(h.posts.length,0);
 });
 
 test('everyday Story prompts are collapsed, grounded in the saved clip and never trigger generation or publication', async t => {
@@ -1236,7 +1312,7 @@ test('automatic tag policy is Instagram-only and no manual tag entry appears on 
   assert.equal(h.control('Instagram usernames', 'input'), undefined); assert.equal(h.posts.length, 0);
   h.choose('Upload to YouTube'); await h.flush(); assert.equal(h.control('Instagram usernames', 'input'), undefined);
   h.choose('Post to Instagram'); await h.flush(); assert.equal(h.control('Instagram usernames', 'input'), undefined);
-  h.choose('Upload to YouTube'); await h.flush(); h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  h.choose('Upload to YouTube'); await h.flush(); h.submit(); await h.flush();
   assert.equal(saved.userTags, undefined, 'Instagram tags never leak to YouTube');
   assert.equal(saved.automaticTags, undefined);
 });
@@ -1501,8 +1577,8 @@ test('switching from an automatic Reel track to Story-only uses the saved MP4 wi
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   assert.match(text(automaticMusicPanel(h)), /Calm track/); h.choose('Post Story only'); await h.flush();
   assert.equal(automaticMusicPanel(h), undefined); assert.match(h.text, /saved soundtrack/);
-  assert.equal(h.confirmation().props.checked, false); h.submit(); await h.flush(); assert.equal(h.posts.length, 0);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush();
+  assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
+  h.submit(); await h.flush();
   assert.deepEqual(saved, { action: 'create-story', confirm: true, connectionRevision: 'revision-instagram' });
 });
 
@@ -1748,7 +1824,7 @@ test('YouTube never shows or submits Instagram audio and reports visibility with
   let saved; const h = uiHarness({ post(request) { saved = JSON.parse(request.body); return response({ job: job() }); } }); t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush(); assert.equal(h.control('Track or artist', 'input'), undefined); assert.equal(h.button('Find Instagram audio'), undefined);
   assert.ok(!h.text.includes('unverified API project')); assert.match(h.text, /visibility returned by YouTube/);
-  h.change(h.confirmation(), true); h.render(); h.submit(); await h.flush(); assert.equal(saved.audio, undefined); assert.ok(!h.requests.some(request => request.url.includes('?check=audio')));
+  assert.equal(h.confirmation(), undefined); h.submit(); await h.flush(); assert.equal(saved.audio, undefined); assert.ok(!h.requests.some(request => request.url.includes('?check=audio')));
 });
 
 const rejectedJob = (extra = {}) => job({ platform: 'instagram', accountName: '@saved_destination', privacy: 'public', status: 'FAILED', percent: 0,

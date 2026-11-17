@@ -42,6 +42,80 @@ const automaticPayload = { automatic: true, provider: 'pexels', id: 1, query: 'S
 const request = payload => new Request('http://localhost/api/stock-reels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 const baselineGuidance = { revision: 'stock-v1-123456abcdef', feedbackCount: 0, rules: ['Fixed automatic stock policy.'], historyLimit: 10 };
 
+test('query-only automatic templates choose eligible fresh footage and retain existing automatic recipes', async () => {
+  const payload = { automatic: true, query: 'Sun City videos', requestId: automaticPayload.requestId };
+  const h = harness({ blocked: ['pexels:1'], history: [{ status: 'COMPLETED', stockSource: { shots: [{ provider: 'pexels', mediaId: '2' }, { provider: 'pexels', mediaId: '3' }] } }] });
+  const result = await h.api.POST(request(payload));
+  assert.equal(result.status, 201); assert.equal(h.queued.length, 1);
+  assert.equal(h.queued[0].downloads[0].provider, 'pexels'); assert.equal(h.queued[0].downloads[0].mediaId, '4');
+  assert.equal(h.queued[0].input.theme, payload.query); assert.equal(h.queued[0].input.requestId, payload.requestId);
+  assert.equal(h.calls.filter(call => call[0] === 'search').length, 2, 'The exact query reuses each provider pool during composition');
+  assert.ok(h.queued[0].downloads.every(source => !(source.provider === 'pexels' && source.mediaId === '1')));
+  assert.equal(h.fetches.length, 0, 'Only existing lazy queue factories can download media');
+  const saved = harness({ existing: { id: 'saved-template', stockSource: { shots: [{}, {}] } }, ffmpeg: false });
+  assert.equal((await saved.api.POST(request(payload))).status, 200);
+  assert.deepEqual(saved.calls, [['existing', payload.requestId]], 'Saved UUID lookup precedes new selection or guidance');
+});
+
+test('query-only templates share preparation and never accept manual requests with missing footage', async () => {
+  const gate = deferred(), entered = deferred(), payload = { automatic: true, query: 'Sun City videos', requestId: automaticPayload.requestId };
+  const h = harness({ queue(downloads, input, job) { entered.resolve(job); return gate.promise; } });
+  const first = h.api.POST(request(payload)), job = await entered.promise;
+  const duplicate = h.api.POST(request(payload)); await flush();
+  assert.equal(h.queued.length, 1); assert.equal(h.calls.filter(call => call[0] === 'existing').length, 1);
+  gate.resolve(job); assert.deepEqual((await Promise.all([first, duplicate])).map(response => response.status), [201, 200]);
+  const manual = harness();
+  assert.equal((await manual.api.POST(request({ query: 'Sun City', requestId: payload.requestId }))).status, 400);
+  assert.equal(manual.calls.length, 0);
+});
+
+test('query-only discovery keeps searching past unrelated eligible cards until a coherent group is available', async () => {
+  let discovery = true;
+  const h = harness({ configured: { pexels: true, pixabay: false }, searchPool: async (provider, query, enough) => {
+    if (!discovery) return Array.from({ length: 10 }, (_, index) => video(index + 20));
+    discovery = false;
+    const unrelated = ['horse', 'dog', 'cat', 'owl', 'deer', 'giraffe', 'lion', 'elephant'].map((animal, index) => video(index + 2, `Sun City ${animal}`));
+    assert.equal(enough(unrelated), false);
+    const coherent = Array.from({ length: 10 }, (_, index) => video(index + 20));
+    assert.equal(enough(coherent.slice(0, 8)), false, 'Discovery keeps the larger standard source pool');
+    assert.equal(enough(coherent.map(source => ({ ...source, width: 1280, height: 720 }))), false, 'Landscape-only cards cannot stop portrait discovery');
+    assert.equal(enough(coherent), true); return [...unrelated, ...coherent];
+  } });
+  const result = await h.api.POST(request({ automatic: true, query: 'Sun City videos', requestId: automaticPayload.requestId }));
+  assert.equal(result.status, 201, JSON.stringify(await result.json())); assert.equal(h.queued[0].downloads[0].mediaId, '20');
+});
+
+test('query-only templates reject sparse or changed authoritative footage before downloading', async () => {
+  const payload = { automatic: true, query: 'Sun City videos', requestId: automaticPayload.requestId };
+  for (const options of [{ search: async () => [anchor] }, { resolve: async (provider, id) => video(id, 'Different place', { provider }) }]) {
+    const h = harness(options), result = await h.api.POST(request(payload));
+    assert.equal(result.status, 400); assert.equal(h.queued.length, 0); assert.equal(h.fetches.length, 0);
+  }
+});
+
+test('query-only templates make a new bounded search when the anchor enriches a broad topic', async () => {
+  const h = harness({ configured: { pexels: true, pixabay: false },
+    search: async provider => Array.from({ length: 8 }, (_, index) => video(index + 1, 'horse grazing in meadow', { provider })),
+    resolve: async (provider, id) => video(id, 'horse grazing in meadow', { provider }),
+  });
+  const result = await h.api.POST(request({ automatic: true, query: 'Nature', requestId: automaticPayload.requestId }));
+  assert.equal(result.status, 201); assert.deepEqual(h.calls.filter(call => call[0] === 'search').map(call => call[2]), ['Nature', 'meadow horse']);
+});
+
+test('cached query-only greenery keeps the larger portrait-aware pool and bypasses the four-source experiment', async () => {
+  const h = harness({ configured: { pexels: true, pixabay: false }, guidance: { ...baselineGuidance, attentionExperiment: 'focus-four-v1' },
+    searchPool: async (provider, query, enough) => {
+      assert.equal(query, 'green forest');
+      const sources = Array.from({ length: 10 }, (_, index) => video(index + 1, 'lush green forest trees', { provider }));
+      assert.equal(enough(sources.slice(0, 8)), false); assert.equal(enough(sources), true); return sources;
+    }, resolve: async (provider, id) => video(id, 'lush green forest trees', { provider }),
+  });
+  const result = await h.api.POST(request({ automatic: true, query: 'green forest', requestId: automaticPayload.requestId.slice(0, -1) + '2' }));
+  assert.equal(result.status, 201); assert.equal(h.calls.filter(call => call[0] === 'search').length, 1);
+  assert.equal(h.queued[0].input.options.sceneFocus, 'greenery'); assert.equal(h.queued[0].input.options.sequenceExperiment, undefined);
+  assert.ok(h.queued[0].downloads.length >= 8);
+});
+
 test('fresh attention guidance assigns saved focus/control recipes without changing manual or existing work', async () => {
   const guidance = { ...baselineGuidance, attentionExperiment: 'focus-four-v1' };
   for (const [tail, profile, count] of [['2', 'focus-four-v1', 4], ['1', 'montage-control-v1', 8]]) {

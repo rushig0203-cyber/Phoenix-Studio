@@ -1,101 +1,74 @@
-.shell {
-  background: radial-gradient(ellipse at 75% 0%, #e0e9ef 0, transparent 48%), #f2ede2;
-  color: #23384b;
-}
-.sidebar {
-  background: #e7edf0;
-  color: #23384b;
-  border-color: #e7edf0;
-}
-.brand { color: inherit; }
-.brandMark {
-  background: #d3e0ea;
-  color: #294f6a;
-  border: 0;
-  box-shadow: 3px 3px 0 #bfcdd7;
-  transform: rotate(-6deg);
-}
-.navLink { color: #4f6578; }
-.navLink:hover { background: #dbe6ee; color: #23384b; }
-.navLink[aria-current="page"] {
-  background: #d3e0ea;
-  color: #274f6d;
-  box-shadow: 0 3px 0 #bfcdd7;
-}
-.main { padding-top: 2.5rem; }
-.header { border: 0; padding-bottom: 0; margin-bottom: 2rem; }
-.heading { font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.18; letter-spacing: -.045em; }
-.queueBadge { background: #fbf7ee; border-color: #748a96; box-shadow: 0 2px 4px #e7edf008; }
-.workflows { gap: 1.15rem; }
-.workflow {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 1.25rem;
-  background: #fbf7ee;
-  border: 1px solid #748a96;
-  border-radius: 1.3rem;
-  box-shadow: 0 3px 0 #bfcdd7, 0 12px 24px -20px #e7edf050;
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-}
-.workflow h2 { font-size: 1.3rem; margin-top: 1.25rem; letter-spacing: -.025em; }
-.artwork {
-  position: relative;
-  display: grid;
-  place-items: center;
-  height: 9rem;
-  overflow: hidden;
-  border-radius: .85rem;
-  background: linear-gradient(135deg, #e3ebf1, #d8e4ed);
-  isolation: isolate;
-}
-.artwork::before, .artwork::after {
-  content: "";
-  position: absolute;
-  width: 6.4rem;
-  height: 4.3rem;
-  border: 1px solid #7d929e;
-  border-radius: .65rem;
-  background: #fbf7ee;
-  transform: rotate(-13deg) translate(-.7rem, -.3rem);
-  box-shadow: 4px 6px 0 #bfcdd7;
-}
-.artwork::after { transform: rotate(7deg) translate(.7rem, .2rem); background: #d3e0ea; }
-.artwork svg { position: relative; z-index: 1; width: 1.8rem; height: 1.8rem; color: #294f6a; }
-.creation .artwork { background: linear-gradient(135deg, #e7edf3, #dbe6f0); }
-.creation .artwork::before { border-color: #8aa8bd; box-shadow: 4px 6px 0 #c9d5df; }
-.creation .artwork::after { background: #aec4d5; border-color: #8aa8bd; transform: rotate(-6deg) translate(.7rem, .2rem); }
-.reel .artwork { background: #e0e9f1; }
-.reel .artwork::before, .reel .artwork::after { width: 3.6rem; height: 6rem; }
-.reel .artwork::after { background: #92b1c9; border-color: #92b1c9; }
-.reel .artwork svg { color: #2d516d; }
-.workflowButton {
-  justify-content: space-between;
-  margin-top: 1.1rem;
-  width: 100%;
-  min-height: 2.75rem;
-  border-radius: .7rem;
-  background: #315e7e;
-}
-.workflowButton:hover { background: #244b69; }
-.jobs {
-  border-color: #748a96;
-  border-radius: 1.1rem;
-  background: #fbf7ee;
-  box-shadow: 0 2px 0 #bfcdd7;
-}
-.shell :where(a, button, summary):focus-visible { outline: 3px solid #326a93; outline-offset: 4px; }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .workflow:hover { transform: perspective(900px) translateY(-4px) rotateX(1deg); border-color: #7d929e; box-shadow: 0 6px 0 #bfcdd7, 0 20px 30px -22px #e7edf070; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .workflow { transition: none; }
-  .queueBadge span { animation: none; }
+.shell { background: #f5f3ed; color: #202d34; }
+.sidebar { background: #eeeee7; color: #202d34; border-color: #d8ddda; }
+.brand { color: inherit; font-size: 1rem; letter-spacing: -.035em; }
+.brandMark { background: #2a404a; color: #faf8f2; border: 0; border-radius: 50%; }
+.navLink { color: #52616a; border-radius: 999px; }
+.navLink:hover { background: #e3e7e1; color: #202d34; }
+.navLink[aria-current="page"] { background: #dde7e8; color: #294c60; }
+.main { padding-top: 3rem; padding-bottom: 4rem; }
+.header { border: 0; padding-bottom: 0; margin-bottom: 2.75rem; }
+.heading { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.12; letter-spacing: -.055em; font-weight: 600; }
+.queueBadge { background: #e9ece8; border-color: transparent; color: #52616a; }
+.workflows { gap: 2rem; }
+.workflow { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; padding: 1rem 0; }
+.workflow h2 { font-size: 1.15rem; margin-top: 1rem; letter-spacing: -.025em; }
+.artwork { display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; background: #e5e9e1; color: #52645d; }
+.artwork svg { width: 1.35rem; height: 1.35rem; stroke-width: 1.6; }
+.creation .artwork { background: #e1e9eb; color: #355d74; }
+.reel .artwork { background: #eee5d9; color: #77634e; }
+.workflowButton { justify-content: space-between; margin-top: 1rem; width: 100%; min-height: 2.75rem; padding-inline: 1.1rem; border-radius: 999px; background: #e6ecef; color: #294c60; }
+.workflowButton:hover { background: #dbe5e9; }
+.jobs { border: 0; border-top: 1px solid #cbd2d1; border-radius: 0; background: transparent; margin-top: 2.75rem; padding: 1.75rem 0 0; }
+.jobs :global([aria-label="Job list"] > article), .jobs :global([aria-label="Video preparation controls"] > article) { padding-block: 1.1rem; }
+.jobs :global([aria-label="Job list"]) { border-color: #d8ddda; }
+.jobs :global(p.border-dashed) { border: 0; text-align: left; padding: 2rem 0; }
+.main :global(#library), .main :global(#channels), .main :global(#stock-reels) { border: 0; border-radius: 0; background: transparent !important; padding-inline: 0; }
+.main :global(#library) { margin-top: 0; padding-top: 0; }
+.main :global(#library > .grid) { column-gap: 1.5rem; row-gap: 2.5rem; }
+.main :global(.review-library-card) { border: 0; border-radius: 0; background: transparent !important; padding: 0; }
+.main :global(#channels > .grid > div) { border: 0; border-top: 1px solid #cbd2d1; border-radius: 0; background: transparent !important; padding: 1.4rem 0; }
+.main :global(#channels > .grid) { gap: 1.5rem 2rem; }
+.main :global(#channel-insights > div[class~="bg-[#fffdf7]"]) { border: 0; border-radius: 0; background: transparent !important; padding-inline: 0; }
+.main :global(#channel-insights dl > div) { border-radius: 0; background: transparent !important; border-left: 1px solid #cbd2d1; padding: .25rem 1rem; }
+.main :global(#channel-insights dl > div:first-child) { border-left: 0; padding-left: 0; }
+.main :global([data-quick-templates]) { padding-block: .25rem 1.5rem; }
+.main :global([data-template-heading]) { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.main :global([data-quick-templates] h2) { font-size: clamp(1.25rem, 2.2vw, 1.6rem); font-weight: 600; letter-spacing: -.035em; }
+.main :global([data-template-choices]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 2.5rem; margin-top: 1.25rem; }
+.main :global([data-quick-template]) { display: flex; min-width: 0; min-height: 11rem; flex-direction: column; align-items: flex-start; gap: .65rem; border: 0; border-bottom: 1px solid #cbd2d1; border-radius: 0; background: transparent; padding: 1.5rem .25rem 1.5rem 0; color: #202d34; text-align: left; transition: border-color 150ms ease; }
+.main :global([data-quick-template]:hover:not(:disabled)) { border-color: #355d74; }
+.main :global([data-quick-template] > :first-child) { font-size: 1.15rem; font-weight: 600; letter-spacing: -.025em; line-height: 1.35; }
+.main :global([data-quick-template] > span:first-child > span:last-child) { color: #52616a; font-size: .85rem; font-weight: 400; line-height: 1.6; letter-spacing: 0; opacity: 1; }
+.main :global([data-template-action]) { margin-top: auto; display: inline-flex; align-items: center; gap: .75rem; padding: .45rem .9rem; border-radius: 999px; background: #e6ecef; color: #294c60; font-size: .75rem; font-weight: 600; }
+.main :global([data-quick-template]:hover [data-template-action]) { background: #dbe5e9; }
+.main :global([data-template-progress]) { margin-block: 1.25rem 2rem; border: 0; border-radius: 0; background: transparent; padding: 1.25rem 0; }
+.main :global([data-template-progress] h2) { max-width: 50rem; font-size: clamp(1.6rem, 3vw, 2.4rem); line-height: 1.2; letter-spacing: -.04em; }
+.main :global([data-template-progress] [role="alert"]), .main :global([data-quick-templates] [role="alert"]) { color: #803c31; }
+.main :global([data-template-progress] progress) { max-width: 32rem; height: .35rem; margin-top: 1rem; }
+.main :global([data-advanced-create]) { margin-top: 1.5rem; border: 0; border-top: 1px solid #cbd2d1; border-radius: 0; padding-top: 1.5rem; }
+.main :global([data-advanced-create] > summary) { width: fit-content; cursor: pointer; color: #52616a; font-size: .875rem; font-weight: 600; }
+.main :global([data-advanced-create][open] > summary) { color: #202d34; margin-bottom: .75rem; }
+.shell :where(a, button, summary):focus-visible { outline: 3px solid #315f7b; outline-offset: 4px; }
+@media (max-width: 1023px) {
+  .workflows { gap: .75rem; }
+  .workflow { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: 1rem; align-items: center; }
+  .workflow h2, .workflowButton { margin-top: 0; }
+  .workflowButton { width: auto; gap: 1rem; }
 }
 @media (max-width: 767px) {
-  .main { padding-top: 1.5rem; }
-  .sidebar { position: sticky; top: 0; z-index: 20; padding: 1rem; }
-  .sidebar nav { margin-top: 1rem; }
-  .artwork { height: 6rem; }
+  .main { padding-top: 2rem; padding-bottom: 2.5rem; }
+  .header { margin-bottom: 2rem; }
+  .sidebar { position: sticky; top: 0; z-index: 20; padding: .85rem 1.25rem; }
+  .sidebar nav { margin-top: .85rem; gap: .35rem; padding-block: .2rem; }
+  .navLink { padding: .65rem .85rem; gap: .5rem; }
+  .main :global([data-template-choices]) { column-gap: 1.25rem; }
+  .main :global([data-quick-template]) { min-height: 12rem; }
+}
+@media (max-width: 540px) {
+  .main :global([data-template-choices]) { grid-template-columns: minmax(0, 1fr); margin-top: .5rem; }
+  .main :global([data-quick-template]) { min-height: 0; padding-block: 1.25rem; gap: .55rem; }
+  .main :global([data-template-action]) { margin-top: .25rem; }
+  .workflow { grid-template-columns: 2.5rem minmax(0, 1fr); gap: .75rem; }
+  .artwork { width: 2.5rem; height: 2.5rem; }
+  .workflowButton { grid-column: 2; justify-self: start; min-height: 2.5rem; }
 }

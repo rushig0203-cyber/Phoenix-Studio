@@ -14,6 +14,8 @@ import ChannelInsights from "@/components/ChannelInsights";
 import CreationDrafts from "@/components/CreationDrafts";
 import JobProgress from "@/components/JobProgress";
 import StockReels from "@/components/StockReels";
+import QuickTemplates from "@/components/QuickTemplates";
+import { QUICK_TEMPLATE_STORAGE_KEY, parseQuickTemplateRequest, quickTemplateReview, type QuickTemplateRequest } from "@/lib/quickTemplates";
 import { CONTENT_IDEAS, type ContentIdea } from "@/lib/contentIdeas";
 import type { ReviewEditJob } from "@/lib/reviewEditTypes";
 import type { CreationDraft } from "@/lib/creationDraftTypes";
@@ -138,6 +140,17 @@ export default function DashboardClient() {
   const pendingWork = useRef(true);
   const monitorRequest = useRef<AbortController | null>(null);
   const [health, setHealth] = useState<StudioHealthState | null>(null);
+  const [templateRequest, setTemplateRequest] = useState<QuickTemplateRequest | null>(null);
+  const updateTemplateRequest = useCallback((value: QuickTemplateRequest | null) => {
+    setTemplateRequest(value);
+    try {
+      if (value) localStorage.setItem(QUICK_TEMPLATE_STORAGE_KEY, JSON.stringify(value));
+      else localStorage.removeItem(QUICK_TEMPLATE_STORAGE_KEY);
+    } catch { /* The current visit still keeps the exact request and job. */ }
+  }, []);
+  useEffect(() => {
+    try { setTemplateRequest(parseQuickTemplateRequest(localStorage.getItem(QUICK_TEMPLATE_STORAGE_KEY))); } catch { /* Storage can be disabled. */ }
+  }, []);
   const [loading, setLoading] = useState(false);
   const [jobFilter, setJobFilter] = useState<JobFilter | null>(null);
   const [jobPage, setJobPage] = useState(1);
@@ -209,13 +222,13 @@ export default function DashboardClient() {
   useEffect(() => {
     // Settings/library can contain unsaved nested editors. Do not replace them
     // or a playing preview; a fresh tab always gets the installed server build.
-    const defer = section !== "create" || sourceOpen || aiOpen || stockOpen || !!preview || document.hidden;
+    const defer = section !== "create" || sourceOpen || aiOpen || stockOpen || !!preview || !!templateRequest || document.hidden;
     if (!health?.build || defer) return;
     try {
       refreshInstalledRelease({ loaded: process.env.NEXT_PUBLIC_PHOENIX_RELEASE, serving: health.build, defer,
         storage: window.sessionStorage, reload: () => window.location.reload() });
     } catch { /* A disabled session store must never trigger a reload loop. */ }
-  }, [health?.build, section, sourceOpen, aiOpen, stockOpen, preview]);
+  }, [health?.build, section, sourceOpen, aiOpen, stockOpen, preview, templateRequest]);
 
   async function retry(job: DisplayJob, regenerate = false) {
     if (offlineRef.current) { setNotice("Reconnect Phoenix before retrying a job."); return; }
@@ -258,6 +271,7 @@ export default function DashboardClient() {
       const response = await fetch(`${endpoint}?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not remove job.");
+      if (templateRequest?.jobId === job.id) updateTemplateRequest(null);
       setNotice(job.status === "QUEUED" ? "Queued job cancelled and removed." : "Job removed from history. Finished review files are still available.");
       await load();
     } catch(error) { setNotice(error instanceof Error ? error.message : "Could not reach the queue."); }
@@ -308,6 +322,15 @@ export default function DashboardClient() {
     if (section !== "create") navigate("create");
   }, [jobs, navigate, section, preview]);
 
+  useEffect(() => {
+    if (section !== "create" || preview || document.hidden) return;
+    const completed = quickTemplateReview(files, templateRequest?.jobId);
+    if (!completed) return;
+    setPreview(completed);
+    setNotice(`“${completed.title}” is ready. Review your video and choose where to post.`);
+    updateTemplateRequest(null);
+  }, [files, templateRequest, section, preview, updateTemplateRequest]);
+
   function started(message: string, workflow: "source" | "stock" | "creation") {
     setNotice(message); setJobFilter("active"); setJobPage(1);
     if (workflow === "source") setSourceOpen(false);
@@ -349,6 +372,9 @@ export default function DashboardClient() {
         </div> : null}
         {!offline ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
+        <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }} />
+        <details data-advanced-create className="mt-7" open={sourceOpen || aiOpen || stockOpen || undefined}>
+        <summary className="cursor-pointer text-sm font-semibold">Other tools</summary>
         <section aria-label="Creation workflows" className={`${styles.workflows} grid gap-4 lg:grid-cols-3`}>
           <article className={styles.workflow}>
             <div className={styles.artwork} aria-hidden="true"><FileVideo /></div>
@@ -369,6 +395,7 @@ export default function DashboardClient() {
         {sourceOpen ? <SourceProcessor active={section === "create" && !offline} onClose={() => setSourceOpen(false)} onStarted={() => started("Source video queued. Follow preparation and rendering below.", "source")} /> : null}
         {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
         {aiOpen ? <AICreation key={idea?.id || "custom"} initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => setAiOpen(false)} onStarted={message => started(message || "Video queued. Preparation and rendering run automatically.", "creation")} /> : null}
+        </details>
         </fieldset>
         {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
         {section === "insights" ? <ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /> : null}

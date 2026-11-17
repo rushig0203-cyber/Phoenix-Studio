@@ -312,6 +312,43 @@ test('successful preparation retry feedback selects Active page one without retr
   assert.ok(h.requests.every(request => !request.method));
 });
 
+test('a template opens only its exact completed video and clears durable tracking after review opens', async t => {
+  const previous = global.localStorage, values = new Map();
+  global.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  t.after(() => { global.localStorage = previous; });
+  const h = harness(t); global.window.location.hash = '#create';
+  h.setJobs([source('template-job', 'PROCESSING')]); h.setFiles([{ id: 'newest-unrelated', status: 'READY' }]); await h.flush();
+  const template = nodes(h.tree, node => node.type?.name === 'QuickTemplates')[0];
+  template.props.onRequest({ requestId: '11111111-1111-4111-8111-111111111111', templateId: 'footage-owls', title: 'Owls', query: 'Owls', jobId: 'template-job' });
+  template.props.onStarted('Template accepted'); await h.flush();
+  assert.equal(nodes(h.tree, node => node.type?.name === 'ReviewPlayer').length, 0, 'An unrelated ready file is never chosen');
+  h.setJobs([source('template-job', 'COMPLETED')]); h.setFiles([{ id: 'newest-unrelated', status: 'READY' }, { id: 'exact-template-output', title: 'Owls', status: 'READY', processing: { jobId: 'template-job' } }]);
+  await h.event('focus');
+  assert.equal(nodes(h.tree, node => node.type?.name === 'ReviewPlayer')[0].props.file.id, 'exact-template-output');
+  assert.equal(values.size, 0); assert.ok(h.requests.every(request => !request.method), 'Accepted templates are monitored without more creation or retry requests');
+});
+
+test('reopened template tracking waits through Library activity and resumes exact review on Create', async t => {
+  const previous = global.localStorage, key = 'phoenix-quick-template-v1';
+  const values = new Map([[key, JSON.stringify({ requestId: '11111111-1111-4111-8111-111111111111', templateId: 'footage-owls', title: 'Owls', query: 'Owls', jobId: 'restored-template-job' })]]);
+  global.localStorage = { getItem: name => values.get(name) ?? null, setItem: (name, value) => values.set(name, value), removeItem: name => values.delete(name) };
+  t.after(() => { global.localStorage = previous; });
+  const h = harness(t); h.setJobs([source('restored-template-job', 'COMPLETED')]);
+  h.setFiles([{ id: 'unrelated', status: 'READY' }, { id: 'restored-output', title: 'Owls', status: 'READY', processing: { jobId: 'restored-template-job' } }]); await h.flush();
+  assert.equal(nodes(h.tree, node => node.type?.name === 'ReviewPlayer').length, 0); assert.ok(values.has(key));
+  global.window.location.hash = '#create'; await h.event('hashchange');
+  assert.equal(nodes(h.tree, node => node.type?.name === 'ReviewPlayer')[0].props.file.id, 'restored-output');
+  assert.equal(values.has(key), false); assert.ok(h.requests.every(request => !request.method));
+});
+
+test('failed template retry dispatches the existing source job ID without requesting new footage', async t => {
+  const h = harness(t); global.window.location.hash = '#create'; h.setJobs([source('failed-template-job', 'FAILED')]); await h.flush();
+  nodes(h.tree, node => node.type?.name === 'QuickTemplates')[0].props.onRequest({ requestId: '11111111-1111-4111-8111-111111111111', templateId: 'footage-owls', title: 'Owls', query: 'Owls', jobId: 'failed-template-job' }); await h.flush();
+  nodes(h.tree, node => node.type?.name === 'QuickTemplates')[0].props.onRetry(); await h.flush();
+  const writes = h.requests.filter(request => request.method);
+  assert.equal(writes.length, 1); assert.equal(writes[0].url, '/api/source-processing/run'); assert.deepEqual(JSON.parse(writes[0].body), { id: 'failed-template-job' });
+});
+
 test('Create has three short workflow titles without explanatory card paragraphs', async t => {
   const h = harness(t); global.window.location.hash = '#create'; await h.flush();
   const workflows = nodes(h.tree, node => node.props?.['aria-label'] === 'Creation workflows')[0];

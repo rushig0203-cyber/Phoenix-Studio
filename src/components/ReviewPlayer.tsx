@@ -104,7 +104,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         <Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>
       </div>
       <p className="text-xs text-[#687657]">One player at a time keeps your laptop responsive. If autoplay is blocked, press Play in the video controls.</p>
-      <PostingActions file={file} />
+      <PostingActions file={file} finalReview />
     </div>
   </dialog>;
 }

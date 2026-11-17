@@ -42,7 +42,7 @@ export function FinishedPostingActions({ id }: { id: string }) {
 }
 
 /** Keep offline handoff alongside explicitly confirmed connected uploads. */
-export default function PostingActions({ file: supplied }: { file: ReviewFile }) {
+export default function PostingActions({ file: supplied, finalReview = false }: { file: ReviewFile; finalReview?: boolean }) {
   const [notice, setNotice] = useState("");
   const [file, setFile] = useState(supplied);
   const [busy, setBusy] = useState(false);
@@ -111,7 +111,7 @@ export default function PostingActions({ file: supplied }: { file: ReviewFile })
     </details>
     <div className="flex flex-wrap items-start gap-2">
       <button type="button" onClick={() => void copy()} className={button}>Copy caption + hashtags</button>
-      <ReviewPublishActions key={file.id} file={file}/>
+      <ReviewPublishActions key={file.id} file={file} finalReview={finalReview}/>
     </div>
     {notice ? <p role="status" className="text-xs">{notice}</p> : null}
   </section>;

@@ -127,7 +127,10 @@ test("Jobs Watch keeps an open player while polled posting text advances from ab
     assert.equal(element.type, identity.type); assert.equal(element.key, identity.key);
     player.render(element.props); await player.flush();
     const actions = nodes(player.tree, node => node.type === PostingActions)[0];
+    assert.equal(actions.props.finalReview, true, 'Video review exposes the final Post action directly');
     posting.render(actions.props); await posting.flush();
+    const publishing = nodes(posting.tree, node => node.type?.name === 'ReviewPublishActions')[0];
+    assert.equal(publishing.props.finalReview, true, 'Posting tools preserve the expanded final review');
     return element;
   }
   await renderPlayer();
