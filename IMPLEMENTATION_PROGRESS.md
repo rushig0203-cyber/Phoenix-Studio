@@ -1,5 +1,34 @@
 # Phoenix Studio implementation and verified releases
 
+## November 18 — installed compact Library covers and more flexible children's creation
+
+- Library covers use a frame about a third of the way into the selected saved
+  video when its duration is known. Portrait covers are 144 pixels wide and
+  preserve the video's aspect ratio. The Library uses lazy images, and the
+  video preview loads only when opened. These covers are for the Library.
+- New Krishna prompts keep their own premise and use the Krishna cast. The
+  Butter Pot script is an optional standalone starter. The form defaults to one
+  video and offers a ten-part series explicitly. Suggestions refresh for the
+  selected story or song workflow, and secondary instructions are collapsed.
+- The selected writer can draft original English or Hindi lyrics and Phoenix
+  chooses a musical direction from the topic. Supplied lyrics and saved
+  provider requests retain their words and approved style. The free singer's
+  availability and quotas still apply. The animation uses a limited 2D cast,
+  settings and props.
+- Source `a2c600b7fa1fc685880ebf48d9ae6cb573494f33` passed Windows run
+  `44365224946`, attempt 1: 1,740 Node tests, 58 Python checks, lint, TypeScript,
+  FFmpeg preview/export checks and interrupted-job recovery. The compiled
+  browser proof passed 48 assertions across 14 screenshots. Both source
+  Vercel deployments passed. The selected cloud writer generated Hindi lyrics
+  for an isolated test idea. This check covered writing only.
+- Installed build `4Xm1MGj6p7Nkn07YFUByB` is serving at localhost:3000 with
+  healthy manager and worker and a ready renderer. Local browser verification
+  displayed four compact covers and the updated story and song controls.
+  Activation preserved 247 MP4s, the review index and history, 137 publication
+  records and the owner's local configuration. No videos were published during
+  verification.
+
+
 ## November 18 — installed YouTube transfer fix and Public default
 
 - Diagnosed three saved YouTube requests stopped at zero bytes after session

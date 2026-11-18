@@ -211,21 +211,28 @@ unlabelled posts are not controls, and no view or engagement improvement is assu
 Neither mechanism retrains a model, edits app code by
 itself, proves causation or guarantees views, monetization or income.
 
-Children's animation is lightweight original 2D. Under **Create a Video →
-Explore suggestions**, choose **Krishna and the Butter Pot** or **कृष्ण और
-मक्खन की मटकी** for one original story with eight matched visual beats. It uses
-the local renderer and the Hindi version requires the installed VoiceStudio voice.
-The story starter uses an authored script and skips the writing provider.
+Children's animation uses lightweight original 2D with a limited cast, settings
+and props. In **Create a Video**, describe a new Krishna story to let the
+selected writer plan it. Choose one video or a ten-part series under **Output
+quantity**. Under **Explore suggestions → Starter examples**, **Krishna and
+the Butter Pot** and **कृष्ण और मक्खन की मटकी** remain optional standalone
+stories with eight authored visual beats. A standalone starter with blank
+story text skips the writing provider. The Hindi starter requires the
+installed VoiceStudio voice.
 Songs can use an uploaded sung recording or the official free hosted
 [ACE-Step service](https://huggingface.co/spaces/ACE-Step/ACE-Step). Hosted
 generation requires permission to send the description and lyrics; video and
 reference-audio files are not uploaded. It uses shared free GPU access without
 loading a music model on this laptop. Free quotas and service availability still
 apply, with no paid or local-model fallback. Saved task IDs and completed audio
-destinations prevent an uncertain retry from creating another song. English and
-Hindi are supported; Hindi generation requires original Hindi lyrics. Listen
-to the result before posting. The optional local ACE-Step adapter remains
-subject to the existing hardware guard; spoken narration is never a song fallback.
+destinations prevent an uncertain retry from creating another song. Choose
+English or Hindi. Leave lyrics blank to have your selected writer create
+original verses for the idea, subject to its quota and memory limits. Phoenix
+suggests a musical direction based on the topic, which you can change under
+**Song options & engine details**. For your own recording, supply the exact
+words sung. Listen to the result before posting. The optional local ACE-Step
+adapter remains subject to the existing hardware guard. Songs require
+recorded or generated singing.
 
 The optional VoiceStudio narration adapter uses the separately installed,
 user-approved Supertonic-3 engine (SDK 1.3.1, pinned model revision) for English
@@ -244,6 +251,10 @@ measurements cannot locate a boundary. Animation action planning currently needs
 English scene text for open-ended prompts. The authored Hindi Krishna starter has its own matched visual beats.
 
 ## Posting
+
+Library cards show a small cover from inside the finished MP4 when its
+duration is known. Select the cover to open the video preview. These covers
+are used in Phoenix's Library.
 
 Use **Post / export** on a finished video to expand its posting controls in
 Library. Choose a destination, review the caption and posting options, then
