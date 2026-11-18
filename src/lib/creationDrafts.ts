@@ -296,7 +296,11 @@ export async function processNextCreationDraft() {
           }, draft.input.reviewMode === "final");
           draft.input = prepared.input; draft.scenes = prepared.scenes; script = prepared.input.script!;
         } else {
-          if (draft.input.creationType === "children-song") draft.input.songStyle = originalSongStyle(draft.input.topic, draft.input.songStyle);
+          if (draft.input.creationType === "children-song" && !draft.input.songAudioId &&
+              !draft.songTaskId && !draft.songSubmissionStarted && !draft.songOutput && !draft.songRequestFingerprint) {
+            // A saved provider request must keep its exact style, even when it had no explicit style.
+            draft.input.songStyle = originalSongStyle(draft.input.topic, draft.input.songStyle);
+          }
           script = draft.input.script?.trim() || await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType), async planned => {
             draft.input = { ...draft.input, creativeBrief: planned.creativeBrief, creativeBriefAttempt: planned.creativeBriefAttempt, kidsStoryAttempt: planned.kidsStoryAttempt };
             await update({ input: draft.input, stage: planned.creativeBriefAttempt ? "Story plan correction saved · checking supported visuals" : planned.kidsStoryAttempt ? "Narration correction saved · checking visible actions and dialogue" : "Original story direction saved · preparing dialogue" });

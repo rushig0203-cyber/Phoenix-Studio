@@ -554,6 +554,29 @@ test('explicit retry replaces only confirmed failed hosted song tasks, retaining
     assert.equal(retried.input.songAudioId, extra.audioId);
   }
 });
+test('a previously submitted song with no custom style resumes the same hosted task', async () => {
+  const { hostedSongFingerprint, HOSTED_SINGING_ORIGIN } = require('../src/lib/hostedSinging.ts');
+  const lyrics = 'Little flower in the rain\nLift your head to sing again';
+  const taskId = 'a'.repeat(32);
+  const [draft] = await drafts.createCreationDrafts([{
+    ...input(), topic: 'A Krishna flower song', script: lyrics, creationType: 'children-song',
+    songMode: 'hosted-ace', hostedSongConsent: true,
+  }]);
+  const fingerprint = hostedSongFingerprint({ lyrics, duration: draft.input.duration, language: draft.input.language, consent: true });
+  write([{ ...draft, songTaskId: taskId, songSubmissionStarted: true, songRequestFingerprint: fingerprint }]);
+  const calls = [];
+  global.fetch = async (url, init) => {
+    calls.push([String(url), init.method ?? 'GET']);
+    return new Response('', { status: 503 });
+  };
+  await drafts.processNextCreationDraft();
+  assert.deepEqual(calls, [[HOSTED_SINGING_ORIGIN + '/gradio_api/call/__call__/' + taskId, 'GET']]);
+  const saved = read()[0];
+  assert.equal(saved.input.songStyle, undefined);
+  assert.equal(saved.songTaskId, taskId);
+  assert.equal(saved.songRequestFingerprint, fingerprint);
+});
+
 test('stock catalog verifies CDN URLs and chooses a laptop-sized MP4 rendition', () => {
   const video = fixture(123); video.video_files.unshift({ file_type: 'video/mp4', width: 2160, height: 3840, link: 'https://videos.pexels.com/4k.mp4' });
   assert.equal(catalog.footageChoice(video).width, 720);
