@@ -1,5 +1,35 @@
 # Phoenix Studio implementation and verified releases
 
+## November 18 — installed YouTube transfer fix and Public default
+
+- Diagnosed three saved YouTube requests stopped at zero bytes after session
+  creation. A protected empty-body status query confirmed Google's HTTP 308
+  Resume Incomplete response. Native fetch with the previous `redirect: error`
+  rejected that response, reproducing the saved transport failure without
+  transferring a video. Bite Map was connected with upload permission.
+- Only validated YouTube resumable PUT requests now use manual redirect handling.
+  HTTP 308 is read as progress from its Range header and its body is cancelled;
+  Location is never followed. Other redirects remain ambiguous failures and retain
+  the same saved session. Metadata creation and other platforms keep strict redirect
+  rejection. Streaming bounds, account checks and duplicate protection remain.
+- New YouTube forms default to Public. Explicit Private/Unlisted selections survive
+  Check status and opening other platforms. Existing saved requests keep their
+  approved visibility; continuing an older Private request does not make it public.
+  The backend still reports requested and platform-confirmed visibility separately.
+- Source `d813582920cc7d8243f525f56ac671778088415f` passed Windows run
+  `44276826551`, attempt 1: all 1,724 Node tests, 58 Python checks, lint,
+  TypeScript/build, real exports, recovery and bounded worker checks. New native
+  loopback tests cover empty/partial 308 responses, exact-byte continuation,
+  poisoned Location headers and rejection of 301/302/303/307 without sending video
+  bytes. Twelve compiled browser screenshots passed 42 assertions, including the
+  visible Public default. Both source Vercel deployments passed.
+- Installed and serving `.next-build-gh-44276826551-1`, build ID
+  `tLAKQX2K4FJpSV5dEFB6G`, with dashboard HTTP 200, healthy manager/worker and a
+  ready renderer. Guarded activation exited successfully and preserved all 243
+  output MP4s, review index/history, all 129 publication JSON records and the exact
+  owner `97AF40D8…` configuration hash. No owner upload was resumed and no video was
+  published during testing; heavy verification ran on the free public runner.
+
 ## November 18 — installed separate creation workspaces and shared posting progress
 
 - Create now has dedicated Make a Reel, Clip a Video and Create a Video

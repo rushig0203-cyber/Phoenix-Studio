@@ -262,6 +262,10 @@ progress intact. Rumble keeps its assisted handoff in that same area.
   a Google Cloud web OAuth client, YouTube Data API access and its exact callback
   `http://localhost:3000/api/channels/youtube/callback`. Then authorize the actual
   channel account. A channel URL or an open upload page alone does not connect it.
+  New requests default to **Public**; Private and Unlisted remain available in
+  Posting details. Checking status keeps your chosen visibility. Existing saved
+  requests retain their approved setting, so continuing an older Private request
+  keeps it Private. Review requested and YouTube-confirmed visibility separately.
   Google Cloud requires 2-Step Verification; an account-verification rejection
   must be resolved on Google's side before credential setup can continue.
   Request only `youtube.readonly` and `youtube.upload` for this workflow. An
