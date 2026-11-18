@@ -99,6 +99,9 @@ function timing(job: DisplayJob) {
 export default function DashboardClient() {
   const [section, setSection] = useState<StudioSection>("create");
   const [workspace, setWorkspace] = useState<CreationWorkspace>("reels");
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [stockOpen, setStockOpen] = useState(false);
   const [insightReview, setInsightReview] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<CreationDraft[]>([]);
   const navigate = useCallback((value: StudioSection) => { setSection(value); window.location.hash = value; }, []);
@@ -121,9 +124,6 @@ export default function DashboardClient() {
       document.getElementById("jobs")?.scrollIntoView({ block: "start" });
     }
   }, [section]);
-  const [sourceOpen, setSourceOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [stockOpen, setStockOpen] = useState(false);
   const openWorkspace = useCallback((value: CreationWorkspace) => {
     setWorkspace(value); setSection("create");
     if (value === "clips") setSourceOpen(true);
