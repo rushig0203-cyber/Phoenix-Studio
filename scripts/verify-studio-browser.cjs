@@ -58,7 +58,7 @@ async function run() {
   const { chromium } = require(playwrightModule);
   const port = Number(process.env.PHOENIX_UI_PORT || 3107);
   assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535);
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = `http://localhost:${port}`;
   fs.mkdirSync(output, { recursive: true });
   const temporaryMedia = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ui-smoke-'));
   const movie = path.join(temporaryMedia, 'synthetic.webm');
@@ -74,7 +74,7 @@ async function run() {
       { windowsHide: true, encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024 });
     assert.equal(rendered.status, 0, rendered.stderr || rendered.error?.message);
     const media = fs.readFileSync(movie);
-    server = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', String(port)],
+    server = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'start', '--hostname', 'localhost', '--port', String(port)],
       { cwd: root, windowsHide: true, env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=384', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let startupError;
     server.on('error', error => { startupError = error; });
@@ -243,6 +243,8 @@ async function run() {
     console.log(`Built UI proof passed: ${proof.screenshots.length} screenshots, ${proof.assertions.length} assertions. No publishing action was clicked.`);
   } catch (error) {
     proof.status = 'failed'; proof.error = error.stack || String(error);
+    console.error(JSON.stringify({ apiReads: proof.apiReads, deniedRequests: proof.deniedRequests, pageErrors: proof.pageErrors }));
+    if (page && !page.isClosed()) console.error((await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).slice(-6000));
     if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, 'studio-ui-failure.png'), fullPage: true }).catch(() => {});
     throw error;
   } finally {

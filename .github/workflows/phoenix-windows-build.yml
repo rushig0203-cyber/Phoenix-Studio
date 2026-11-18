@@ -280,10 +280,22 @@ jobs:
           node "$env:RUNNER_TEMP/phoenix-ui-tools/node_modules/playwright/cli.js" install chromium
           if ($LASTEXITCODE -ne 0) { throw 'Isolated browser could not install' }
       - name: Verify actual studio pages with synthetic data away from the owner laptop
+        id: studio-browser
         env:
           PHOENIX_PLAYWRIGHT_MODULE: ${{ runner.temp }}/phoenix-ui-tools/node_modules/playwright
           PHOENIX_UI_PROOF_DIR: ${{ runner.temp }}/phoenix-studio-ui-${{ github.run_id }}-${{ github.run_attempt }}
         run: node --max-old-space-size=192 scripts/verify-studio-browser.cjs
+      - name: Save synthetic browser diagnostics when a UI check fails
+        if: failure() && steps.studio-browser.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $proofDirectory = Join-Path $env:RUNNER_TEMP "phoenix-studio-ui-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $proofFiles = @(Get-ChildItem -LiteralPath $proofDirectory -File | Where-Object { $_.Extension -in @('.png', '.json', '.log') } | ForEach-Object FullName)
+          if ($proofFiles.Count) {
+            gh release create "phoenix-ui-failure-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" @proofFiles --draft --target $env:GITHUB_SHA --title "Synthetic Phoenix UI diagnostics $env:GITHUB_RUN_ID" --notes "Failed synthetic CI browser evidence only. No verified installation bundle, owner files or credentials."
+            if ($LASTEXITCODE -ne 0) { throw 'Browser diagnostics could not be retained' }
+          }
       - name: Verify a real synthetic 49-minute episode survives interruption
         run: node --max-old-space-size=192 scripts/verify-episode-resume.cjs
       - name: Verify compiled idle history scans and bounded heap with synthetic stores

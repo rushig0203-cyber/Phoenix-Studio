@@ -249,7 +249,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><NewsIdeas onChoose={chooseNews} />
+              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
                 </div></> : null}
