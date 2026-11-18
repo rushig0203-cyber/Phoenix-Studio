@@ -89,7 +89,8 @@ export default function PostingActions({ file: supplied, finalReview = false }: 
   }
   const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold";
   const hashtags = postingHashtags(file.quality.hashtags);
-  return <section aria-label={`Posting tools for ${file.title}`} className="mt-3 space-y-3 rounded-xl border border-[#d5ddbe] bg-[#f7faef] p-3 text-sm">
+  return <section aria-label={`Posting tools for ${file.title}`} className={`${finalReview ? "" : "mt-3 "}space-y-3 rounded-xl border border-[#d5ddbe] bg-[#f7faef] p-3 text-sm`}>
+    {finalReview && <ReviewPublishActions key={file.id} file={file} finalReview />}
     {busy ? <StudioActivity label="Requesting caption" /> : automaticCopy && (!analysis || ["QUEUED", "ANALYZING", "WAITING"].includes(analysis.status))
       ? <StudioActivity label={analysis?.status === "WAITING" ? "Caption waiting" : analysis?.status === "ANALYZING" ? "Preparing caption" : "Caption queued"} /> : null}
     {analysis?.status === "FAILED" ? <p role="status" className="text-xs text-red-700">Video finished · caption analysis failed. {analysis.detail}</p> : null}
@@ -113,7 +114,7 @@ export default function PostingActions({ file: supplied, finalReview = false }: 
     </details>
     <div className="flex flex-wrap items-start gap-2">
       <button type="button" onClick={() => void copy()} className={button}>Copy caption + hashtags</button>
-      <ReviewPublishActions key={file.id} file={file} finalReview={finalReview}/>
+      {!finalReview && <ReviewPublishActions key={file.id} file={file} />}
     </div>
     {notice ? <p role="status" className="text-xs">{notice}</p> : null}
   </section>;

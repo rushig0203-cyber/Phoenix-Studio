@@ -70,7 +70,7 @@ jobs:
           src/lib/instagramPerformanceLearning.ts src/lib/instagramLearningGuidance.ts src/lib/instagramPublishedReviews.ts
           src/lib/contentSuggestionContext.ts src/app/api/content-suggestions/route.ts src/components/InstagramPerformance.tsx
           src/app/api/instagram-performance/route.ts
-          src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx
+          src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx src/components/PostingActions.tsx src/components/ReviewPlayer.tsx
           src/lib/failedJobHistory.ts src/components/JobProgress.tsx src/components/CreationDrafts.tsx
           src/components/ChannelInsights.tsx src/components/InstagramPerformance.tsx src/components/PlatformIcon.tsx
           src/lib/facebookPerformance.ts src/lib/facebookPerformanceTypes.ts src/app/api/facebook-performance/route.ts

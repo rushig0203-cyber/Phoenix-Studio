@@ -55,15 +55,21 @@ function PlatformProgress({ destination, label, job, selected, busy, locked, onC
   const ring = job?.status === "COMPLETE" ? 100 : percent;
   const state = busy ? "Saving…" : job ? statusLabel[job.status] : undefined;
   const status = state && percent !== undefined ? `${state} · ${percent}%` : state;
+  const shortStatus = percent !== undefined ? `${percent}%`
+    : state === "Processing" ? "Working" : state === "Needs check" ? "Check" : state;
   return <button type="button" data-posting-platform={destination} aria-label={label} aria-description={status} aria-pressed={selected} disabled={busy || locked} onClick={onClick}
-    className="posting-platform inline-flex min-h-11 items-center gap-2 rounded-full border px-2 py-1 text-left text-xs">
+    className="posting-platform inline-flex min-h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-full border py-1 text-xs sm:w-auto sm:flex-row sm:gap-2 sm:px-2 sm:text-left">
     <span aria-hidden="true" className="posting-ring grid size-8 shrink-0 place-items-center rounded-full"
       style={ring === undefined ? undefined : { background: `conic-gradient(var(--posting-color) ${ring}%, var(--border) 0)` }}>
       <span className="grid size-6 place-items-center rounded-full bg-card"><PlatformIcon platform={destination === "story" ? "instagram" : destination} className="size-4" /></span>
     </span>
     <span>
-      <span className="block font-semibold">{label}</span>
-      {status && <span className="block text-[0.7rem]" aria-live="polite">{status}</span>}
+      <span className={destination === "story" && !status ? "block text-[0.6rem] font-semibold sm:text-xs" : "hidden font-semibold sm:block"}>{label}</span>
+      {status && <span className="block text-center text-[0.6rem] leading-tight sm:text-left sm:text-[0.7rem]" aria-live="polite">
+        {percent !== undefined ? <><span className="hidden sm:inline">{state} · </span>{percent}%</>
+          : shortStatus !== state ? <><span className="sm:hidden">{shortStatus}</span><span className="hidden sm:inline">{state}</span></>
+          : state}
+      </span>}
     </span>
   </button>;
 }
@@ -226,7 +232,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     <section id={chooserId} data-posting-panel aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
       {chooserOpen && <>
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post video</h5>{!finalReview && <button type="button" className={button} onClick={close} disabled={postingBusy}>Close</button>}</div>
-      <div role="group" data-posting-status-strip className="sticky top-0 z-10 flex flex-wrap gap-2 bg-card py-2" aria-label="Choose a platform">
+      <div role="group" data-posting-status-strip className="sticky top-0 z-10 flex flex-wrap gap-1.5 bg-card py-2 sm:gap-2" aria-label="Choose a platform">
         <PlatformProgress destination="youtube" label={finalReview ? "YouTube" : "Upload to YouTube"} selected={selected === "youtube"} busy={youtubeBusy} job={jobs.find(job => job.platform === "youtube")} onClick={() => open("youtube")} />
         <PlatformProgress destination="instagram" label={finalReview ? "Instagram" : "Post to Instagram"} selected={selected === "instagram"} busy={instagramBusy && instagram?.mode === "reel"} locked={instagramBusy} job={jobs.find(job => job.platform === "instagram" && !job.kind)} onClick={() => open("instagram")} />
         <PlatformProgress destination="facebook" label={finalReview ? "Facebook Page" : "Post to Facebook Page"} selected={selected === "facebook"} busy={facebookBusy} job={jobs.find(job => job.platform === "facebook")} onClick={() => open("facebook")} />

@@ -96,7 +96,8 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(34dvh,330px)] w-full object-contain md:h-[min(62dvh,620px)]"
         onLoadedMetadata={restorePosition} onLoadedData={() => updatePhase("ready")} onPlaying={() => updatePhase("playing")} onWaiting={() => updatePhase("loading")} onCanPlay={() => updatePhase("ready")} onError={failed} />
     </div>
-    <div className="space-y-3 p-5">
+    <div className="min-w-0 space-y-3 p-3 sm:p-5">
+      <PostingActions file={file} finalReview />
       {phase === "loading" ? <StudioActivity label="Loading video…" /> : null}
       {phase === "slow" ? <p role="status" className="text-sm text-amber-800">Taking longer than expected. Try reloading the preview, or download the video below.</p> : null}
       {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
@@ -105,7 +106,6 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         <a href={url} download={`${file.title}.mp4`} className="underline">Download MP4</a>
         <Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>
       </div>
-      <PostingActions file={file} finalReview />
     </div>
     </div>
   </dialog>;
