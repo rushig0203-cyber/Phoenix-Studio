@@ -223,8 +223,8 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 1200 });
     const instagram = dialog.getByRole('region', { name: 'Instagram upload confirmation', exact: true });
     await instagram.locator('[data-posting-details] > summary').click();
-    await instagram.getByText('Edit caption and hashtags · optional', { exact: true }).click();
     await instagram.getByLabel('Caption and hashtags', { exact: true }).fill('Owner-reviewed caption kept while choosing platforms.');
+    await instagram.locator('[data-posting-details] > summary').click();
     const destinations = dialog.getByRole('group', { name: 'Choose a platform', exact: true });
     await destinations.getByRole('button', { name: 'Facebook Page', exact: true }).click();
     await dialog.getByRole('region', { name: 'Facebook Page upload confirmation', exact: true }).waitFor();
