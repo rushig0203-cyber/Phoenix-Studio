@@ -13,6 +13,7 @@ import { readWritingSettings } from "./writingSettings";
 import type { CreativeGuidance } from "./managerTypes";
 import { checkKidsScript } from "./scriptChecks";
 import { childrenStoryDirection } from "./creativeDirection";
+import { writeOriginalSong } from "./songWriting";
 import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief, type CreativeBriefAttempt } from "./creativeBrief";
 import { kidsVoicePlan, parseSpeechTiming, measuredKidsCaptionCues, regroupKidsPhraseCues, kidsSpeechPerformance, mergeBriefKidsCaptions } from "./kidsSpeechTiming";
 import { synthesizeVoiceStudio, voiceStudioCues } from "./voiceStudio";
@@ -32,6 +33,7 @@ export type KidsRenderInput = {
   scriptLocked?: boolean;
   sceneNarration?: string[];
   songMode?: "recording" | "local-ace" | "hosted-ace";
+  songStyle?: string;
   songAudioId?: string;
   topic: string;
   duration: number;
@@ -335,105 +337,6 @@ function fallbackStory(input: KidsRenderInput, guidance: CreativeGuidance) {
   return sentences.filter((_,index)=>essential.has(index)).join(" ");
 }
 
-function fallbackSong(input: KidsRenderInput) {
-  const [first, second] = castFor(input.topic);
-  const topic = input.topic.toLowerCase();
-  const rainy = /rain|puddle|storm|umbrella/.test(topic);
-  const bedtime = /bedtime|sleep|moon|night|firefl/.test(topic);
-  const cleanup = /clean|tidy|put away|toy/.test(topic);
-  const chorus = rainy
-    ? [
-        "Drip-drop, clap-clap, listen to the rain.",
-        "Hop-hop, flap-flap, dance along the lane.",
-        "Share the beat and let each friend belong.",
-        "Rainy days can make a bright new song.",
-      ]
-    : bedtime
-      ? [
-          "Glow-glow, fireflies, shimmer soft and slow.",
-          "Hush-hush, sleepy stars, show us where to go.",
-          "Breathe with a friend and hum the gentle tune.",
-          "Kind little dreams are dancing with the moon.",
-        ]
-      : cleanup
-        ? [
-            "Pick it up, sort it out, every toy has space.",
-            "Pass it on, sing along, smiles on every face.",
-            "Working with a friend makes every job feel light.",
-            "Tidy little helpers make the playroom bright.",
-          ]
-        : [
-            "Clap-clap together, kind hearts lead the way.",
-            "Sing-sing together, we help, share, and play.",
-            "Move with a friend and let each smile belong.",
-            "One team, one happy beat, one brand-new song.",
-          ];
-  const verses = rainy
-    ? [
-        ["Tap two toes as raindrops drum the ground.", `${first.name} makes a puddle-splashing sound.`, `${second.name} spreads bright wings and counts to four.`, "One, two, three, four—dance a little more."],
-        ["Clouds roll softly over Puddle Square.", `${first.name} twirls a blue umbrella there.`, `${second.name} shakes the silver raindrops free.`, "Shake, shake, shimmer—come and dance with me."],
-        ["Big drops say boom; small drops say tip-tap.", "Pat your knees and make a thunder clap.", "If a friend feels nervous, hold them near.", "Count the gentle beat until they cheer."],
-        [`${first.name} spots a flower bending low.`, `${second.name} finds a dry place it can grow.`, "Together they carry it out of the rain.", "Kindness makes the garden smile again."],
-        ["Wind slows down and clouds begin to part.", "Golden sunshine warms each dancing heart.", "Red and yellow arch across the blue.", "Wave up high—the rainbow waves to you."],
-        [`${first.name} drums on buckets, soft then loud.`, `${second.name} sings a melody to the crowd.`, "Every little voice can join the tune.", "We can dance from rainy day to moon."],
-        ["Now we march where shiny puddles gleam.", "Every splash becomes a dancing dream.", "Friends take turns and leave room in the line.", "Your own special rhythm fits just fine."],
-        ["Raindrops fade; the garden smells brand-new.", `${first.name} bows and ${second.name} bows there too.`, "Keep the kindness beat when skies are gray.", "Carry this happy rhythm through your day."],
-      ]
-    : bedtime
-      ? [
-          ["Tiptoe softly as the daylight ends.", `${first.name} waves goodnight to all the friends.`, `${second.name} sees the first small evening star.`, "Shine, little lantern, show us where you are."],
-          ["Fireflies are blinking by the tree.", "Count one, two, three, then breathe with me.", "Fold your hands and let your shoulders rest.", "Quiet little breathing helps us feel our best."],
-          ["Moonlight paints a silver path below.", `${first.name} hums the notes both friends now know.`, `${second.name} adds a soft and gentle rhyme.`, "Friends can make a peaceful bedtime time."],
-          ["If a dream feels wobbly, hold my hand.", "We can name one happy thing we planned.", "Kind words make a cozy place to stay.", "Morning brings another playful day."],
-          ["Blankets make a cloud beneath our toes.", "Every busy wing and paw now slows.", "Stars keep watch above the quiet room.", "Flowers rest and wait for morning bloom."],
-          ["One last yawn and one last tiny sway.", "Thank the moon for lighting up our way.", "Close your eyes; our gentle song is through.", "Sleep in peace—the night is hugging you."],
-          ["Dream of kites and puddles painted gold.", "Dream of friendly stories yet untold.", "Every friend is safe within the tune.", "Kind little dreams are dancing with the moon."],
-          [`${first.name} whispers, “See you when it is light.”`, `${second.name} whispers, “Have a lovely night.”`, "Quiet now, the final stars appear.", "Morning and our friends will soon be here."],
-        ]
-      : cleanup
-        ? [
-            ["Blocks in the basket, books on the shelf.", `${first.name} starts with one small toy by themself.`, `${second.name} joins in and counts to three.`, "Helping hands make room for you and me."],
-            ["Red cars here and blue balls over there.", "Sort each color with a little care.", "Pass one toy and say a cheerful please.", "Teamwork makes the busiest clean-up easy."],
-            ["Shake out the blanket, fold it left and right.", "Line the crayons up from dark to light.", "Check beneath the table, check the chair.", "Every little helper does a share."],
-            ["When a job feels big, begin with one.", "Finish one small corner, then it is fun.", "Ask a friend and listen to their plan.", "Side by side, we do the best we can."],
-            ["Now the floor is open for a dance.", "Every tidy toy gets one more chance.", "Tomorrow we can find our games with ease.", "Cleaning up together is a breeze."],
-            ["Pencils in the cup and paints away.", "Save the special picture we made today.", "Wash our hands and take a happy bow.", "Look how bright the playroom feels right now."],
-            ["Check the labels, match each shape and name.", "Putting things in place can be a game.", "Slow and steady keeps the pieces neat.", "One last tidy step completes the beat."],
-            [`${first.name} cheers and ${second.name} rings the bell.`, "Every friend has helped the room look well.", "Now we know the clean-up words to say.", "Pick it up together every day."],
-          ]
-        : [
-            ["Step to the left, then bounce to the right.", "Wave to a friend and make the morning bright.", "Tap both your shoulders, then wiggle your toes.", "Make a big circle and follow where it goes."],
-            [`${first.name} finds a rhythm; ${second.name} finds a beat.`, "Fireflies are sparkling near their dancing feet.", "Tiptoe very softly, then reach up to the sky.", "Turn around slowly as the moonbeams flutter by."],
-            ["If a friend feels worried, offer them your hand.", "Every voice is welcome in our friendly little band.", "Pat your knees twice, then make one joyful sound.", "Smile at everybody as we dance around the ground."],
-            ["March like a tiny bear, strong but never loud.", "Flutter like a little bird above the laughing crowd.", "Swim like a silver fish and hop like a bunny too.", "Choose your favorite movement; make it special just for you."],
-            ["Count one bright footstep, then count two and three.", "Four kind helping hands are reaching happily.", "Five small stars are blinking while we learn the tune.", "Six soft bedtime wishes float beside the moon."],
-            ["Pause and hear the quiet; listen for a friend.", "Ask what they are feeling, and stay until the end.", "Try a smaller action when a giant plan feels wrong.", "Patient little choices help our team grow strong."],
-            ["Now the drums are bouncing, and the colors start to shine.", "Move a little faster while we follow every sign.", "Hands up for teamwork; hands down for a rest.", "Helping one another is the move we love the best."],
-            [`${first.name} calls, “Are you ready?” ${second.name} calls, “Yes!”`, "Everybody answers with their brightest, bravest best.", "We finish our adventure, but the kindness carries on.", "Take this happy rhythm everywhere when we are gone."],
-          ];
-  const bridge = rainy
-    ? ["Music gets quiet; hear the raindrops slow.", "Breathe in gently; watch the flowers grow.", "Whisper our kindness promise, soft and strong.", "Then bring back the beat and sing along."]
-    : bedtime
-      ? ["Music gets quiet; breathe in, then breathe out.", "Let the sleepy silence wrap itself about.", "Whisper one kind wish beneath the silver light.", "Then hum our chorus softly to the night."]
-      : cleanup
-        ? ["Music gets quiet; look around once more.", "Is there one small puzzle hiding on the floor?", "Find its cozy home, then ring the clean-up bell.", "Bring the beat back proudly—we have done it well."]
-        : ["Music gets quiet; breathe in, then breathe out.", "Think of one kind thing that you can do about.", "Whisper it gently, then say it clear and strong.", "Now bring the beat back and sing the chorus song."];
-  const verseCount = clamp(Math.round(input.duration / 25), 1, verses.length);
-  const middle = Math.max(1, Math.floor(verseCount / 2));
-  const arranged = [
-    `${first.name} taps two toes; ${second.name} claps along.`,
-    "Come join the rhythm; everybody sing our song.",
-  ];
-  for (let index = 0; index < verseCount; index++) {
-    arranged.push(...verses[index], ...chorus);
-    if (index + 1 === middle && verseCount > 2) {
-      arranged.push(...bridge);
-    }
-  }
-  arranged.push(`${first.name} and ${second.name} take a final bow.`, "One last clap for friendship—thank you, friends, for now.");
-  return arranged.join("\n");
-}
-
 function topicTerms(topic: string) {
   const stop = new Set(["and", "the", "with", "from", "into", "dog", "cat", "puppy", "kitten", "song", "story"]);
   return (topic.toLowerCase().match(/[a-z][a-z'-]{2,}/g) || []).filter((word) => !stop.has(word));
@@ -473,11 +376,8 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
     suppliedWords <= Math.round(targetWords * 1.55)
   ) return supplied;
 
-  // Small local language models often force rhymes into ungrammatical phrases
-  // and repeat filler for long songs. Phoenix's reviewed theme composer gives
-  // every song a reliable verse/chorus/bridge structure while remaining fully
-  // original, topic-aware, local, and deterministic.
-  if (input.creationType === "children-song") return fallbackSong(input);
+  if (input.creationType === "children-song") return writeOriginalSong({ topic: input.topic, language: input.language,
+    duration: input.duration, style: input.songStyle, rules: guidance.rules });
 
   // Direct renders and legacy retries must keep the same writer through the
   // outline, narration and error handling, just like draft planning does.
@@ -487,7 +387,7 @@ export async function createContent(input: KidsRenderInput, guidance: CreativeGu
 async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuidance, targetWords: number, onPlanSaved?: (input: KidsRenderInput) => Promise<unknown>) {
   const storyCast = castFor(input.topic);
   const castNames: [string, string] = [storyCast[0].name, storyCast[1].name];
-  const castDirection = `Use exactly these two original leads: ${storyCast.map(character => `${character.name} the ${character.kind}`).join(" and ")}. Keep those exact speaker names beside each quoted dialogue line; do not rename them or add another speaker. Both leads have at least one short line responding to the same problem. Never introduce tools, scissors, glue, a broken kite/string, a repair, or a magical trail that the renderer cannot show. Story narration will use an explicit speaker-labeled line format, version 1.`;
+  const castDirection = `Use these two leads: ${storyCast.map(character => `${character.name} (${character.kind === "krishna" || character.kind === "meera" ? "human" : character.kind})`).join(" and ")}. Keep their identities and exact speaker names; do not replace requested human characters with animals or add another speaker. Both leads respond to the actual requested situation. ${storyCast[0].kind === "krishna" ? "Write a new original Krishna scene matching this idea, not the Butter Pot starter unless that exact story is requested. Do not claim invented dialogue is a scriptural quotation." : "Use original characters."} Never introduce tools, scissors, glue, a broken kite/string, a repair, or an effect that the renderer cannot show. Story narration uses explicit speaker-labeled lines, version 1.`;
   const seriesDirection = input.episodeNumber && input.episodeCount
     ? ` This is part ${input.episodeNumber} of ${input.episodeCount} in the original series "${input.seriesTitle || input.topic}". Its unique episode focus is: ${input.episodeBeat || input.topic}. Make this part understandable by itself, give it a distinct mini-conflict and resolution, and keep the recurring characters consistent without repeating another episode's plot.`
     : "";
@@ -505,7 +405,7 @@ async function createStoryContent(input: KidsRenderInput, guidance: CreativeGuid
 
   const sentenceCount = clamp(Math.round(input.duration / 5), 5, 42);
   const format = `a complete warm story with a beginning, small problem, kind solution, and happy ending. ${input.autoDuration ? "Use only the short lines needed to resolve the problem; end at the payoff." : `Use about ${sentenceCount} short sentences.`}`;
-  const prompt = `Write only ${format} for children ages 3 to 6 about: "${input.topic}". ${input.autoDuration ? `Use at most ${targetWords} words.` : `Aim for ${targetWords} words.`}${seriesDirection} ${childrenStoryDirection(input.topic)} Name and consistently use the characters and adventure in the idea. Open with action in the first sentence. Use plain grammatical prose, not poetry or forced rhyme. Keep it safe, visual, playful, and easy to narrate. Use only the two main animal characters. This is a limited 2D renderer: use visible actions such as hop, clap, wave, walk, reach, or rest with flowers, stars, ball, kite, drum, toys, bridge or bus. Never copy, name, paraphrase, or imitate an existing franchise or character. No headings, notes, or explanation. Production improvements from owner ratings: ${guidance.rules.join(' ') || 'Use clear visual cause and effect and a specific ending.'}`;
+  const prompt = `Write only ${format} for children ages 3 to 6 about: "${input.topic}". ${input.autoDuration ? `Use at most ${targetWords} words.` : `Aim for ${targetWords} words.`}${seriesDirection} ${childrenStoryDirection(input.topic)} Keep the requested characters and adventure. Open with action. Use plain grammatical prose and the two supplied leads. Let the requested problem choose the plot and payoff rather than repeating a fixed moral. Use actions and props supported by the visual plan. Do not copy a modern show's designs or dialogue. No headings, notes or explanation. Production improvements from owner ratings: ${guidance.rules.join(' ') || 'Use clear visual cause and effect and a specific ending.'}`;
   const fingerprint = input.creativeBrief.fingerprint;
   let retained = input.kidsStoryAttempt?.version === 1 && input.kidsStoryAttempt.fingerprint === fingerprint
     ? input.kidsStoryAttempt : undefined;

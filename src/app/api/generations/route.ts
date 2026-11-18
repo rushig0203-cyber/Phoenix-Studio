@@ -84,7 +84,6 @@ export async function POST(request: Request) {
       } else if (data.songMode === "hosted-ace") {
         if (!data.hostedSongConsent) return NextResponse.json({ error: "Allow sending this song's description and lyrics to free hosted ACE-Step before generating singing. Video files stay local." }, { status: 400 });
         if (!/^(?:english|en|hindi|hi)$/i.test(data.language.trim())) return NextResponse.json({ error: "Hosted singing currently supports English or Hindi." }, { status: 400 });
-        if (/^(?:hindi|hi)$/i.test(data.language.trim()) && !data.script?.trim()) return NextResponse.json({ error: "Add your original Hindi lyrics; the built-in automatic lyric composer currently writes English." }, { status: 400 });
       } else {
       if (!data.script?.trim()) return NextResponse.json({ error: "Add the lyrics from your sung recording so the captions match." }, { status: 400 });
       const audio = await requireSongAudio(data.songAudioId, data.autoDuration ? undefined : data.duration);
@@ -95,9 +94,8 @@ export async function POST(request: Request) {
       }
     }
     const children = data.creationType === "children-story" || data.creationType === "children-song";
-    const studioStory = data.creationType === "children-story" && !data.autoIdea && !data.script?.trim()
+    const studioStory = data.creationType === "children-story" && data.batchCount === 1 && !data.autoIdea && !data.script?.trim()
       ? krishnaStoryPreset(data.topic, data.language) : null;
-    if (studioStory && data.batchCount !== 1) return NextResponse.json({ error: "This original Krishna story is one standalone video. Set output quantity to one." }, { status: 400 });
     // Current creation UI uses a bounded plan, not a platform-length selector.
     // Older/manual callers and children's minimums keep their existing contract.
     if (data.autoDuration && !children) {
@@ -105,7 +103,7 @@ export async function POST(request: Request) {
       data.duration = data.script?.trim() ? Math.max(8, Math.min(90, Math.floor(words / 2.7))) : 60;
       data.publishingFormat = "youtube-short";
     }
-    const needsWriter = !studioStory && !(data.creationType === "children-song" && data.songMode === "hosted-ace") && (!data.script?.trim() || (!children && !data.visualTerms?.length));
+    const needsWriter = !studioStory && (!data.script?.trim() || (!children && !data.visualTerms?.length));
     if (needsWriter) {
       const writer = readWritingSettings();
       if (writer.provider === "groq" && (!writer.apiKey || !writer.freePlanConfirmed)) return NextResponse.json({ error: "Set up your Groq Free-plan key in Studio health → Writing settings before creating a video. No local or paid fallback will be used." }, { status: 503 });

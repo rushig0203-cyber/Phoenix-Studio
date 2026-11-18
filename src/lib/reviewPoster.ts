@@ -4,17 +4,19 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { HeavyWorkWaitError, lowerChildProcessPriority, tryWithLocalRenderSlot } from "./renderResources";
 import { reviewRoot } from "./reviewFiles";
+import { REVIEW_POSTER_POLICY } from "./reviewPosterPolicy";
 
 type PosterWork = { promise: Promise<Buffer>; waiters: Set<symbol> };
 const pending = new Map<string, PosterWork>();
 let tail: Promise<unknown> = Promise.resolve();
 
 /** One low-resolution frame, one decoder at a time. Never loads an entire MP4. */
-export async function reviewPoster(filename: string, signal?: AbortSignal) {
+export async function reviewPoster(filename: string, signal?: AbortSignal, seekSeconds = 0) {
   if (signal?.aborted) throw new DOMException("Preview request cancelled", "AbortError");
+  const seek = Number.isFinite(seekSeconds) && seekSeconds >= 0 ? seekSeconds : 0;
   const stats = await fs.stat(filename);
   if (!stats.isFile() || !stats.size) throw new Error("Video not available");
-  const key = crypto.createHash("sha256").update(`${filename}:${stats.size}:${stats.mtimeMs}`).digest("hex");
+  const key = crypto.createHash("sha256").update(`${REVIEW_POSTER_POLICY}:${seek}:${filename}:${stats.size}:${stats.mtimeMs}`).digest("hex");
   const directory = path.join(reviewRoot(), "previews");
   const cached = path.join(directory, `${key}.jpg`);
   try { return await fs.readFile(cached); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -30,7 +32,7 @@ export async function reviewPoster(filename: string, signal?: AbortSignal) {
         if (!created.waiters.size) throw new DOMException("Preview request cancelled", "AbortError");
         const executable = process.env.PHOENIX_FFMPEG_PATH?.trim() || path.join(process.cwd(), "node_modules", "@ffmpeg-installer", `${process.platform}-${process.arch}`, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
         const bytes = await new Promise<Buffer>((resolve, reject) => {
-          const child = execFile(executable, ["-hide_banner", "-loglevel", "error", "-threads", "1", "-filter_threads", "1", "-ss", "0", "-i", filename, "-frames:v", "1", "-an", "-vf", "scale=384:216:force_original_aspect_ratio=decrease", "-threads", "1", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"],
+          const child = execFile(executable, ["-hide_banner", "-loglevel", "error", "-threads", "1", "-filter_threads", "1", "-ss", String(seek), "-i", filename, "-frames:v", "1", "-an", "-vf", "scale=384:384:force_original_aspect_ratio=decrease", "-threads", "1", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"],
             { encoding: "buffer", windowsHide: true, timeout: 10_000, maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
           lowerChildProcessPriority(child.pid);
         });

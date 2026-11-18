@@ -11,10 +11,11 @@ const beats = [
 
 export const KRISHNA_STORY_TITLE = "Krishna and the Butter Pot";
 export const HINDI_KRISHNA_STORY_TITLE = "कृष्ण और मक्खन की मटकी";
-export const isKrishnaStoryTopic = (topic: string) => /^(?:krishna(?: 2d| and the butter pot)?|कृष्ण(?: 2d| और मक्खन की मटकी)?)$/iu.test(topic.trim());
+export const isKrishnaStoryTopic = (topic: string) => /\bkrishna\b|(?:^|[^\p{L}])कृष्ण(?:$|[^\p{L}])/iu.test(topic)
+  && !/\b(?:news|report|election|politics)\b|\bkrishna\s+(?:river|district|university)\b|समाचार|रिपोर्ट/iu.test(topic);
 
 export function krishnaStoryPreset(topic: string, language?: string) {
-  if (!isKrishnaStoryTopic(topic)) return null;
+  if (![KRISHNA_STORY_TITLE.toLowerCase(), HINDI_KRISHNA_STORY_TITLE].includes(topic.trim().toLowerCase())) return null;
   const hindi = /कृष्ण/u.test(topic) || /^(?:hi|hindi)(?:-|$)/i.test(language || "");
   const scenes = beats.map(beat => hindi ? beat.hi : beat.en);
   return { scenes, script: scenes.join(" "), language: hindi ? "Hindi" : "English" };

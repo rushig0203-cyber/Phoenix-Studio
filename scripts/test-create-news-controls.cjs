@@ -144,21 +144,51 @@ test('a newly selected topic retains custom writing visibly but only an edited f
   assert.equal(field('Your narration').props.value,'A newly reviewed explanation about the bridge.');
 });
 
-test('Hindi song readiness requires active lyrics after a new idea while retaining the earlier text',async()=>{
-  const h=harness('AICreation',async url=>url==='/api/singing/status'?Response.json({available:true,reason:'Fixture'}):Response.json({error:'Fixture unavailable'},{status:503}));
+test('Hindi generation can create fresh lyrics while a recording still needs active matching words',async()=>{
+  const h=harness('AICreation',async url=>url==='/api/singing/status'?Response.json({available:true,reason:'Fixture'}):url==='/api/song-audio'?Response.json({id:'recording-fixture',filename:'fixture.wav',duration:12}):Response.json({error:'Fixture unavailable'},{status:503}));
   const choose=idea=>{nodes(h.tree).find(node=>node.type==='details'&&text(node).includes('Explore suggestions')).props.onToggle({currentTarget:{open:true}});h.render();nodes(h.tree).find(node=>node.type==='Recommendations').props.onChoose(idea);h.render();};
   const songIdeas=recommendations.recommendationPool().filter(idea=>idea.kind==="Children's song");choose(songIdeas[0]);await h.flush();
   const label=prefix=>nodes(h.tree).find(node=>node.type==='label'&&text(node).startsWith(prefix));
   nodes(label('Song language')).find(node=>node.type==='select').props.onChange({target:{value:'Hindi'}});h.render();
   nodes(h.tree).find(node=>node.type==='input'&&node.props.type==='checkbox').props.onChange({target:{checked:true}});h.render();
   const lyrics=()=>nodes(label('Lyrics, one line')).find(node=>node.type==='textarea');
+  assert.notEqual(lyrics().props.required,true);
+  assert.equal(nodes(label('Musical direction')).find(node=>node.type==='textarea').props.value,'');
   lyrics().props.onChange({target:{value:'मेरे नए गीत के बोल'}});h.render();choose(songIdeas[1]);
   assert.equal(lyrics().props.value,'मेरे नए गीत के बोल');
-  assert.equal(nodes(h.tree).find(node=>node.type==='button'&&node.props.type==='submit').props.disabled,true);
+  assert.equal(nodes(h.tree).find(node=>node.type==='button'&&node.props.type==='submit').props.disabled,false);
+  h.submit();await h.flush();let request=JSON.parse(h.requests.filter(request=>request.url==='/api/generations').at(-1).body);
+  assert.equal(request.script,'');assert.equal(request.language,'Hindi');
   lyrics().props.onChange({target:{value:'बारिश वाले गीत के नए बोल'}});h.render();
   assert.equal(nodes(h.tree).find(node=>node.type==='button'&&node.props.type==='submit').props.disabled,false);
-  h.submit();await h.flush();const request=JSON.parse(h.requests.filter(request=>request.url==='/api/generations').at(-1).body);
+  h.submit();await h.flush();request=JSON.parse(h.requests.filter(request=>request.url==='/api/generations').at(-1).body);
   assert.equal(request.topic,songIdeas[1].title);assert.equal(request.script,'बारिश वाले गीत के नए बोल');assert.equal(request.language,'Hindi');
+  nodes(label('Song source')).find(node=>node.type==='select').props.onChange({target:{value:'recording'}});h.render();
+  nodes(label('Sung audio')).find(node=>node.type==='input').props.onChange({target:{files:[{name:'fixture.wav',type:'audio/wav'}]}});await h.flush();
+  assert.equal(lyrics().props.required,true);
+  assert.equal(nodes(h.tree).find(node=>node.type==='button'&&node.props.type==='submit').props.disabled,false);
+  choose(songIdeas[0]);
+  assert.equal(nodes(h.tree).find(node=>node.type==='button'&&node.props.type==='submit').props.disabled,true,'An existing recording cannot use lyrics left inactive by a different topic');
+});
+test('child suggestions use the current kind and fixed starters stay in a closed example disclosure',()=>{
+  const h=harness('AICreation',()=>assert.fail('Selecting inspiration must not create a job'),{initialKind:"Children's short story",initialSuggestionsOpen:true});
+  assert.equal(nodes(h.tree).find(node=>node.type==='Recommendations').props.kind,"Children's short story");
+  const examples=nodes(h.tree).find(node=>node.type==='details'&&text(node).startsWith('Starter examples'));
+  assert.ok(examples);assert.notEqual(examples.props.open,true);
+  assert.ok(nodes(examples).some(node=>node.type==='button'&&text(node)===krishna.KRISHNA_STORY_TITLE));
+  const general=harness('AICreation',()=>assert.fail('Opening suggestions must not create a job'),{initialSuggestionsOpen:true});
+  assert.equal(nodes(general.tree).find(node=>node.type==='Recommendations').props.kind,undefined);
+});
+test('generic Krishna edits and explicit starter selection preserve an intentionally chosen series',async()=>{
+  const h=harness('AICreation',async()=>Response.json({draftIds:['12345678-1234-4234-8234-123456789abc'],count:10}),{initialKind:"Children's short story",initialTopic:'Krishna and a lost flute',initialSuggestionsOpen:true});
+  const quantity=()=>nodes(nodes(h.tree).find(node=>node.type==='label'&&text(node).startsWith('Output quantity'))).find(node=>node.type==='select');
+  quantity().props.onChange({target:{value:'10'}});h.render();
+  nodes(h.tree).find(node=>node.type==='textarea').props.onChange({target:{value:'Krishna'}});h.render();
+  assert.equal(quantity().props.value,10);
+  nodes(h.tree).find(node=>node.type==='button'&&text(node)===krishna.KRISHNA_STORY_TITLE).props.onClick();h.render();
+  assert.equal(quantity().props.value,10);
+  h.submit();await h.flush();const request=JSON.parse(h.requests.at(-1).body);
+  assert.equal(request.topic,krishna.KRISHNA_STORY_TITLE);assert.equal(request.batchCount,10);
 });
 test('news failures are visible and retryable, without losing earlier valid reports', async () => {
   let calls = 0;

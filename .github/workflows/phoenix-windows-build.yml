@@ -57,6 +57,8 @@ jobs:
           src/lib/generation.ts src/lib/newsPresentation.ts
           src/lib/voiceStudio.ts src/lib/kidsRenderer.ts
           src/lib/localSinging.ts src/lib/hostedSinging.ts src/lib/songAudio.ts
+          src/lib/songWriting.ts src/lib/krishnaStory.ts src/lib/creationIntent.ts src/lib/creativeDirection.ts
+          src/lib/reviewPoster.ts src/lib/reviewPosterPolicy.ts src/lib/creationRecommendations.ts src/lib/creationDrafts.ts
           src/lib/creationDraftTypes.ts
           src/app/api/generations/route.ts
           src/lib/stockStoryboard.ts src/lib/stockPreparation.ts src/lib/automaticFootage.ts src/lib/newsVisualPolicy.ts src/lib/footageSemantics.ts
@@ -241,6 +243,8 @@ jobs:
           scripts/test-kids-action-alignment.cjs
           scripts/test-episode-resume.cjs
           scripts/test-hosted-singing.cjs
+          scripts/test-song-writing.cjs
+          scripts/test-krishna-ideas.cjs
           scripts/test-animation-and-delete.cjs
           scripts/test-writing-settings.cjs
           scripts/test-writing-settings-ui.cjs

@@ -313,7 +313,7 @@ test('Krishna starter routes both languages to an authored final-review render w
   kids.kidsRendererAvailable = async requireModel => { assert.equal(requireModel, false); return true; };
   try {
     const route = require('../src/app/api/generations/route');
-    for (const [topic, title] of [['Krishna 2D', KRISHNA_STORY_TITLE], [HINDI_KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE]]) {
+    for (const [topic, title] of [[KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE], [HINDI_KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE]]) {
       assert.equal(creationIntent(topic), "Children's short story");
       const preset = krishnaStoryPreset(topic);
       const response = await route.POST(new Request('http://localhost/api/generations', { method: 'POST', headers: { origin: 'http://localhost' },
@@ -336,6 +336,35 @@ test('Krishna starter routes both languages to an authored final-review render w
       assert.ok(ass.includes(preset.scenes[0]));
     }
   } finally { kids.kidsRendererAvailable = original; }
+});
+
+test('Krishna ideas keep their requested premise and allow an explicitly chosen ten-part series', async () => {
+  const kids=require('../src/lib/kidsRenderer'),settings=require('../src/lib/writingSettings');
+  const available=kids.kidsRendererAvailable,readSettings=settings.readWritingSettings;
+  kids.kidsRendererAvailable=async()=>true;
+  settings.readWritingSettings=()=>({provider:'groq',apiKey:'fixture-key',freePlanConfirmed:true});
+  try {
+    const route=require('../src/app/api/generations/route');
+    for(const [topic,count] of [['Krishna 2D',1],['Krishna and Meera watch the stars',10],['Krishna and the Butter Pot',10]]){
+      const response=await route.POST(new Request('http://localhost/api/generations',{method:'POST',headers:{origin:'http://localhost'},body:JSON.stringify({...input(),requestId:crypto.randomUUID(),topic,creationType:'children-story',script:undefined,batchCount:count})}));
+      assert.equal(response.status,201);const body=await response.json();assert.equal(body.draftIds.length,count);
+      const saved=read().filter(item=>body.draftIds.includes(item.id));
+      assert.ok(saved.every(item=>item.input.topic.startsWith(topic)&&!item.input.script));
+      if(count===10){assert.equal(new Set(saved.map(item=>item.input.episodeBeat)).size,10);assert.ok(saved.every(item=>kids.castFor(item.input.topic)[0].kind==='krishna'));}
+    }
+  }finally{kids.kidsRendererAvailable=available;settings.readWritingSettings=readSettings;}
+});
+
+test('blank Hindi song lyrics are admitted for the selected writer without submitting a singer during admission',async()=>{
+  const kids=require('../src/lib/kidsRenderer'),settings=require('../src/lib/writingSettings');
+  const available=kids.kidsRendererAvailable,readSettings=settings.readWritingSettings;
+  kids.kidsRendererAvailable=async()=>true;settings.readWritingSettings=()=>({provider:'groq',apiKey:'fixture-key',freePlanConfirmed:true});
+  try{
+    const route=require('../src/app/api/generations/route');
+    const response=await route.POST(new Request('http://localhost/api/generations',{method:'POST',headers:{origin:'http://localhost'},body:JSON.stringify({requestId:crypto.randomUUID(),topic:'A Krishna flower song',creationType:'children-song',songMode:'hosted-ace',hostedSongConsent:true,language:'Hindi',duration:150,autoDuration:true,script:''})}));
+    assert.equal(response.status,201);const body=await response.json();const saved=read().find(item=>item.id===body.draftIds[0]);
+    assert.equal(saved.input.language,'Hindi');assert.equal(saved.input.script,'');assert.equal(saved.songTaskId,undefined);assert.equal(saved.status,'QUEUED');
+  }finally{kids.kidsRendererAvailable=available;settings.readWritingSettings=readSettings;}
 });
 
 test('automatic creation estimates owner narration length and retains the same vertical file for both posting targets', async () => {
@@ -501,9 +530,9 @@ test('singing respects explicit English/Hindi and detects Hindi only when langua
 });
 test('new hosted song requests require explicit lyrics transmission consent before any provider call', async () => {
   const route = require(path.join(project, 'src/app/api/generations/route.ts'));
-  for (const extra of [{ hostedSongConsent: false }, { hostedSongConsent: true, language: 'Hindi', script: '' }]) {
+  for (const extra of [{ hostedSongConsent: false }, { hostedSongConsent: false, language: 'Hindi', script: '' }]) {
     const response = await route.POST(new Request('http://localhost:3000/api/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' }, body: JSON.stringify({ topic: 'Original star song', creationType: 'children-song', songMode: 'hosted-ace', ...extra }) }));
-    assert.equal(response.status, 400); assert.match((await response.json()).error, /Allow sending|original Hindi lyrics/);
+    assert.equal(response.status, 400); assert.match((await response.json()).error, /Allow sending/);
   }
 });
 test('explicit generated-song lyrics remain verbatim instead of being replaced by the English lyric bank', async () => {

@@ -121,7 +121,8 @@ test('choosing a mixed idea changes its supported type, not song source, owner w
   assert.equal(applyRecommendationToForm(current, { ...idea, id: 'unknown' }), current);
   assert.equal(applyRecommendationToForm(current, { ...idea, kind: 'Unsupported type' }).kind, idea.kind);
   const child = recommendationPool().find(item => item.kind === "Children's short story");
-  assert.equal(applyRecommendationToForm({ ...current, narration: '' }, child).batchCount, 10);
+  assert.equal(applyRecommendationToForm({ ...current, narration: '' }, child).batchCount, 1);
+  assert.equal(applyRecommendationToForm({ ...current, kind: child.kind, batchCount: 10, narration: '' }, child).batchCount, 10);
 });
 
 test('every displayed card inserts its exact title throughout repeated recommendation rotations', () => {
@@ -241,4 +242,18 @@ test('personalized history accepts only 48 registered IDs, bounds cursors and re
   for (const invalid of [null, '{bad', '[]', 'null', 'x'.repeat(16385)]) assert.deepEqual(parsePersonalizedRecommendationMemory(invalid), { shown: [], cursor: 0 });
   const noNews = personalizedCreationRecommendations(suggestionContext([recentItem('news', 'Panda news', 'stock-reel', { news: true })]));
   assert.ok(noNews.ideas.every(idea => idea.basis === 'explore'));
+});
+
+test('children story and song ideas keep rotating after their recent suggestion history fills',()=>{
+  for(const kind of ["Children's short story","Children's song"]){
+    let seen=[],cursor=0;let previous=[];const all=new Set();
+    for(let rotation=0;rotation<12;rotation++){
+      const batch=personalizedCreationRecommendations(suggestionContext(),cursor,seen,kind);
+      assert.equal(batch.ideas.length,6);assert.ok(batch.ideas.every(idea=>idea.kind===kind));
+      const ids=batch.ideas.map(idea=>idea.id);assert.equal(new Set(ids).size,6);
+      assert.notDeepEqual(ids,previous);previous=ids;ids.forEach(id=>all.add(id));
+      seen=[...seen.filter(id=>!ids.includes(id)),...ids].slice(-48);cursor=batch.nextCursor;
+    }
+    assert.ok(all.size>6);
+  }
 });

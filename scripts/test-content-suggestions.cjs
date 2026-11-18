@@ -173,7 +173,7 @@ test('API validates the local request and known bounded IDs before loading optio
   const profile = context([record(1, 'Pandas'), record(2, 'Useful camera angles', { workflow: 'general' })], { feedback: [{ reviewId: uuid(1), decision: 'keep', storyRating: 5, visualRating: 4 }] });
   const local = load('src/lib/localRequest.ts');
   const route = load('src/app/api/content-suggestions/route.ts', { '@/lib/localRequest': local, '@/lib/contentSuggestionContext': { async loadSuggestionContext() { loads++; return profile; } }, '@/lib/stockFootageSuggestions': footage, '@/lib/creationRecommendations': creation });
-  for (const query of ['workflow=unknown', 'workflow=footage&cursor=-1', 'workflow=footage&cursor=1000000', 'workflow=footage&cursor=1.2', 'workflow=footage&seen=unknown', 'workflow=footage&seen=' + Array(49).fill('0-0').join(','), 'workflow=footage&workflow=creation', 'workflow=footage&topic=anything']) {
+  for (const query of ['workflow=unknown', 'workflow=footage&cursor=-1', 'workflow=footage&cursor=1000000', 'workflow=footage&cursor=1.2', 'workflow=footage&seen=unknown', 'workflow=footage&seen=' + Array(49).fill('0-0').join(','), 'workflow=footage&workflow=creation', 'workflow=footage&topic=anything', 'workflow=footage&kind=General+video', 'workflow=creation&kind=Unsupported', 'workflow=creation&kind=General+video&kind=General+video']) {
     assert.equal((await route.GET(new Request('http://localhost:3000/api/content-suggestions?' + query))).status, 400, query);
   }
   assert.equal((await route.GET(new Request('http://example.com/api/content-suggestions?workflow=footage'))).status, 403);
@@ -187,4 +187,7 @@ test('API validates the local request and known bounded IDs before loading optio
   const creationResponse = await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=creation'));
   const creative = await creationResponse.json(); assert.equal(creationResponse.status, 200); assert.equal(creative.ideas.length, 6);
   assert.deepEqual(creative.profile, { recentCount: 2, feedbackCount: 1 });
+  const songResponse=await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=creation&kind=Children%27s+song'));
+  const songs=await songResponse.json();assert.equal(songResponse.status,200);assert.equal(songs.ideas.length,6);
+  assert.ok(songs.ideas.every(idea=>idea.kind==="Children's song"));
 });

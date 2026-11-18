@@ -118,7 +118,7 @@ test('new draft policy and approval snapshot preserve exact original metadata an
   const imports = {
     'node:crypto': require('node:crypto'), 'node:path': path, 'node:fs/promises': { mkdir: async () => {}, readFile: async () => JSON.stringify(saved) },
     './reviewFiles': { reviewRoot: () => 'fixture-only' }, './atomicJson': { writeAtomicJson: async (_name, value) => { saved = plain(value); } }, './fileLock': { withFileLock: async (_name, work) => work() },
-    './renderResources': {}, './generation': { createGenerationJobs: async (_owner, values) => { jobs = plain(values); return [{ id: 'fixture-job' }]; } }, './kidsRenderer': {}, './krishnaStory': {}, './qualityManager': {},
+    './renderResources': {}, './generation': { createGenerationJobs: async (_owner, values) => { jobs = plain(values); return [{ id: 'fixture-job' }]; } }, './kidsRenderer': {}, './krishnaStory': {}, './qualityManager': {}, './songWriting': {},
     './stockStoryboard': {}, './stockBrief': { stockNarrationError: () => undefined }, './songAudio': {}, './stockCatalog': {}, './localSinging': {}, './hostedSinging': {}, './stockPreparation': {}, './newsVisualPolicy': policy, './writingModel': {},
   };
   const drafts = load('src/lib/creationDrafts.ts', imports);

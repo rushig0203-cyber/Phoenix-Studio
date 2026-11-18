@@ -8,6 +8,7 @@ import { HeavyWorkWaitError, heavyWorkStatus, tryWithLocalRenderSlot } from "./r
 import { createGenerationJobs, type GenerationInput } from "./generation";
 import { createContent, type KidsRenderInput } from "./kidsRenderer";
 import { krishnaStoryPreset } from "./krishnaStory";
+import { originalSongStyle } from "./songWriting";
 import { getCreativeGuidance } from "./qualityManager";
 import { narrationBeats } from "./stockStoryboard";
 import { stockNarrationError } from "./stockBrief";
@@ -295,6 +296,7 @@ export async function processNextCreationDraft() {
           }, draft.input.reviewMode === "final");
           draft.input = prepared.input; draft.scenes = prepared.scenes; script = prepared.input.script!;
         } else {
+          if (draft.input.creationType === "children-song") draft.input.songStyle = originalSongStyle(draft.input.topic, draft.input.songStyle);
           script = draft.input.script?.trim() || await createContent(draft.input as KidsRenderInput, await getCreativeGuidance(draft.input.creationType), async planned => {
             draft.input = { ...draft.input, creativeBrief: planned.creativeBrief, creativeBriefAttempt: planned.creativeBriefAttempt, kidsStoryAttempt: planned.kidsStoryAttempt };
             await update({ input: draft.input, stage: planned.creativeBriefAttempt ? "Story plan correction saved · checking supported visuals" : planned.kidsStoryAttempt ? "Narration correction saved · checking visible actions and dialogue" : "Original story direction saved · preparing dialogue" });
@@ -303,10 +305,11 @@ export async function processNextCreationDraft() {
         }
         await update({ input: draft.input, scenes: draft.scenes, stage: "Narration and visual sequence saved" });
       };
-      // Hosted songs use exact supplied lyrics or the existing local lyric bank.
+      // Supplied lyrics need no writer. New lyrics use the selected writer's normal RAM and quota admission.
       const hostedSong = draft.input.creationType === "children-song" && draft.input.songMode === "hosted-ace";
-      const writerIdentity = studioStory || hostedSong ? "" : writingModelIdentity();
-      if (studioStory || hostedSong) {
+      const suppliedHostedSong = hostedSong && !!draft.input.script?.trim();
+      const writerIdentity = studioStory || suppliedHostedSong ? "" : writingModelIdentity();
+      if (studioStory || suppliedHostedSong) {
         await preparePlan();
       } else if (isRemoteTextIdentity(writerIdentity)) {
         await withWritingSession(async () => {

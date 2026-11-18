@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RefreshCw, X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import PostingActions from "./PostingActions";
+import StudioActivity from "./StudioActivity";
 
 export function reviewTarget(file: ReviewFile) {
   if (file.delivery?.platform && file.outputs[file.delivery.platform]) return file.delivery.platform;
@@ -95,7 +96,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         onLoadedMetadata={restorePosition} onLoadedData={() => updatePhase("ready")} onPlaying={() => updatePhase("playing")} onWaiting={() => updatePhase("loading")} onCanPlay={() => updatePhase("ready")} onError={failed} />
     </div>
     <div className="space-y-3 p-5">
-      {phase === "loading" ? <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Loading video…</p> : null}
+      {phase === "loading" ? <StudioActivity label="Loading video…" /> : null}
       {phase === "slow" ? <p role="status" className="text-sm text-amber-800">Taking longer than expected. Try reloading the preview, or download the video below.</p> : null}
       {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
       <div className="flex flex-wrap items-center gap-4 text-sm font-semibold">
@@ -103,7 +104,6 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         <a href={url} download={`${file.title}.mp4`} className="underline">Download MP4</a>
         <Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>
       </div>
-      <p className="text-xs text-[#687657]">One player at a time keeps your laptop responsive. If autoplay is blocked, press Play in the video controls.</p>
       <PostingActions file={file} finalReview />
     </div>
   </dialog>;

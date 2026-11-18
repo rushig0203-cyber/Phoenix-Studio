@@ -27,6 +27,14 @@ const ellipse = (x: number, y: number, rx: number, ry: number, fill: string, str
 const line = (x1: number, y1: number, x2: number, y2: number, fill: string, width: number) =>
   `<path d="M${n(x1)} ${n(y1)} L${n(x2)} ${n(y2)}" stroke="${fill}" stroke-width="${width}" stroke-linecap="round" fill="none"/>`;
 
+// Finite visual nouns for Hindi lyrics; spoken words and captions remain unchanged.
+function visualWords(text: string) {
+  return text.replace(/फूलों|फूल|कली/gu, " flower ").replace(/तारों|तारे|तारा/gu, " star ")
+    .replace(/चाँद|चंदा/gu, " moon ").replace(/गेंद/gu, " ball ").replace(/पतंग/gu, " kite ")
+    .replace(/ढोलक|ढोल/gu, " drum ").replace(/छाता|छाते/gu, " umbrella ").replace(/बारिश|वर्षा|बूँद/gu, " rain ")
+    .replace(/खिलौनों|खिलौने/gu, " toys ").replace(/चिट्ठी|पत्र/gu, " letter ").replace(/उपहार/gu, " gift ");
+}
+
 export function planKidsAnimationScene(topic: string, text: string, index = 0, previous?: Scene): Scene {
   const pot = krishnaStoryCue(text);
   if (pot && /krishna|कृष्ण/iu.test(topic)) {
@@ -39,8 +47,8 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
       objectOwner: offer ? 1 : pot.action === "notice" ? 0 : pot.actor,
       objectFrom: offer ? 0 : undefined, shot: kidsShotFor(intent, index, -1, true) };
   }
-  topic = topic.toLowerCase();
-  const words = kidsReportedActions(text);
+  topic = visualWords(topic.toLowerCase());
+  const words = visualWords(kidsReportedActions(text));
   const theme = /\b(?:underwater|(?:in|into|beneath) (?:the |an? |their )?ocean)\b/.test(words) ? "ocean"
     : /\b(?:at night|during the night|after dark)\b/.test(words) ? "night"
     : /\b(?:in|into|inside) (?:the |an? |their )?(?:room|playroom)\b/.test(words) ? "room"
@@ -59,10 +67,12 @@ export function planKidsAnimationScene(topic: string, text: string, index = 0, p
     : /\b(?:toys?|tidy|sort|clean|blocks?)\b/.test(words) ? "toys"
     : /\b(?:bridges?|streams?|rivers?|stones?)\b/.test(words) ? "bridge"
     : /\b(?:letters?|invitations?|maps?|clues?|ribbons?)\b/.test(words) ? "letter"
+    : /\b(?:butter|clay|earthen)?\s*pots?\b|मटकी|मटका/u.test(words) ? "butter-pot"
     : /\b(?:presents?|gifts?|baskets?|snacks?)\b/.test(words) ? "gift"
     // Keep the central object visible across pronouns and reaction lines.
     : previous?.prop ?? (/\bkites?\b/.test(topic) ? "kite" : /\bballs?\b/.test(topic) ? "ball"
-    : /\b(?:stars?|moon)\b/.test(topic) ? "star" : /\b(?:flowers?|garden)\b/.test(topic) ? "flower" : "none");
+    : /\b(?:stars?|moon)\b/.test(topic) ? "star" : /\b(?:flowers?|garden)\b/.test(topic) ? "flower"
+    : /\bumbrellas?\b/.test(topic) ? "umbrella" : /\brain\b/.test(topic) ? "rain" : /\bdrums?\b/.test(topic) ? "drum" : "none");
   const resolved = reportsKiteResolution(words);
   const tangled = !resolved && /\b(?:tangled?|stuck|caught|snagged|knotted)\b/.test(words);
   const flight = reportsKiteFlight(words);
@@ -352,7 +362,7 @@ export function kidsAnimationSvg(options: KidsAnimationSvgOptions) {
   const zoom = shot === "wide" ? 1 : shot === "reaction" || shot === "speaker" ? (vertical ? 1.16 : 1.24) : shot === "detail" ? (vertical ? 1.07 : 1.18) : (vertical ? 1.02 : 1.06);
   const camera = { zoom: zoom + (shot === "detail" ? .035 * beat.action : 0), x: mix(w / 2, focusX, .42), y: vertical ? ground - 163 : ground - 132 };
   let world = backdrop(stage, scene, phase * .13, !!options.transparent);
-  if (options.cast[0] === "krishna" && !options.transparent) {
+  if (options.cast[0] === "krishna" && !options.transparent && (scene.potAction || /\bcourtyard\b|आँगन/iu.test(options.topic))) {
     const arch = `M${n(w * .34)} ${ground} v-151 a${n(w * .16)} 113 0 0 1 ${n(w * .32)} 0 v151Z`;
     world += `<g data-setting="courtyard"><path d="M0 ${ground - 138} H${w} V${ground} H0Z" fill="#ddab7c"/><path d="${arch}" fill="#a26250" stroke="#f7d5a5" stroke-width="12"/><path d="M0 ${ground} H${w} V${ground + 31} H0Z" fill="#d5a484"/><path d="M0 ${ground + 14} H${w}" fill="none" stroke="#bd856c" stroke-width="3"/></g>`;
   }

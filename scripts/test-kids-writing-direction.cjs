@@ -90,13 +90,13 @@ test('automatic child planning saves its exact cast and visual plan before quota
     prompts.push(body.prompt);
     if (prompts.length === 1) {
       assert.match(body.prompt, /original limited 2D/);
-      assert.match(body.prompt, /Benny the bunny and Tika the bird/);
+      assert.match(body.prompt, /Benny \(bunny\) and Tika \(bird\)/);
       return Response.json({ response: JSON.stringify(outline) });
     }
     const [checkpoint] = read();
     assert.equal(checkpoint.input.creativeBrief.version, 2, 'The outline must be durable before narration dispatch');
     assert.deepEqual(checkpoint.input.creativeBrief.beats, outline.beats);
-    assert.match(body.prompt, /Benny the bunny and Tika the bird/);
+    assert.match(body.prompt, /Benny \(bunny\) and Tika \(bird\)/);
     assert.match(body.prompt, /visualConstraints/);
     assert.ok(body.prompt.includes(outline.beats[0].visual));
     assert.match(body.prompt, /consequence → reaction → changed attempt → payoff/);
@@ -339,14 +339,17 @@ for (const stage of ['outline', 'narration']) test(`Ollama keeps its explicit lo
   assert.equal(calls, stage === 'outline' ? 1 : 2); assert.equal(submitted.length, 0);
 });
 
-test('Cloudflare selection does not rewrite uploaded song lyrics or change the original local song composer', async () => {
+test('Cloudflare writes fresh automatic song lyrics while uploaded lyrics stay exact', async () => {
   selectFixtureWriter('cloudflare');
-  mock.method(writer, 'generateWritingModel', async () => assert.fail('The unchanged song paths must not call a story writer'));
+  let calls=0;
+  const lines=['Benny holds a rainbow kite','Tika sees the colors bright','A little loop comes gently free','The wind hums softly through the tree','We wait and watch the ribbon fly','Then wave together to the sky'];
+  mock.method(writer, 'generateWritingModel', async request => {calls++;assert.ok(request.prompt.includes(childInput().topic));return Response.json({response:JSON.stringify({lines})});});
   const supplied = 'Exact uploaded song lyrics remain unchanged.';
   const input = { ...childInput(), creationType: 'children-song' };
   const guidance = guidanceFromFeedback([], 'children-song');
   assert.equal(await createContent({ ...input, songAudioId: 'fixture-song-not-read', script: supplied }, guidance), supplied);
+  assert.equal(calls,0);
   const originalSong = await createContent(input, guidance);
-  assert.match(originalSong, /Benny/); assert.match(originalSong, /Tika/); assert.ok(originalSong.split('\n').length > 8);
+  assert.equal(originalSong,lines.join('\n'));assert.equal(calls,1);
   assert.equal(submitted.length, 0);
 });

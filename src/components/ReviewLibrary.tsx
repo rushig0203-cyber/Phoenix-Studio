@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FolderOpen, Info, Play, RotateCcw, Search, Trash2 } from "lucide-react";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import { reviewEpisode } from "@/lib/reviewEpisode";
+import { REVIEW_POSTER_POLICY } from "@/lib/reviewPosterPolicy";
 import ReviewPlayer, { reviewTarget } from "./ReviewPlayer";
 import PostingActions from "./PostingActions";
 import ReviewStorageSummary from "./ReviewStorageSummary";
@@ -30,7 +31,11 @@ const seconds = (value?: number) => {
 function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const identity = `${file.id}:${reviewTarget(file)}:${file.updatedAt}`;
+  const output = file.outputs[reviewTarget(file)];
+  const validDimensions = typeof output?.width === "number" && Number.isFinite(output.width) && output.width > 0
+    && typeof output.height === "number" && Number.isFinite(output.height) && output.height > 0;
+  const portrait = validDimensions && output.height > output.width;
+  const identity = `${file.id}:${reviewTarget(file)}:${file.updatedAt}:${REVIEW_POSTER_POLICY}`;
   useEffect(() => { setFailed(false); setAttempt(0); }, [identity]);
   useEffect(() => {
     if (!failed || attempt >= 3) return;
@@ -46,9 +51,9 @@ function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
     document.addEventListener("visibilitychange", retry);
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", retry); };
   }, [failed, attempt, identity]);
-  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className="group relative flex aspect-video w-full max-w-lg items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white">
-    {!failed ? <Image unoptimized src={`/api/review-files/${file.id}/poster?target=${reviewTarget(file)}&v=${encodeURIComponent(file.updatedAt)}&attempt=${attempt}`} alt="" fill sizes="384px" className="object-contain" loading="lazy" onError={() => setFailed(true)} /> : null}
-    <span className="relative flex items-center gap-2 rounded-full bg-black/65 px-4 py-2 text-xs font-semibold transition group-hover:bg-black/85"><Play className="h-4 w-4" />{failed ? "Open video preview" : "Play preview"}</span>
+  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className={`group relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white ${portrait ? "mx-auto max-w-[9rem]" : "max-w-lg"}`} style={{ aspectRatio: validDimensions ? `${output.width} / ${output.height}` : "16 / 9" }}>
+    {!failed ? <Image unoptimized src={`/api/review-files/${file.id}/poster?target=${reviewTarget(file)}&v=${encodeURIComponent(file.updatedAt)}&attempt=${attempt}&policy=${REVIEW_POSTER_POLICY}`} alt="" fill sizes={portrait ? "144px" : "(max-width: 767px) calc(100vw - 40px), 384px"} className="object-contain" loading="lazy" onError={() => setFailed(true)} /> : null}
+    <span className={`flex items-center gap-2 rounded-full bg-black/65 text-xs font-semibold transition group-hover:bg-black/85 ${failed ? "relative px-4 py-2" : "absolute bottom-3 right-3 p-2.5"}`}><Play className="h-4 w-4" /><span className={failed ? "" : "sr-only"}>{failed ? "Open video preview" : "Play preview"}</span></span>
   </button>;
 }
 
@@ -193,7 +198,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
           {file.publication?.status === "POSTED" && file.publication.postedTo.length ? <p className="mt-2 text-xs font-semibold text-[#394a2a]">Posted to {file.publication.postedTo.map((post, index) => <span key={post.platform}>{index ? " · " : ""}{post.remoteUrl ? <a href={post.remoteUrl} target="_blank" rel="noreferrer" className="underline">{post.platform === "instagram" ? "Instagram" : post.platform === "facebook" ? "Facebook Page" : "YouTube"} ↗</a> : post.platform === "instagram" ? "Instagram" : post.platform === "facebook" ? "Facebook Page" : "YouTube"}</span>)}</p> : file.publication?.previouslyPostedTo?.length ? <p className="mt-2 text-xs text-amber-800">An earlier version was posted; this output is new or changed.</p> : null}
           {file.publication?.inspectionIssue ? <p className="mt-2 text-xs text-amber-800">Posting history could not be confirmed. Check the channel before posting again.</p> : null}
           {file.series ? <p className="mt-1 text-xs text-[#687657]">Part {file.series.episodeNumber} of {file.series.episodeCount}</p> : null}
-          <p className="mt-2 text-xs text-[#a06b29]">{file.monetizationReview?.status === "NEEDS_CHANGES" ? "Needs changes" : file.monetizationReview?.status === "CHECKED" ? "Manual checklist checked" : "Needs your review"}{file.audience.startsWith("kids") ? " · Made for kids" : ""}</p>
+          {file.monetizationReview?.status === "NEEDS_CHANGES" || file.audience.startsWith("kids") ? <p className="mt-2 text-xs text-[#a06b29]">{file.monetizationReview?.status === "NEEDS_CHANGES" ? "Needs changes" : ""}{file.audience.startsWith("kids") ? `${file.monetizationReview?.status === "NEEDS_CHANGES" ? " · " : ""}Made for kids` : ""}</p> : null}
           {!trashOpen ? <>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>{file.publication?.status === "POSTED" && file.publication.postedTo.length > 0 ? <a href={`#insights?review=${encodeURIComponent(file.id)}`} aria-label={`Insights for ${file.title}`} className="rounded-lg border border-[#bdc7a5] px-3 py-2">Insights</a> : null}</div>
             {file.publication?.status === "POSTED" ? <details className="mt-3 text-xs"><summary className="cursor-pointer font-semibold">Posting tools</summary><PostingActions file={file} /></details> : <PostingActions file={file} />}

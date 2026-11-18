@@ -163,6 +163,19 @@ async function run() {
     verify('Create a Video has its own six registered suggestions', await page.getByRole('button', { name: /^Use idea:/ }).count() === 6
       && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible());
     await capture('studio-create-video');
+    await page.getByText('Describe your video', { exact: true }).click();
+    await page.getByLabel('Your idea').fill('Krishna and Meera watch stars at night');
+    await page.getByRole('button', { name: /^Use idea:/ }).first().waitFor();
+    verify('A new Krishna idea stays editable and does not force a series or the Butter Pot starter', await page.getByLabel('Your idea').inputValue() === 'Krishna and Meera watch stars at night'
+      && await page.getByLabel('Output quantity').inputValue() === '1');
+    await capture('studio-create-krishna');
+    await page.getByLabel('Your idea').fill('An original Krishna flower song for children');
+    await page.getByRole('button', { name: /^Use idea:/ }).first().waitFor();
+    await page.getByLabel('Song language').selectOption('Hindi');
+    verify('Hindi songs keep lyrics optional and engine instructions collapsed', await page.getByRole('button', { name: /^Use idea:/ }).count() === 6
+      && await page.getByLabel('Lyrics, one line at a time').getAttribute('required') === null
+      && await page.getByText('Song options & engine details', { exact: true }).locator('..').getAttribute('open') === null);
+    await capture('studio-create-song');
     await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
     verify('Switching creation workspaces retains the selected clip style', await highlights.isChecked());
     await workflows.getByRole('link', { name: 'Make a Reel', exact: true }).click();

@@ -1,6 +1,7 @@
 import { getReviewFile, safeReviewId } from "@/lib/reviewFiles";
-import { reviewMediaPath } from "@/lib/reviewMedia";
+import { reviewMediaPath, selectedReviewTarget } from "@/lib/reviewMedia";
 import { reviewPoster } from "@/lib/reviewPoster";
+import { reviewPosterSeek } from "@/lib/reviewPosterPolicy";
 import { HeavyWorkWaitError } from "@/lib/renderResources";
 
 export const runtime = "nodejs";
@@ -9,10 +10,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!safeReviewId(id)) return new Response(null, { status: 404 });
   const file = await getReviewFile(id);
   if (!file) return new Response(null, { status: 404 });
-  const media = reviewMediaPath(file, new URL(request.url).searchParams.get("target"));
+  const requestedTarget = new URL(request.url).searchParams.get("target");
+  const media = reviewMediaPath(file, requestedTarget);
   if (!media) return new Response(null, { status: 404 });
   try {
-    const bytes = await reviewPoster(media, request.signal);
+    const selected = selectedReviewTarget(file, requestedTarget);
+    const seek = reviewPosterSeek(selected ? file.outputs[selected]?.duration : undefined);
+    const bytes = await reviewPoster(media, request.signal, seek);
     return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" } });
   } catch (error) {
     if (request.signal.aborted || (error instanceof Error && error.name === "AbortError")) return new Response(null, { status: 499, headers: { "Cache-Control": "no-store" } });

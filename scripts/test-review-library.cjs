@@ -25,7 +25,7 @@ test('media target respects publishing intent and rejects unrendered platforms',
   fixture = reviews.makeReviewFile({title:'Library fixture',targets:['youtube'],source:{kind:'upload',filename:'fixture.mp4',licence:'Test'},audience:'general',quality:{audio:'natural-audio-preserved',captions:['Fixture captions'],hashtags:['#Fixture'],checks:[]}});
   fixture.status='READY'; fixture.outputs.youtube={filename:`${fixture.id}-youtube.mp4`,width:320,height:180,duration:2};
   filename=reviews.outputPath(fixture.id,'youtube');
-  const rendered=spawnSync(process.env.PHOENIX_FFMPEG_PATH,['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i','color=c=blue:s=320x180:r=12','-f','lavfi','-i','sine=frequency=440:duration=2','-t','2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart',filename],{windowsHide:true,encoding:'utf8'});
+  const rendered=spawnSync(process.env.PHOENIX_FFMPEG_PATH,['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i','color=c=blue:s=320x180:r=12','-f','lavfi','-i','sine=frequency=440:duration=2','-t','2','-vf','fade=t=in:st=0:d=0.5','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart',filename],{windowsHide:true,encoding:'utf8'});
   assert.equal(rendered.status,0,rendered.stderr);
   await reviews.saveReviewFile(fixture); originalBytes=fs.readFileSync(filename);
   assert.equal(media.reviewMediaPath(fixture),filename);
@@ -53,6 +53,17 @@ test('real poster is a cached JPEG; simultaneous requests share the same result'
   assert.equal(a[0],255);assert.equal(a[1],216);assert.deepEqual(a,b);
   assert.deepEqual(await posters.reviewPoster(filename),a);
   assert.equal(fs.readdirSync(path.join(reviews.reviewRoot(),'previews')).filter(name=>name.endsWith('.jpg')).length,1);
+});
+
+test('the real interior poster contains the video subject rather than its black opening frame',async()=>{
+  const sharp=require('sharp');sharp.concurrency(1);sharp.cache({memory:8,files:0,items:8});
+  const {reviewPosterSeek}=require('../src/lib/reviewPosterPolicy');
+  const first=await posters.reviewPoster(filename);
+  const interior=await posters.reviewPoster(filename,undefined,reviewPosterSeek(fixture.outputs.youtube.duration));
+  const pixel=async bytes=>sharp(bytes).resize(1,1).removeAlpha().raw().toBuffer();
+  const black=await pixel(first),blue=await pixel(interior);
+  assert.ok([...black].every(value=>value<20));assert.ok(blue[2]>150&&blue[0]<20&&blue[1]<20);
+  assert.notDeepEqual(first,interior);
 });
 test('one-click Trash is idempotent, recoverable, and keeps video bytes intact',async()=>{
   await Promise.all([reviews.removeReviewFile(fixture.id),reviews.removeReviewFile(fixture.id)]);

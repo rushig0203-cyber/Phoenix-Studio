@@ -120,6 +120,33 @@ const additions: Array<[string, string, RecommendationGroup, CreationKind, strin
   ["toy-tidy-song", "call-and-response", "Children", "Children's song", "An original tidy-up song with a place for every toy"],
   ["rainy-day-song", "rhythm", "Children", "Children's song", "An original rainy-day song with soft taps and puddle splashes"],
   ["butterfly-counting-song", "counting", "Children", "Children's song", "An original counting song as five butterflies visit a garden"],
+  ["umbrella-friends", "sharing", "Fiction", "Children's short story", "Benny Bunny and Tika Bird share one umbrella — Let each friend try a position before they find room together and reach a dry garden gate."],
+  ["toy-bridge", "experiment", "Fiction", "Children's short story", "Nori Bear and Poppy Fox test a toy bridge — Start with a wobbly crossing, try one stronger arrangement and finish with their toy safely across."],
+  ["ocean-star", "listening", "Fiction", "Children's short story", "Finn Fish and Bubbles follow a quiet star — They stop competing to lead, listen to each other and find the star beside their ocean home."],
+  ["letter-delivery", "discovery", "Fiction", "Children's short story", "Pip Puppy and Coco Cat deliver a tiny letter — Follow one clue at a time and end when the letter reaches the friend waiting in the garden."],
+  ["garden-drum", "turn-taking", "Fiction", "Children's short story", "Benny Bunny and Tika Bird trade a garden drum — Give each friend a different rhythm and let their final shared beat resolve the disagreement."],
+  ["mystery-gift", "curiosity", "Fiction", "Children's short story", "Nori Bear and Poppy Fox find a mystery gift — Their guesses grow until they notice the small letter explaining who should receive it."],
+  ["moonlight-wave", "friendship", "Fiction", "Children's short story", "Finn Fish and Bubbles invent a goodnight wave — A worried friend practices one gentle signal until both can say goodnight across the ocean."],
+  ["waiting-bus", "patience", "Fiction", "Children's short story", "Pip Puppy and Coco Cat wait for the little bus — Turn a restless wait into a clapping game and finish when the bus arrives."],
+  ["flower-gift", "kindness", "Fiction", "Children's short story", "Nori Bear and Poppy Fox choose a flower gift — They notice what their friend likes and prepare one thoughtful flower instead of competing for the biggest."],
+  ["krishna-butter-pot", "sharing", "Children", "Children's short story", "Krishna and the Butter Pot"],
+  ["krishna-flowers", "cooperation", "Children", "Children's short story", "Krishna and Meera arrange flowers together — Give each friend a small visible task and end with a shared courtyard celebration."],
+  ["krishna-letter", "curiosity", "Children", "Children's short story", "Krishna and Meera find a little letter — Follow a simple clue, a careful handover and the joy of reaching its intended friend."],
+  ["krishna-drum", "listening", "Children", "Children's short story", "Krishna listens to Meera's drum — They learn each other's gentle rhythm and finish by playing the beat together."],
+  ["krishna-gift", "teamwork", "Children", "Children's short story", "Krishna and Meera carry a gift together — Begin with a wobble, show one cooperative adjustment and finish with the gift safely delivered."],
+  ["krishna-kite", "patience", "Children", "Children's short story", "Krishna and Meera untangle a kite — Show patient turns with the string, a clear resolution and the kite's successful flight."],
+  ["hello-friends-song", "call-and-response", "Children", "Children's song", "An original hello song for Bunny and Bird — Trade short greetings, waves and a repeated chorus that welcomes both friends."],
+  ["clapping-echo-song", "rhythm", "Children", "Children's song", "An original clapping echo song — Bear claps a short rhythm, Fox answers and both join the final chorus."],
+  ["quiet-drum-song", "contrast", "Children", "Children's song", "An original soft-and-loud drum song — Compare two gentle rhythms with clear pauses and return to a quiet ending."],
+  ["animal-movement-song", "movement", "Children", "Children's song", "An original hop-and-flap song — Let Bunny and Bird each lead a simple movement verse with one recurring chorus."],
+  ["goodnight-stars-song", "bedtime", "Children", "Children's song", "An original goodnight song for two friends — Wave to the stars, soften the repeated refrain and end with a complete goodnight."],
+  ["thank-you-gift-song", "kindness", "Children", "Children's song", "An original thank-you song for a little gift — Trade a gift, a wave and a warm repeated thank-you chorus."],
+  ["garden-colors-song", "colors", "Children", "Children's song", "An original garden flower color song — Notice one flower at a time and give each color its own short musical phrase."],
+  ["toy-counting-song", "counting", "Children", "Children's song", "An original counting song for three toys — Count each toy once, repeat the group and finish with all three together."],
+  ["ball-turns-song", "turn-taking", "Children", "Children's song", "An original your-turn, my-turn ball song — Pass one ball between two friends and use the chorus to mark each turn."],
+  ["ocean-melody-song", "melody", "Children", "Children's song", "An original ocean song for Finn and Bubbles — Alternate short high and low phrases before bringing both voices into the refrain."],
+  ["krishna-friendship-song", "friendship", "Children", "Children's song", "An original Krishna and Meera friendship song — Share a gift, clap a simple rhythm and end on a warm repeated friendship chorus."],
+  ["krishna-flower-song", "call-and-response", "Children", "Children's song", "An original Krishna and Meera flower song — Trade short musical lines while arranging flowers and finish with a shared chorus."],
   ["lake-reflection", "reveal", "Nature & places", "General video", "When a lake becomes a mirror — Start on a water detail, reveal the reflected landscape and explain what changes when ripples arrive."],
   ["coastal-tide", "movement", "Nature & places", "General video", "The shore changes with every wave — Connect approaching water, foam patterns and retreating water; end with one complete wave cycle."],
   ["alpine-valley", "scale", "Nature & places", "General video", "A small path beneath enormous mountains — Reveal the scale from a trail detail to a wider valley view, keeping one alpine setting."],
@@ -223,14 +250,16 @@ const interestLabel = (interest: Interest) => interest === "food" ? "food and cr
 const kindForWorkflow = (workflow: string): CreationKind => workflow === "business" ? "Business video" : workflow === "children-story" ? "Children's short story" : workflow === "children-song" ? "Children's song" : "General video";
 
 /** Rank supported premises from saved subjects and reviews; changing the date never invents a trend. */
-export function personalizedCreationRecommendations(context: SuggestionContext, cursor = 0, seen: string[] = []): { ideas: PersonalizedCreationRecommendation[]; nextCursor: number } {
+export function personalizedCreationRecommendations(context: SuggestionContext, cursor = 0, seen: string[] = [], requestedKind?: CreationKind): { ideas: PersonalizedCreationRecommendation[]; nextCursor: number } {
   const safeCursor = Number.isSafeInteger(cursor) && cursor >= 0 ? cursor % RECOMMENDATIONS.length : 0;
   const recent = context.recent.filter(item => !item.news).slice(0, 120).map((item, index) => ({ ...item,
     interests: interests(`${item.title} ${item.observations.join(" ")}`, item.workflow),
     subjects: subjects(`${item.title} ${item.observations.join(" ")}`), weight: Math.max(1, 6 - Math.floor(index / 8)) * (item.posted ? 2 : 1),
   }));
   const feedback = new Map(context.feedback.map(item => [item.reviewId, item]));
-  const evidenceRecent = recent.some(item => item.posted) ? recent.filter(item => item.posted) : recent;
+  const selectedKind = requestedKind && CREATION_KINDS.includes(requestedKind) ? requestedKind : undefined;
+  const evidenceRecent = (recent.some(item => item.posted) ? recent.filter(item => item.posted) : recent)
+    .filter(item => !selectedKind || kindForWorkflow(item.workflow) === selectedKind);
   const kindWeights = new Map<CreationKind, number>();
   const interestWeights = new Map<Interest, number>();
   for (const item of evidenceRecent) {
@@ -241,15 +270,15 @@ export function personalizedCreationRecommendations(context: SuggestionContext, 
     kindWeights.set(kind, (kindWeights.get(kind) || 0) + weight);
     for (const interest of item.interests) interestWeights.set(interest, (interestWeights.get(interest) || 0) + weight);
   }
-  const preferredKind = [...kindWeights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "General video";
+  const preferredKind = selectedKind ?? [...kindWeights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "General video";
   const leadingInterest = [...interestWeights].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const seenTopics = new Set(seen.slice(-48).flatMap(id => recommendationById.has(id) ? [recommendationById.get(id)!.topicKey] : []));
+  const lastShown = new Map(seen.slice(-48).flatMap((id, index) => recommendationById.has(id) ? [[recommendationById.get(id)!.topicKey, index] as const] : []));
   const recentSubjects = new Set(recent.flatMap(item => item.subjects));
   const recentTitles = new Set(recent.map(item => canonicalRecommendationKey(headline(item.title))));
   const epoch = Math.floor(context.now / RECOMMENDATION_REFRESH_MS);
-  const candidates = RECOMMENDATIONS.filter(idea => idea.kind === preferredKind && !seenTopics.has(idea.topicKey)
+  const candidates = RECOMMENDATIONS.filter(idea => idea.kind === preferredKind
     && !recentTitles.has(canonicalRecommendationKey(headline(idea.title)))
-    && !subjects(`${idea.topicKey} ${headline(idea.title)}`).some(subject => recentSubjects.has(subject))).map((idea, index) => {
+    && (preferredKind.startsWith("Children") || !subjects(`${idea.topicKey} ${headline(idea.title)}`).some(subject => recentSubjects.has(subject)))).map((idea, index) => {
     const tags = interests(`${idea.topicKey} ${headline(idea.title)}`, recommendationWorkflow(idea));
     const matched = evidenceRecent.filter(item => item.interests.some(interest => tags.includes(interest)));
     const kept = matched.find(item => (feedback.get(item.reviewId)?.storyRating || 0) >= 4);
@@ -262,8 +291,11 @@ export function personalizedCreationRecommendations(context: SuggestionContext, 
       : strong ? { basis: "observed-response", reason: `A fresh ${family} subject related to stronger saved results from ${strong.evidenceCount} posts.` }
       : matched[0] ? { basis: "recent-content", reason: `Related to your ${matched.some(item => item.posted) ? "posted" : "recent"} ${family} videos, with a fresh subject.` }
       : { basis: "explore", reason: leadingInterest ? `A nearby ${tags[0] || "general"} subject to explore alongside your ${leadingInterest} videos.` : "A new subject to explore; your saved work will guide future ideas." };
-    return { idea: { ...idea, ...basis }, score, tags, order: (index - safeCursor - epoch % RECOMMENDATIONS.length + RECOMMENDATIONS.length * 2) % RECOMMENDATIONS.length };
-  }).sort((a, b) => b.score - a.score || a.order - b.order);
+    const shownAt = lastShown.get(idea.topicKey);
+    return { idea: { ...idea, ...basis, reason: shownAt === undefined ? basis.reason : `Previously shown; ${basis.reason[0].toLowerCase()}${basis.reason.slice(1)}` }, score, tags, shownAt,
+      order: (index - safeCursor - epoch % RECOMMENDATIONS.length + RECOMMENDATIONS.length * 2) % RECOMMENDATIONS.length };
+  }).sort((a, b) => Number(a.shownAt !== undefined) - Number(b.shownAt !== undefined)
+    || (a.shownAt !== undefined && b.shownAt !== undefined ? a.shownAt - b.shownAt : 0) || b.score - a.score || a.order - b.order);
   const ideas: PersonalizedCreationRecommendation[] = [];
   const used = new Set<string>();
   const relevant = candidates.filter(item => leadingInterest === "wildlife" ? item.tags.includes("wildlife") : item.score > 0 || !leadingInterest);
@@ -277,6 +309,10 @@ export function personalizedCreationRecommendations(context: SuggestionContext, 
     : item.score === 0 && (!leadingInterest || leadingInterest !== "nature" || item.tags.includes("science"))));
   if (nearby) { ideas.push(nearby.idea); used.add(nearby.idea.topicKey); }
   for (const candidate of relevant) {
+    if (ideas.length === 6) break;
+    if (!used.has(candidate.idea.topicKey)) { ideas.push(candidate.idea); used.add(candidate.idea.topicKey); }
+  }
+  for (const candidate of candidates) {
     if (ideas.length === 6) break;
     if (!used.has(candidate.idea.topicKey)) { ideas.push(candidate.idea); used.add(candidate.idea.topicKey); }
   }
@@ -376,6 +412,6 @@ export function applyRecommendationToForm<T extends RecommendationForm>(current:
     autoIdea: false,
     publishingFormat: format,
     duration: changedType ? publishingProfile(format).defaultDuration : current.duration,
-    batchCount: changedType ? (idea.kind === "Children's short story" && !current.narration.trim() ? 10 : 1) as 1 | 10 : current.batchCount,
+    batchCount: changedType ? 1 as const : current.batchCount,
   };
 }

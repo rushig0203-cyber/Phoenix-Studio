@@ -9,7 +9,7 @@ import StudioActivity from "./StudioActivity";
 import type { NewsIdea } from "@/lib/newsResearch";
 import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
-import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, isKrishnaStoryTopic } from "@/lib/krishnaStory";
+import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, krishnaStoryPreset } from "@/lib/krishnaStory";
 import {
   publishingProfile,
   type PublishingFormat,
@@ -36,7 +36,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [hostedSongConsent, setHostedSongConsent] = useState(false);
   const [songLanguage, setSongLanguage] = useState<"English" | "Hindi">("English");
   const [singing, setSinging] = useState<{ available: boolean; reason: string } | null>(null);
-  const [songStyle, setSongStyle] = useState("Acoustic guitar, glockenspiel, handclaps, a cheerful melody and a memorable chorus.");
+  const [songStyle, setSongStyle] = useState("");
   const [narration, setNarration] = useState("");
   const [visualBrief, setVisualBrief] = useState("");
   const [activeWriting, setActiveWriting] = useState({ narration: true, visualBrief: true, lyrics: true });
@@ -53,7 +53,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const activeVisualBrief = activeWriting.visualBrief ? visualBrief : "";
   const activeLyrics = activeWriting.lyrics ? lyrics : "";
   const savedWriting = !!(narration.trim() && !activeWriting.narration || visualBrief.trim() && !activeWriting.visualBrief || lyrics.trim() && !activeWriting.lyrics);
-  const krishnaStarter = isKrishnaStoryTopic(topic) && !activeNarration.trim() && !autoIdea;
+  const explicitStarter = krishnaStoryPreset(topic);
   useEffect(() => {
     if (kind !== "Children's song") return;
     const controller = new AbortController();
@@ -66,7 +66,6 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setSelectedNews(null);
     setTopic(value);
     const nextKind = creationIntent(value);
-    if (isKrishnaStoryTopic(value)) setBatchCount(1);
     if (nextKind !== kind) {
       setKind(nextKind);
       setBatchCount(1);
@@ -190,7 +189,6 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     <section className="mt-5 rounded-[1.5rem] border border-[#bfcaa6] bg-white p-5">
       <div className="flex flex-wrap justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.16em] text-[#75834f]">Create a video</p>
           <h3 className="mt-1 text-xl font-semibold">What is your idea?</h3>
         </div>
         <Button type="button" variant="outline" onClick={onClose}>Close</Button>
@@ -222,11 +220,16 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             <option value="local-ace" disabled={!singing?.available}>Generate with local ACE-Step · {singing?.available ? "ready" : "unavailable on this PC"}</option>
           </select></label>
           <label className="block text-sm font-semibold">Song language<select value={songLanguage} onChange={event => setSongLanguage(event.target.value as typeof songLanguage)} className="mt-1 w-full rounded-lg border bg-white p-2"><option>English</option><option>Hindi</option></select></label>
-          {songMode !== "hosted-ace" && !singing ? <StudioActivity label="Checking singing engine" /> : null}
-          <p className="text-xs leading-5 text-[#647451]">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
           {songMode === "hosted-ace" ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={hostedSongConsent} onChange={event => setHostedSongConsent(event.target.checked)} className="mt-1"/><span>Allow this song&apos;s description and lyrics to be sent to official hosted ACE-Step on Hugging Face. Video files and recordings stay on this PC. No account, token or paid plan is used.</span></label> : null}
-          {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<StudioActivity label="Checking recording" />:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}</> : <label className="block text-sm font-semibold">Musical direction<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label>}
-          <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>{setLyrics(e.target.value);setActiveWriting(current=>({...current,lyrics:true}));}} placeholder={songMode === "recording" ? "Paste the exact words sung in your recording" : songLanguage === "Hindi" ? "Enter your original Hindi lyrics" : "Write original lyrics, or leave blank for the local composer"} required={songMode === "recording" || songLanguage === "Hindi"}/></label>
+          {songMode === "recording" ? <><label className="block text-sm font-semibold">Sung audio with accompaniment<input className="mt-2 block w-full text-sm" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac" disabled={uploadingSong||busy} onChange={e=>void uploadSong(e.target.files?.[0])}/></label>{uploadingSong?<StudioActivity label="Checking recording" />:songAudio?<p className="text-sm">{songAudio.filename} · {Math.floor(songAudio.duration)} seconds</p>:null}
+            <label className="block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>{setLyrics(e.target.value);setActiveWriting(current=>({...current,lyrics:true}));}} placeholder="Paste the exact words sung in your recording" required /></label>
+          </> : <details className="text-sm"><summary className="cursor-pointer font-semibold">Your lyrics · optional</summary><label className="mt-2 block text-sm font-semibold">Lyrics, one line at a time<textarea rows={6} className="mt-1 w-full rounded-xl border p-2 font-normal" value={lyrics} maxLength={20000} onChange={e=>{setLyrics(e.target.value);setActiveWriting(current=>({...current,lyrics:true}));}} placeholder="Write original lyrics, or leave blank for a new song in your selected language" /></label></details>}
+          {songMode === "local-ace" && !singing ? <StudioActivity label="Checking singing engine" /> : null}
+          {songMode === "local-ace" && singing && !singing.available ? <p role="alert" className="text-sm text-destructive">{singing.reason}</p> : null}
+          <details className="text-xs leading-5 text-[#647451]"><summary className="cursor-pointer font-semibold">Song options & engine details</summary>
+            {songMode !== "recording" ? <label className="mt-3 block text-sm font-semibold">Musical direction · optional<textarea rows={3} value={songStyle} onChange={event => setSongStyle(event.target.value)} placeholder="Mood, instruments or style" maxLength={500} className="mt-1 w-full rounded-lg border p-2" /></label> : null}
+            <p className="mt-2">{songMode === "hosted-ace" ? "Singing and accompaniment run on the official Hugging Face shared GPU, without loading a music model into this laptop. Anonymous free quota and queues apply; quota exhaustion waits without payment or a local-model fallback." : singing?.reason} Phoenix never substitutes spoken narration for singing. <a className="underline" href={songMode === "hosted-ace" ? "https://huggingface.co/spaces/ACE-Step/ACE-Step" : "https://github.com/ace-step/ACE-Step-1.5"} target="_blank" rel="noreferrer">Free engine documentation</a></p>
+          </details>
           <p className="text-xs text-[#647451]">Listen to the complete finished video before posting. Caption timing is an estimate; adjust it in Edit video if needed. Use only audio and lyrics you have permission to publish.</p>
         </section> : null}
 
@@ -239,8 +242,8 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
               className="mt-1"
             />
             <span>
-              <strong className="flex items-center gap-1"><WandSparkles className="h-4 w-4" />Let Phoenix invent everything</strong>
-              <span className="mt-1 block text-xs text-[#687657]">Phoenix chooses a fresh idea, characters, setting, and positive lesson.</span>
+              <strong className="flex items-center gap-1"><WandSparkles className="h-4 w-4" />Choose a story idea for me</strong>
+              <span className="mt-1 block text-xs text-[#687657]">Phoenix picks a new premise for its existing 2D style.</span>
             </span>
           </label>
         ) : null}
@@ -249,10 +252,10 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
-                <div className="mt-3 flex flex-wrap gap-2">
+              {suggestionsOpen ? <><RecommendedIdeas kind={children ? kind : undefined} onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
+                <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Starter examples</summary><div className="mt-3 flex flex-wrap gap-2">
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
-                </div></> : null}
+                </div></details></> : null}
             </details>
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {savedWriting ? <p role="status" className="text-xs text-[#657153]">Previous custom writing is saved but not used for this idea; edit a field to reuse that writing.</p> : null}
@@ -279,8 +282,6 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </p>
         )}
 
-        <p className="text-xs text-[#59634d]">{children ? "Phoenix chooses the format. Stories end with their narration and songs play through the complete recording." : "One vertical video for Instagram and YouTube. Phoenix fits its length to the complete narration—not padded seconds."}</p>
-
         {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
           <summary className="cursor-pointer font-semibold">Narration & visual brief (optional)</summary>
           <label className="block text-sm font-semibold">Your narration (optional)<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} placeholder="Leave blank for your selected writer, or write the exact narration you want." className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
@@ -288,9 +289,9 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <label className="block text-sm font-semibold">Visual search brief (optional, one scene per line)<textarea rows={4} maxLength={650} value={visualBrief} onChange={event => {setVisualBrief(event.target.value);setActiveWriting(current=>({...current,visualBrief:true}));}} placeholder={kind === "Business video" ? "customer speaking to shop assistant\nshop assistant listening\ncustomer collecting purchase" : "person opening bedroom curtains\npouring water into glass\nwriting a morning plan"} className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
           <p className="text-xs text-[#647451]">Up to 8 short, concrete searches in story order. Use a consistent setting and subject. Leave blank for automatic shot planning. Selection checks catalog metadata, not the actual frames; judge visual relevance in the final review.</p>
         </details> : null}
-        {kind === "Children's short story" && batchCount === 1 ? <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">Your story (optional)</summary><label className="block text-sm font-semibold">Story text<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} className="mt-1 w-full rounded-lg border p-2 font-normal" placeholder="Write your own story, or leave blank for automatic local planning." /></label></details> : null}
+        {kind === "Children's short story" && batchCount === 1 ? <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">Your story (optional)</summary><label className="block text-sm font-semibold">Story text<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} className="mt-1 w-full rounded-lg border p-2 font-normal" placeholder={explicitStarter ? "Leave blank for this starter story, or write your own." : "Write your own story, or leave blank for a new story."} /></label></details> : null}
 
-        {kind === "Children's short story" && !krishnaStarter && publishingFormat !== "youtube-full" ? (
+        {kind === "Children's short story" && publishingFormat !== "youtube-full" ? (
           <label className="block rounded-xl border border-[#cad7a4] bg-[#f7faef] p-4 text-sm font-semibold">
             Output quantity
             <select
@@ -313,7 +314,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
         {busy ? <StudioActivity label={selectedNews ? "Preparing report" : "Preparing video"} /> : null}
-        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent || (songLanguage === "Hindi" && !activeLyrics.trim()) : !singing?.available))} className="bg-[#26331f] px-5 text-white">
+        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent : !singing?.available))} className="bg-[#26331f] px-5 text-white">
           {busy
             ? "Preparing…"
             : batchCount === 10

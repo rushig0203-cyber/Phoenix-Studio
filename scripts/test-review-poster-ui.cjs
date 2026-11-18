@@ -26,6 +26,11 @@ new vm.Script(ts.transpileModule(fs.readFileSync(episodeFilename, 'utf8'), {
   fileName: episodeFilename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, { filename: episodeFilename }).runInNewContext({ module: episodeModule, exports: episodeModule.exports,
   require(name) { assert.fail(`Episode identity must not load ${name}`); } }, { timeout: 1000 });
+const policyFilename = path.join(project, 'src/lib/reviewPosterPolicy.ts'), policyModule = { exports: {} };
+new vm.Script(ts.transpileModule(fs.readFileSync(policyFilename, 'utf8'), {
+  fileName: policyFilename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText, { filename: policyFilename }).runInNewContext({ module: policyModule, exports: policyModule.exports,
+  require(name) { assert.fail(`Poster policy must remain browser-safe: ${name}`); } }, { timeout: 1000 });
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -105,6 +110,7 @@ function uiHarness() {
     './StudioActivity': { __esModule: true, default: 'studio-activity' },
     '@/lib/stockProviders': providersModule.exports,
     '@/lib/reviewEpisode': episodeModule.exports,
+    '@/lib/reviewPosterPolicy': policyModule.exports,
   };
   const libraryModule = { exports: {} };
   const context = vm.createContext({
