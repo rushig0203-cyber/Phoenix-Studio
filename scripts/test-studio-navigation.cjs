@@ -79,7 +79,7 @@ test('creation loads compact recommendations from saved work without automatic g
   assert.doesNotMatch(creation, /aria-label="Recommended ideas"|Creation type|<details open/);
   assert.doesNotMatch(creation, /href="#ideas"/);
   assert.doesNotMatch(creation, /Publishing format|Length per video/);
-  assert.match(creation, /One vertical video for Instagram and YouTube/);
+  assert.match(creation, /Review the finished video before posting/);
   const source = require('node:fs').readFileSync(path.join(__dirname,'../src/components/AICreation.tsx'),'utf8');
   assert.match(source,/autoDuration: true/);
   assert.match(source,/open=\{ideaOpen\}/);
