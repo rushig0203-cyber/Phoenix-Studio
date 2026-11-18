@@ -562,6 +562,7 @@ test('Facebook stays independent of Instagram and Rumble drafts, notices and sta
   h.choose('Rumble upload'); await h.flush(); h.click('Copy title'); await h.flush();
   h.choose('Post to Facebook Page'); await h.flush();
   assert.ok(h.panel('Instagram')); assert.ok(h.panel('Facebook Page'));
+  for (const platform of ['Instagram', 'Facebook Page']) assert.equal(h.control('Caption and hashtags', 'textarea', h.panel(platform)).props['aria-label'], 'Caption and hashtags');
   assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Rumble assisted upload'));
   assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
   h.change(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')), 'Reviewed Facebook draft #Two'); h.render();
