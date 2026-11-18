@@ -21,7 +21,7 @@ function harness(fetcher, props = {}) {
     useEffect(callback, dependencies) { const at = index++, old = effects[at]; if (!old || dependencies.some((value, offset) => !Object.is(value, old.dependencies[offset]))) { old?.cleanup?.(); effects[at] = { callback, dependencies }; pending.push(() => { effects[at].cleanup = callback(); }); } },
   };
   const jsx = (type, props, key) => ({ type, props, key });
-  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, './InstagramPerformance': { default: () => null } };
+  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, './InstagramPerformance': { default: () => null }, './PlatformIcon': { default: () => null }, './StudioActivity': { default: () => null } };
   const mod = { exports: {} };
   new vm.Script(source, { filename }).runInNewContext({ module: mod, exports: mod.exports, URL, AbortController, setTimeout, clearTimeout,
     async fetch(url, init = {}) { requests.push({ url, ...init }); return fetcher ? fetcher(url, init, requests.length) : response(url === '/api/channels' ? { channels: [{ platform: 'facebook', name: 'Fixture Page', connected: true }, { platform: 'youtube', connected: false }] } : facebook()); },
@@ -68,10 +68,10 @@ test('Facebook displays real zeroes and unavailable values distinctly and preser
   const sample = facebook({ videos: [{ id: '1234', caption: 'Zero views recorded', timestamp: '2026-11-08T10:00:00Z', metrics: { views: 0, likes: null, comments: null, shares: 0 } }] });
   const ui = harness(url => response(url === '/api/channels' ? { channels: [] } : ++checks === 1 ? sample : { error: 'Statistics temporarily unavailable.' }, checks > 1 ? 503 : 200));
   await ui.settle(); ui.select('Facebook'); await ui.settle();
-  assert.deepEqual(ui.all('dd').map(text), ['1', '0', '—']); assert.match(text(ui.tree()), /Comments: — · Shares: 0/);
+  assert.deepEqual(ui.all('dd').map(text), ['1', '0', '—', '—']); assert.match(text(ui.tree()), /Comments: — · Shares: 0/);
   ui.find('button', 'Refresh insights').props.onClick(); await ui.settle();
   assert.ok(ui.find('p', node => node.props.role === 'alert' && text(node).includes('temporarily unavailable')));
-  assert.match(text(ui.tree()), /Zero views recorded/); assert.deepEqual(ui.all('dd').map(text), ['1', '0', '—']);
+  assert.match(text(ui.tree()), /Zero views recorded/); assert.deepEqual(ui.all('dd').map(text), ['1', '0', '—', '—']);
   ui.unmount();
 });
 
@@ -83,7 +83,28 @@ test('YouTube status is verified separately and manual platforms show no invente
     ui.select(platform); assert.match(text(ui.tree()), /Manual analytics/); assert.match(text(ui.tree()), /no verified/);
     assert.equal(ui.all('dd').length, 0); assert.doesNotMatch(text(ui.tree()), /Channel connected|0 views|0 likes/);
   }
-  assert.equal(ui.requests.length, 1); ui.unmount();
+  assert.deepEqual(ui.requests.map(request => request.url), ['/api/channels', '/api/youtube-performance']);
+  assert.ok(ui.requests.every(request => request.method === undefined)); ui.unmount();
+});
+
+test('YouTube opens only the selected post result and refresh keeps that exact scope', async () => {
+  const id = 'f0cf5ddf-b713-4c12-a841-284cb07eadf0';
+  const videoId = 'Abcdef_1234';
+  const sample = facebook({ videos: [{ id: videoId, caption: 'Chosen upload', timestamp: '2026-11-08T10:00:00Z',
+    permalink: 'https://wrong.example/', metrics: { views: 8, likes: 0, comments: 2, shares: null } }] });
+  const review = { id, title: 'Chosen upload', publication: { status: 'POSTED', postedTo: [{ platform: 'youtube', remoteId: videoId }] } };
+  const ui = harness(url => response(url === '/api/channels' ? { channels: [{ platform: 'youtube', connected: true }] } : sample), { review, requestedReviewId: id });
+  await ui.settle();
+  const endpoint = '/api/youtube-performance?reviewId=' + id;
+  assert.equal(ui.requests[1].url, endpoint);
+  assert.equal(ui.requests[1].method, undefined);
+  assert.deepEqual(ui.all('dd').map(text), ['1', '8', '0', '2']);
+  assert.equal(ui.find('a', 'Open YouTube video').props.href, 'https://www.youtube.com/watch?v=' + videoId);
+  ui.find('button', 'Refresh insights').props.onClick(); await ui.settle();
+  assert.equal(ui.requests[2].url, endpoint);
+  assert.equal(ui.requests[2].method, 'POST');
+  assert.deepEqual(JSON.parse(ui.requests[2].body), { action: 'refresh' });
+  ui.unmount();
 });
 
 test('Facebook links allow only exact official video URLs and strip unrelated query values', async () => {
@@ -117,7 +138,7 @@ test('posted-video focus matches the saved publication ID and never substitutes 
   assert.equal(ui.find('button', 'Facebook').props['aria-pressed'], true);
   const rows = ui.all('details').filter(node => node.props['data-facebook-result']);
   assert.equal(rows.length, 1); assert.match(text(rows[0]), /^Facebook 7/); assert.equal(rows[0].props.open, true);
-  assert.deepEqual(ui.all('dd').map(text), ['1', '106', '0']);
+  assert.deepEqual(ui.all('dd').map(text), ['1', '106', '0', '—']);
   ui.select('Instagram'); assert.match(text(ui.tree()), /No confirmed Instagram post/); assert.equal(ui.all('dd').length, 0);
   assert.equal(ui.find('a', 'All videos').props.href, '#insights'); ui.unmount();
 });
@@ -127,5 +148,5 @@ test('a missing posted-video sample remains unavailable rather than showing anot
   const review = { id, title: 'Older posted reel', publication: { status: 'POSTED', postedTo: [{ platform: 'facebook', remoteId: '99999' }] } };
   const ui = harness(undefined, { review, requestedReviewId: id }); await ui.settle();
   assert.equal(ui.all('details').filter(node => node.props['data-facebook-result']).length, 0);
-  assert.match(text(ui.tree()), /not in the saved Facebook sample yet/); assert.deepEqual(ui.all('dd').map(text), ['0', '—', '—']); ui.unmount();
+  assert.match(text(ui.tree()), /not in the saved Facebook sample yet/); assert.deepEqual(ui.all('dd').map(text), ['0', '—', '—', '—']); ui.unmount();
 });

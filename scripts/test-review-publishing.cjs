@@ -1963,16 +1963,17 @@ test('catalog omission and wrong-language-looking unverified identities return n
 });
 
 test('music discovery retains trending provenance but ranks stronger editorial fit first', async () => {
-  const { id } = await musicFixture({ energy: 'medium' }); const started = Date.now();
+  const { id } = await musicFixture({ mood: 'uplifting', energy: 'medium', observations: ['Frame 1: A hiker raises both arms at a sunlit mountain viewpoint.'] });
+  const started = Date.now();
   const queries = installMusicCatalog(url => Response.json({ audio: url.searchParams.has('search_query') ? [
-    audioTrack({ audio_id:'98101', title:'Holocene', display_artist:'Bon Iver' }),
-    audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
+    audioTrack({ audio_id:'98101', title:'Take Me Home, Country Roads', display_artist:'John Denver' }),
+    audioTrack({ audio_id:'98102', title:'Hopeful Meadow (Instrumental)', display_artist:'Fixture composer' }),
   ] : [
     audioTrack({ audio_id:'98103', title:'Unrelated Dance Vocal', display_artist:'Unknown singer' }),
-    audioTrack({ audio_id:'98102', title:'Calm Meadow (Instrumental)', display_artist:'Fixture composer' }),
+    audioTrack({ audio_id:'98102', title:'Hopeful Meadow (Instrumental)', display_artist:'Fixture composer' }),
   ] }));
   const result = await publishing.recommendInstagramAudio(id,'fixture-revision');
-  assert.equal(queries.length,3); assert.equal(queries[0],'','Medium-energy discovery still inspects the actual Meta trending catalogue'); assert.deepEqual(result.audio.map(track=>track.audio_id),['98101','98102']);
+  assert.equal(queries.length,3); assert.equal(queries[0],'','Uplifting discovery still inspects the actual Meta trending catalogue'); assert.deepEqual(result.audio.map(track=>track.audio_id),['98101','98102']);
   const discovery=result.audio[1].recommendation.discovery;
   assert.equal(discovery.source,'meta-trending'); assert.equal(discovery.position,1);
   assert.ok(Date.parse(discovery.fetchedAt)>=started&&Date.parse(discovery.fetchedAt)<=Date.now());

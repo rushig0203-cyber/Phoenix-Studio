@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import manifest from "../../assets/music/lofi-cc0-v1/manifest.json";
 import type { StockReelOptions } from "./stockReel";
-import type { ReelMusicBrief } from "./reelMusic";
+import { quietVisualMusic, type ReelMusicBrief } from "./reelMusic";
 
 /** Editorial mapping into this small licensed catalogue, never BPM or trend evidence. */
 export function stockRecordingMood(brief: ReelMusicBrief | undefined, fallback: StockReelOptions["mood"]): StockReelOptions["mood"] {
@@ -14,8 +14,7 @@ export function stockRecordingMood(brief: ReelMusicBrief | undefined, fallback: 
 
 /** Short cuts do not turn peaceful scenery into energetic subject matter. */
 export function quietStockRecording(brief?: ReelMusicBrief) {
-  return !brief || brief.mood === "uncertain" || brief.energy === "low"
-    || brief.energy !== "high" && ["calm", "warm", "reflective"].includes(brief.mood);
+  return !brief || brief.mood === "uncertain" || brief.energy === "low" || quietVisualMusic(brief);
 }
 
 export type StockRecordingSelection = { library: "cc0-lofi-v1"; trackId: string; offsetSeconds: number; timing?: "onset-v1"; style?: "quiet-instrumental" };

@@ -130,6 +130,18 @@ test('only fresh comparable measured results can contribute stronger topic evide
   }
 });
 
+test('the exact Instagram result of a posted edit counts once for its original topic', () => {
+  const originals = [review(1, 'Quiet panda morning'), review(2, 'Quiet panda morning'), review(3, 'Forest'), review(4, 'Forest'), review(5, 'Forest')];
+  const edited = review(6, 'New caption', { editedFrom: uuid(1) });
+  const result = savedPerformance([edited, ...originals.slice(1)]);
+  const context = loader.suggestionContextFromMetadata([...originals, edited], [], result, now);
+  assert.equal(context.recent.length, 5);
+  assert.deepEqual(plain(context.strongerTopics), [{ topic: 'Quiet panda morning', workflow: 'stock-reel', evidenceCount: 2 }]);
+  result.videos[1].reviewId = uuid(1);
+  const duplicate = loader.suggestionContextFromMetadata([...originals, edited], [], result, now);
+  assert.deepEqual(plain(duplicate.strongerTopics), [], 'Multiple versions of one video cannot establish a second positive example');
+});
+
 test('local loader bounds files, uses completed publication journals and invalidates cache after account edits', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-suggestions-'));
   try {
@@ -137,19 +149,22 @@ test('local loader bounds files, uses completed publication journals and invalid
     const publicationsRoot = path.join(privateRoot, 'review-publications');
     fs.mkdirSync(reviewsRoot, { recursive: true }); fs.mkdirSync(publicationsRoot, { recursive: true });
     const reviews = [review(1, 'Quiet panda morning'), review(2, 'Quiet panda morning'), review(3, 'Forest'), review(4, 'Forest'), review(5, 'Forest')];
-    fs.writeFileSync(path.join(reviewsRoot, 'index.json'), JSON.stringify(reviews));
+    const edited = review(6, 'Forest, revised caption', { editedFrom: uuid(5), createdAt: new Date(now).toISOString() });
+    fs.writeFileSync(path.join(reviewsRoot, 'index.json'), JSON.stringify([...reviews, edited]));
     const journal = (reviewId, platform, patch = {}) => ({ version: 1, id: uuid(999), reviewId, platform, status: 'COMPLETE', phase: 'complete', remoteId: platform === 'youtube' ? 'Abcdef_1234' : '123', ...patch });
     const saveJournal = (reviewId, platform, patch = {}) => fs.writeFileSync(path.join(publicationsRoot, `${reviewId}-${platform}.json`), JSON.stringify(journal(reviewId, platform, patch)));
     saveJournal(uuid(1), 'instagram');
     saveJournal(uuid(2), 'instagram', { status: 'UPLOADING' });
     saveJournal(uuid(2), 'facebook');
     saveJournal(uuid(3), 'facebook', { reviewId: uuid(1) });
+    saveJournal(edited.id, 'instagram');
     const channelFile = path.join(privateRoot, 'channels.enc'), performanceFile = path.join(privateRoot, 'instagram-performance.json');
     fs.writeFileSync(channelFile, 'Encrypted settings are never opened by this loader');
     fs.utimesSync(channelFile, new Date(now - hour), new Date(now - hour));
     fs.writeFileSync(performanceFile, JSON.stringify(savedPerformance(reviews))); fs.utimesSync(performanceFile, new Date(now), new Date(now));
     let value = await loader.loadSuggestionContext(now, temp);
     assert.equal(value.recent[0].posted, true); assert.equal(value.recent[1].posted, true, 'Facebook-only completed publishing is posted');
+    assert.equal(value.recent[4].posted, true, 'A caption edit can carry the confirmed post for the original topic');
     assert.equal(value.recent[2].posted, undefined, 'A foreign review journal is not publication evidence'); assert.equal(value.strongerTopics.length, 1);
     for (const patch of [{ version: 2 }, { id: '../foreign' }, { reviewId: uuid(2) }, { platform: 'instagram' }, { kind: 'story' }, { phase: 'publishing' }, { status: 'FAILED' }, { remoteId: 'Abcdef_1234' }, { remoteId: '9'.repeat(41) }]) {
       saveJournal(uuid(3), 'facebook', patch);

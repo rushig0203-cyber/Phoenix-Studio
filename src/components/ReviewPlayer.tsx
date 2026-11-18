@@ -91,8 +91,9 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       <h2 className="text-base font-semibold">{file.title}</h2>
       <button type="button" autoFocus onClick={onClose} aria-label="Close video preview" className="rounded-lg border p-2"><X className="h-5 w-5" /></button>
     </div>
+    <div className="md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
     <div className="bg-[#182015]">
-      <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(62dvh,620px)] w-full object-contain"
+      <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(34dvh,330px)] w-full object-contain md:h-[min(62dvh,620px)]"
         onLoadedMetadata={restorePosition} onLoadedData={() => updatePhase("ready")} onPlaying={() => updatePhase("playing")} onWaiting={() => updatePhase("loading")} onCanPlay={() => updatePhase("ready")} onError={failed} />
     </div>
     <div className="space-y-3 p-5">
@@ -105,6 +106,7 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
         <Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>
       </div>
       <PostingActions file={file} finalReview />
+    </div>
     </div>
   </dialog>;
 }

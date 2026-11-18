@@ -47,12 +47,20 @@ export function musicSeedMatches(track: InstagramAudioTrack, seed: Seed) {
     && [seed.artist, ...(seed.aliases || [])].some(artist => normalized(track.display_artist) === normalized(artist)
       || (artist.includes(",") && artistCredits(track.display_artist) === artistCredits(artist)));
 }
+// The visual mood is a better music cue than an unmeasured energy estimate.
+export function quietVisualMusic(brief: ReelMusicBrief) {
+  return brief.mood === "calm" || brief.mood === "reflective"
+    || brief.mood === "warm" && brief.energy !== "high";
+}
+
+const energyLevel = { low: 0, medium: 1, high: 2, unknown: 1 } as const;
+
 export function musicSeedsFor(brief: ReelMusicBrief) {
   if (brief.mood === "uncertain") return [];
-  const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
-  const quiet = brief.energy === "low" && ["calm", "warm", "reflective"].includes(brief.mood);
+  const quiet = quietVisualMusic(brief);
+  const energy = quiet ? 0 : energyLevel[brief.energy];
   const candidates = REEL_MUSIC_SEEDS.filter(seed => seed.moods.includes(brief.mood) && (!quiet || seed.kind === "instrumental" && seed.energy === "low"))
-    .map((seed, index) => ({ seed, index, score: Math.abs({ low: 0, medium: 1, high: 2 }[seed.energy] - energy) }))
+    .map((seed, index) => ({ seed, index, score: Math.abs(energyLevel[seed.energy] - energy) }))
     .sort((a, b) => a.score - b.score || a.index - b.index);
   const chosen = candidates.slice(0, REEL_MUSIC_LOOKUP_LIMIT).map(item => item.seed);
   for (const kind of (quiet ? ["instrumental"] : ["english-vocal", "instrumental"]) as Array<Seed["kind"]>) {
@@ -75,13 +83,14 @@ const moodCatalog = {
 /** Meta documents a blank query as trending; keyword matches alone establish no trend. */
 export function musicCatalogQueries(brief: ReelMusicBrief, videoSeed = ""): string[] {
   if (brief.mood === "uncertain") return [];
-  const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
+  const quiet = quietVisualMusic(brief);
+  const energy = quiet ? 0 : energyLevel[brief.energy];
   const candidates = musicSeedsFor(brief);
-  const distance = (seed: Seed) => Math.abs({ low: 0, medium: 1, high: 2 }[seed.energy] - energy);
+  const distance = (seed: Seed) => Math.abs(energyLevel[seed.energy] - energy);
   const closest = candidates.filter(seed => distance(seed) === Math.min(...candidates.map(distance)));
   const rotation = [...videoSeed.slice(0, 100)].reduce((hash, letter) => (hash * 31 + letter.charCodeAt(0)) >>> 0, 0);
   const seed = closest[rotation % closest.length];
-  if (brief.energy === "low" && ["calm", "warm", "reflective"].includes(brief.mood)) {
+  if (quiet) {
     return [seed ? `${seed.title} ${seed.artist}` : "gentle piano instrumental", `${moodCatalog[brief.mood].query} instrumental`, "gentle piano instrumental"]
       .filter((query, index, all) => all.indexOf(query) === index).slice(0, REEL_MUSIC_LOOKUP_LIMIT);
   }
@@ -92,8 +101,8 @@ export function musicCatalogQueries(brief: ReelMusicBrief, videoSeed = ""): stri
 /** Prefer known recordings or explicit catalog labels; titles in English alone prove no vocal language. */
 export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief: ReelMusicBrief, limit = 6): RecommendedInstagramAudio[] {
   if (brief.mood === "uncertain") return [];
-  const energy = { low: 0, medium: 1, high: 2, unknown: 1 }[brief.energy];
-  const quiet = brief.energy === "low" && ["calm", "warm", "reflective"].includes(brief.mood);
+  const quiet = quietVisualMusic(brief);
+  const energy = quiet ? 0 : energyLevel[brief.energy];
   const candidates = new Map<string, { track: InstagramAudioTrack; kind: "english-vocal" | "instrumental"; score: number; reason: string; order: number }>();
   const discoveries = new Map<string, InstagramAudioDiscovery>();
   for (const [order, track] of tracks.entries()) {
@@ -106,7 +115,7 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
     if (original) {
       if (!original.moods.includes(brief.mood)) continue;
       if (quiet && (original.kind !== "instrumental" || original.energy !== "low")) continue;
-      const energyGap = Math.abs({ low: 0, medium: 1, high: 2 }[original.energy] - energy);
+      const energyGap = Math.abs(energyLevel[original.energy] - energy);
       if (brief.energy !== "unknown" && energyGap > 1) continue;
       kind = original.kind;
       score = 100 - 15 * energyGap;
@@ -128,7 +137,7 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
       const low = /\b(?:gentle|soft|quiet|calm|peaceful|relaxing|ambient|meditation)\b/.test(title);
       const high = /\b(?:energetic|upbeat|dance|driving|lively)\b/.test(title);
       if (quiet && (!low || /\b(?:beats?|drums?|percussion|hip hop|hiphop|trap|techno|edm|rock|lofi|lo fi)\b/.test(title))) continue;
-      if ((brief.energy === "low" && high) || (brief.energy === "high" && low)) continue;
+      if ((energy === 0 && high) || (energy === 2 && low)) continue;
       score = 65 + ((energy === 0 && low) || (energy === 2 && high) ? 10 : 0);
       reason = `Catalog title labels an instrumental and a style fitting the ${brief.mood} mood. Metadata fit; audio was not analyzed.`;
     }
@@ -147,7 +156,8 @@ export function rankMusicCatalog(tracks: readonly CatalogInstagramAudio[], brief
 
 /** Uses actual saved frame observations, never a topic/title/hashtag template. */
 export function musicBriefFromReview(file: ReviewFile): { brief: ReelMusicBrief; basis: ReelMusicRecommendation["basis"] } | null {
-  if (file.quality.research || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio)) return null;
+  if (file.quality.research || file.quality.subtitles?.decision === "speech"
+    || ["local-narration", "local-narration-music", "supplied-song"].includes(file.quality.audio)) return null;
   const analysis = file.quality.postingAnalysis;
   if (analysis?.status !== "COMPLETE" || !Array.isArray(analysis.observations) || !analysis.observations.length) return null;
   const observations = analysis.observations.slice(0, 6).filter(value => typeof value === "string").map(value => value.slice(0, 400));

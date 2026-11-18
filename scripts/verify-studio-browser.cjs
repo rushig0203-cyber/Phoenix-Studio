@@ -62,7 +62,7 @@ async function run() {
   fs.mkdirSync(output, { recursive: true });
   const temporaryMedia = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ui-smoke-'));
   const movie = path.join(temporaryMedia, 'synthetic.webm');
-  let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions;
+  let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions, showPostingProgress = false;
   const suggestionsGate = new Promise(resolve => { releaseSuggestions = resolve; });
   const proof = { status: 'running', synthetic: true, source: process.env.GITHUB_SHA, directory, buildId,
     assertions: [], screenshots: [], stylesheets: [], apiReads: [], deniedRequests: [], pageErrors: [] };
@@ -117,13 +117,24 @@ async function run() {
       if (url.pathname === '/api/writing-provider') return json(route, { provider: 'groq', model: 'fixture', configured: true, hasKey: false, freePlanConfirmed: true, detail: 'Synthetic CI writer settings. No provider requests are made.' });
       if (url.pathname === '/api/instagram-performance') return json(route, { status: 'ready', account: { name: '@fixture_wildlife' }, detail: 'Synthetic saved results for UI verification.', lastSuccessfulSyncAt: date, historyComplete: true, scannedVideos: 1,
         videos: [{ id: 'fixture-post', topic: 'A quiet river', timestamp: date, metricsUpdatedAt: date, metrics: { views: 120, likes: 8, comments: 2, saves: 3, shares: 1, reach: 100, averageWatchTimeMs: 5200 } }], summary: { assessments: [], rules: [], attentionCohorts: [] } });
+      if (url.pathname === '/api/facebook-performance' || url.pathname === '/api/youtube-performance') {
+        const youtube = url.pathname.includes('youtube');
+        return json(route, { status: 'ready', account: { name: youtube ? 'Fixture YouTube counts' : 'Fixture Facebook counts' },
+          detail: 'Synthetic basic video results.', lastSuccessfulSyncAt: date, videos: [{ id: youtube ? 'Abcdef_1234' : '12345',
+            caption: youtube ? 'YouTube count fixture' : 'Facebook count fixture', timestamp: date,
+            metrics: { views: youtube ? 73 : 61, likes: 3, comments: 1, shares: null } }] });
+      }
       if (url.pathname === `/api/review-files/${file.id}`) return json(route, file);
       if (url.pathname === `/api/review-files/${file.id}/poster`) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === `/api/review-files/${file.id}/media`) return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Content-Length': String(media.length), 'Accept-Ranges': 'bytes' }, body: media });
       if (url.pathname === `/api/review-files/${file.id}/publish`) {
-        if (url.searchParams.get('check') === 'story') return json(route, { story: { ready: false, reason: 'Synthetic fixture: optional Stories are unavailable.' } });
+        if (url.searchParams.get('check') === 'story') return json(route, { story: { ready: true, reason: 'Synthetic eligible Business account.' } });
         if (url.searchParams.get('check') === 'posting-defaults') return json(route, { defaults: { userTags: [] } });
-        if (!url.searchParams.has('check')) return json(route, { jobs: [] });
+        if (!url.searchParams.has('check')) return json(route, { jobs: showPostingProgress ? [
+          { id: 'fixture-upload-ig', platform: 'instagram', status: 'UPLOADING', percent: 87, bytesUploaded: 92, totalBytes: 100, accountName: '@fixture_wildlife', detail: 'Sending the saved Reel.', privacy: 'public', updatedAt: date },
+          { id: 'fixture-upload-fb', platform: 'facebook', status: 'COMPLETE', percent: 100, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture Facebook Page', detail: 'Reel published.', privacy: 'public', updatedAt: date },
+          { id: 'fixture-upload-yt', platform: 'youtube', status: 'PROCESSING', percent: 96, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture YouTube Channel', detail: 'YouTube is processing the upload.', privacy: 'public', updatedAt: date },
+        ] : [] });
       }
       proof.deniedRequests.push(`${incoming.method()} ${url.pathname}${url.search}`);
       return route.fulfill({ status: 501, contentType: 'application/json', body: '{"error":"Unmocked CI request"}' });
@@ -198,6 +209,17 @@ async function run() {
     await navigate('insights');
     await page.getByRole('region', { name: 'Instagram insights', exact: true }).getByText('Synthetic saved results for UI verification.').waitFor();
     await capture('studio-insights');
+    const insightPlatforms = page.getByRole('group', { name: 'Insight platforms' });
+    for (const [platform, count] of [['Facebook', '61'], ['YouTube', '73']]) {
+      await insightPlatforms.getByRole('button', { name: platform, exact: true }).click();
+      const sample = page.locator('dl[aria-label="Saved ' + platform + ' sample"]');
+      await sample.waitFor();
+      verify(platform + ' displays its own measured counts', (await sample.locator('dd').allTextContents()).join(',') === '1,' + count + ',3,1');
+      await capture('studio-insights-' + platform.toLowerCase());
+    }
+    await insightPlatforms.getByRole('button', { name: 'Rumble', exact: true }).click();
+    verify('Rumble links to its creator dashboard without invented metrics', await page.getByRole('link', { name: /Open Rumble dashboard/ }).getAttribute('href') === 'https://rumble.com/account/dashboard'
+      && await page.locator('#channel-insights dl').count() === 0);
     await navigate('settings');
     await page.locator('#channels').getByText('Fixture youtube channel', { exact: true }).waitFor();
     await capture('studio-settings');
@@ -224,6 +246,15 @@ async function run() {
     verify('Video preview uses the focused dark stage', await dialog.locator('video').evaluate(video => getComputedStyle(video.parentElement).backgroundColor) === 'rgb(21, 30, 36)');
     await capture('studio-final-review');
     await page.setViewportSize({ width: 390, height: 844 });
+    const strip = dialog.locator('[data-posting-status-strip]');
+    const stripBounds = await strip.evaluate(element => { const bounds = element.getBoundingClientRect(); return { top: bounds.top, bottom: bounds.bottom, viewport: innerHeight }; });
+    verify('Mobile posting strip is visible before scrolling', stripBounds.top >= 0 && stripBounds.bottom <= stripBounds.viewport, stripBounds);
+    const storyChoice = dialog.getByLabel(/Also publish one matching Story/);
+    await page.waitForFunction(() => { const box = [...document.querySelectorAll('dialog label')].find(label => label.textContent.includes('Also publish one matching Story'))?.querySelector('input'); return box && !box.disabled; });
+    verify('Matching Story is visible and off by default', await storyChoice.isVisible() && !await storyChoice.isChecked());
+    await storyChoice.check();
+    verify('Matching Story stays an explicit optional choice', (await dialog.locator('[data-posting-summary]').innerText()).includes('Reel + matching Story'));
+    await storyChoice.uncheck();
     await post.scrollIntoViewIfNeeded();
     const postingSurfaces = await dialog.locator('section[aria-label^="Posting tools for"], section[aria-label$="upload confirmation"]').evaluateAll(elements => elements.map(element => {
       const style = getComputedStyle(element);
@@ -246,9 +277,19 @@ async function run() {
     await youtube.waitFor();
     verify('New YouTube uploads visibly default to public before final approval', /\bpublic\b/.test(await youtube.locator('[data-posting-summary]').innerText()));
     verify('Instagram Facebook and YouTube remain in one posting area together', await dialog.locator('[data-posting-panel]').count() === 1
-      && await dialog.locator('[data-posting-destinations] > [data-posting-destination]').count() === 3 && await instagram.isVisible());
+      && await dialog.locator('[data-posting-destinations] > [data-posting-destination]').count() === 3
+      && await dialog.locator('[data-posting-destinations] > [data-posting-destination]:not([hidden])').count() === 1);
+    await destinations.getByRole('button', { name: 'Instagram', exact: true }).click();
     verify('Opening more platforms retains the Instagram caption and ready final action', await instagram.getByLabel('Caption and hashtags', { exact: true }).inputValue() === 'Owner-reviewed caption kept while choosing platforms.'
       && await instagram.getByRole('button', { name: 'Post to Instagram', exact: true }).isEnabled());
+    showPostingProgress = true;
+    await instagram.getByRole('button', { name: 'Check status', exact: true }).click();
+    const instagramIcon = strip.locator('[data-posting-platform="instagram"]');
+    await instagramIcon.getByText('Uploading · 92%', { exact: true }).waitFor();
+    verify('One compact strip shows measured transfer, confirmed completion and processing together', await instagramIcon.locator('svg').count() === 1
+      && (await strip.locator('[data-posting-platform="facebook"]').getAttribute('aria-description')) === 'Done'
+      && (await strip.locator('[data-posting-platform="youtube"]').getAttribute('aria-description')) === 'Processing');
+    verify('Saved transfer detail starts collapsed', await instagram.locator('details').filter({ hasText: 'Upload details' }).getAttribute('open') === null);
     await capture('studio-parallel-posting');
     verify('No browser runtime errors', proof.pageErrors.length === 0, proof.pageErrors);
     verify('No provider, external or mutating browser requests', proof.deniedRequests.length === 0, proof.deniedRequests);

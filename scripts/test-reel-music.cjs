@@ -40,7 +40,8 @@ test('peaceful discovery prioritizes quiet instrumentals while lively visuals ca
   assert.deepEqual(musicCatalogQueries(brief('uncertain','unknown')),[]);
   assert.ok(queries.length<=REEL_MUSIC_LOOKUP_LIMIT);
   assert.deepEqual(musicCatalogQueries(brief(),'1'),queries,'A quiet brief does not widen to vocals merely for variety');
-  assert.equal(musicCatalogQueries(brief('calm','medium'))[1],'A Walk Tycho','the recording lookup respects the edit energy');
+  assert.deepEqual(musicCatalogQueries(brief('calm','medium')),queries,'Medium visual energy should not override a calm mood');
+  assert.deepEqual(musicCatalogQueries(brief('calm','high')),queries,'Contradictory energy should not choose energetic audio for a calm scene');
 });
 
 test('therapy and sleep utilities do not become a reel soundtrack merely from calm instrumental labels',()=>{
@@ -141,7 +142,7 @@ test('trending vocals and a building cinematic track cannot displace quiet piano
     {...track('saman','Ólafur Arnalds','510'),discovery:{source:'keyword-search',fetchedAt,position:0}},
     {...track('Experience','Ludovico Einaudi','511'),discovery:{source:'meta-trending',fetchedAt,position:0}},
     {...track('Holocene','Bon Iver','512'),discovery:{source:'meta-trending',fetchedAt,position:1}},
-  ],brief('reflective','low'));
+  ],brief('reflective','medium'));
   assert.deepEqual(result.map(candidate=>candidate.audio_id),['510']);
 });
 
@@ -179,7 +180,7 @@ test('Latin-looking or English-looking unknown metadata never establishes Englis
 
 test('bounded searches include vocals and instrumentals whenever both fit the visual mood',()=>{
   assert.equal(REEL_MUSIC_LOOKUP_LIMIT,3);
-  for(const mood of ['calm','warm','reflective','uplifting','energetic']) {
+  for(const mood of ['uplifting','energetic','playful']) {
     const choices=musicSeedsFor(brief(mood,'medium'));
     assert.ok(choices.length>0&&choices.length<=REEL_MUSIC_LOOKUP_LIMIT);
     assert.equal(new Set(choices.map(choice=>choice.title)).size,choices.length);
@@ -205,6 +206,14 @@ test('different visual moods and energy levels change music ordering',()=>{
 
 test('uncertain evidence produces no song seeds',()=>{
   for(const energy of ['low','medium','high','unknown']) assert.deepEqual(musicSeedsFor(brief('uncertain',energy)),[]);
+});
+
+test('a saved reel with detected dialogue keeps its original sound even when a matching music mood exists',()=>{
+  const file=review(['Frame 1: Soft light falls through trees.'],brief());
+  assert.ok(musicBriefFromReview(file));
+  file.quality.audio='natural-audio-preserved';
+  file.quality.subtitles={decision:'speech',reason:'Recognized words in the original audio.'};
+  assert.equal(musicBriefFromReview(file),null);
 });
 
 test('valid sampled-frame profiles retain their explanation and actual frame references',()=>{

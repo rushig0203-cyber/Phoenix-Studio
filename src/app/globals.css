@@ -163,10 +163,16 @@ body [data-posting-summary] { display: flex; flex-wrap: wrap; align-items: cente
 body [data-posting-details] { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
 body [data-posting-details] > summary { width: fit-content; cursor: pointer; font-weight: 600; }
 body section[aria-label^="Posting tools for"], body section[aria-label$="upload confirmation"] { border: 0; border-radius: 0; background: transparent !important; padding-inline: 0; }
-body [data-posting-destinations] > [data-posting-destination] + [data-posting-destination] { border-top: 1px solid var(--border); }
+.posting-platform { --posting-color: var(--primary); background: var(--card); }
+.posting-platform:is([data-posting-platform="instagram"], [data-posting-platform="story"]) { --posting-color: #bc327a; }
+.posting-platform[data-posting-platform="facebook"] { --posting-color: #1762b8; }
+.posting-platform[data-posting-platform="youtube"] { --posting-color: #c51b28; }
+.posting-platform[data-posting-platform="rumble"] { --posting-color: #46772c; }
+.posting-ring { color: var(--posting-color); background: var(--muted); }
+.posting-platform:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 dialog[aria-label^="Preview:"] { border: 0; border-radius: 1.5rem; background: var(--card) !important; }
 dialog[aria-label^="Preview:"]::backdrop { background: #182129b8; }
-dialog[aria-label^="Preview:"] > div:has(> video),
+dialog[aria-label^="Preview:"] div:has(> video),
 body button[aria-label^="Preview"] { background: #151e24 !important; }
 dialog[aria-label^="Preview:"] > div:first-child { border-color: var(--border) !important; }
 body button[aria-label^="Preview"] { border-radius: 1.15rem; }

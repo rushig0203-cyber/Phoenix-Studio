@@ -620,6 +620,24 @@ export async function verifyChannel(platform: ChannelPlatform) {
   }
 }
 
+/** Read-only YouTube access. A cached insights read never renews the token. */
+export class YouTubePerformanceAccessError extends Error {
+  constructor(readonly code: "not_connected" | "permission_required") { super("YouTube insights access is unavailable."); }
+}
+export async function getYouTubePerformanceAccess(renew = false) {
+  const vault = await readVault();
+  const original = vault.accounts?.youtube;
+  if (!original || original.error || original.loginType !== "youtube" || !/^UC[A-Za-z0-9_-]{22}$/.test(original.id)
+    || (original.expiresAt && original.expiresAt <= Date.now() && !original.refreshToken)) {
+    throw new YouTubePerformanceAccessError("not_connected");
+  }
+  if (!original.grantedScopes?.includes(youtubeReadScope)) throw new YouTubePerformanceAccessError("permission_required");
+  const account = renew ? await renewedYouTubeAccount(original, credentials(vault, "youtube")) : original;
+  if (!account.grantedScopes?.includes(youtubeReadScope)) throw new YouTubePerformanceAccessError("permission_required");
+  return { accountId: account.id, name: account.name, connectionRevision: revision(account), accessToken: account.accessToken,
+    credentialBinding: hash(original.accessToken) };
+}
+
 /** Server-only credential access, invoked by an explicitly approved upload. */
 export async function getChannelPublishAccess(platform: ChannelPlatform, expectedRevision?: string): Promise<ChannelPublishAccess> {
   const vault = await readVault(), original = vault.accounts?.[platform];

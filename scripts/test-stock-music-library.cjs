@@ -9,9 +9,9 @@ const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-music-library-test-'
 fs.cpSync(path.join(project,'assets/music/lofi-cc0-v1'),path.join(fixture,'assets/music/lofi-cc0-v1'),{recursive:true});process.chdir(fixture);
 after(()=>{process.chdir(previous);assert.equal(fs.realpathSync(path.dirname(fixture)),fs.realpathSync(os.tmpdir()));assert.match(path.basename(fixture),/^phoenix-music-library-test-/);fs.rmSync(fixture,{recursive:true,force:true});});
 
-test('nine actual licensed recordings remain compact, pinned and independently readable offline',async()=>{
-  assert.equal(manifest.recordings.length,9);assert.equal(manifest.licence,'CC0-1.0');
-  assert.ok(manifest.recordings.reduce((sum,track)=>sum+track.bytes,0)<8*1048576);
+test('eleven actual licensed recordings remain compact, pinned and independently readable offline',async()=>{
+  assert.equal(manifest.recordings.length,11);assert.equal(manifest.licence,'CC0-1.0');
+  assert.ok(manifest.recordings.reduce((sum,track)=>sum+track.bytes,0)<10*1048576);
   for(const track of manifest.recordings){
     const selection={library:'cc0-lofi-v1',trackId:track.id,offsetSeconds:12,...(track.style?{style:track.style}:{})};
     const filename=await library.stockRecordingFile(selection);assert.equal(path.basename(filename),track.filename);
@@ -159,23 +159,26 @@ test('recording and start fit actual edit times before a stable tie, without def
   for(const invalid of [[NaN],[2,1],[41],Array.from({length:12},(_,at)=>at+1)])assert.throws(()=>library.selectStockRecording('warm',seed,[],true,invalid),/ordered final edit/);
 });
 
-test('quiet automatic selection rotates genuine ambient recordings without leaking back into the beat-led pool',()=>{
+test('quiet automatic selection rotates licensed instrumentals without leaking back into the beat-led pool',()=>{
   let recent=[];const used=new Set();
   for(let index=0;index<12;index++){
-    const selected=library.selectStockRecording(['warm','reflective','journey'][index%3],`quiet-${index}`,recent,true,[],true);
+    const mood=['warm','reflective','journey'][index%3];
+    const selected=library.selectStockRecording(mood,`quiet-${index}`,recent,true,[],true);
+    assert.ok(manifest.recordings.find(track=>track.id===selected.trackId).moods.includes(mood));
     assert.equal(selected.style,'quiet-instrumental');assert.notEqual(selected.trackId,recent[0]);
     const metadata=library.stockRecordingMetadata(selected);assert.equal(metadata.credit.style,'quiet-instrumental');
     const args=library.stockRecordingPreparationArgs('a','b',selected,22);
     assert.match(args[args.indexOf('-af')+1],/in:st=0:d=0.35.*out:st=20.900000:d=1.1/);
     assert.ok(!args.some(arg=>/atempo|aloop|stream_loop/.test(arg)));
-    assert.deepEqual(library.selectStockRecording('warm',`quiet-${index}`,recent,true,[],true),selected);
+    assert.deepEqual(library.selectStockRecording(mood,`quiet-${index}`,recent,true,[],true),selected);
     used.add(selected.trackId);recent=[selected.trackId,...recent].slice(0,20);
   }
-  assert.equal(used.size,3);
+  assert.equal(used.size,5);
   assert.throws(()=>library.stockRecordingMetadata({library:'cc0-lofi-v1',trackId:'old-saga',offsetSeconds:0,style:'quiet-instrumental'}));
   assert.throws(()=>library.stockRecordingMetadata({library:'cc0-lofi-v1',trackId:'quiet-vaporware',offsetSeconds:0}));
   for(const mood of ['calm','warm','reflective','uncertain'])assert.equal(library.quietStockRecording({mood,energy:'low'}),true);
   assert.equal(library.quietStockRecording(),true);
   for(const mood of ['playful','uplifting','energetic'])assert.equal(library.quietStockRecording({mood,energy:'medium'}),false);
   assert.equal(library.quietStockRecording({mood:'warm',energy:'high'}),false);
+  assert.equal(library.quietStockRecording({mood:'calm',energy:'high'}),true);
 });

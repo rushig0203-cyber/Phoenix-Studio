@@ -648,29 +648,32 @@ test("starting a newer Instagram OAuth flow cancels an older pasted-token connec
 
 const uploadScope = "https://www.googleapis.com/auth/youtube.upload";
 const readonlyScope = "https://www.googleapis.com/auth/youtube.readonly";
-async function connectFixtureYouTube(scope, expiresIn = 3600) {
+async function connectFixtureYouTube(scope, expiresIn = 3600, accountId = "fixture-upload-channel") {
   await channels.saveChannelCredentials("youtube", "fixture-client.apps.googleusercontent.com", "fixture-client-secret-not-real");
   const started = await channels.beginChannelOAuth("youtube", "http://localhost:3000", "upload");
   global.fetch = async target => new URL(target).hostname === "oauth2.googleapis.com"
     ? Response.json({ access_token: "fixture-upload-access", refresh_token: "fixture-upload-refresh", expires_in: expiresIn,
       ...(scope === undefined ? {} : { scope }) })
-    : Response.json({ items: [{ id: "fixture-upload-channel", snippet: { title: "Fixture upload destination" } }] });
+    : Response.json({ items: [{ id: accountId, snippet: { title: "Fixture upload destination" } }] });
   await channels.finishChannelOAuth("youtube", "http://localhost:3000", new URL(started.url).searchParams.get("state"), started.browser, "fixture-code");
   return (await channels.listChannels("http://localhost:3000")).find(channel => channel.platform === "youtube");
 }
 
 test("upload setup is explicit, retains identity scope and cannot be mistaken for a granted permission", async () => {
+  await channels.saveChannelCredentials("youtube", "fixture-client.apps.googleusercontent.com", "fixture-client-secret-not-real");
   const response = await route.POST(request("youtube", { action: "connect", intent: "upload" }), context("youtube"));
   assert.equal(response.status, 200);
   const url = new URL((await response.json()).authorizationUrl);
   assert.deepEqual(url.searchParams.get("scope").split(" "), [readonlyScope, uploadScope]);
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   for (const scope of [undefined, readonlyScope]) {
-    const status = await connectFixtureYouTube(scope);
+    const status = await connectFixtureYouTube(scope, 3600, "UC" + "a".repeat(22));
     assert.equal(status.connected, true); assert.equal(status.publishReady, false);
     assert.ok(status.accountId); assert.ok(status.connectionRevision);
-    global.fetch = async () => assert.fail("Denied capability cannot refresh or contact a provider");
+    global.fetch = async () => assert.fail("Passive read or denied capability cannot contact a provider");
     await assert.rejects(channels.getChannelPublishAccess("youtube", status.connectionRevision), /Enable YouTube uploads/);
+    if (scope === readonlyScope) assert.equal((await channels.getYouTubePerformanceAccess()).accountId, status.accountId);
+    else await assert.rejects(channels.getYouTubePerformanceAccess(), { code: "permission_required" });
     await channels.disconnectChannel("youtube");
   }
 });

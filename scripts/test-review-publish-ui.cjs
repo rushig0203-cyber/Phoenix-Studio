@@ -21,6 +21,7 @@ function compiled(relative) {
 }
 const componentSource = compiled('src/components/ReviewPublishActions.tsx');
 const activitySource = compiled('src/components/StudioActivity.tsx');
+const platformIconSource = compiled('src/components/PlatformIcon.tsx');
 const postingSource = compiled('src/lib/posting.ts');
 const postingPolicySource = compiled('src/lib/postingCopyPolicy.ts');
 const providersSource = compiled('src/lib/stockProviders.ts');
@@ -88,6 +89,12 @@ function uiHarness(options = {}) {
         const value = typeof next === 'function' ? next(renderer.slots[index]) : next;
         if (!Object.is(value, renderer.slots[index])) { renderer.slots[index] = value; root.dirty = true; }
       }];
+    },
+    useCallback(callback, dependencies) {
+      assert.ok(active, 'Callback hooks require an isolated renderer');
+      const index = active.index++, prior = active.slots[index];
+      if (!prior || dependencies.some((dep, i) => !Object.is(dep, prior.dependencies[i]))) active.slots[index] = { callback, dependencies };
+      return active.slots[index].callback;
     },
     useRef(initial) {
       assert.ok(active, 'Ref hooks require an isolated renderer');
@@ -176,6 +183,7 @@ function uiHarness(options = {}) {
   dependencies['@/lib/instagramAudio'] = load(instagramAudioSource);
   dependencies['@/lib/instagramTags'] = load(instagramTagsSource);
   dependencies['./StudioActivity'] = load(activitySource);
+  dependencies['./PlatformIcon'] = load(platformIconSource);
   const Component = load(componentSource).default;
   const renderer = { index: 0, slots: [], effects: [], pending: [], dirty: true, mounted: true, tree: undefined };
   const root = renderer, children = new Map();
@@ -240,7 +248,8 @@ function uiHarness(options = {}) {
       for (const instance of children.values()) cleanup(instance);
     },
     panel(name) { return nodes(renderer.tree).find(node => node.type === 'section' && node.props['aria-label'] === `${name} upload confirmation`); },
-    button(label, scope) { const matches = nodes(scope || selectedScope()).filter(node => node.type === 'button' && text(node) === label); return matches.find(node => node.props.type === 'submit') || matches[0] || (!scope && nodes(renderer.tree).find(node => node.type === 'button' && text(node) === label)); },
+    button(label, scope) { const named = node => node.type === 'button' && (node.props['aria-label'] || text(node)) === label; const matches = nodes(scope || selectedScope()).filter(named); return matches.find(node => node.props.type === 'submit') || matches[0] || (!scope && nodes(renderer.tree).find(named)); },
+    progress(destination) { return nodes(renderer.tree).find(node => node.props['data-posting-platform'] === destination); },
     control(label, type, scope = selectedScope()) {
       const parent = nodes(scope).find(node => node.type === 'label' && text(node).startsWith(label));
       return parent && nodes(parent).find(node => node.type === type);
@@ -256,7 +265,7 @@ function uiHarness(options = {}) {
     choose(label) {
       if (!h.button(label)) { h.click('Post / export'); render(); }
       const chooser = nodes(renderer.tree).find(node => node.props['aria-label'] === 'Choose a platform');
-      const target = nodes(chooser).find(node => node.type === 'button' && text(node) === label);
+      const target = nodes(chooser).find(node => node.type === 'button' && (node.props['aria-label'] || text(node)) === label);
       assert.ok(target, `Expected platform: ${label}`); assert.equal(Boolean(target.props.disabled), false);
       target.props.onClick();
       selectedPlatform = /YouTube/.test(label) ? 'YouTube' : /Facebook/.test(label) ? 'Facebook Page' : /Instagram|Story/.test(label) ? 'Instagram' : undefined;
@@ -283,7 +292,7 @@ function uiHarness(options = {}) {
 test('Instagram, Facebook and YouTube remain independent rows with retained drafts and saved upload progress', async t => {
   const instagramJob = job({ id: 'saved-instagram', platform: 'instagram', status: 'FAILED', percent: 0, canRevise: true,
     caption: 'Saved Instagram caption #One', detail: 'Instagram request stopped before transfer.' });
-  const youtubeJob = job({ id: 'saved-youtube', platform: 'youtube', status: 'UPLOADING', percent: 37, detail: 'Uploading saved YouTube video.' });
+  const youtubeJob = job({ id: 'saved-youtube', platform: 'youtube', status: 'UPLOADING', percent: 35, bytesUploaded: 37, totalBytes: 100, detail: 'Uploading saved YouTube video.' });
   const h = uiHarness({ channels: [channel('instagram'), channel('facebook'), channel('youtube')], jobs: [instagramJob, youtubeJob],
     post: () => response({ job: job({ id: 'saved-facebook', platform: 'facebook', status: 'QUEUED', percent: 0 }) }),
   }); t.after(() => h.unmount());
@@ -298,16 +307,44 @@ test('Instagram, Facebook and YouTube remain independent rows with retained draf
   assert.equal(h.control('Corrected caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Owner Instagram caption #Keep');
   assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')).props.value, 'Owner Facebook caption #Two');
   assert.match(text(h.panel('Instagram')), /Instagram request stopped before transfer/);
-  assert.match(text(h.panel('YouTube')), /UPLOADING.*37%/);
-  assert.equal((text(h.panel('YouTube')).match(/37%/g) || []).length, 1, 'Measured progress is shown once in the shared activity row');
-  assert.equal(nodes(h.panel('YouTube')).find(node => node.type === 'progress').props.value, 37);
+  assert.equal(h.progress('youtube').props['aria-description'], 'Uploading · 37%');
+  assert.equal(h.progress('instagram').props['aria-description'], 'Failed');
+  assert.equal((h.text.match(/37%/g) || []).length, 1, 'Measured progress is shown once in the status strip');
+  assert.ok(nodes(h.progress('youtube')).some(node => node.props.style?.background?.includes('37%')), 'The icon ring reflects measured transfer');
+  assert.equal(Boolean(h.panel('YouTube').props.hidden), false);
+  assert.equal(h.panel('Instagram').props.hidden, true);
+  assert.equal(h.panel('Facebook Page').props.hidden, true);
   assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 0);
   const reads = h.requests.length; h.choose('Post to Instagram'); await h.flush(); assert.equal(h.requests.length, reads);
   h.submit(h.form(h.panel('Facebook Page'))); await h.flush();
   assert.equal(h.posts.length, 1); assert.equal(JSON.parse(h.posts[0].body).platform, 'facebook');
   assert.equal(JSON.parse(h.posts[0].body).caption, 'Owner Facebook caption #Two'); assert.equal(JSON.parse(h.posts[0].body).confirm, true);
   assert.equal(h.control('Corrected caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Owner Instagram caption #Keep');
-  assert.match(text(h.panel('YouTube')), /UPLOADING.*37%/); assert.equal(h.intervals.size, 2);
+  assert.equal(h.progress('youtube').props['aria-description'], 'Uploading · 37%');
+  assert.equal(h.progress('facebook').props['aria-description'], 'Queued');
+  assert.equal(h.intervals.size, 1);
+});
+
+test('a stale status poll cannot remove a newly approved request for another platform', async t => {
+  const stale = deferred();
+  const youtubeJob = job({ id: 'older-youtube', status: 'UPLOADING', bytesUploaded: 37, totalBytes: 100 });
+  let reads = 0;
+  const h = uiHarness({
+    channels: [channel('youtube'), channel('facebook')],
+    jobs: [youtubeJob],
+    read(request) { if (request.url.endsWith('/publish') && ++reads === 3) return stale.promise; },
+    post: () => response({ job: job({ id: 'accepted-facebook', platform: 'facebook', status: 'QUEUED', percent: 0 }) }),
+  });
+  t.after(() => h.unmount());
+  h.choose('Upload to YouTube'); await h.flush();
+  h.choose('Post to Facebook Page'); await h.flush();
+  h.tick(); await h.flush();
+  h.submit(); await h.flush();
+  assert.equal(h.progress('facebook').props['aria-description'], 'Queued');
+  stale.resolve(response({ jobs: [youtubeJob] })); await h.flush();
+  assert.equal(h.progress('facebook').props['aria-description'], 'Queued');
+  assert.equal(Boolean(h.form()), false);
+  assert.equal(h.posts.length, 1);
 });
 
 test('posting preflight and submission use shared indeterminate activity while saved jobs show measured progress', async t => {
@@ -328,8 +365,9 @@ test('posting preflight and submission use shared indeterminate activity while s
   assert.equal(progress().props.value, undefined);
   h.choose('Post to Instagram'); await h.flush();
   assert.match(text(h.panel('YouTube')), /Saving upload request/); assert.equal(h.button('Post to Instagram', h.panel('Instagram')).props.disabled, false);
-  accepted.resolve(response({ job: job({ status: 'UPLOADING', percent: 24, detail: 'Uploading the saved video.' }) })); await h.flush();
-  assert.equal(progress().props.value, 24); assert.equal(h.posts.length, 1);
+  accepted.resolve(response({ job: job({ status: 'UPLOADING', percent: 23, bytesUploaded: 24, totalBytes: 100, detail: 'Uploading the saved video.' }) })); await h.flush();
+  assert.equal(progress(), undefined);
+  assert.equal(h.progress('youtube').props['aria-description'], 'Uploading · 24%'); assert.equal(h.posts.length, 1);
 });
 
 test('default posting rows keep final choices visible while secondary publishing explanations stay collapsed', async t => {
@@ -387,11 +425,11 @@ test('final review falls back from an unready saved YouTube destination to verif
   }); t.after(() => h.unmount()); await h.flush();
   assert.ok(h.panel('Instagram')); assert.equal(h.panel('YouTube'), undefined);
   assert.equal(h.posts.length, 0); assert.equal(h.confirmation(), undefined);
-  assert.match(text(nodes(h.tree).find(node => node.props['data-posting-summary'])), /Remembered place.*Reel \+ matching Story/);
+  assert.match(text(nodes(h.tree).find(node => node.props['data-posting-summary'])), /Remembered place.*Reel only/);
   h.submit(); await h.flush();
   assert.equal(submitted.platform, 'instagram'); assert.equal(submitted.confirm, true);
   assert.deepEqual(submitted.location, { id: '12345' }); assert.equal(submitted.automaticTags, true);
-  assert.equal(submitted.companionStory, true); assert.equal(submitted.caption, 'Saved caption\n\n#fixture #video');
+  assert.equal(submitted.companionStory, false); assert.equal(submitted.caption, 'Saved caption\n\n#fixture #video');
 });
 
 test('final review never replaces a destination the owner chooses while its default lookup is pending', async t => {
@@ -522,7 +560,8 @@ test('one final Facebook Page action creates one public job with reviewed captio
   assert.equal(submitted.caption, 'Owner-reviewed Facebook caption #One #Two #Three #Four #Five #Six');
   for (const key of ['companionStory', 'location', 'audio', 'automaticTags', 'userTags']) assert.equal(submitted[key], undefined);
   waiting.resolve(response({ job: job({ platform: 'facebook', accountName: 'Verified linked Page', privacy: 'public', status: 'QUEUED', percent: 0, detail: 'Saved Facebook Page request.' }) })); await h.flush();
-  assert.match(h.text, /Verified linked Page · QUEUED.*0%/); assert.match(h.text, /saved Facebook Page upload request/);
+  assert.equal(h.progress('facebook').props['aria-description'], 'Queued');
+  assert.match(h.text, /Verified linked Page · QUEUED/);
   assert.equal(h.form(), undefined); assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 1);
 });
 
@@ -544,8 +583,8 @@ test('saved Facebook Page jobs show progress and permalink, prevent duplicates a
   const h = uiHarness({ channels: [channel('facebook')], jobs: [saved], post(request) {
     continued = JSON.parse(request.body); return response({ job: { ...saved, status: 'COMPLETE', canContinue: false, percent: 100, remoteUrl: 'https://www.facebook.com/reel/123456789/', detail: 'Facebook confirmed publication.' } });
   } }); t.after(() => h.unmount()); h.choose('Post to Facebook Page'); await h.flush();
-  assert.match(h.text, /NEEDS CHECK · 88%/); assert.match(h.text, /Check the saved Facebook video/);
-  assert.match(h.text, /already has a saved Facebook Page upload request/);
+  assert.equal(h.progress('facebook').props['aria-description'], 'Needs check');
+  assert.match(h.text, /Check the saved Facebook video/);
   assert.equal(h.button('Continue saved upload').props.disabled, true);
   assert.equal(nodes(h.tree).filter(node => node.type === 'button' && node.props.type === 'submit').length, 0);
   h.change(h.control('Continue this saved upload', 'input'), true); h.render(); h.click('Continue saved upload'); await h.flush();
@@ -580,7 +619,10 @@ test('Facebook stays independent of Instagram and Rumble drafts, notices and sta
   assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
   assert.match(h.text, /Rumble title copied/); assert.equal(h.posts.length, 0);
   const chooser = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
-  for (const label of ['Post to Instagram', 'Post to Facebook Page', 'Rumble upload']) assert.equal(h.button(label, chooser).props['aria-pressed'], true);
+  assert.equal(h.button('Rumble upload', chooser).props['aria-pressed'], false);
+  assert.equal(h.button('Post to Instagram', chooser).props['aria-pressed'], false);
+  assert.equal(h.button('Post to Facebook Page', chooser).props['aria-pressed'], true);
+  assert.ok(h.panel('Instagram') && h.panel('Facebook Page'), 'Showing Facebook preserves both mounted channel drafts');
 });
 
 test('Facebook and YouTube open while Instagram music lookup stays pending and Facebook can post independently', async t => {
@@ -611,7 +653,7 @@ test('Facebook and Instagram submissions keep separate busy states, captions and
   h.change(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')), 'Instagram approved #One'); h.render();
   const instagramForm = h.form(h.panel('Instagram')); h.submit(instagramForm); h.submit(instagramForm); await h.flush();
   const chooser = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
-  assert.equal(h.button('Post to Facebook Page', chooser).props.disabled, false);
+  assert.equal(Boolean(h.button('Post to Facebook Page', chooser).props.disabled), false);
   h.choose('Post to Facebook Page'); await h.flush();
   h.change(h.control('Caption and hashtags', 'textarea', h.panel('Facebook Page')), 'Facebook approved #Two #Three #Four #Five #Six #Seven'); h.render();
   const facebookForm = h.form(h.panel('Facebook Page')); h.submit(facebookForm); h.submit(facebookForm); await h.flush();
@@ -627,7 +669,7 @@ test('Facebook and Instagram submissions keep separate busy states, captions and
   assert.equal(h.button('Close').props.disabled, true);
   facebook.resolve(response({ job: job({ id: 'facebook-upload', platform: 'facebook', status: 'QUEUED', percent: 0 }) })); await h.flush();
   assert.equal(h.form(h.panel('Facebook Page')), undefined); assert.equal(h.button('Close').props.disabled, false);
-  assert.equal(h.intervals.size, 2); assert.equal(h.posts.length, 2);
+  assert.equal(h.intervals.size, 1); assert.equal(h.posts.length, 2);
   h.click('Close'); await h.flush(); assert.equal(h.intervals.size, 0); assert.equal(h.posts.length, 2);
 });
 
@@ -1048,10 +1090,11 @@ test('a previous upload displays actual saved status and its link instead of off
   const h = uiHarness({ jobs: [job({ remoteUrl: 'https://www.youtube.com/watch?v=fixture', privacy: 'unlisted', actualPrivacy: 'private' })] });
   t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
-  assert.match(h.text, /Saved YouTube destination.*COMPLETE.*100%/);
+  assert.equal(h.progress('youtube').props['aria-description'], 'Done');
+  assert.match(h.text, /Saved YouTube destination.*COMPLETE/);
   assert.match(h.text, /Requested visibility: unlisted/);
   assert.match(h.text, /Platform-confirmed visibility: private/);
-  assert.match(h.text, /already has a saved YouTube upload request/);
+  assert.match(h.text, /Upload details/);
   assert.equal(h.form(), undefined);
   assert.equal(h.button('Post to YouTube'), undefined);
   const link = nodes(h.tree).find(node => node.type === 'a' && text(node).startsWith('View uploaded video'));
@@ -1177,19 +1220,23 @@ test('changing Instagram mode aborts its old setup request and rejects stale acc
   assert.equal(h.posts.length, 0);
 });
 
-test('eligible matching Story defaults on and the final Post approves the visible Reel and Story choice', async t => {
+test('eligible matching Story defaults off and the final Post honors its visible choice', async t => {
   const h = uiHarness({ story: { ready: true, reason: 'Business confirmed; same saved MP4.' },
     post: () => response({ job: job({ platform: 'instagram', companionStoryApproved: true }) }) });
   t.after(() => h.unmount());
   h.choose('Post to Instagram'); await h.flush();
   assert.equal(h.requests.filter(item => item.url.includes('?check=story')).length, 1);
   assert.ok(h.requests.every(item => item.method === 'GET'));
-  assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
+  assert.equal(h.control('Also publish one matching Story', 'input').props.checked, false);
   assert.equal(h.confirmation(), undefined);
   assert.equal(h.button('Post to Instagram').props.disabled, false);
   const summary = () => nodes(h.form()).find(node => node.props['data-posting-summary']);
-  assert.match(text(summary()), /Public.*Reel \+ matching Story/);
+  assert.match(text(summary()), /Public.*Reel only/);
   assert.match(h.text, /Post approves this video, posting text and required rights/);
+  const postingDetails = nodes(h.form()).find(node => node.props['data-posting-details']);
+  assert.equal(h.control('Also publish one matching Story', 'input', postingDetails), undefined, 'Story choice is visible outside the closed details');
+  h.change(h.control('Also publish one matching Story', 'input'), true); await h.flush();
+  assert.match(text(summary()), /Public.*Reel \+ matching Story/);
   h.change(h.control('Also publish one matching Story', 'input'), false); await h.flush();
   assert.match(text(summary()), /Public.*Reel only/);
   assert.equal(h.posts.length, 0, 'Changing the Story choice never starts an upload');
@@ -1251,7 +1298,9 @@ test('completed Reel still polls its active companion using read-only status and
   assert.equal(h.intervals.size, 1);
   h.tick(); await h.flush();
   assert.equal(h.intervals.size, 0);
-  assert.match(h.text, /Matching Story · COMPLETE · 100%/);
+  assert.equal(h.progress('instagram').props['aria-description'], 'Done');
+  assert.equal(h.progress('story').props['aria-description'], 'Done');
+  assert.match(h.text, /Matching Story · COMPLETE/);
   assert.ok(h.requests.every(item => item.method === 'GET'));
 });
 
@@ -1450,6 +1499,7 @@ test('new timing-matched reels retain their reviewed music through Reel and comp
   assert.match(text(automaticMusicPanel(h)),/preview, Instagram Reel and matching Story keep this same soundtrack/);
   assert.equal(h.requests.some(request=>request.url.includes('check=audio')),false);
   assert.equal(h.button('Post to Instagram').props.disabled,false);
+  h.change(h.control('Also publish one matching Story', 'input'), true); await h.flush();
   h.submit();await h.flush();
   assert.equal(saved.audio,undefined);assert.equal(saved.companionStory,true);assert.equal(h.posts.length,1);
 });
@@ -1695,7 +1745,7 @@ test('late Story eligibility updates visible choices but does not publish before
   t.after(() => h.unmount()); h.choose('Post to Instagram'); await h.flush();
   assert.equal(h.confirmation(), undefined); assert.equal(h.posts.length, 0);
   waiting.resolve(response({ story: { ready: true, reason: 'Fixture Business eligible' } })); await h.flush();
-  assert.equal(h.control('Also publish one matching Story', 'input').props.checked, true);
+  assert.equal(h.control('Also publish one matching Story', 'input').props.checked, false);
   assert.equal(h.confirmation(), undefined); assert.equal(h.button('Post to Instagram').props.disabled, false); assert.equal(h.posts.length, 0);
 });
 

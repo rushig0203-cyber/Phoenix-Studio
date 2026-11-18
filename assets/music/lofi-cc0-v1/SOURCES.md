@@ -27,19 +27,22 @@ Final listening review remains necessary.
 
 ## Quiet instrumental additions
 
-Three artist-uploaded recordings add sparse piano/pads and ambient choices, rather
-than using the beat-led album above for peaceful scenery. Each OpenGameArt source
-page explicitly dedicates its uploaded recording to **CC0**. Credits are retained
-in the saved video metadata; the Cynic Project's courtesy attribution is preserved.
+Five artist-uploaded recordings add acoustic guitar, piano and ambient choices
+for peaceful footage. Each OpenGameArt source page dedicates its uploaded
+recording to **CC0**. Phoenix retains the artist credit in saved video metadata.
 
 | Bundled file | Artist / original source | Original download |
 | --- | --- | --- |
 | `quiet-vaporware.m4a` | [Calm Piano 1: Vaporware — The Cynic Project / cynicmusic](https://opengameart.org/content/calm-piano-1-vaporware) | [003_Vaporware_2.mp3](https://opengameart.org/sites/default/files/003_Vaporware_2.mp3) |
 | `quiet-contemplation.m4a` | [Contemplation — Joth](https://opengameart.org/content/contemplation-0) | [Contemplation.mp3](https://opengameart.org/sites/default/files/Contemplation.mp3) |
 | `quiet-synthwave.m4a` | [Calm Ambient 1: Synthwave 4k — The Cynic Project / cynicmusic](https://opengameart.org/content/calm-ambient-1-synthwave-4k) | [001_Synthwave_4k_0.mp3](https://opengameart.org/sites/default/files/001_Synthwave_4k_0.mp3) |
+| `quiet-small-fire.m4a` | [A Small Fire Will Do — Cal McEachern (Trex0n)](https://opengameart.org/content/a-small-fire-will-do-calming-loop) | [a_small_fire_will_do.wav](https://opengameart.org/sites/default/files/a_small_fire_will_do.wav) |
+| `quiet-forget-me-not.m4a` | [Forget Me Not — Kistol](https://opengameart.org/content/forget-me-not) | [forget_me_not_in_f_major.ogg](https://opengameart.org/sites/default/files/forget_me_not_in_f_major.ogg) |
 
-These are 60-second native-tempo excerpts starting 20 seconds into each original,
-encoded as stereo AAC at 96 kbps / 48 kHz. The three files total about 2.2 MB.
+These are 60-second native-tempo excerpts, encoded as stereo AAC at 96 kbps /
+48 kHz. The five files total about 3.7 MB. The first three excerpts start 20
+seconds into their originals. The guitar and piano additions start 2 and 4
+seconds in, respectively.
 Original SHA-256 hashes, exact bundled hashes/sizes, artist/source credits and
 actual measured attacks are pinned per recording in `manifest.json`. No copied
 Instagram song, voice, model or paid service is involved. The library identifier

@@ -72,8 +72,9 @@ jobs:
           src/app/api/instagram-performance/route.ts
           src/lib/reviewFiles.ts src/lib/reviewEdits.ts src/components/ReviewPublishActions.tsx
           src/lib/failedJobHistory.ts src/components/JobProgress.tsx src/components/CreationDrafts.tsx
-          src/components/ChannelInsights.tsx src/components/InstagramPerformance.tsx
+          src/components/ChannelInsights.tsx src/components/InstagramPerformance.tsx src/components/PlatformIcon.tsx
           src/lib/facebookPerformance.ts src/lib/facebookPerformanceTypes.ts src/app/api/facebook-performance/route.ts
+          src/lib/youtubePerformance.ts src/app/api/youtube-performance/route.ts
           src/components/ReviewLibrary.tsx
           src/app/api/review-files/[id]/publish/route.ts
           src/app/api/review-files/[id]/reveal/route.ts
@@ -189,6 +190,7 @@ jobs:
           scripts/test-instagram-attention.cjs
           scripts/test-instagram-performance-ui.cjs
           scripts/test-channel-insights-ui.cjs
+          scripts/test-youtube-performance.cjs
           scripts/test-instagram-performance-boundaries.cjs
           scripts/test-instagram-learning-guidance.cjs
           scripts/test-content-suggestions.cjs

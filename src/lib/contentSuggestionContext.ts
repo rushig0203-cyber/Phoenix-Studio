@@ -12,9 +12,8 @@ const workflows: SuggestionWorkflow[] = ["stock-reel", "general", "business", "c
 const workflow = (value: unknown): SuggestionWorkflow | undefined => value === "source" ? "stock-reel" : workflows.includes(value as SuggestionWorkflow) ? value as SuggestionWorkflow : undefined;
 
 /** Project only saved, completed visual metadata; notes and generated briefs are not visual evidence. */
-export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValue: unknown, performanceValue: unknown, now = Date.now()): SuggestionContext {
+function projectSuggestionContext(reviewValue: unknown, feedbackValue: unknown, performanceValue: unknown, now: number) {
   const recent: SuggestionContext["recent"] = [];
-  const originals = new Set<string>();
   const reviews = Array.isArray(reviewValue) ? reviewValue.slice(0, 5000).filter(object)
     .filter((record): record is Record<string, unknown> & { id: string } => {
       const createdAt = date(record.createdAt, now);
@@ -22,14 +21,23 @@ export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValu
         && now - Date.parse(createdAt) <= 120 * 86_400_000 && (!object(record.processing) || record.processing.status === "COMPLETED");
     })
     .sort((a, b) => (Date.parse(String(b.createdAt || "")) || 0) - (Date.parse(String(a.createdAt || "")) || 0)) : [];
-  const originalIds = new Set(reviews.filter(record => !id(record.editedFrom)).map(record => record.id));
+  const recordsById = new Map(reviews.map(record => [record.id, record]));
+  const roots = new Map(reviews.map(record => {
+    let root = record.id;
+    for (let depth = 0; depth < 16; depth++) {
+      const parent = recordsById.get(root)?.editedFrom;
+      if (!id(parent)) return [record.id, root] as const;
+      root = parent;
+    }
+    return [record.id, record.id] as const;
+  }));
+  const canonicalByRoot = new Map<string, string>();
   for (const record of reviews) {
     const title = text(record.title, 300), createdAt = date(record.createdAt, now);
-    // Caption-edit copies must not hide the original's feedback and publication evidence.
-    if (id(record.editedFrom) && originalIds.has(record.editedFrom)) continue;
-    const original = id(record.editedFrom) ? record.editedFrom : record.id;
-    if (originals.has(original)) continue;
-    originals.add(original);
+    const original = roots.get(record.id) || record.id;
+    if (original !== record.id && recordsById.has(original)) continue;
+    if (canonicalByRoot.has(original)) continue;
+    canonicalByRoot.set(original, record.id);
     const delivery = object(record.delivery) ? record.delivery : {};
     const quality = object(record.quality) ? record.quality : {};
     const analysis = object(quality.postingAnalysis) ? quality.postingAnalysis : {};
@@ -39,15 +47,24 @@ export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValu
       ...(object(quality.research) ? { news: true } : {}) });
     if (recent.length === 120) break;
   }
-  const reviewById = new Map(recent.map(record => [record.reviewId, record]));
+  const canonical = new Map(recent.map(record => [record.reviewId, record]));
+  const reviewById = new Map(canonical);
+  for (const record of reviews) {
+    const root = roots.get(record.id) || record.id;
+    const kept = canonical.get(canonicalByRoot.get(root) || "");
+    if (kept) reviewById.set(record.id, kept);
+  }
   const latest = new Map<string, { value: SuggestionContext["feedback"][number]; updatedAt: string }>();
   for (const record of Array.isArray(feedbackValue) ? feedbackValue.slice(0, 2000) : []) {
-    if (!object(record) || !id(record.reviewId) || !reviewById.has(record.reviewId) || !["keep", "revise"].includes(String(record.decision)) || !object(record.ratings)) continue;
+    if (!object(record) || !id(record.reviewId) || !["keep", "revise"].includes(String(record.decision)) || !object(record.ratings)) continue;
+    const review = reviewById.get(record.reviewId);
+    if (!review) continue;
     const { story, visuals } = record.ratings, updatedAt = date(record.updatedAt, now);
     if (![story, visuals].every(value => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 5)) continue;
-    const previous = latest.get(record.reviewId);
+    const reviewId = review.reviewId;
+    const previous = latest.get(reviewId);
     if (previous && previous.updatedAt > updatedAt) continue;
-    latest.set(record.reviewId, { value: { reviewId: record.reviewId, decision: record.decision as "keep" | "revise", storyRating: story as number, visualRating: visuals as number }, updatedAt });
+    latest.set(reviewId, { value: { reviewId, decision: record.decision as "keep" | "revise", storyRating: story as number, visualRating: visuals as number }, updatedAt });
   }
   const feedback = [...latest.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 120).map(record => record.value);
   const strongerTopics: SuggestionContext["strongerTopics"] = [];
@@ -56,21 +73,23 @@ export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValu
     && text(performanceValue.account.connectionRevision, 200) && Array.isArray(performanceValue.videos) && performanceValue.videos.length <= 5000) {
     const videos: InstagramPerformanceVideo[] = [];
     const usedIds = new Set<string>();
+    const measuredReviews = new Set<string>();
     const rows = performanceValue.videos.filter(object).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
     for (const row of rows) {
       if (typeof row.id !== "string" || !/^\d{1,40}$/.test(row.id) || usedIds.has(row.id) || !id(row.reviewId) || !object(row.metrics)) continue;
       const review = reviewById.get(row.reviewId), timestamp = date(row.timestamp, now), metricsUpdatedAt = date(row.metricsUpdatedAt, now);
-      if (!review || review.news || !timestamp || !metricsUpdatedAt || !["REELS", "FEED"].includes(String(row.mediaProductType))
+      if (!review || measuredReviews.has(review.reviewId) || review.news || !timestamp || !metricsUpdatedAt || !["REELS", "FEED"].includes(String(row.mediaProductType))
         || workflow(row.creationType) !== review.workflow) continue;
       const savedMetrics = row.metrics;
       const metric = (key: string) => {
         const value = savedMetrics[key];
         return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
       };
-      videos.push({ id: row.id, reviewId: row.reviewId, topic: review.title, creationType: review.workflow, caption: "", timestamp,
+      videos.push({ id: row.id, reviewId: review.reviewId, topic: review.title, creationType: review.workflow, caption: "", timestamp,
         mediaProductType: String(row.mediaProductType), metricsUpdatedAt,
         metrics: { views: metric("views"), reach: metric("reach"), likes: metric("likes"), comments: metric("comments"), saves: metric("saves"), shares: metric("shares"), averageWatchTimeMs: null, totalWatchTimeMs: null } });
       usedIds.add(row.id);
+      measuredReviews.add(review.reviewId);
       if (videos.length === 500) break;
     }
     for (const kind of workflows) {
@@ -81,7 +100,12 @@ export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValu
       strongerTopics.push(...instagramPerformanceSummary(state, now).topicPreferences.map(topic => ({ topic: topic.topic, workflow: kind, evidenceCount: topic.evidenceCount })));
     }
   }
-  return { now, recent, feedback, strongerTopics: strongerTopics.slice(0, 12) };
+  const context: SuggestionContext = { now, recent, feedback, strongerTopics: strongerTopics.slice(0, 12) };
+  return { context, reviewById };
+}
+
+export function suggestionContextFromMetadata(reviewValue: unknown, feedbackValue: unknown, performanceValue: unknown, now = Date.now()): SuggestionContext {
+  return projectSuggestionContext(reviewValue, feedbackValue, performanceValue, now).context;
 }
 
 async function boundedJson(filename: string, limit: number): Promise<{ value: unknown; mtimeMs: number } | undefined> {
@@ -111,13 +135,17 @@ export async function loadSuggestionContext(now = Date.now(), root = process.cwd
     const channels = await fs.lstat(path.join(process.env.PHOENIX_CHANNEL_STORAGE || path.join(root, "storage", "private"), "channels.enc"));
     if (performance && channels.isFile() && !channels.isSymbolicLink() && channels.mtimeMs <= performance.mtimeMs) currentPerformance = performance.value;
   } catch { /* Missing channel metadata cannot establish a current cached account. */ }
-  const context = suggestionContextFromMetadata(review?.value, feedback?.value, currentPerformance, now);
+  const { context, reviewById } = projectSuggestionContext(review?.value, feedback?.value, currentPerformance, now);
   const publicationsRoot = process.env.PHOENIX_PUBLISH_STORAGE || path.join(root, "storage", "private", "review-publications");
-  for (const record of context.recent) {
+  const originals = context.recent.map(record => [record.reviewId, record] as const);
+  // Check originals first and at most one additional page of edited outputs.
+  const copies = [...reviewById].filter(([reviewId, record]) => reviewId !== record.reviewId).slice(0, 120);
+  for (const [reviewId, record] of [...originals, ...copies]) {
+    if (record.posted) continue;
     for (const platform of ["instagram", "youtube", "facebook"]) {
-      const journal = await boundedJson(path.join(publicationsRoot, `${record.reviewId}-${platform}.json`), 64 * 1024);
+      const journal = await boundedJson(path.join(publicationsRoot, `${reviewId}-${platform}.json`), 64 * 1024);
       const value = journal?.value;
-      if (object(value) && value.version === 1 && id(value.id) && value.reviewId === record.reviewId && value.platform === platform && value.kind === undefined
+      if (object(value) && value.version === 1 && id(value.id) && value.reviewId === reviewId && value.platform === platform && value.kind === undefined
         && value.status === "COMPLETE" && value.phase === "complete" && typeof value.remoteId === "string"
         && (platform === "youtube" ? /^[A-Za-z0-9_-]{11}$/ : /^\d{1,40}$/).test(value.remoteId)) {
         record.posted = true;

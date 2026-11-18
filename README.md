@@ -38,9 +38,9 @@ Create has three dedicated workspaces:
   **Library** has Generated, Posted and Episode clips views with previews,
   posting copy, native editing and recoverable Trash. Episode folders use the
   uploaded filename and retain posted clips and edits with their source episode.
-- **Insights** has its own screen for saved Instagram results and basic Facebook
-  Page Reel counts. Posted videos open their matching publication's results.
-  Other platforms show their actual connection or service-access limits.
+- **Insights** shows saved Instagram results, Facebook Page Reel counts and basic
+  YouTube counts for confirmed Phoenix uploads. Open a posted video to see its
+  matching result, or open the Rumble creator dashboard from its tab.
 - **Settings** holds private writer/channel setup and content-quality feedback.
 
 Shared startup-style activity covers loading, tool checks, preparation, uploads
@@ -112,13 +112,13 @@ marking it ready. This is an export target, not an Instagram requirement or a
 claim of musical quality. Existing recipes and original-audio mixes keep their
 saved sound; manual edits discard the old measurement until measured again.
 
-New automatic reels use nine compact CC0 instrumental recordings bundled with
+New automatic reels use eleven compact CC0 instrumental recordings bundled with
 the app, with rights/source evidence retained. Queue reservations avoid the last
 three soundtracks even when requests arrive together; retries keep their saved
 recording and native-tempo excerpt. No music-model download, paid API or extra
 account is required. See [recording sources](assets/music/lofi-cc0-v1/SOURCES.md).
-Three are gentle piano/pads or ambient recordings; the others are livelier lofi
-instrumentals. This is not a claim of current Instagram trends.
+Five are gentle acoustic guitar, piano or ambient recordings. The others are
+livelier instrumentals.
 Per-reel editing audio uses lossless FLAC at 48 kHz to avoid large PCM copies.
 New soundtrack choices prioritize a matching editorial mood over an unused but
 mismatched track, while preserving the last-three cooldown and saved retry choice.
@@ -163,15 +163,15 @@ Each video's identity varies the combination while repeat approval and saved
 upload requests retain their tags. Instagram still decides tagging eligibility;
 the posting status distinguishes requested tags from tags sent.
 The dashboard uses warm cream surfaces, soft blue accents and navy text,
-readable text and visible keyboard focus. Insights has its own sidebar screen:
-Instagram keeps its existing measured
-results and manager guidance, while Facebook can refresh a bounded basic snapshot
-of Page reels using the existing Page connection. Missing metrics stay unknown;
-advanced watch-time/reach analytics are not inferred. YouTube shows its actual
-connection state, and Rumble/Bilibili entries link to their services without
-claiming a statistics API connection.
-Posted Library videos open their exact saved Instagram/Facebook publication in
-Insights; missing measurements are never replaced by another video's results.
+readable text and visible keyboard focus. Insights keeps each platform separate.
+Instagram provides measured results and manager guidance. Facebook refreshes
+basic Page Reel counts using the existing Page connection. YouTube refreshes
+views, likes and comments for up to 25 confirmed Phoenix uploads using the
+existing read permission. Missing counts remain unknown. Detailed YouTube
+analytics are in YouTube Studio. Use the Rumble tab to open its creator dashboard.
+Posted Library videos open their exact confirmed Instagram, Facebook or YouTube
+publication in Insights. Only comparable Instagram results currently guide
+suggestions, alongside saved video feedback.
 Job rows show a compact progress bar and percentage when measured, with failure
 details collapsed. Hourly housekeeping soft-archives local failed history after
 seven days; originals, finished videos and protected publishing journals stay saved.
@@ -180,7 +180,8 @@ excluded from this cleanup.
 Create a Video and Make a Reel suggestions reconsider saved work every 15 days,
 when reopened and when you choose **More ideas** or **More templates**. Confirmed posts, recent visual subjects,
 structured story/visual feedback and fresh comparable Instagram results guide
-relevance; results do not invent trends or guaranteed growth. Recently posted
+relevance. A posted edit contributes to the original video's topic, and multiple
+versions count as one piece of evidence. Recently posted
 subjects and the last 48 shown ideas are excluded when possible. Each concise
 card explains its basis; a longer creation premise stays optional. No extra model
 or provider search is used to load suggestions. Unavailable browser storage keeps
@@ -259,9 +260,11 @@ are used in Phoenix's Library.
 Use **Post / export** on a finished video to expand its posting controls in
 Library. Choose a destination, review the caption and posting options, then
 use its final Post or Upload action. **Close** collapses the controls.
-Instagram, Facebook Page and YouTube open independent rows within one shared
-posting area. Opening another destination keeps the existing rows, drafts and
-progress intact. Rumble keeps its assisted handoff in that same area.
+Instagram, Facebook Page and YouTube show separate icons and progress rings in
+one posting area. Select a platform to see its draft, recover an upload or open
+a completed post. New Instagram posts start as Reel only. Choose **Also post
+as a Story** before posting when you want both. Rumble keeps its assisted handoff
+in the same posting area.
 
 - **Instagram:** verified professional-account access and publishing permission
   are required. Reel/Story support, locations, people tags and catalogue audio

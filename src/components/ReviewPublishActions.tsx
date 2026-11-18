@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChannelPlatform, ChannelStatus } from "@/lib/channelConnections";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import type { ReviewPublishJob, InstagramStoryCapability } from "@/lib/reviewPublishing";
@@ -13,9 +13,10 @@ import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/r
 import { automaticInstagramUserTags } from "@/lib/instagramTags";
 import { openRumbleUpload } from "@/lib/rumbleWindow";
 import StudioActivity from "./StudioActivity";
+import PlatformIcon from "./PlatformIcon";
 
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
-const platformButton = `${button} aria-pressed:border-[#394a2a] aria-pressed:bg-[#394a2a] aria-pressed:text-white`;
+
 const input = "mt-1 block w-full rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm";
 const reviewPostingText = (file: ReviewFile, platform?: ChannelPlatform) => postingText(file.quality.postCopy?.trim() ? file : { ...file, title: "" }, platform);
 const active = (job: ReviewPublishJob): boolean => ["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) || Boolean(job.companionStory && active(job.companionStory));
@@ -43,6 +44,34 @@ function publicTrackRecommendation(value: unknown): RecommendedInstagramAudio["r
 }
 
 type PublishPanelRequest = { platform: ChannelPlatform; mode: "reel" | "story" };
+type Destination = ChannelPlatform | "story" | "rumble";
+const statusLabel = { QUEUED: "Queued", UPLOADING: "Uploading", PROCESSING: "Processing", COMPLETE: "Done", FAILED: "Failed", NEEDS_CHECK: "Needs check" } as const;
+
+function PlatformProgress({ destination, label, job, selected, busy, locked, onClick }: {
+  destination: Destination; label: string; job?: ReviewPublishJob; selected: boolean; busy?: boolean; locked?: boolean; onClick: () => void;
+}) {
+  const measured = job?.status === "UPLOADING" && Number.isFinite(job.totalBytes) && job.totalBytes > 0 && Number.isFinite(job.bytesUploaded);
+  const percent = measured ? Math.floor(Math.min(100, Math.max(0, 100 * job.bytesUploaded / job.totalBytes))) : undefined;
+  const ring = job?.status === "COMPLETE" ? 100 : percent;
+  const state = busy ? "Saving…" : job ? statusLabel[job.status] : undefined;
+  const status = state && percent !== undefined ? `${state} · ${percent}%` : state;
+  return <button type="button" data-posting-platform={destination} aria-label={label} aria-description={status} aria-pressed={selected} disabled={busy || locked} onClick={onClick}
+    className="posting-platform inline-flex min-h-11 items-center gap-2 rounded-full border px-2 py-1 text-left text-xs">
+    <span aria-hidden="true" className="posting-ring grid size-8 shrink-0 place-items-center rounded-full"
+      style={ring === undefined ? undefined : { background: `conic-gradient(var(--posting-color) ${ring}%, var(--border) 0)` }}>
+      <span className="grid size-6 place-items-center rounded-full bg-card"><PlatformIcon platform={destination === "story" ? "instagram" : destination} className="size-4" /></span>
+    </span>
+    <span>
+      <span className="block font-semibold">{label}</span>
+      {status && <span className="block text-[0.7rem]" aria-live="polite">{status}</span>}
+    </span>
+  </button>;
+}
+
+function instagramStoryJob(jobs: ReviewPublishJob[]) {
+  return jobs.find(job => job.platform === "instagram" && job.kind === "story")
+    || jobs.find(job => job.platform === "instagram" && job.companionStory)?.companionStory;
+}
 
 /** Opening/checking these panels never uploads. The final Post action does. */
 export default function ReviewPublishActions({ file, finalReview = false }: { file: ReviewFile; finalReview?: boolean }) {
@@ -51,6 +80,48 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   const [youtube, setYoutube] = useState<PublishPanelRequest | null>(null);
   const [instagram, setInstagram] = useState<PublishPanelRequest | null>(null);
   const [facebook, setFacebook] = useState<PublishPanelRequest | null>(null);
+  const [selected, setSelected] = useState<Destination | null>(null);
+  const [jobs, setJobs] = useState<ReviewPublishJob[]>([]);
+  const [progressError, setProgressError] = useState("");
+  const jobRead = useRef(0);
+  const committedRead = useRef(0);
+  const endpoint = `/api/review-files/${encodeURIComponent(file.id)}/publish`;
+  const readJobs = useCallback(async (abort: AbortSignal) => {
+    const version = ++jobRead.current;
+    const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.any([abort, AbortSignal.timeout(15000)]) });
+    const data = await response.json();
+    if (!response.ok || !Array.isArray(data.jobs)) throw new Error(data.error || "Could not check upload status.");
+    if (!abort.aborted && version > committedRead.current) {
+      committedRead.current = version;
+      setJobs(data.jobs);
+      setProgressError("");
+    }
+    return data.jobs as ReviewPublishJob[];
+  }, [endpoint]);
+  const polling = chooserOpen && jobs.some(active);
+  useEffect(() => {
+    if (!polling) return;
+    const abort = new AbortController();
+    let pending = false;
+    const interval = setInterval(() => {
+      if (pending || document.hidden) return;
+      pending = true;
+      void readJobs(abort.signal)
+        .catch(() => { if (!abort.signal.aborted) setProgressError("Could not refresh posting status. Checking again…"); })
+        .finally(() => { pending = false; });
+    }, 5000);
+    return () => { clearInterval(interval); abort.abort(); };
+  }, [polling, readJobs]);
+
+  function accepted(job: ReviewPublishJob) {
+    // A read started before this approval must not erase the accepted request.
+    committedRead.current = ++jobRead.current;
+    setJobs(current => job.kind === "story" && !job.standaloneStory
+      ? current.map(item => item.platform === "instagram" && !item.kind ? { ...item, companionStory: job } : item)
+      : [...current.filter(item => item.id !== job.id && !(item.platform === job.platform && item.kind === job.kind))
+        .map(item => job.standaloneStory && item.companionStory?.id === job.id
+          ? { ...item, companionStory: undefined, companionStoryApproved: undefined, companionStoryDetached: true } : item), job]);
+  }
   const [youtubeBusy, setYoutubeBusy] = useState(false);
   const [instagramBusy, setInstagramBusy] = useState(false);
   const [facebookBusy, setFacebookBusy] = useState(false);
@@ -82,6 +153,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
         if (destination === "facebook") setFacebook({ platform: destination, mode: "reel" });
         else if (destination === "youtube") setYoutube({ platform: destination, mode: "reel" });
         else setInstagram({ platform: destination, mode: "reel" });
+        setSelected(destination);
       }).finally(() => { if (!abort.signal.aborted) setChoosingDestination(false); });
     return () => abort.abort();
   }, [file.id, finalReview]);
@@ -96,6 +168,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   const rumbleOutput = rumbleOpen ? postingDownload(file) : null;
   function open(platform: ChannelPlatform, mode: "reel" | "story" = "reel") {
     destinationChosen.current = true;
+    setSelected(mode === "story" ? "story" : platform);
     const update = (current: PublishPanelRequest | null) => current?.platform === platform && current.mode === mode ? current : { platform, mode };
     if (platform === "facebook") setFacebook(update);
     else if (platform === "youtube") setYoutube(update);
@@ -104,7 +177,9 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   function close() {
     postButton.current?.focus();
     rumbleEpoch.current++; rumblePreparing.current = false; setRumbleBusy(false);
+    committedRead.current = ++jobRead.current;
     setChooserOpen(false); setRumbleOpen(false); setYoutube(null); setInstagram(null); setFacebook(null);
+    setSelected(null); setJobs([]); setProgressError("");
   }
   async function copyRumbleText(value: string, label: string) {
     const version = rumbleEpoch.current, revision = videoRevision;
@@ -151,20 +226,21 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     <section id={chooserId} data-posting-panel aria-label="Post or export this video" hidden={!chooserOpen} className="min-w-0 basis-full space-y-3 rounded-xl border border-[#bdc7a5] bg-[#fffdf7] p-3 text-[#26331f]">
       {chooserOpen && <>
       <div className="flex items-center justify-between gap-2"><h5 className="font-semibold">Post video</h5>{!finalReview && <button type="button" className={button} onClick={close} disabled={postingBusy}>Close</button>}</div>
-      <div role="group" className="flex flex-wrap gap-2" aria-label="Choose a platform">
-        <button type="button" className={platformButton} disabled={youtubeBusy} aria-pressed={Boolean(youtube)} onClick={() => void open("youtube")}>{finalReview ? "YouTube" : "Upload to YouTube"}</button>
-        <button type="button" className={platformButton} disabled={instagramBusy} aria-pressed={instagram?.mode === "reel"} onClick={() => void open("instagram")}>{finalReview ? "Instagram" : "Post to Instagram"}</button>
-        <button type="button" className={platformButton} disabled={facebookBusy} aria-pressed={Boolean(facebook)} onClick={() => void open("facebook")}>{finalReview ? "Facebook Page" : "Post to Facebook Page"}</button>
-        <button type="button" className={platformButton} disabled={instagramBusy} aria-pressed={instagram?.mode === "story"} onClick={() => void open("instagram", "story")}>{finalReview ? "Story only" : "Post Story only"}</button>
-        <button type="button" className={platformButton} aria-pressed={rumbleOpen} onClick={() => { destinationChosen.current = true; setRumbleOpen(true); setRumbleNotice(""); }}>{finalReview ? "Rumble · assisted" : "Rumble upload"}</button>
+      <div role="group" data-posting-status-strip className="sticky top-0 z-10 flex flex-wrap gap-2 bg-card py-2" aria-label="Choose a platform">
+        <PlatformProgress destination="youtube" label={finalReview ? "YouTube" : "Upload to YouTube"} selected={selected === "youtube"} busy={youtubeBusy} job={jobs.find(job => job.platform === "youtube")} onClick={() => open("youtube")} />
+        <PlatformProgress destination="instagram" label={finalReview ? "Instagram" : "Post to Instagram"} selected={selected === "instagram"} busy={instagramBusy && instagram?.mode === "reel"} locked={instagramBusy} job={jobs.find(job => job.platform === "instagram" && !job.kind)} onClick={() => open("instagram")} />
+        <PlatformProgress destination="facebook" label={finalReview ? "Facebook Page" : "Post to Facebook Page"} selected={selected === "facebook"} busy={facebookBusy} job={jobs.find(job => job.platform === "facebook")} onClick={() => open("facebook")} />
+        <PlatformProgress destination="story" label={finalReview ? "Story only" : "Post Story only"} selected={selected === "story"} busy={instagramBusy && instagram?.mode === "story"} locked={instagramBusy} job={instagramStoryJob(jobs)} onClick={() => open("instagram", "story")} />
+        <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={selected === "rumble"} onClick={() => { destinationChosen.current = true; setSelected("rumble"); setRumbleOpen(true); setRumbleNotice(""); }} />
       </div>
+      {progressError && <p role="status" className="text-xs">{progressError}</p>}
       {choosingDestination && !youtube && !instagram && !facebook && <StudioActivity label="Checking destination…" />}
       {!choosingDestination && !youtube && !instagram && !facebook && !rumbleOpen && <p className="text-xs">Choose a destination.</p>}
       <div data-posting-destinations>
-      {instagram && <ReviewPublishPlatformPanel key="instagram" file={file} request={instagram} onBusyChange={setInstagramBusy} />}
-      {facebook && <ReviewPublishPlatformPanel key="facebook" file={file} request={facebook} onBusyChange={setFacebookBusy} />}
-      {youtube && <ReviewPublishPlatformPanel key="youtube" file={file} request={youtube} onBusyChange={setYoutubeBusy} />}
-      {rumbleOpen && <section data-posting-destination aria-label="Rumble assisted upload" className="space-y-3 border-t border-[#bdc7a5] py-3 text-xs">
+      {instagram && <ReviewPublishPlatformPanel key="instagram" file={file} request={instagram} visible={selected === "instagram" || selected === "story"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setInstagramBusy} />}
+      {facebook && <ReviewPublishPlatformPanel key="facebook" file={file} request={facebook} visible={selected === "facebook"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setFacebookBusy} />}
+      {youtube && <ReviewPublishPlatformPanel key="youtube" file={file} request={youtube} visible={selected === "youtube"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setYoutubeBusy} />}
+      {rumbleOpen && <section data-posting-destination hidden={selected !== "rumble"} aria-label="Rumble assisted upload" className="space-y-3 border-t border-[#bdc7a5] py-3 text-xs">
         <h6 className="font-semibold">Rumble · assisted upload</h6>
         <p>Drag the saved MP4 onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
         {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? <StudioActivity label="Opening saved video…" /> : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
@@ -189,13 +265,14 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   </>;
 }
 
-function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
-  file: ReviewFile; request: PublishPanelRequest; onBusyChange: (busy: boolean) => void;
+function ReviewPublishPlatformPanel({ file, request, visible, jobs, readJobs, onAccepted, onBusyChange }: {
+  file: ReviewFile; request: PublishPanelRequest; visible: boolean; jobs: ReviewPublishJob[];
+  readJobs: (signal: AbortSignal) => Promise<ReviewPublishJob[]>; onAccepted: (job: ReviewPublishJob) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [platform, setPlatform] = useState<ChannelPlatform | null>(null);
   const [instagramMode, setInstagramMode] = useState<"reel" | "story">("reel");
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
-  const [jobs, setJobs] = useState<ReviewPublishJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusyState] = useState(false);
   function setBusy(value: boolean) { setBusyState(value); onBusyChange(value); }
@@ -244,22 +321,6 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
   const endpoint = `/api/review-files/${encodeURIComponent(file.id)}/publish`;
 
   useEffect(() => () => { epoch.current++; controller.current?.abort(); locationEpoch.current++; locationRequest.current?.abort(); audioEpoch.current++; audioRequest.current?.abort(); }, [file.id]);
-  useEffect(() => {
-    if (!platform || !jobs.some(job => job.platform === platform && active(job))) return;
-    const abort = new AbortController(); let pending = false;
-    const interval = setInterval(() => {
-      if (pending || document.hidden) return;
-      pending = true;
-      void fetch(endpoint, { cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]) })
-        .then(async response => {
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Upload progress is unavailable.");
-          if (!abort.signal.aborted) { setJobs(data.jobs); setError(""); }
-        }).catch(() => { if (!abort.signal.aborted) setError("Could not refresh upload progress. Checking again; no new upload is being submitted."); })
-        .finally(() => { pending = false; });
-    }, 5000);
-    return () => { clearInterval(interval); abort.abort(); };
-  }, [endpoint, platform, jobs]);
 
   useEffect(() => { void open(request.platform, request.mode); }, [request]);
 
@@ -275,26 +336,25 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
     setCaptionEdited(false);
     setTitle(file.title.slice(0, 100)); setCaption(reviewPostingText(file, next));
     setMadeForKids(file.audience.startsWith("kids"));
-    setStoryCapability(null); setIncludeStory(false); setBusinessConfirmed(false);
+    setStoryCapability(null); setBusinessConfirmed(false);
     try {
-      const results = await Promise.all(["/api/channels", endpoint].map(async url => {
-        const response = await fetch(url, { cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Could not check uploading setup.");
-        return data;
-      }));
-      if (epoch.current === version && !abort.signal.aborted) {
-        setChannels(results[0].channels); setJobs(results[1].jobs); setSetupChecked(true); setLoading(false);
-        const rejected = next === "instagram" && mode === "reel" && (results[1].jobs as ReviewPublishJob[]).find(job => job.platform === "instagram" && job.canRevise === true && typeof job.caption === "string");
-        if (rejected) { setCaption(rejected.caption!); setConfirmed(false); }
-      }
-      const destination = (results[0].channels as ChannelStatus[]).find(item => item.platform === "instagram");
+      const [currentChannels, savedJobs] = await Promise.all([
+        fetch("/api/channels", { cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]) })
+          .then(async response => {
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Could not check uploading setup.");
+            return data.channels as ChannelStatus[];
+          }),
+        readJobs(abort.signal),
+      ]);
       if (epoch.current !== version || abort.signal.aborted) return;
-      const savedJobs = results[1].jobs as ReviewPublishJob[];
-      const existingStory = savedJobs.some(item => item.platform === "instagram" && (item.kind === "story" || item.companionStory));
+      setChannels(currentChannels); setSetupChecked(true); setLoading(false);
+      const rejected = next === "instagram" && mode === "reel" && savedJobs.find(job => job.platform === "instagram" && job.canRevise === true && typeof job.caption === "string");
+      if (rejected) { setCaption(rejected.caption!); setConfirmed(false); }
+      const destination = currentChannels.find(item => item.platform === "instagram");
       const newInstagramPost = next === "instagram" && mode === "reel" && destination?.publishReady && destination.connectionRevision && !savedJobs.some(item => item.platform === "instagram" && !item.kind);
       if (next === "instagram" && mode === "story" && destination?.publishReady && destination.connectionRevision) {
-        await loadStoryCapability(destination, version, abort, false);
+        await loadStoryCapability(destination, version, abort);
       }
       if (newInstagramPost && destination) {
         // Independent read-only checks start together. Eligible video-based
@@ -302,18 +362,18 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
         await Promise.all([
           loadPostingDefaults(destination, version, abort),
           preferInstagramMusic ? loadAudio(destination, version) : Promise.resolve(),
-          loadStoryCapability(destination, version, abort, !existingStory),
+          loadStoryCapability(destination, version, abort),
         ]);
       }
     } catch (cause) { if (epoch.current === version && !abort.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not check uploading setup."); }
     finally { if (epoch.current === version) setLoading(false); }
   }
-  async function loadStoryCapability(destination: ChannelStatus, version: number, abort: AbortController, allowCompanion = true) {
+  async function loadStoryCapability(destination: ChannelStatus, version: number, abort: AbortController) {
     try {
       const response = await fetch(`${endpoint}?check=story&connectionRevision=${encodeURIComponent(destination.connectionRevision!)}`, { cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(25000)]) });
       const data = await response.json();
       if (!response.ok) throw new Error("Story capability could not be checked.");
-      if (epoch.current === version && !abort.signal.aborted) { setStoryCapability(data.story); setIncludeStory(allowCompanion && data.story?.ready === true); setConfirmed(false); }
+      if (epoch.current === version && !abort.signal.aborted) { setStoryCapability(data.story); setConfirmed(false); }
     } catch { if (epoch.current === version && !abort.signal.aborted) setStoryCapability({ ready: false, reason: "Story capability could not be verified. You can post this Reel normally and add a Story manually." }); }
   }
   async function loadPostingDefaults(destination: ChannelStatus, version: number, abort: AbortController) {
@@ -449,7 +509,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
         body: JSON.stringify(createStory ? { action: "create-story", confirm: true, connectionRevision: channel?.connectionRevision, ...(makeStandalone ? { jobId: job!.id } : {}) } : revise ? { action: "revise", jobId: job!.id, confirm: true, caption, automaticTags: true } : job ? { action: job.kind === "story" ? "continue-story" : "continue", jobId: job.id, confirm: true } : {
           action: "create", platform, title, caption, privacy: platform === "youtube" ? privacy : "public", madeForKids,
           connectionRevision: channel?.connectionRevision, confirm: true,
-          ...(platform === "instagram" ? { companionStory: includeStory && storyCapability?.ready === true, ...(selectedLocation ? { location: { id: selectedLocation.id } } : {}),
+          ...(platform === "instagram" ? { companionStory: addStory, ...(selectedLocation ? { location: { id: selectedLocation.id } } : {}),
             automaticTags: true,
             ...(selectedAudio ? { audio: { audio_id: selectedAudio.audio_id, audio_volume: 100, video_volume: 1 } } : {}) } : {}),
         }),
@@ -457,7 +517,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not submit the upload.");
       if (epoch.current === version) {
-        setJobs(current => data.job.kind === "story" && !data.job.standaloneStory ? current.map(item => item.platform === "instagram" && !item.kind ? { ...item, companionStory: data.job } : item) : [...current.filter(item => item.id !== data.job.id).map(item => data.job.standaloneStory && item.companionStory?.id === data.job.id ? { ...item, companionStory: undefined, companionStoryApproved: undefined, companionStoryDetached: true } : item), data.job]); setConfirmed(false);
+        onAccepted(data.job); setConfirmed(false);
       }
     } catch (cause) {
       if (epoch.current === version) setError(cause instanceof Error && cause.name !== "TimeoutError" ? cause.message : "Submission response was interrupted. Check status before trying again; the saved request may already exist.");
@@ -489,13 +549,14 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
         body: JSON.stringify({ action: "confirm-story-business", connectionRevision: destination.connectionRevision, businessAccountConfirmed: true, confirm: true }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Business confirmation could not be saved.");
-      if (epoch.current === version) { setStoryCapability(data.story); setIncludeStory(instagramMode === "reel" && !savedStory && data.story?.ready === true); }
+      if (epoch.current === version) setStoryCapability(data.story);
     } catch (cause) { if (epoch.current === version) setError(cause instanceof Error ? cause.message : "Story setup could not be confirmed. Reel posting is still available."); }
     finally { inFlight.current = false; setBusy(false); }
   }
 
   const channel = channels.find(item => item.platform === platform);
-  const savedStory = jobs.find(item => item.platform === "instagram" && item.kind === "story") || jobs.find(item => item.platform === "instagram" && item.companionStory)?.companionStory;
+  const savedStory = instagramStoryJob(jobs);
+  const addStory = includeStory && !savedStory && storyCapability?.ready === true;
   const storyOnly = platform === "instagram" && instagramMode === "story";
   const platformJobs = storyOnly ? savedStory ? [savedStory] : [] : jobs.filter(item => item.platform === platform && !item.kind);
   const existing = platformJobs.length > 0;
@@ -519,25 +580,29 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
     if (revisableCaption === undefined) return;
     setCaption(revisableCaption); setConfirmedRevision("");
   }, [revisableJob?.id, revisableJob?.updatedAt, revisableCaption]);
-  return platform ? <section data-posting-destination aria-label={`${name} upload confirmation`} className="space-y-3 border-t border-[#bdc7a5] py-3">
+  return platform ? <section data-posting-destination hidden={!visible} aria-label={`${name} upload confirmation`} className="space-y-3 border-t border-[#bdc7a5] py-3">
       <h6 className="font-semibold">{name}{storyOnly ? " · Story only" : ""}</h6>
       {loading ? <StudioActivity label="Checking account and saved video…" /> : <>
-        <p className="text-xs">Destination: {channel?.name || "No connected account"}.{publishReady ? !channel?.connected && ` ${channel?.publishReason}` : ` ${!setupChecked ? "Uploading setup could not be verified. Check status before posting." : channel?.publishReason || "Connect this account in Settings."}`}</p>
+        {(!existing || !publishReady) && <p className="text-xs">Destination: {channel?.name || "No connected account"}.{publishReady ? !channel?.connected && ` ${channel?.publishReason}` : ` ${!setupChecked ? "Uploading setup could not be verified. Check status before posting." : channel?.publishReason || "Connect this account in Settings."}`}</p>}
         {!publishReady && <a className={`${button} underline`} href="/dashboard#settings">Open channel setup</a>}
-        {metadata && <p className="text-xs">{metadata.width} × {metadata.height} · {Math.round(metadata.duration)} seconds</p>}
+        {!existing && metadata && <p className="text-xs">{metadata.width} × {metadata.height} · {Math.round(metadata.duration)} seconds</p>}
         {output && output.target !== (platform === "facebook" ? "instagram" : platform) && <p className="text-xs">This video only has another platform’s render. Check its framing in the preview before posting.</p>}
         {platformJobs.map(job => <article key={job.id} className="space-y-2 py-2 text-xs">
-          <p className="font-semibold">{job.accountName} · {job.status.replaceAll("_", " ")}{!["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) && ` · ${Math.round(job.percent)}%`}</p>
-          {["QUEUED", "UPLOADING", "PROCESSING"].includes(job.status) ? <StudioActivity label={job.detail} percent={job.percent} /> : <p role="status">{job.detail}</p>}
+          {(job.status === "FAILED" || job.status === "NEEDS_CHECK") && <p role="status">{job.detail}</p>}
+          {job.remoteUrl && <a className="underline" href={job.remoteUrl} target="_blank" rel="noopener noreferrer">View uploaded video ↗</a>}
+          <details className="space-y-1">
+            <summary className="cursor-pointer font-semibold">Upload details</summary>
+          <p className="font-semibold">{job.accountName} · {job.status.replaceAll("_", " ")}</p>
+          {job.status !== "FAILED" && job.status !== "NEEDS_CHECK" && <p>{job.detail}</p>}
           {job.privacy && <p>Requested visibility: {job.privacy}</p>}
           {job.actualPrivacy && <p>Platform-confirmed visibility: {job.actualPrivacy}</p>}
           {job.platform === "instagram" && job.location && <p>Approved location tag: {job.location.name}. This is a posting location, not proof of where filming happened.</p>}
           {job.platform === "instagram" && job.audio && <p>Approved Instagram audio: {job.audio.title}{job.audio.display_artist ? ` · ${job.audio.display_artist}` : ""} · track volume {job.audio.audio_volume}% · saved video volume {job.audio.video_volume}%</p>}
           {job.platform === "instagram" && job.userTags?.length && !job.canRevise ? <p>{job.status === "COMPLETE" ? "Tags sent to Instagram" : "Requested Reel tags"}: {job.userTags.map(username => `@${username}`).join(", ")}</p> : null}
           {job.platform === "instagram" && job.omittedUserTags?.length ? <p>Meta rejected the optional tags; this request continued without them.</p> : null}
-          {job.remoteUrl && <a className="underline" href={job.remoteUrl} target="_blank" rel="noopener noreferrer">View uploaded video ↗</a>}
           {job.kind === "story" && job.remoteId && <p>Published Story ID: {job.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
           {job.platform === "instagram" && job.companionStoryDetached && <p>The matching Story was separately approved as Story only. This Reel will not create or repeat it.</p>}
+          </details>
           {storyOnly && job.canMakeStandalone ? <form className="space-y-2" onSubmit={event => { event.preventDefault(); void submit(job, false, true); }}>
             <p>This matching Story has not been sent, and its Reel failed before being accepted. Approve the same saved video as a Story only; the old request will be retained in private history.</p>
             <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={busy || !publishReady || storyCapability?.ready !== true} onChange={event => setConfirmed(event.target.checked)}/><span>I have reviewed this video, hold the required rights, and approve publishing this Story publicly to {job.accountName}, independently of the failed Reel.</span></label>
@@ -550,15 +615,16 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
               <p>Clicking Post approves publishing this Reel publicly{job.companionStoryApproved ? " and then its matching Story" : ""} to {job.accountName}, with the required rights.</p>
               <button type="submit" className={button} disabled={busy || !publishReady || !output || locationBusy || audioBusy || instagramTags > INSTAGRAM_HASHTAG_LIMIT}>{busy ? <StudioActivity label="Saving upload request…" /> : "Post to Instagram"}</button>
             </form> : job.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue this saved {job.kind === "story" ? "Story" : "upload"} to {job.accountName}, using its saved posting choices.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job)}>{job.kind === "story" ? job.standaloneStory ? "Continue Story only" : "Continue matching Story" : "Continue saved upload"}</button></>}
-          {job.platform === "instagram" && job.companionStoryApproved && <div className="space-y-2 border-t border-[#bdc7a5] pt-2" aria-label="Matching Story status">
-            {job.companionStory ? <><p className="font-semibold">Matching Story · {job.companionStory.status.replaceAll("_", " ")}{!["QUEUED", "UPLOADING", "PROCESSING"].includes(job.companionStory.status) && ` · ${Math.round(job.companionStory.percent)}%`}</p>{["QUEUED", "UPLOADING", "PROCESSING"].includes(job.companionStory.status) ? <StudioActivity label={job.companionStory.detail} percent={job.companionStory.percent} /> : <p role="status">{job.companionStory.detail}</p>}
+          {job.platform === "instagram" && job.companionStoryApproved && <details className="space-y-2" aria-label="Matching Story status">
+            <summary className="cursor-pointer font-semibold">Matching Story details</summary>
+            {job.companionStory ? <><p className="font-semibold">Matching Story · {job.companionStory.status.replaceAll("_", " ")}</p><p>{job.companionStory.detail}</p>
               {job.companionStory.remoteId && <p>Published Story ID: {job.companionStory.remoteId}. Instagram Stories normally expire after 24 hours.</p>}
               {job.companionStory.canContinue && <><label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || !setupChecked}/><span>Continue only the matching Story. The completed Reel will not be published again.</span></label><button type="button" className={button} disabled={busy || !confirmed || !setupChecked} onClick={() => void submit(job.companionStory)}>Continue matching Story</button></>}
             </> : <p>{savedStory?.standaloneStory ? "The Story now has a separate Story-only request. Check it with Post Story only; this Reel will not create another Story." : "Matching Story status is unavailable. Check the upload history; do not repost the completed Reel."}</p>}
-          </div>}
+          </details>}
         </article>)}
         {platform === "instagram" && storyCapability?.requiresBusinessConfirmation && <details className="text-xs"><summary className="cursor-pointer">Confirm Business account for Stories</summary><p className="mt-2">Check Instagram → Settings → Business tools and controls. Creator accounts need a type switch first. This only records your confirmation; it does not change Instagram or post anything.</p><label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={businessConfirmed} disabled={busy} onChange={event => setBusinessConfirmed(event.target.checked)}/><span>I checked: {channel?.name} is a Business account.</span></label><button type="button" className={`${button} mt-2`} disabled={busy || !businessConfirmed || !publishReady} onClick={() => void enableStories()}>Enable matching Stories</button></details>}
-        {existing ? <p className="text-xs">This output already has a saved {name}{storyOnly ? " Story" : ""} upload request. Check or continue that request instead of creating a duplicate.</p> : storyOnly ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
+        {existing ? null : storyOnly ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
           <p>Public Story only · saved soundtrack</p>
           {storyCapability?.ready !== true && (storyCapability ? <p>{storyCapability.reason}</p> : <StudioActivity label="Checking Story eligibility…" />)}
           <p className="text-xs">Post approves this reviewed video and the required rights.</p>
@@ -569,7 +635,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
             <p className="line-clamp-3 whitespace-pre-wrap break-words">{caption || "No caption saved. Add one in Posting details if needed."}</p>
             {!file.quality.postCopy?.trim() && !captionEdited && <p role="status">No analyzed caption is saved yet. Add your own text in Posting details if needed.</p>}
             {platform === "instagram" && <>
-              <p>Public · Location: {selectedLocation?.name || "none"} · Tags: {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "none"} · {includeStory ? "Reel + matching Story" : "Reel only"}</p>
+              <p>Public · Location: {selectedLocation?.name || "none"} · Tags: {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "none"} · {addStory ? "Reel + matching Story" : "Reel only"}</p>
               {audioBusy ? <StudioActivity label="Choosing music…" /> : <p>{selectedAudio ? `Music: ${selectedAudio.title}${selectedAudio.display_artist ? ` · ${selectedAudio.display_artist}` : ""}` : "Audio: saved video soundtrack"}</p>}
               {postingDefaultsBusy && <StudioActivity label="Checking saved posting choices…" />}
               {postingDefaultsReason && <p role="status">{postingDefaultsReason}</p>}
@@ -579,6 +645,15 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
           </div>
           {youtubeTextIssue && <p role="alert" className="text-xs text-red-800">{youtubeTextIssue} Open Posting details to correct it.</p>}
           {instagramTags > INSTAGRAM_HASHTAG_LIMIT && <p role="alert" className="text-xs text-red-800">{instagramTags}/{INSTAGRAM_HASHTAG_LIMIT} Instagram hashtags. Remove extra hashtags in Posting details.</p>}
+          {platform === "instagram" && <div className="space-y-1 text-xs">
+            <label className="flex items-center gap-2 font-semibold">
+              <input type="checkbox" checked={addStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }} />
+              <span>Also publish one matching Story <span className="font-normal">(optional)</span></span>
+            </label>
+            {!addStory && (savedStory ? <p>A Story is already saved for this video.</p> : storyCapability?.ready === false ? <p>{storyCapability.reason}</p> : !storyCapability ? <p>Checking Story eligibility…</p> : null)}
+          </div>}
+          <p className="text-xs">Post approves this video, posting text and required rights.</p>
+          <button type="submit" className={button} disabled={busy || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? <StudioActivity label={savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…"} /> : platform === "instagram" ? "Post to Instagram" : platform === "facebook" ? "Post to Facebook Page" : "Post to YouTube"}</button>
           <details data-posting-details className="space-y-3 text-xs">
             <summary className="cursor-pointer">Posting details · optional</summary>
           {metadata && <p>{platform === "facebook" ? "Saved video" : `Using the ${output?.target} render`}. No video is re-rendered for uploading.</p>}
@@ -628,10 +703,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
               : matchedSoundtrack(file) ? <p>Using the finished reel&apos;s {file.quality.musicRecording?.style === "quiet-instrumental" ? "quiet instrumental" : file.quality.musicRecording?.timing === "onset-v1" ? "matched instrumental" : "edited instrumental"}{file.quality.musicRecording?.title ? ` · ${file.quality.musicRecording.title}` : ""}. The preview, Instagram Reel and matching Story keep this same soundtrack.</p>
                 : <p>Keeping the finished video&apos;s narration or song; no replacement Instagram track is needed.</p>}
           </section>}
-          {platform === "instagram" && <div className="space-y-1 text-xs"><label className="flex items-start gap-2"><input type="checkbox" checked={includeStory} disabled={busy || Boolean(savedStory) || storyCapability?.ready !== true} onChange={event => { setIncludeStory(event.target.checked); setConfirmed(false); }}/><span>Also publish one matching Story after this Reel succeeds.</span></label><p>{savedStory ? "This output already has a saved Story request; a second Story will not be created." : storyCapability?.reason || "Automatic Stories need a confirmed Business account, publishing access and a saved video within Story limits. Meta makes the final eligibility check. Otherwise add it manually; Reel posting is unaffected."}</p></div>}
           </details>
-          <p className="text-xs">Post approves this video, posting text and required rights.</p>
-          <button type="submit" className={button} disabled={busy || !publishReady || !output || instagramTags > INSTAGRAM_HASHTAG_LIMIT || (platform === "instagram" && (postingDefaultsBusy || locationBusy || audioBusy || !instagramAudioReady)) || (platform === "youtube" && (!title.trim() || Boolean(youtubeTextIssue)))}>{busy ? <StudioActivity label={savingPostingDefaults ? "Remembering posting choices…" : "Saving upload request…"} /> : platform === "instagram" ? "Post to Instagram" : platform === "facebook" ? "Post to Facebook Page" : "Post to YouTube"}</button>
         </form>}
         <button type="button" className={button} disabled={busy} onClick={() => void open(platform, instagramMode)}>Check status</button>
       </>}
