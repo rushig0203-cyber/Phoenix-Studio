@@ -29,12 +29,18 @@ test('compact job names/date/progress stay visible while ETA, stage and errors r
   assert.doesNotMatch(cards, /<details[^>]*\bopen(?:\s|=|>)/);
 });
 
-test('Create uses short workflow cards without the removed editing essay or a fixed duration claim', () => {
-  const start = dashboard.indexOf('<section aria-label="Creation workflows"');
-  const end = dashboard.indexOf('</section>', start);
+test('Create uses three concise workspace links without the removed editing essay or a fixed duration claim', () => {
+  const start = dashboard.indexOf('<nav aria-label="Creation workflows"');
+  const end = dashboard.indexOf('</nav>', start);
   assert.ok(start >= 0 && end > start);
   const workflows = dashboard.slice(start, end);
-  for (const title of ['Clip a Video', 'Create a Video', 'Make a Reel']) assert.ok(workflows.includes(`>${title}</h2>`));
+  const links = [...workflows.matchAll(/<a href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)]
+    .map(match => [match[1], match[2].replace(/<[^>]*>/g, '').trim()]);
+  assert.deepEqual(links, [
+    ['#create', 'Make a Reel'],
+    ['#create?mode=clips', 'Clip a Video'],
+    ['#create?mode=video', 'Create a Video'],
+  ]);
   assert.doesNotMatch(workflows, /<p(?:\s|>)/);
   assert.doesNotMatch(dashboard, /40–45 second reel/);
 });

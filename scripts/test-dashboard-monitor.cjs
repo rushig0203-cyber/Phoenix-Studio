@@ -157,14 +157,14 @@ test('dashboard retains snapshots, shows one actionable offline banner, and Retr
 test('dashboard wakes idle polling immediately for saved caption work and marks hidden upload forms inactive', async t => {
   const h = harness(t); global.window.location.hash = '#create'; await h.flush();
   assert.equal([...h.timers.values()][0].delay, 15000);
-  h.button('Choose a video').props.onClick(); await h.flush();
+  global.window.location.hash = '#create?mode=clips'; await h.event('hashchange');
   const processor = () => nodes(h.tree, node => node.type?.name === 'SourceProcessor')[0];
   const identity = processor().type;
   assert.equal(processor().props.active, true);
   global.window.location.hash = '#settings'; await h.event('hashchange');
   assert.equal(processor().type, identity, 'Keep the mounted form and selected file rather than discarding user input');
   assert.equal(processor().props.active, false);
-  global.window.location.hash = '#create'; await h.event('hashchange');
+  global.window.location.hash = '#create?mode=clips'; await h.event('hashchange');
   assert.equal(processor().props.active, true);
   h.setFiles([{ ...h.savedVideo, quality: { postingAnalysis: { status: 'WAITING' } } }]); await h.event('focus');
   assert.equal([...h.timers.values()][0].delay, 3000, 'Pending captions keep the live monitor fast even after video completion');
@@ -260,7 +260,7 @@ test('empty active view says nothing is processing and long completed history mo
   h.button('Next').props.onClick(); await h.flush();
   assert.equal(cards().length, 8); assert.match(h.text, /Showing 9–16 of 23 saved jobs/);
   h.filter('Active · 0').choose(); await h.flush();
-  assert.equal(cards().length, 0); assert.match(h.text, /Nothing is processing or waiting right now/);
+  assert.equal(cards().length, 0); assert.match(h.text, /No active jobs/);
   assert.doesNotMatch(h.text, /Showing 9–16/); assert.equal(h.requests.length, 6);
 });
 
@@ -349,27 +349,29 @@ test('failed template retry dispatches the existing source job ID without reques
   assert.equal(writes.length, 1); assert.equal(writes[0].url, '/api/source-processing/run'); assert.deepEqual(JSON.parse(writes[0].body), { id: 'failed-template-job' });
 });
 
-test('Create has three short workflow titles without explanatory card paragraphs', async t => {
+test('Create has three dedicated workflow links without explanatory card paragraphs', async t => {
   const h = harness(t); global.window.location.hash = '#create'; await h.flush();
   const workflows = nodes(h.tree, node => node.props?.['aria-label'] === 'Creation workflows')[0];
-  assert.deepEqual(nodes(workflows, node => node.type === 'h2').map(text), ['Clip a Video', 'Create a Video', 'Make a Reel']);
+  assert.deepEqual(nodes(workflows, node => node.type === 'a').map(text), ['Make a Reel', 'Clip a Video', 'Create a Video']);
+  assert.deepEqual(nodes(workflows, node => node.type === 'a').map(node => node.props.href), ['#create', '#create?mode=clips', '#create?mode=video']);
   assert.equal(nodes(workflows, node => node.type === 'p').length, 0);
-  for (const label of ['Choose a video', 'Create a video', 'Find footage']) assert.ok(h.button(label));
+  assert.ok(h.button('Choose your own topic'));
 });
 
-for (const [label, componentName, acceptedMessage] of [
-  ['Choose a video', 'SourceProcessor', 'Source video queued. Follow preparation and rendering below.'],
-  ['Find footage', 'StockReels', 'Footage fixture accepted; rendering queued.'],
-  ['Create a video', 'AICreation', 'Creation fixture accepted; writing queued.'],
-]) test(`${componentName} acceptance stays on Create, closes its form and exposes Active progress below the creation controls`, async t => {
+for (const [workspaceHash, componentName, acceptedMessage] of [
+  ['#create?mode=clips', 'SourceProcessor', 'Video queued. Follow its progress below.'],
+  ['#create', 'StockReels', 'Footage fixture accepted; rendering queued.'],
+  ['#create?mode=video', 'AICreation', 'Creation fixture accepted; writing queued.'],
+]) test(`${componentName} acceptance closes its form and exposes Active progress in its creation workspace`, async t => {
   const h = harness(t); global.window.location.hash = '#create'; await h.flush();
   assert.ok(nodes(h.tree, node => node.props?.['aria-label'] === 'Jobs and progress')[0]);
   assert.equal(nodes(h.tree, node => node.props?.files)[0], undefined, 'Library remains a separate screen');
-  h.button(label).props.onClick(); await h.flush();
+  global.window.location.hash = workspaceHash; await h.event('hashchange');
+  if (componentName === 'StockReels') { h.button('Choose your own topic').props.onClick(); await h.flush(); }
   const workflow = nodes(h.tree, node => node.type?.name === componentName)[0]; assert.ok(workflow);
   h.setJobs([source('accepted-fixture', 'QUEUED')]);
   workflow.props.onStarted(acceptedMessage); await h.flush();
-  assert.equal(global.window.location.hash, '#create');
+  assert.equal(global.window.location.hash, workspaceHash);
   assert.equal(nodes(h.tree, node => node.type?.name === componentName).length, 0);
   assert.equal(nodes(h.tree, node => node.props?.['data-studio-screen'] === 'create')[0].props.hidden, false);
   assert.equal(h.filter('Active · 1').selected, true); assert.match(h.text, /Video accepted-fixture/);

@@ -299,5 +299,5 @@ test('an older posted output stays Generated with clear version wording and Post
   assert.deepEqual(h.titles(), ['Revised video']);
   assert.match(text(h.tree), /An earlier version was posted; this output is new or changed/);
   h.button('Posted · 0').props.onClick(); h.render();
-  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed Instagram, Facebook Page or YouTube posts yet/);
+  assert.deepEqual(h.titles(), []); assert.match(text(h.tree), /No confirmed posts yet\./);
 });
