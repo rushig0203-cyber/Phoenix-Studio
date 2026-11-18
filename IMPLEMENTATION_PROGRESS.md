@@ -1,5 +1,36 @@
 # Phoenix Studio implementation and verified releases
 
+## November 19 — compact publishing, optional Stories and channel insights
+
+- Instagram, Facebook Page and YouTube show independent upload state in one
+  strip. Active measured transfers display a ring and percentage. Processing,
+  completion and failures use explicit labels. Select a destination to review
+  details or recover a saved upload. Mobile places the strip above the caption
+  and editing tools. Existing final approval and separate saved choices remain.
+- An Instagram Reel starts without a companion Story. **Also publish one
+  matching Story** is visible before approval when eligible. The Story-only
+  action and the options of previously approved requests remain available.
+- Insights now uses the existing YouTube read grant for views, likes and comments
+  on confirmed Phoenix uploads. Live dashboard verification found three videos
+  with all three counts. Facebook presents counts separately. Rumble links to
+  the creator dashboard. Only comparable Instagram performance and video
+  feedback guide suggestions. Published edited copies contribute to their
+  original topic without counting multiple versions as independent examples.
+- Two artist-released CC0 recordings add quiet acoustic guitar and piano.
+  Calm or reflective visuals select quieter music, and detected dialogue keeps
+  the saved audio. Existing saved recordings retain their choices.
+- Source `1681665ec90f23adfbd96ba6008852ff25ad1a98` passed Windows run
+  `44401743935`, attempt 1: 1,749 Node checks, 58 Python checks,
+  lint, production build, 60 browser assertions across 16 screenshots,
+  audio mastering and export checks, and interrupted-job recovery. Both
+  Vercel builds passed. Browser proof included the narrower mobile controls
+  and simultaneous 92% Instagram, completed Facebook and processing YouTube.
+- Installed build `qMq6hxaQoa8j2cRWeUoa6` serves the dashboard with a healthy
+  manager and worker and a ready renderer. Guarded activation preserved
+  250 output MP4s, the review index/history, all 141 publication records and
+  the owner's local configuration. Verification did not publish a video.
+
+
 ## November 18 — installed compact Library covers and more flexible children's creation
 
 - Library covers use a frame about a third of the way into the selected saved

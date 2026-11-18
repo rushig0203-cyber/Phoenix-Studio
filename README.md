@@ -262,8 +262,8 @@ Library. Choose a destination, review the caption and posting options, then
 use its final Post or Upload action. **Close** collapses the controls.
 Instagram, Facebook Page and YouTube show separate icons and progress rings in
 one posting area. Select a platform to see its draft, recover an upload or open
-a completed post. New Instagram posts start as Reel only. Choose **Also post
-as a Story** before posting when you want both. Rumble keeps its assisted handoff
+a completed post. New Instagram posts start as Reel only. Choose **Also publish one
+matching Story** before posting when you want both. Rumble keeps its assisted handoff
 in the same posting area.
 
 - **Instagram:** verified professional-account access and publishing permission
