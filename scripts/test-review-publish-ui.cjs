@@ -365,7 +365,7 @@ test('final video review opens the saved destination directly and one Post appro
   assert.ok(h.control('Description and hashtags', 'textarea', details));
   assert.ok(h.control('Privacy', 'select', details));
   const summary = nodes(h.tree).find(node => node.props['data-posting-summary']);
-  assert.match(text(summary), /Saved review video.*private.*general audience/);
+  assert.match(text(summary), /Saved review video.*public.*general audience/);
   assert.match(text(summary), /Saved caption/);
   assert.equal(h.button('Post to YouTube').props.disabled, false);
   const form = h.form(); h.submit(form); h.submit(form); await h.flush();
@@ -942,7 +942,7 @@ test('one final YouTube Post sends reviewed title, copy, account revision, visib
   t.after(() => h.unmount());
   h.choose('Upload to YouTube'); await h.flush();
   assert.equal(h.control('YouTube title', 'input').props.value, 'A'.repeat(100));
-  assert.equal(h.control('Privacy', 'select').props.value, 'private');
+  assert.equal(h.control('Privacy', 'select').props.value, 'public');
   assert.equal(h.control('This video is made for kids', 'input').props.checked, true);
   assert.equal(h.control('Description and hashtags', 'textarea').props.value, 'Saved caption\n\n#fixture #video');
   h.change(h.control('YouTube title', 'input'), 'Reviewed title');
@@ -950,7 +950,7 @@ test('one final YouTube Post sends reviewed title, copy, account revision, visib
   await h.flush();
   assert.equal(h.confirmation(), undefined);
   assert.match(h.text, /Post approves this video, posting text and required rights/);
-  assert.match(h.text, /Reviewed title.*private.*made for kids/); assert.match(h.text, /Destination: Owned YouTube channel/);
+  assert.match(h.text, /Reviewed title.*public.*made for kids/); assert.match(h.text, /Destination: Owned YouTube channel/);
   assert.equal(h.posts.length, 0, 'Reviewing or editing alone does not upload');
   assert.equal(h.button('Post to YouTube').props.disabled, false);
   h.submit(); await h.flush();
@@ -958,7 +958,7 @@ test('one final YouTube Post sends reviewed title, copy, account revision, visib
   assert.equal(h.posts[0].headers['Content-Type'], 'application/json');
   assert.deepEqual(JSON.parse(h.posts[0].body), {
     action: 'create', platform: 'youtube', title: 'Reviewed title', caption: 'Reviewed description\n\n#approved',
-    privacy: 'private', madeForKids: true, connectionRevision: 'revision-youtube', confirm: true,
+    privacy: 'public', madeForKids: true, connectionRevision: 'revision-youtube', confirm: true,
   });
   assert.equal(h.form(), undefined, 'An accepted saved request replaces the creation form');
 });
@@ -981,6 +981,21 @@ test('Instagram Post is the final approval and sends public privacy and automati
     action: 'create', platform: 'instagram', title: 'Saved review video', caption: 'Approved Reel caption #fixture',
     privacy: 'public', madeForKids: false, connectionRevision: 'revision-instagram', confirm: true, companionStory: false, automaticTags: true,
   });
+});
+
+test('an explicit private YouTube choice survives opening another destination and is only sent on final Post', async t => {
+  const h = uiHarness({ post: () => response({ job: job() }) }); t.after(() => h.unmount());
+  h.choose('Upload to YouTube'); await h.flush();
+  assert.equal(h.control('Privacy', 'select').props.value, 'public');
+  h.change(h.control('Privacy', 'select'), 'private'); h.render();
+  h.choose('Post to Instagram'); await h.flush();
+  h.choose('Upload to YouTube'); await h.flush();
+  const youtube = h.panel('YouTube');
+  assert.equal(h.control('Privacy', 'select', youtube).props.value, 'private');
+  assert.equal(h.posts.length, 0);
+  h.submit(h.form(youtube)); await h.flush();
+  assert.equal(h.posts.length, 1);
+  assert.equal(JSON.parse(h.posts[0].body).privacy, 'private');
 });
 
 test('Instagram prefill takes five ranked tags from the saved bank without changing the twenty-tag YouTube description', async t => {

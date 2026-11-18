@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const Module = require("node:module");
 const childProcess = require("node:child_process");
+const http = require("node:http");
 const { test, beforeEach, after } = require("node:test");
 
 // Everything is isolated from the owner's media, vault and network. No provider request is real.
@@ -77,7 +78,7 @@ async function fixture(target = "youtube", size = 256 * 1024 + 3, stock = false)
   return { id, file };
 }
 async function consumeStream(options, expectedOffset = 0) {
-  assert.equal(options.duplex, "half"); assert.equal(options.redirect, "error"); assert.equal(options.cache, "no-store"); assert.ok(options.signal);
+  assert.equal(options.duplex, "half"); assert.equal(options.redirect, options.method === "PUT" ? "manual" : "error"); assert.equal(options.cache, "no-store"); assert.ok(options.signal);
   assert.equal(options.body.readableObjectMode, false, "The watermark must count bytes, not 64K video chunks");
   assert.equal(options.body.readableHighWaterMark, 64 * 1024);
   assert.ok(!Buffer.isBuffer(options.body), "The whole video must never be read into memory");
@@ -651,7 +652,7 @@ test("permission and connection revision failures stop before any provider actio
 test("YouTube streams with bounded backpressure and reports actual returned privacy", async () => {
   const { id } = await fixture("youtube", 4 * 1024 * 1024 + 3); let uploads = 0;
   global.fetch = async (url, options) => {
-    assert.equal(options.redirect, "error"); assert.equal(options.headers.Authorization, "Bearer fixture-secret-token");
+    assert.equal(options.redirect, options.method === "PUT" ? "manual" : "error"); assert.equal(options.headers.Authorization, "Bearer fixture-secret-token");
     if (options.method === "POST") { const metadata = JSON.parse(options.body); assert.equal(metadata.status.privacyStatus, "public"); assert.equal(metadata.status.selfDeclaredMadeForKids, false); return new Response(null, { headers: { Location: location } }); }
     if (!options.body) return new Response(null, { status: 308 });
     uploads++; options.body.read(0);
@@ -763,6 +764,80 @@ test("interrupted YouTube upload continues only after querying its existing sess
   const [status] = await publishing.listReviewPublishJobs(id); assert.equal(status.status, "COMPLETE"); assert.equal(status.actualPrivacy, undefined); assert.match(status.detail, /actual visibility was not returned/);
   assert.equal(initiation, 1); assert.equal(checks, 2); assert.equal(streams, 2);
 });
+async function loopbackUploadServer(t, reply) {
+  const requests = [];
+  const server = http.createServer(async (request, response) => {
+    try {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const received = { path: request.url, method: request.method, headers: request.headers, body: Buffer.concat(chunks) };
+      requests.push(received);
+      const result = reply(received, requests.length);
+      response.writeHead(result.status, result.headers || {}); response.end(result.body);
+    } catch (error) { response.destroy(error); }
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  return { requests, origin: `http://127.0.0.1:${server.address().port}` };
+}
+
+test("native HTTP YouTube 308 status and partial transfer resume without following poisoned Location", async t => {
+  const { id } = await fixture("youtube", 100); let initiations = 0;
+  const local = await loopbackUploadServer(t, (received, count) => {
+    if (received.path !== "/session") return { status: 500 };
+    if (count === 1) return { status: 308 };
+    if (count < 4) return { status: 308, headers: { Range: "bytes=0-49", Location: "/poison" }, body: "Resume Incomplete" };
+    return { status: 201, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "abcDEF123_-", status: { privacyStatus: "private" } }) };
+  });
+  global.fetch = async (url, options) => {
+    assert.equal(options.headers.Authorization, "Bearer fixture-secret-token");
+    if (options.method === "POST") {
+      initiations++; assert.equal(options.redirect, "error"); assert.equal(JSON.parse(options.body).status.privacyStatus, "public");
+      return new Response(null, { headers: { Location: location } });
+    }
+    assert.equal(String(url), location); assert.equal(options.method, "PUT");
+    return realFetch(`${local.origin}/session`, options);
+  };
+  const { job } = await publishing.prepareReviewPublication(id, settings("youtube", { privacy: "public" }));
+  await publishing.runReviewPublication(id, job.id);
+  const [partial] = await publishing.listReviewPublishJobs(id);
+  assert.equal(partial.status, "NEEDS_CHECK"); assert.equal(partial.bytesUploaded, 50); assert.equal(partial.canContinue, true);
+  assert.equal(local.requests.length, 2); assert.equal(sessions.get(job.id), location);
+  const duplicate = await publishing.prepareReviewPublication(id, settings("youtube", { privacy: "private" }));
+  assert.equal(duplicate.dispatch, false); assert.equal(duplicate.job.id, job.id); assert.equal(duplicate.job.privacy, "public");
+  const continued = await publishing.prepareReviewPublication(id, { action: "continue", jobId: job.id, confirm: true });
+  assert.equal(continued.dispatch, true); await publishing.runReviewPublication(id, job.id);
+  const [complete] = await publishing.listReviewPublishJobs(id);
+  assert.equal(complete.id, job.id); assert.equal(complete.status, "COMPLETE"); assert.equal(complete.percent, 100);
+  assert.equal(complete.privacy, "public"); assert.equal(complete.actualPrivacy, "private"); assert.match(complete.detail, /private visibility/);
+  assert.equal(initiations, 1); assert.equal(sessions.has(job.id), false);
+  assert.deepEqual(local.requests.map(item => [item.path, item.method, item.headers["content-range"], item.body.length]), [
+    ["/session", "PUT", "bytes */100", 0], ["/session", "PUT", "bytes 0-99/100", 100],
+    ["/session", "PUT", "bytes */100", 0], ["/session", "PUT", "bytes 50-99/100", 50],
+  ]);
+  assert.ok(local.requests.every(item => item.headers.authorization === "Bearer fixture-secret-token"));
+  assert.deepEqual(local.requests[3].body, Buffer.alloc(50, 7));
+});
+
+test("native HTTP YouTube non-308 redirects never follow Location or send video bytes", async t => {
+  for (const status of [301, 302, 303, 307]) {
+    const { id } = await fixture("youtube", 100); let initiations = 0;
+    const local = await loopbackUploadServer(t, () => ({ status, headers: { Location: "/poison" } }));
+    global.fetch = async (url, options) => {
+      if (options.method === "POST") {
+        initiations++; assert.equal(options.redirect, "error"); return new Response(null, { headers: { Location: location } });
+      }
+      assert.equal(String(url), location); assert.equal(options.method, "PUT");
+      return realFetch(`${local.origin}/session`, options);
+    };
+    const { job } = await publishing.prepareReviewPublication(id, settings()); await publishing.runReviewPublication(id, job.id);
+    const [saved] = await publishing.listReviewPublishJobs(id);
+    assert.equal(saved.status, "NEEDS_CHECK", `HTTP ${status} remains ambiguous`); assert.equal(saved.bytesUploaded, 0);
+    assert.match(saved.detail, /unexpected redirect/); assert.equal(saved.canContinue, true);
+    assert.equal(saved.privacy, "private"); assert.equal(sessions.get(job.id), location); assert.equal(initiations, 1);
+    assert.deepEqual(local.requests.map(item => [item.path, item.method, item.body.length]), [["/session", "PUT", 0]]);
+  }
+});
+
 test("mutation and invalid status ranges prevent resending saved video", async () => {
   const { id } = await fixture("youtube", 100);
   const { job } = await publishing.prepareReviewPublication(id, settings()); fs.appendFileSync(files.outputPath(id, "youtube"), Buffer.from([1]));

@@ -206,7 +206,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
   const [title, setTitle] = useState(file.title.slice(0, 100));
   const [caption, setCaption] = useState(reviewPostingText(file));
   const [captionEdited, setCaptionEdited] = useState(false);
-  const [privacy, setPrivacy] = useState<"private" | "unlisted" | "public">("private");
+  const [privacy, setPrivacy] = useState<"private" | "unlisted" | "public">("public");
   const [madeForKids, setMadeForKids] = useState(file.audience.startsWith("kids"));
   const videoRevision = JSON.stringify([file.id, file.status, file.trashedAt, file.updatedAt, file.outputs]);
   const latestVideoRevision = useRef(videoRevision);
@@ -274,7 +274,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
     setPlatform(next); setInstagramMode(next === "instagram" ? mode : "reel"); setConfirmed(false); setPostingDefaultsBusy(false); setLoading(true); setError(""); setNotice(""); setSetupChecked(false);
     setCaptionEdited(false);
     setTitle(file.title.slice(0, 100)); setCaption(reviewPostingText(file, next));
-    setPrivacy("private"); setMadeForKids(file.audience.startsWith("kids"));
+    setPrivacy("public"); setMadeForKids(file.audience.startsWith("kids"));
     setStoryCapability(null); setIncludeStory(false); setBusinessConfirmed(false);
     try {
       const results = await Promise.all(["/api/channels", endpoint].map(async url => {
@@ -592,7 +592,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
             <p>Automatic Reel tags · {automaticTags.length ? automaticTags.map(username => `@${username}`).join(", ") : "No matching profiles"}. If Meta rejects optional tags, publish without them.</p>
             {postingDefaultsReason && <p role="status">{postingDefaultsReason}</p>}
           </div>}
-          {platform === "youtube" && <><label className="block text-xs">Privacy<select className={input} value={privacy} onChange={event => { setPrivacy(event.target.value as typeof privacy); setConfirmed(false); }} disabled={busy}><option value="private">Private (recommended first upload)</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={madeForKids} onChange={event => { setMadeForKids(event.target.checked); setConfirmed(false); }} disabled={busy}/>This video is made for kids</label><p className="text-xs">YouTube may apply your channel&apos;s visibility settings. Phoenix reports the visibility returned by YouTube.</p></>}
+          {platform === "youtube" && <><label className="block text-xs">Privacy<select className={input} value={privacy} onChange={event => { setPrivacy(event.target.value as typeof privacy); setConfirmed(false); }} disabled={busy}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={madeForKids} onChange={event => { setMadeForKids(event.target.checked); setConfirmed(false); }} disabled={busy}/>This video is made for kids</label><p className="text-xs">YouTube may apply your channel&apos;s visibility settings. Phoenix reports the visibility returned by YouTube.</p></>}
           {platform === "instagram" && <p className="text-xs">Instagram will publish this Reel publicly when processing finishes. Local-file upload requires a Page-linked professional account with Facebook Login publishing permissions.</p>}
           {platform === "facebook" && <p className="text-xs">This Reel will be published publicly to the verified Facebook Page linked to your Instagram account. Only this Page receives the post.</p>}
           {platform === "instagram" && <details className="space-y-2 text-xs">

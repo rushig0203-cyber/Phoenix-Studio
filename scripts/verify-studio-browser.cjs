@@ -229,7 +229,9 @@ async function run() {
     await destinations.getByRole('button', { name: 'Facebook Page', exact: true }).click();
     await dialog.getByRole('region', { name: 'Facebook Page upload confirmation', exact: true }).waitFor();
     await destinations.getByRole('button', { name: 'YouTube', exact: true }).click();
-    await dialog.getByRole('region', { name: 'YouTube upload confirmation', exact: true }).waitFor();
+    const youtube = dialog.getByRole('region', { name: 'YouTube upload confirmation', exact: true });
+    await youtube.waitFor();
+    verify('New YouTube uploads visibly default to public before final approval', /\bpublic\b/.test(await youtube.locator('[data-posting-summary]').innerText()));
     verify('Instagram Facebook and YouTube remain in one posting area together', await dialog.locator('[data-posting-panel]').count() === 1
       && await dialog.locator('[data-posting-destinations] > [data-posting-destination]').count() === 3 && await instagram.isVisible());
     verify('Opening more platforms retains the Instagram caption and ready final action', await instagram.getByLabel('Caption and hashtags', { exact: true }).inputValue() === 'Owner-reviewed caption kept while choosing platforms.'

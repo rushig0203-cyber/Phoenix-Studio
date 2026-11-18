@@ -870,9 +870,17 @@ async function providerCall(url: string, options: RequestInit & { duplex?: "half
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), upload ? 30 * 60_000 : timeoutMs);
   try {
-    const response = await fetch(url, { ...options, cache: "no-store", redirect: "error", signal: controller.signal });
+    const target = new URL(url);
+    const youtubeResume = options.method === "PUT" && target.origin === "https://www.googleapis.com"
+      && target.pathname === "/upload/youtube/v3/videos" && target.searchParams.get("uploadType") === "resumable" && Boolean(target.searchParams.get("upload_id"));
+    // YouTube uses 308 for upload progress. Read it without following redirects.
+    const response = await fetch(url, { ...options, cache: "no-store", redirect: youtubeResume ? "manual" : "error", signal: controller.signal });
+    if (youtubeResume && response.status >= 300 && response.status < 400 && response.status !== 308) {
+      await response.body?.cancel().catch(() => undefined);
+      throw problem("YouTube returned an unexpected redirect. The saved upload was retained; no redirect was followed.", 502, true);
+    }
     let json: Record<string, unknown> = {};
-    if (readBody) json = await boundedJson(response.body, JSON_LIMIT, "The platform returned an unexpectedly large response; check the saved upload before continuing.", "The platform returned an unreadable response; check the saved upload before continuing.");
+    if (readBody && response.status !== 308) json = await boundedJson(response.body, JSON_LIMIT, "The platform returned an unexpectedly large response; check the saved upload before continuing.", "The platform returned an unreadable response; check the saved upload before continuing.");
     else await response.body?.cancel().catch(() => undefined);
     if (!response.ok && response.status !== 308) throw providerFailure(response.status, json);
     return { status: response.status, headers: response.headers, json };
