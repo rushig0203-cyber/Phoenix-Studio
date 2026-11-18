@@ -1,5 +1,35 @@
 # Phoenix Studio implementation and verified releases
 
+## November 18 — installed separate creation workspaces and shared posting progress
+
+- Create now has dedicated Make a Reel, Clip a Video and Create a Video
+  workspaces. Clipping exposes its two supported styles; creation opens six
+  registered suggestions. Visited forms retain their inputs and source files.
+  Delayed acceptance from a hidden form cannot navigate away from the active
+  workspace. Jobs remain under creation and Library stays separate.
+- Shared startup-style activity covers preparation, tool checks, channel checks,
+  uploads and posting. Measured progress shows its real percentage; unknown
+  progress stays indeterminate. Secondary explanations are collapsed while
+  actionable failures and final posting choices stay available.
+- Instagram, Facebook Page and YouTube now retain independent drafts, saved
+  requests and progress in one posting area. Opening another destination keeps
+  existing rows mounted. Closing is blocked during submission; existing final
+  approval, revision checks, durable queues and duplicate protection remain.
+- Source `852733bcd3ebce73fb0c57d123e0af4b7784fc97` passed Windows run
+  `44249560332`, attempt 2: all 1,721 Node tests, 58 Python checks, lint,
+  TypeScript/build, real speech/music/video exports, interrupted long-job recovery
+  and bounded worker checks. Twelve compiled browser screenshots passed 41
+  assertions, including all three posting rows and preservation of edited copy.
+  Browser verification used synthetic data with no external or mutating requests.
+  Both source Vercel deployments passed. Heavy work ran on the free public runner.
+- Selected and serving `.next-build-gh-44249560332-2`, build ID
+  `MphvNBB1VZAOUGcDZ3o0I`, returns dashboard HTTP 200 with healthy manager/worker
+  and a ready renderer. A transient file-replacement error during restart recovered
+  through startup; separate live and preservation verification confirmed the new
+  selection. All 241 output MP4s, the review index/history, all 125 publication
+  JSON records and the owner's exact `97AF40D8…` configuration hash were retained.
+  No failed owner job was retried and no video was published during testing.
+
 ## November 17 — installed YouTube renewal and completed personal Production setup
 
 - The owner approved moving Phoenix Studio Publisher to Google's In production

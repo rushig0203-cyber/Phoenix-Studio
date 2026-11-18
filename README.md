@@ -9,26 +9,31 @@ putting local files in a container would not move their storage or RAM elsewhere
 Open **Phoenix Studio** from the Desktop shortcut, then use
 [the dashboard](http://localhost:3000/dashboard).
 
-- **Choose a template:** start from six recommendations based on your saved
-  videos, confirmed posts and available feedback. One click finds related footage
-  and queues the existing automatic reel workflow. The exact finished video opens
-  for review; interrupted confirmations reuse their saved request rather than
-  creating a second job. **More templates** rotates the choices. The tools below
-  remain available under **Other tools**.
-- **Clip a Video:** stream a local episode to disk, select coverage or highlights,
-  and produce real source-video clips. Highlights favor a clear speech opening
-  and complete lines when reliable local transcripts are available. Find each
-  upload's clips in its own folder under **Library → Episode clips**.
-- **Create a Video:** describe an idea or choose a recommendation. Narrated stock
-  videos and children's 2D stories use separate rendering paths. Planning finishes
-  automatically. New narration keeps its natural speaking speed and ends when
-  the story or explanation does. New song exports use the complete recording
-  within the chosen format's upper limit. Review the finished video before posting.
-- **Make a Reel:** enter a short, concrete subject, select a starting video and let
-  Phoenix assemble related footage. Length follows usable content, not a padded
-  duration. Automatic recipes do not slow, loop or freeze shots to fill time.
-  Suggestions use your recent videos, confirmed posts and available feedback,
-  with related new subjects and a small mix of nearby ideas to explore.
+Create has three dedicated workspaces:
+
+- **[Make a Reel](http://localhost:3000/dashboard#create)** (`#create`): start
+  from six templates based on saved videos, confirmed posts and available
+  feedback. One click finds related footage and queues a reel; its exact finished
+  video opens for review. Interrupted confirmations reuse the saved request.
+  **More templates** rotates the choices. **Choose your own topic** opens a custom
+  footage search where you can select a reference video. Length follows usable
+  content, not a padded duration; automatic recipes do not slow, loop or freeze
+  shots to fill time.
+- **[Clip a Video](http://localhost:3000/dashboard#create?mode=clips)**
+  (`#create?mode=clips`): choose a real source file and one of two suggested
+  styles. **Full coverage** keeps the complete episode in natural clips;
+  **Best highlights** ranks moments after upload, favoring a clear speech opening
+  and complete lines when reliable local transcripts are available. Choosing a
+  style only changes the mode; **Process video** starts the upload and processing.
+  Find each upload's clips under **Library → Episode clips**.
+- **[Create a Video](http://localhost:3000/dashboard#create?mode=video)**
+  (`#create?mode=video`): start from six personalized ideas or describe your own.
+  Selecting an idea fills the form; **Create video** explicitly queues it.
+  **More ideas** checks the latest saved work. Narrated stock videos and children's
+  2D stories use separate rendering paths. Planning finishes automatically.
+  Narration keeps its natural speaking speed and ends with the story or
+  explanation. Song exports use the complete recording within the chosen format's
+  upper limit. Review the finished video before posting.
 - **Jobs** sits below creation. It retains progress, failures and explicit retry.
   **Library** has Generated, Posted and Episode clips views with previews,
   posting copy, native editing and recoverable Trash. Episode folders use the
@@ -38,12 +43,18 @@ Open **Phoenix Studio** from the Desktop shortcut, then use
   Other platforms show their actual connection or service-access limits.
 - **Settings** holds private writer/channel setup and content-quality feedback.
 
+Shared startup-style activity covers loading, tool checks, preparation, uploads
+and connection checks. Percentages appear when measured progress is available;
+secondary explanations stay in disclosures while errors and retries remain visible.
+
 The video review opens its posting controls directly at a verified available
 destination. Check the visible destination, posting text, visibility, soundtrack
 and optional tags/location, then use the final **Post** button. Less common edits
 stay in **Posting details**. Opening a review or changing destinations never posts
-a video. Existing upload requests retain their saved approval and duplicate
-protection; Rumble remains an assisted upload rather than an automatic connection.
+a video. Instagram, Facebook Page and YouTube can remain open together as
+independent rows in one posting area, each retaining its own draft and progress.
+Existing upload requests retain their saved approval and duplicate protection;
+Rumble remains an assisted upload rather than an automatic connection.
 
 Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Commons
 and NASA footage. Commons/NASA results require supported rights and source
@@ -166,8 +177,8 @@ details collapsed. Hourly housekeeping soft-archives local failed history after
 seven days; originals, finished videos and protected publishing journals stay saved.
 Locked stores wait for a later idle pass. Active or uncertain provider work is
 excluded from this cleanup.
-Create and Make Reel suggestions reconsider your saved work every 15 days, when
-reopened and when you choose **More ideas**. Confirmed posts, recent visual subjects,
+Create a Video and Make a Reel suggestions reconsider saved work every 15 days,
+when reopened and when you choose **More ideas** or **More templates**. Confirmed posts, recent visual subjects,
 structured story/visual feedback and fresh comparable Instagram results guide
 relevance; results do not invent trends or guaranteed growth. Recently posted
 subjects and the last 48 shown ideas are excluded when possible. Each concise
@@ -237,8 +248,9 @@ English scene text for open-ended prompts. The authored Hindi Krishna starter ha
 Use **Post / export** on a finished video to expand its posting controls in
 Library. Choose a destination, review the caption and posting options, then
 use its final Post or Upload action. **Close** collapses the controls.
-Facebook opens its own posting box alongside Instagram and Rumble. Each uploader
-keeps its own draft, approval and progress; selecting an open box preserves it.
+Instagram, Facebook Page and YouTube open independent rows within one shared
+posting area. Opening another destination keeps the existing rows, drafts and
+progress intact. Rumble keeps its assisted handoff in that same area.
 
 - **Instagram:** verified professional-account access and publishing permission
   are required. Reel/Story support, locations, people tags and catalogue audio
