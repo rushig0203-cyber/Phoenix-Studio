@@ -988,6 +988,8 @@ test('an explicit private YouTube choice survives opening another destination an
   h.choose('Upload to YouTube'); await h.flush();
   assert.equal(h.control('Privacy', 'select').props.value, 'public');
   h.change(h.control('Privacy', 'select'), 'private'); h.render();
+  h.click('Check status', h.panel('YouTube')); await h.flush();
+  assert.equal(h.control('Privacy', 'select', h.panel('YouTube')).props.value, 'private');
   h.choose('Post to Instagram'); await h.flush();
   h.choose('Upload to YouTube'); await h.flush();
   const youtube = h.panel('YouTube');

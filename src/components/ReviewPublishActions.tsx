@@ -274,7 +274,7 @@ function ReviewPublishPlatformPanel({ file, request, onBusyChange }: {
     setPlatform(next); setInstagramMode(next === "instagram" ? mode : "reel"); setConfirmed(false); setPostingDefaultsBusy(false); setLoading(true); setError(""); setNotice(""); setSetupChecked(false);
     setCaptionEdited(false);
     setTitle(file.title.slice(0, 100)); setCaption(reviewPostingText(file, next));
-    setPrivacy("public"); setMadeForKids(file.audience.startsWith("kids"));
+    setMadeForKids(file.audience.startsWith("kids"));
     setStoryCapability(null); setIncludeStory(false); setBusinessConfirmed(false);
     try {
       const results = await Promise.all(["/api/channels", endpoint].map(async url => {
