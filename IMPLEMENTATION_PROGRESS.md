@@ -1,5 +1,21 @@
 # Phoenix Studio implementation and verified releases
 
+## November 19 — artwork, fitted preview and template refresh
+
+- Create shows the aurora without a visible headline. Queue status sits beside
+  the creation actions. The sidebar and loading screen use the owner's blue
+  bird logo from the local artwork folder, with a letter mark on fresh installs.
+- Review displays the full video at its original proportions without a dark
+  stage behind it. A saved 720 × 1280 reel played at its original aspect ratio
+  in the running desktop app.
+- When recent history leaves too few fresh reel templates, Phoenix keeps the
+  fresh picks and fills the batch with older topics while maintaining variety.
+  Twelve consecutive live requests returned five or six distinct templates.
+- The production build and worker preflight passed on Next.js 16.4.6, along
+  with 46 focused tests. Desktop build `F-tjpPwObwZS91EWk7nLi` returned HTTP 200
+  with a healthy manager and worker and a ready renderer. Activation preserved
+  253 MP4 outputs, the review index, 144 publication records and local settings.
+
 ## November 19 — aurora dashboard redesign
 
 - The dashboard uses the owner's aurora JPEG in a short header with a navy
@@ -14,7 +30,7 @@
   `44481287707`, attempt 1. Verification covered 1,750 Node checks, 58 Python
   checks, lint, production build, export and recovery, and 66 browser
   assertions across 16 screenshots. Both source Vercel deployments passed.
-- Build `Bd2YtxaGhUUYavm2paZc6` is serving locally with a healthy manager and
+- Build `Bd2YtxaGhUUYavm2paZc6` served locally with a healthy manager and
   worker and a ready renderer. The live browser displayed the exact supplied
   artwork. Activation preserved 253 output MP4s, review index/history, all
   144 publication records and the owner's local configuration.

@@ -83,6 +83,33 @@ test('More topics avoids known last48 IDs and keeps animals/nature/movement besi
   assert.equal(footage.FOOTAGE_SUGGESTION_REFRESH_MS, 15 * 24 * hour);
 });
 
+test('a crowded saved history keeps five or six valid templates and places fresh choices before older suggestions', () => {
+  const pool = footage.stockTopicPool();
+  const country = /^(?:Switzerland|Norway|Iceland|Italy|Japan|Canada|Scotland|Austria|New Zealand|France|Germany|Portugal|Spain|Greece|Croatia|Slovenia|Finland|Sweden|Netherlands|Ireland|Nepal|Indonesia|Thailand|Australia|Chile)(?: |$)/;
+  // Leave countries, architecture and one craft unseen. Their existing variety
+  // caps can supply only four fresh choices, although the catalogue is valid.
+  const completed = pool.filter(idea => !country.test(idea.title)
+    && !['Architecture & design', 'Food & craft'].includes(idea.category));
+  const seen = ['2-0', '2-1', '2-2', '2-3', ...completed.slice(0, 44).map(idea => idea.id)];
+  assert.equal(seen.length, 48);
+  const profile = context(completed.map((idea, index) => record(index + 1, idea.title, { posted: true })));
+  const next = footage.personalizedStockSuggestions(profile, 48, seen);
+  assert.ok(next.ideas.length >= 5 && next.ideas.length <= 6, 'A valid sparse rotation still meets the QuickTemplates response contract');
+  assert.equal(new Set(next.ideas.map(idea => idea.id)).size, next.ideas.length);
+  assert.ok(new Set(next.ideas.map(idea => idea.category)).size >= 3);
+  const known = new Map(pool.map(idea => [idea.id, idea]));
+  for (const idea of next.ideas) {
+    assert.equal(idea.title, known.get(idea.id)?.title);
+    assert.equal(idea.query, known.get(idea.id)?.query);
+    assert.ok(idea.reason.trim() && idea.reason.length <= 220);
+    assert.ok(!completed.some(previous => previous.title === idea.title), 'Previously shown suggestions are reused before completed-video subjects');
+  }
+  const firstRecycled = next.ideas.findIndex(idea => seen.includes(idea.id));
+  assert.ok(firstRecycled >= 4, 'Keep all four fresh choices ahead of any recycled suggestion');
+  assert.equal(next.ideas[firstRecycled].id, seen[0], 'The oldest available shown craft is revisited first');
+  assert.ok(next.ideas.slice(firstRecycled).every(idea => seen.includes(idea.id)), 'Recycling cannot displace a fresh choice later in the batch');
+});
+
 test('v1 history is compatible, bounded and records only the batch actually displayed', () => {
   let raw = JSON.stringify({ version: 1, cursor: 6 });
   const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };

@@ -290,9 +290,18 @@ async function run() {
     verify('Exact completed output automatically opens from saved template request', await dialog.isVisible() && await page.evaluate(() => localStorage.getItem('phoenix-quick-template-v1')) === null);
     verify('Direct final Post is visible and enabled', await post.isVisible() && await post.isEnabled());
     verify('Final review has no intermediate Post / export action', await dialog.getByRole('button', { name: 'Post / export', exact: true }).count() === 0);
-    verify('Video preview uses the focused dark stage', await dialog.locator('video').evaluate(video => getComputedStyle(video.parentElement).backgroundColor) === 'rgb(21, 30, 36)');
+    const nativePreview = () => dialog.locator('video').evaluate(video => {
+      const bounds = video.getBoundingClientRect();
+      return { background: getComputedStyle(video.parentElement).backgroundColor, renderedRatio: bounds.width / bounds.height,
+        nativeRatio: video.videoWidth / video.videoHeight };
+    });
+    const desktopPreview = await nativePreview();
+    verify('Preview fits the complete frame without a dark stage', desktopPreview.background === 'rgba(0, 0, 0, 0)'
+      && Math.abs(desktopPreview.renderedRatio - desktopPreview.nativeRatio) < .02, desktopPreview);
     await capture('studio-final-review');
     await page.setViewportSize({ width: 390, height: 844 });
+    const mobilePreview = await nativePreview();
+    verify('Mobile preview preserves the source aspect ratio', Math.abs(mobilePreview.renderedRatio - mobilePreview.nativeRatio) < .02, mobilePreview);
     const strip = dialog.locator('[data-posting-status-strip]');
     const stripBounds = await strip.evaluate(element => { const bounds = element.getBoundingClientRect(); return { top: bounds.top, bottom: bounds.bottom, viewport: innerHeight }; });
     verify('Mobile posting strip is visible before scrolling', stripBounds.top >= 0 && stripBounds.bottom <= stripBounds.viewport, stripBounds);

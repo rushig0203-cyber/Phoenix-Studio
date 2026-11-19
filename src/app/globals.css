@@ -175,7 +175,6 @@ body section[aria-label^="Posting tools for"], body section[aria-label$="upload 
 .posting-platform:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 dialog[aria-label^="Preview:"] { border: 0; border-radius: 1.5rem; background: var(--card) !important; }
 dialog[aria-label^="Preview:"]::backdrop { background: #182129b8; }
-dialog[aria-label^="Preview:"] div:has(> video),
 body button[aria-label^="Preview"] { background: #151e24 !important; }
 dialog[aria-label^="Preview:"] > div:first-child { border-color: var(--border) !important; }
 body button[aria-label^="Preview"] { border-radius: 1.15rem; }

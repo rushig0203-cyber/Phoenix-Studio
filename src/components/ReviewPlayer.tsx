@@ -92,8 +92,8 @@ export default function ReviewPlayer({ file, onClose }: { file: ReviewFile; onCl
       <button type="button" autoFocus onClick={onClose} aria-label="Close video preview" className="rounded-lg border p-2"><X className="h-5 w-5" /></button>
     </div>
     <div className="md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-    <div className="bg-[#182015]">
-      <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto h-[min(34dvh,330px)] w-full object-contain md:h-[min(62dvh,620px)]"
+    <div className="min-w-0 px-3 pt-3 sm:px-5 md:p-5">
+      <video key={`${url}:${attempt}`} ref={video} aria-label={`Video preview: ${file.title}`} controls autoPlay playsInline preload="metadata" src={`${url}&preview=${attempt}`} className="mx-auto block h-auto max-h-[min(34dvh,330px)] w-auto max-w-full rounded-xl object-contain md:max-h-[min(62dvh,620px)]"
         onLoadedMetadata={restorePosition} onLoadedData={() => updatePhase("ready")} onPlaying={() => updatePhase("playing")} onWaiting={() => updatePhase("loading")} onCanPlay={() => updatePhase("ready")} onError={failed} />
     </div>
     <div className="min-w-0 space-y-3 p-3 sm:p-5">

@@ -155,7 +155,11 @@ export function personalizedStockSuggestions(context: SuggestionContext, cursor 
   const period = Math.floor(context.now / FOOTAGE_SUGGESTION_REFRESH_MS);
   const recent = context.recent.filter(record => record.workflow === "stock-reel" && !record.news).slice(0, 120);
   const blocked = new Set(recent.flatMap(record => [subjectKey(record.title), ...mentionedSubjects(`${record.title} ${record.observations.slice(0, 3).join(" ")}`)]));
-  for (const id of seen.slice(-48)) { const idea = byId.get(id); if (idea) blocked.add(subjectKey(idea.query)); }
+  const lastShown = new Map<string, number>();
+  seen.slice(-48).forEach((id, index) => {
+    const idea = byId.get(id);
+    if (idea) lastShown.set(subjectKey(idea.query), index);
+  });
   const feedback = new Map(context.feedback.slice(0, 120).map(record => [record.reviewId, record]));
   const rankingHistory = recent.some(record => record.posted)
     ? recent.filter(record => record.posted || feedback.get(record.reviewId)?.decision === "keep") : recent;
@@ -179,21 +183,32 @@ export function personalizedStockSuggestions(context: SuggestionContext, cursor 
   const hasProfile = scores.some(score => score > 0);
   const affinity = scores.map((score, group) => score + (group === 1 ? scores[0] * .35 : group === 2 ? scores[1] * .15 : 0)
     + [0.006, 0.005, 0.003, 0.004, 0.002, 0.001][group]);
-  const candidates = ideas.filter(idea => !blocked.has(subjectKey(idea.query)) && (!hasProfile || idea.title !== "Nature"))
-    .map(idea => ({ idea, group: ideaGroup.get(idea.id)!, tie: hash(`${period}:${safeCursor}:${idea.id}`) }))
+  const candidates = ideas.filter(idea => !hasProfile || idea.title !== "Nature")
+    .map(idea => ({ idea, subject: subjectKey(idea.query), group: ideaGroup.get(idea.id)!, tie: hash(`${period}:${safeCursor}:${idea.id}`) }))
     .sort((a, b) => (hasProfile ? affinity[b.group] - affinity[a.group] : 0) || a.tie - b.tie || a.idea.id.localeCompare(b.idea.id));
   const selected: typeof candidates = [], usedGroups = new Map<number, number>(), usedSubjects = new Set<string>();
-  const variety = Math.min(hasProfile ? 4 : 6, new Set(candidates.map(candidate => candidate.group)).size);
   let countryUsed = false;
-  while (selected.length < FOOTAGE_SUGGESTION_COUNT) {
-    const choice = candidates.find(candidate => !usedSubjects.has(subjectKey(candidate.idea.query))
-      && (usedGroups.get(candidate.group) || 0) < 2
-      && (usedGroups.size >= variety || !usedGroups.has(candidate.group))
-      && (!countryUsed || !subjectKey(candidate.idea.query).startsWith("country:")));
-    if (!choice) break;
-    selected.push(choice); usedSubjects.add(subjectKey(choice.idea.query));
-    usedGroups.set(choice.group, (usedGroups.get(choice.group) || 0) + 1);
-    countryUsed ||= subjectKey(choice.idea.query).startsWith("country:");
+  function pickFrom(available: typeof candidates) {
+    const variety = Math.min(hasProfile ? 4 : 6, new Set(available.map(candidate => candidate.group)).size);
+    while (selected.length < FOOTAGE_SUGGESTION_COUNT) {
+      const choice = available.find(candidate => !usedSubjects.has(candidate.subject)
+        && (usedGroups.get(candidate.group) || 0) < 2
+        && (usedGroups.size >= variety || !usedGroups.has(candidate.group))
+        && (!countryUsed || !candidate.subject.startsWith("country:")));
+      if (!choice) break;
+      selected.push(choice);
+      usedSubjects.add(choice.subject);
+      usedGroups.set(choice.group, (usedGroups.get(choice.group) || 0) + 1);
+      countryUsed ||= choice.subject.startsWith("country:");
+    }
+  }
+  const outsideRecentHistory = candidates.filter(candidate => !blocked.has(candidate.subject));
+  pickFrom(outsideRecentHistory.filter(candidate => !lastShown.has(candidate.subject)));
+  if (selected.length < FOOTAGE_SUGGESTION_COUNT - 1) {
+    // Keep fresh choices and revisit the oldest suggestions when the rotation runs low.
+    const byLastShown = [...candidates].sort((a, b) => (lastShown.get(a.subject) ?? -1) - (lastShown.get(b.subject) ?? -1));
+    pickFrom(byLastShown.filter(candidate => !blocked.has(candidate.subject)));
+    if (selected.length < FOOTAGE_SUGGESTION_COUNT - 1) pickFrom(byLastShown);
   }
   const exploration = ["A fresh wildlife subject with one consistent setting.", "Explore a different natural setting and visual thread.", "A new place to explore with source-supported footage.", "Follow one journey or outdoor activity to its natural ending.", "A visual change of pace using related buildings and details.", "Try one clear hands-on process and its finished result."];
   return { ideas: selected.map(({ idea, group }) => ({ ...idea,

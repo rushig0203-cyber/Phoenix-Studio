@@ -43,8 +43,8 @@ test('native fields, placeholders and keyboard focus remain visible on light sur
 });
 
 test('selected navigation, brand mark and warning/error messages remain readable', () => {
-  for (const selector of ['.brandMark', '.navLink[aria-current="page"]']) {
-    const read = property => declaration(studio, rule => rule === selector, property);
+  for (const [source, selector] of [[css, '.studio-brand-mark'], [studio, '.navLink[aria-current="page"]']]) {
+    const read = property => declaration(source, rule => rule === selector, property);
     contrast(read('color'), read('background'), 4.5, selector);
   }
   for (const [backgroundClass, foregroundClass] of [['bg-amber-100', 'text-amber-900'], ['bg-red-100', 'text-red-700'], ['bg-green-100', 'text-[#245b2e]']]) {
