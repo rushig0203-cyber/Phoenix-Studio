@@ -51,9 +51,9 @@ function Poster({ file, onPlay }: { file: ReviewFile; onPlay: () => void }) {
     document.addEventListener("visibilitychange", retry);
     return () => { window.clearTimeout(timer); document.removeEventListener("visibilitychange", retry); };
   }, [failed, attempt, identity]);
-  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className={`group relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white ${portrait ? "mx-auto max-w-[9rem]" : "max-w-lg"}`} style={{ aspectRatio: validDimensions ? `${output.width} / ${output.height}` : "16 / 9" }}>
+  return <button type="button" onClick={onPlay} aria-label={`Preview ${file.title}`} className={`group relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-[#26331f] text-white ${portrait ? "mx-auto max-w-[9rem]" : "mx-auto max-w-lg"}`} style={{ aspectRatio: validDimensions ? `${output.width} / ${output.height}` : "16 / 9" }}>
     {!failed ? <Image unoptimized src={`/api/review-files/${file.id}/poster?target=${reviewTarget(file)}&v=${encodeURIComponent(file.updatedAt)}&attempt=${attempt}&policy=${REVIEW_POSTER_POLICY}`} alt="" fill sizes={portrait ? "144px" : "(max-width: 767px) calc(100vw - 40px), 384px"} className="object-contain" loading="lazy" onError={() => setFailed(true)} /> : null}
-    <span className={`flex items-center gap-2 rounded-full bg-black/65 text-xs font-semibold transition group-hover:bg-black/85 ${failed ? "relative px-4 py-2" : "absolute bottom-3 right-3 p-2.5"}`}><Play className="h-4 w-4" /><span className={failed ? "" : "sr-only"}>{failed ? "Open video preview" : "Play preview"}</span></span>
+    <span className={`flex items-center gap-2 rounded-full bg-black/65 text-xs font-semibold transition group-hover:bg-black/85 ${failed ? "relative px-4 py-2" : "absolute bottom-2.5 right-2.5 p-2.5"}`}><Play className="h-4 w-4" /><span className={failed ? "" : "sr-only"}>{failed ? "Open video preview" : "Play preview"}</span></span>
   </button>;
 }
 
@@ -160,11 +160,11 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
           </div>
         </details>
       </div>
-      <div className="flex flex-wrap gap-4 text-sm font-semibold"><button type="button" onClick={() => void shortcut()} className="inline-flex items-center gap-1"><FolderOpen className="h-4 w-4" />Desktop shortcut</button><button type="button" aria-pressed={trashOpen} onClick={() => { if (!trashOpen) void loadTrash(); setTrashOpen(value => !value); setQuery(""); setFilter("all"); setPage(1); setPreviewId(null); }} className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 ${trashOpen ? "bg-[#e8edd7]" : ""}`}><Trash2 className="h-4 w-4" />{trashOpen ? "Back to videos" : "Trash"}</button></div>
+      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold"><button type="button" onClick={() => void shortcut()} className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#cbd6dc] px-3 hover:bg-[#ebf1f3]"><FolderOpen className="h-4 w-4" />Desktop shortcut</button><button type="button" aria-pressed={trashOpen} onClick={() => { if (!trashOpen) void loadTrash(); setTrashOpen(value => !value); setQuery(""); setFilter("all"); setPage(1); setPreviewId(null); }} className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#cbd6dc] px-3 hover:bg-[#ebf1f3] ${trashOpen ? "bg-[#dde7e8]" : ""}`}><Trash2 className="h-4 w-4" />{trashOpen ? "Back to videos" : "Trash"}</button></div>
     </div>
     {!trashOpen ? <>
       <nav aria-label="Library views" className="mt-4 flex flex-wrap gap-2">
-        {(["generated", "posted", "episodes"] as const).map(tab => <button key={tab} type="button" aria-pressed={view === tab} onClick={() => { setView(tab); openFolder(null); }} className={`rounded-full border border-[#bdc7a5] px-4 py-2 text-sm font-semibold ${view === tab ? "bg-[#394a2a] text-white" : "bg-white text-[#394a2a]"}`}>{viewNames[tab]} · {viewCounts[tab]}</button>)}
+        {(["generated", "posted", "episodes"] as const).map(tab => <button key={tab} type="button" aria-pressed={view === tab} onClick={() => { setView(tab); openFolder(null); }} className={`min-h-10 rounded-full border border-[#cbd6dc] px-4 py-2 text-sm font-semibold ${view === tab ? "bg-primary text-primary-foreground" : "bg-white text-[#315264] hover:bg-[#ebf1f3]"}`}>{viewNames[tab]} · {viewCounts[tab]}</button>)}
       </nav>
     </> : null}
     <ReviewStorageSummary />
@@ -174,8 +174,8 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
       <h3 className="mt-2 break-words text-xl font-semibold">{openEpisode.title}</h3>
     </div> : null}
     <div className="mt-4 flex flex-wrap gap-3">
-      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#bdc7a5] bg-white px-3"><Search className="h-4 w-4 shrink-0" /><input aria-label={showFolders ? "Search episode folders" : "Search videos"} type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder={showFolders ? "Search episode or clip titles" : "Search titles or hashtags"} className="w-full min-w-0 bg-transparent py-2.5 text-sm outline-none" /></label>
-      {!episodeView ? <select aria-label="Video category" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-sm"><option value="all">All video types</option>{Object.entries(categoryNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select> : null}
+      <label className="flex min-w-0 flex-[1_1_14rem] items-center gap-2 rounded-xl border border-[#cbd6dc] bg-white px-3 text-[#315264] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#315f7b]"><Search aria-hidden="true" className="h-4 w-4 shrink-0" /><input aria-label={showFolders ? "Search episode folders" : "Search videos"} type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder={showFolders ? "Search episode or clip titles" : "Search titles or hashtags"} className="w-full min-w-0 bg-transparent py-2.5 text-sm outline-none" /></label>
+      {!episodeView ? <select aria-label="Video category" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }} className="min-h-10 rounded-xl border border-[#cbd6dc] bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315f7b]"><option value="all">All video types</option>{Object.entries(categoryNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select> : null}
       {filtered ? <button type="button" onClick={() => { setQuery(""); setFilter("all"); setPage(1); }} className="rounded-lg border border-[#bdc7a5] px-3 py-2 text-sm">Clear filters</button> : null}
     </div>
     {resultCount ? <p className="mt-3 text-xs text-[#687657]">Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, resultCount)} of {resultCount}{filtered ? " matching" : ""} {showFolders ? "folders" : episodeView ? "clips" : "videos"}.</p> : null}
@@ -183,24 +183,29 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
     {error ? <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
     {!resultCount ? loading || trashLoading ? <StudioActivity label="Loading videos…" /> : <p className="mt-5 text-sm text-[#687657]">{filtered ? showFolders ? "No episode folders match this search." : "No videos match these filters. Clear filters to see videos in this view." : trashOpen ? "Trash is empty." : episodeView ? "No episode clips yet. Process an uploaded video to create a folder here." : view === "posted" ? "No confirmed posts yet." : posted.length ? "Open Posted to find your posted videos." : episodes.size ? "Open Episode clips to find your clips." : "No finished videos yet."}</p> : showFolders ? <ul className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {folders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(([id, folder]) => <li key={id}>
-        <button type="button" onClick={() => openFolder(id)} className="flex w-full items-center gap-3 rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-4 text-left hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-[#394a2a]">
-          <FolderOpen aria-hidden="true" className="h-5 w-5 shrink-0 text-[#687657]" />
+        <button type="button" onClick={() => openFolder(id)} className="flex w-full items-center gap-3 rounded-xl border border-[#d3dfe3] bg-[#f3f6f6] p-4 text-left hover:bg-[#e7eff1] focus-visible:outline-2 focus-visible:outline-[#315f7b]">
+          <FolderOpen aria-hidden="true" className="h-5 w-5 shrink-0 text-[#315f7b]" />
           <span className="min-w-0 break-words text-sm font-semibold">{folder.title}<span className="block text-xs font-normal text-[#687657]">{folder.clips.length} {folder.clips.length === 1 ? "clip" : "clips"}</span></span>
         </button>
       </li>)}
     </ul> : <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {displayed.map(file => {
         const output = file.outputs[reviewTarget(file)];
+        const format = file.delivery?.aspect || file.processing?.format || "Original";
+        const mediaInfo = [seconds(output?.duration), format].filter(Boolean).join(" · ");
         return <article key={file.id} className="review-library-card flex min-w-0 flex-col rounded-xl border border-[#d5ddbe] bg-[#fafbf3] p-3">
-          {!trashOpen ? <Poster file={file} onPlay={() => setPreviewId(file.id)} /> : null}
-          <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold text-[#687657]"><span>{categoryNames[category(file)]}</span><span>{seconds(output?.duration)} · {file.delivery?.aspect || file.processing?.format || "Original"}</span></div>
-          <h3 className="mt-2 text-base font-semibold leading-snug">{file.title}</h3>
+          {!trashOpen ? <div className="grid min-h-40 min-w-0 place-items-center rounded-2xl border border-[#d8e2e6] bg-[#e9eff1] p-2.5 sm:min-h-[17.5rem]"><Poster file={file} onPlay={() => setPreviewId(file.id)} /></div> : null}
+          <h3 className="mt-3 break-words text-base font-semibold leading-snug text-[#233743]">{file.title}</h3>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#52616a]">
+            <span className="rounded-full bg-[#e8eef0] px-2 py-0.5 font-medium text-[#315264]">{categoryNames[category(file)]}</span>
+            <span className="tabular-nums">{mediaInfo}</span>
+          </div>
           {file.publication?.status === "POSTED" && file.publication.postedTo.length ? <p className="mt-2 text-xs font-semibold text-[#394a2a]">Posted to {file.publication.postedTo.map((post, index) => <span key={post.platform}>{index ? " · " : ""}{post.remoteUrl ? <a href={post.remoteUrl} target="_blank" rel="noreferrer" className="underline">{post.platform === "instagram" ? "Instagram" : post.platform === "facebook" ? "Facebook Page" : "YouTube"} ↗</a> : post.platform === "instagram" ? "Instagram" : post.platform === "facebook" ? "Facebook Page" : "YouTube"}</span>)}</p> : file.publication?.previouslyPostedTo?.length ? <p className="mt-2 text-xs text-amber-800">An earlier version was posted; this output is new or changed.</p> : null}
           {file.publication?.inspectionIssue ? <p className="mt-2 text-xs text-amber-800">Posting history could not be confirmed. Check the channel before posting again.</p> : null}
           {file.series ? <p className="mt-1 text-xs text-[#687657]">Part {file.series.episodeNumber} of {file.series.episodeCount}</p> : null}
           {file.monetizationReview?.status === "NEEDS_CHANGES" || file.audience.startsWith("kids") ? <p className="mt-2 text-xs text-[#a06b29]">{file.monetizationReview?.status === "NEEDS_CHANGES" ? "Needs changes" : ""}{file.audience.startsWith("kids") ? `${file.monetizationReview?.status === "NEEDS_CHANGES" ? " · " : ""}Made for kids` : ""}</p> : null}
           {!trashOpen ? <>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><Link href={`/dashboard/edit/${file.id}`} className="rounded-lg bg-[#394a2a] px-3 py-2 text-white">Edit video</Link>{file.publication?.status === "POSTED" && file.publication.postedTo.length > 0 ? <a href={`#insights?review=${encodeURIComponent(file.id)}`} aria-label={`Insights for ${file.title}`} className="rounded-lg border border-[#bdc7a5] px-3 py-2">Insights</a> : null}</div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><Link href={`/dashboard/edit/${file.id}`} className="inline-flex min-h-9 items-center rounded-full bg-primary px-3 py-2 text-primary-foreground">Edit video</Link>{file.publication?.status === "POSTED" && file.publication.postedTo.length > 0 ? <a href={`#insights?review=${encodeURIComponent(file.id)}`} aria-label={`Insights for ${file.title}`} className="inline-flex min-h-9 items-center rounded-full border border-[#cbd6dc] px-3 py-2 text-[#315264] hover:bg-[#ebf1f3]">Insights</a> : null}</div>
             {file.publication?.status === "POSTED" ? <details className="mt-3 text-xs"><summary className="cursor-pointer font-semibold">Posting tools</summary><PostingActions file={file} /></details> : <PostingActions file={file} />}
             {stockPostingCredits(file).length ? <details className="mt-3 text-xs text-[#526044]"><summary className="cursor-pointer font-semibold">Required footage credits</summary><p className="mt-2">Include these credits whenever you upload the downloaded video. Phoenix includes them in its posting copy.</p>{stockPostingCredits(file).map(credit => <p key={credit} className="mt-2 break-words">{credit}</p>)}</details> : null}
             <details className="mt-3 border-t border-[#dbe1cc] pt-3 text-xs text-[#526044]"><summary className="cursor-pointer font-semibold">Posting details & quality notes</summary><div className="mt-3 space-y-3 leading-5">
@@ -214,7 +219,7 @@ export default function ReviewLibrary({ files, loading, onRefresh }: { files: Re
               {!footageReview(file) ? <Link href={`/dashboard/manager?review=${file.id}`} className="block font-bold underline">Rate this video / guide the manager</Link> : null}
             </div></details>
           </> : null}
-          <div className="mt-auto flex justify-end pt-3"><button type="button" disabled={busy !== null} aria-label={`${trashOpen ? "Restore" : "Move to Trash"}: ${file.title}`} onClick={() => void move(file, trashOpen)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8b4a32] disabled:opacity-50">{trashOpen ? <RotateCcw className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}{busy === file.id ? "Saving…" : trashOpen ? "Restore video" : "Move to Trash"}</button></div>
+          <div className="mt-auto flex justify-end pt-3"><button type="button" disabled={busy !== null} aria-label={`${trashOpen ? "Restore" : "Move to Trash"}: ${file.title}`} onClick={() => void move(file, trashOpen)} className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2 text-xs font-semibold text-[#8b4a32] hover:bg-[#f4e9e2] disabled:opacity-50">{trashOpen ? <RotateCcw className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}{busy === file.id ? "Saving…" : trashOpen ? "Restore video" : "Move to Trash"}</button></div>
         </article>;
       })}
     </div>}

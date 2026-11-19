@@ -364,6 +364,10 @@ export default function DashboardClient() {
   const activeCount = queue.counts.active;
   const failedCount = queue.counts.failed;
   const openingStudio = loading && !health && !monitorError;
+  const queueState = openingStudio ? "loading" : activeCount ? "active" : failedCount ? "attention" : "idle";
+  const queueLabel = openingStudio ? "Opening studio…" : activeCount
+    ? `${activeCount} in progress${failedCount ? ` · ${failedCount} need attention` : ""}`
+    : failedCount ? `${failedCount} need attention` : "Queue is clear";
   const sections = [
     { id: "create" as const, label: "Create", icon: Plus },
     { id: "library" as const, label: "Library", icon: FolderOpen },
@@ -378,9 +382,9 @@ export default function DashboardClient() {
         <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`${styles.navLink} flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
       </aside>
       <main className={`${styles.main} mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12`}>
-        <header className={`${styles.header} flex flex-wrap items-start justify-between gap-4`}>
-          <div><h1 className={`${styles.heading} font-semibold`}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className="mt-2 text-sm leading-6 text-[#687657]">{pageCopy[section][1]}</p> : null}</div>
-          <a href="#jobs" className={`${styles.queueBadge} flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium`}><span className={`h-2 w-2 rounded-full ${activeCount ? "bg-[#708a43]" : "bg-[#a8b395]"}`} />{openingStudio ? "Opening studio…" : activeCount ? `${activeCount} in progress` : failedCount ? `${failedCount} need attention` : "Queue is clear"}</a>
+        <header className={styles.header} data-studio-hero={section}>
+          <div className={styles.heroCopy}><h1 className={styles.heading}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className={styles.heroSubtitle}>{pageCopy[section][1]}</p> : null}</div>
+          <a href="#jobs" className={styles.queueBadge} data-queue-state={queueState}><span aria-hidden="true" className={styles.queueDot} />{queueLabel}</a>
         </header>
         {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
           <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>

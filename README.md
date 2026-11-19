@@ -162,8 +162,12 @@ visual observations and choose relevant profiles from the existing checked pool.
 Each video's identity varies the combination while repeat approval and saved
 upload requests retain their tags. Instagram still decides tagging eligibility;
 the posting status distinguishes requested tags from tags sent.
-The dashboard uses warm cream surfaces, soft blue accents and navy text,
-readable text and visible keyboard focus. Insights keeps each platform separate.
+The dashboard pairs a navy navigation rail and an aurora header with a cream
+workspace. Create actions fit on one row on phones, and the queue status links
+to Jobs. An optional locally supplied portrait JPEG with its horizon on the
+right edge can be placed at `storage/ui/studio-wallpaper.jpg` (maximum 512 KiB).
+The image stays on this PC. Hosted or fresh installations use the navy fallback.
+Insights keeps each platform separate.
 Instagram provides measured results and manager guidance. Facebook refreshes
 basic Page Reel counts using the existing Page connection. YouTube refreshes
 views, likes and comments for up to 25 confirmed Phoenix uploads using the

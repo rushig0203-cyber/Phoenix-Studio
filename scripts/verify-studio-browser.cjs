@@ -87,6 +87,8 @@ async function run() {
       assert.ok(Date.now() < deadline, `Next did not become ready: ${serverLog}`);
       await new Promise(resolve => setTimeout(resolve, 250));
     }
+    const fallback = await fetch(origin + '/api/studio-wallpaper', { signal: AbortSignal.timeout(5000) });
+    verify('A fresh installation has a valid empty wallpaper response', fallback.status === 204);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const stylesheetUrls = new Set();
@@ -105,6 +107,7 @@ async function run() {
       if (url.pathname === '/api/review-files') return json(route, pendingTemplate ? [] : [file]);
       if (url.pathname === '/api/source-processing') return json(route, { preflight: { ready: true, summary: 'Synthetic video tools ready', dependencies: { ffmpeg: true, ffprobe: true, python: true, fasterWhisper: true }, details: {}, firstModelDownloadRequired: false, whisperModel: { message: '' } }, jobs: pendingTemplate ? [{ id: request.jobId, title: request.title, status: 'PROCESSING', progress: 37, stage: 'Preparing the next scene', createdAt: date }] : [] });
       if (['/api/generations', '/api/review-edits', '/api/creation-drafts'].includes(url.pathname)) return json(route, []);
+      if (url.pathname === '/api/studio-wallpaper') return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === '/api/studio-health') return json(route, { build: directory, worker: { state: 'healthy', heartbeatAt: date }, resources: { busy: false, waitingForMemory: false, freeMiB: 4096, reason: 'Synthetic CI service status' },
         services: { writerProvider: 'groq', writer: { state: 'ready', detail: 'Fixture writer' }, renderer: { state: 'ready', detail: 'Fixture renderer' } } });
       if (url.pathname === '/api/content-suggestions') {
@@ -161,6 +164,14 @@ async function run() {
     const style = await page.locator('[data-quick-template]').first().evaluate(element => { const css = getComputedStyle(element); return { radius: css.borderRadius, outline: css.outlineStyle, outlineWidth: css.outlineWidth, background: getComputedStyle(document.body).backgroundColor }; });
     verify('Actual compiled CSS: open rows, warm canvas and keyboard focus', style.radius === '0px' && style.background === 'rgb(245, 243, 237)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
     await page.locator('[data-quick-template]').first().blur();
+    const hero = await page.locator('[data-studio-hero="create"]').evaluate(element => {
+      const image = getComputedStyle(element, '::before'), panel = getComputedStyle(element);
+      return { width: parseFloat(image.width), height: parseFloat(image.height), image: image.backgroundImage,
+        transform: image.transform, color: panel.color, panel: panel.backgroundColor };
+    });
+    verify('Aurora header keeps a readable navy fallback and an upright wallpaper layer', hero.width >= 190 && hero.height >= 900
+      && hero.image.includes('/api/studio-wallpaper') && /^matrix\(0, 1, -1, 0, /.test(hero.transform)
+      && hero.color === 'rgb(248, 251, 255)' && hero.panel === 'rgb(18, 38, 58)', hero);
     await capture('studio-create-desktop');
     const workflows = page.getByRole('navigation', { name: 'Creation workflows', exact: true });
     await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
@@ -200,7 +211,24 @@ async function run() {
     verify('All four mobile navigation labels fit without swiping', mobileNav.items.length === 4 && mobileNav.scrollWidth <= mobileNav.clientWidth + 1
       && mobileNav.items.every(item => item.fits && item.left >= 0 && item.right <= mobileNav.viewport)
       && mobileNav.items[3].label === 'Settings', mobileNav);
+    const mobileCreation = await workflows.evaluate(nav => {
+      const links = [...nav.querySelectorAll('a')].map(link => link.getBoundingClientRect());
+      const firstTemplate = document.querySelector('[data-quick-template]').getBoundingClientRect();
+      return { rows: new Set(links.map(link => Math.round(link.top))).size,
+        minHeight: Math.min(...links.map(link => link.height)), lastRight: Math.max(...links.map(link => link.right)),
+        viewport: innerWidth, firstTemplateBottom: firstTemplate.bottom, viewportHeight: innerHeight };
+    });
+    verify('Mobile creation paths are one tappable row and the first template is in reach', mobileCreation.rows === 1
+      && mobileCreation.minHeight >= 44 && mobileCreation.lastRight <= mobileCreation.viewport
+      && mobileCreation.firstTemplateBottom < mobileCreation.viewportHeight, mobileCreation);
     await capture('studio-create-mobile');
+    await page.locator('[data-studio-hero] a[href="#jobs"]').click();
+    await page.waitForFunction(() => {
+      const heading = document.querySelector('#jobs h2').getBoundingClientRect();
+      const sidebar = document.querySelector('aside').getBoundingClientRect();
+      return location.hash === '#jobs' && heading.top >= sidebar.bottom - 1 && heading.bottom <= innerHeight;
+    });
+    verify('Jobs jump opens the queue below the sticky mobile navigation', await page.getByRole('heading', { name: 'Jobs', exact: true }).isVisible());
     await page.setViewportSize({ width: 1440, height: 1000 });
     const navigate = async section => { await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"]`).click(); await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"][aria-current="page"]`).waitFor(); };
     await navigate('library');
@@ -215,6 +243,10 @@ async function run() {
       const sample = page.locator('dl[aria-label="Saved ' + platform + ' sample"]');
       await sample.waitFor();
       verify(platform + ' displays its own measured counts', (await sample.locator('dd').allTextContents()).join(',') === '1,' + count + ',3,1');
+      verify(platform + ' uses distinct readable metric tiles', await sample.locator('div').first().evaluate(tile => {
+        const style = getComputedStyle(tile);
+        return style.backgroundColor === 'rgb(229, 238, 241)' && parseFloat(style.borderRadius) >= 8;
+      }));
       await capture('studio-insights-' + platform.toLowerCase());
     }
     await insightPlatforms.getByRole('button', { name: 'Rumble', exact: true }).click();
