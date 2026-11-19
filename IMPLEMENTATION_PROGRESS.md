@@ -1,5 +1,25 @@
 # Phoenix Studio implementation and verified releases
 
+## November 19 — aurora dashboard redesign
+
+- The dashboard uses the owner's aurora JPEG in a short header with a navy
+  overlay, navy navigation and cream work surfaces. The JPEG is served only
+  to the local studio from ignored storage. Hosted and fresh installations use
+  the built-in navy background.
+- Create has compact template rows and three creation actions on one phone row.
+  The queue status opens Jobs below the sticky navigation. Library cards have
+  consistent preview frames, title-first metadata and clearer keyboard focus.
+  Insights totals use individually readable tiles.
+- Source `4a983cfd2fbeb8b3e050bfc4f33113f99ad067a4` passed Windows run
+  `44481287707`, attempt 1. Verification covered 1,750 Node checks, 58 Python
+  checks, lint, production build, export and recovery, and 66 browser
+  assertions across 16 screenshots. Both source Vercel deployments passed.
+- Build `Bd2YtxaGhUUYavm2paZc6` is serving locally with a healthy manager and
+  worker and a ready renderer. The live browser displayed the exact supplied
+  artwork. Activation preserved 253 output MP4s, review index/history, all
+  144 publication records and the owner's local configuration.
+
+
 ## November 19 — compact publishing, optional Stories and channel insights
 
 - Instagram, Facebook Page and YouTube show independent upload state in one
