@@ -374,17 +374,19 @@ export default function DashboardClient() {
     { id: "insights" as const, label: "Insights", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
-  const pageCopy = { create: ["What will you make today?", ""], library: ["Your video library", ""], insights: ["Channel insights", "See how your posted videos are performing."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
+  const artworkOnly = section === "create" && workspace === "reels";
+  const queueLink = <a href="#jobs" className={styles.queueBadge} data-queue-state={queueState}><span aria-hidden="true" className={styles.queueDot} />{queueLabel}</a>;
+  const pageCopy = { create: ["Create", ""], library: ["Your video library", ""], insights: ["Channel insights", "See how your posted videos are performing."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
     <div className={`${styles.shell} min-h-screen`}>
       <aside className={`${styles.sidebar} border-b p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6`}>
-        <a href="#create" className={`${styles.brand} flex items-center gap-3 text-lg font-semibold tracking-tight`}><span aria-hidden="true" className={`${styles.brandMark} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base font-semibold`}>P</span>Phoenix Studio</a>
+        <a href="#create" className={`${styles.brand} flex items-center gap-3 text-lg font-semibold tracking-tight`}><span aria-hidden="true" className="studio-brand-mark">P</span>Phoenix Studio</a>
         <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`${styles.navLink} flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
       </aside>
       <main className={`${styles.main} mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12`}>
-        <header className={styles.header} data-studio-hero={section}>
-          <div className={styles.heroCopy}><h1 className={styles.heading}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className={styles.heroSubtitle}>{pageCopy[section][1]}</p> : null}</div>
-          <a href="#jobs" className={styles.queueBadge} data-queue-state={queueState}><span aria-hidden="true" className={styles.queueDot} />{queueLabel}</a>
+        <header className={styles.header} data-studio-hero={section} data-artwork-only={artworkOnly ? "" : undefined}>
+          <div className={artworkOnly ? "sr-only" : styles.heroCopy}><h1 className={styles.heading}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className={styles.heroSubtitle}>{pageCopy[section][1]}</p> : null}</div>
+          {!artworkOnly && queueLink}
         </header>
         {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
           <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>
@@ -393,11 +395,14 @@ export default function DashboardClient() {
         </div> : null}
         {!offline && !openingStudio ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
+        <div className={styles.createBar}>
         <nav aria-label="Creation workflows" className="studio-workspaces">
           <a href="#create" aria-current={workspace === "reels" ? "page" : undefined}><Film aria-hidden="true" />Make a Reel</a>
           <a href="#create?mode=clips" aria-current={workspace === "clips" ? "page" : undefined}><FileVideo aria-hidden="true" />Clip a Video</a>
           <a href="#create?mode=video" aria-current={workspace === "video" ? "page" : undefined}><Sparkles aria-hidden="true" />Create a Video</a>
         </nav>
+        {artworkOnly && queueLink}
+        </div>
         <div hidden={workspace !== "reels"} data-creation-workspace="reels">
         <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }} />
         <button type="button" className="mt-5 rounded-full border px-4 py-2 text-xs font-semibold" aria-expanded={stockOpen} onClick={() => setStockOpen(value => !value)}>{stockOpen ? "Close custom reel" : "Choose your own topic"}</button>

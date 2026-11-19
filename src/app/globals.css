@@ -199,7 +199,27 @@ progress:indeterminate::-webkit-progress-bar { background: linear-gradient(90deg
 .studio-loading { min-height: 100dvh; display: grid; grid-template-columns: 14rem minmax(0, 1fr); background: var(--background); color: var(--foreground); }
 .studio-loading aside { background: var(--sidebar); padding: 1.5rem; }
 .studio-loading-brand { display: flex; align-items: center; gap: .75rem; font-weight: 600; letter-spacing: -.035em; }
-.studio-loading-brand span { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 50%; background: #2a404a; color: #faf8f2; }
+.studio-brand-mark {
+  position: relative;
+  display: grid;
+  flex: 0 0 2.375rem;
+  place-items: center;
+  width: 2.375rem;
+  height: 2.375rem;
+  overflow: hidden;
+  border: 1px solid #79a6be;
+  border-radius: 50%;
+  background: #d8f1f4;
+  color: #123544;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.studio-brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/api/studio-logo") 83% 9% / 230% auto no-repeat;
+}
 .studio-loading-content { width: 100%; max-width: 76rem; padding: 3rem; }
 .studio-loading-content h1 { font-size: clamp(2rem, 3.5vw, 3rem); font-weight: 600; letter-spacing: -.055em; line-height: 1.12; }
 .studio-loading-content p { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; font-size: .875rem; color: var(--muted-foreground); }

@@ -89,6 +89,8 @@ async function run() {
     }
     const fallback = await fetch(origin + '/api/studio-wallpaper', { signal: AbortSignal.timeout(5000) });
     verify('A fresh installation has a valid empty wallpaper response', fallback.status === 204);
+    const logoFallback = await fetch(origin + '/api/studio-logo', { signal: AbortSignal.timeout(5000) });
+    verify('A fresh installation has a valid empty logo response', logoFallback.status === 204);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const stylesheetUrls = new Set();
@@ -107,7 +109,7 @@ async function run() {
       if (url.pathname === '/api/review-files') return json(route, pendingTemplate ? [] : [file]);
       if (url.pathname === '/api/source-processing') return json(route, { preflight: { ready: true, summary: 'Synthetic video tools ready', dependencies: { ffmpeg: true, ffprobe: true, python: true, fasterWhisper: true }, details: {}, firstModelDownloadRequired: false, whisperModel: { message: '' } }, jobs: pendingTemplate ? [{ id: request.jobId, title: request.title, status: 'PROCESSING', progress: 37, stage: 'Preparing the next scene', createdAt: date }] : [] });
       if (['/api/generations', '/api/review-edits', '/api/creation-drafts'].includes(url.pathname)) return json(route, []);
-      if (url.pathname === '/api/studio-wallpaper') return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
+      if (url.pathname === '/api/studio-wallpaper' || url.pathname === '/api/studio-logo') return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === '/api/studio-health') return json(route, { build: directory, worker: { state: 'healthy', heartbeatAt: date }, resources: { busy: false, waitingForMemory: false, freeMiB: 4096, reason: 'Synthetic CI service status' },
         services: { writerProvider: 'groq', writer: { state: 'ready', detail: 'Fixture writer' }, renderer: { state: 'ready', detail: 'Fixture renderer' } } });
       if (url.pathname === '/api/content-suggestions') {
@@ -172,6 +174,19 @@ async function run() {
     verify('Aurora header keeps a readable navy fallback and an upright wallpaper layer', hero.width >= 190 && hero.height >= 900
       && hero.image.includes('/api/studio-wallpaper') && /^matrix\(0, 1, -1, 0, /.test(hero.transform)
       && hero.color === 'rgb(248, 251, 255)' && hero.panel === 'rgb(18, 38, 58)', hero);
+    const artworkOnly = await page.locator('[data-studio-hero="create"]').evaluate(element => {
+      const heading = element.querySelector('h1');
+      return { heading: heading.textContent, headingSize: heading.parentElement.getBoundingClientRect().height,
+        tint: getComputedStyle(element, '::after').content, actionCount: element.querySelectorAll('a,button').length };
+    });
+    verify('Create artwork stands alone while the page retains its accessible heading',
+      artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint === 'none' && artworkOnly.actionCount === 0, artworkOnly);
+    const logo = await page.locator('aside .studio-brand-mark').evaluate(mark => {
+      const image = getComputedStyle(mark, '::after');
+      return { image: image.backgroundImage, zoom: image.backgroundSize, label: mark.parentElement.textContent };
+    });
+    verify('The brand mark shows the local logo with a tight crop and the Phoenix name', logo.image.includes('/api/studio-logo')
+      && logo.zoom === '230% auto' && logo.label.endsWith('Phoenix Studio'), logo);
     await capture('studio-create-desktop');
     const workflows = page.getByRole('navigation', { name: 'Creation workflows', exact: true });
     await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
@@ -222,7 +237,7 @@ async function run() {
       && mobileCreation.minHeight >= 44 && mobileCreation.lastRight <= mobileCreation.viewport
       && mobileCreation.firstTemplateBottom < mobileCreation.viewportHeight, mobileCreation);
     await capture('studio-create-mobile');
-    await page.locator('[data-studio-hero] a[href="#jobs"]').click();
+    await page.locator('a[data-queue-state][href="#jobs"]').click();
     await page.waitForFunction(() => {
       const heading = document.querySelector('#jobs h2').getBoundingClientRect();
       const sidebar = document.querySelector('aside').getBoundingClientRect();

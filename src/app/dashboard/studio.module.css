@@ -1,7 +1,6 @@
 .shell { background: #f5f3ed; color: #202d34; }
 .sidebar { background: #102637; color: #f5f8fa; border-color: #254256; }
 .brand { color: inherit; font-size: 1rem; letter-spacing: -.035em; }
-.brandMark { background: #d8f1f4; color: #123544; border: 0; border-radius: 50%; }
 .navLink { color: #c5d9e3; border-radius: .9rem; }
 .navLink:hover { background: #1d3a4d; color: #fff; }
 .navLink[aria-current="page"] { background: #294d61; color: #f7fbfc; }
@@ -44,6 +43,7 @@
     linear-gradient(0deg, #071321b5, transparent 69%);
   pointer-events: none;
 }
+.header[data-artwork-only]::after { content: none; }
 .heroCopy { max-width: 38rem; }
 .heading { font-size: clamp(1.875rem, 3.5vw, 3rem); line-height: 1.12; letter-spacing: -.05em; font-weight: 650; }
 .heroSubtitle { margin-top: .4rem; color: #e5f0f7; font-size: .875rem; line-height: 1.45; }
@@ -70,7 +70,10 @@
 .queueBadge[data-queue-state="attention"] .queueDot { background: #ffc783; }
 .queueBadge[data-queue-state="loading"] .queueDot { background: #cad7e2; }
 .shell .queueBadge:focus-visible, .sidebar :where(a):focus-visible { outline-color: #baf5f4; }
-.main :global(.studio-workspaces) { gap: .4rem; margin-bottom: 1.35rem; }
+.createBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: 1.35rem; }
+.createBar .queueBadge { position: static; max-width: 100%; margin-left: auto; }
+.shell .createBar .queueBadge:focus-visible { outline-color: #315f7b; }
+.main :global(.studio-workspaces) { gap: .4rem; margin: 0; }
 .main :global(.studio-workspaces a) { min-height: 44px; background: #fbfaf5; color: #28495b; transition: background-color 150ms ease; }
 .main :global(.studio-workspaces a:hover) { background: #e7eef0; }
 .main :global(.studio-workspaces a[aria-current="page"]) { background: #264e65; color: #fff; }
@@ -133,7 +136,8 @@
   .sidebar { position: sticky; top: 0; z-index: 20; padding: .65rem 1rem; }
   .sidebar nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; margin-top: .55rem; gap: .25rem; padding-block: .1rem; }
   .navLink { min-width: 0; flex-direction: column; justify-content: center; padding: .4rem .25rem; gap: .3rem; font-size: .75rem; line-height: 1.25; }
-  .main :global(.studio-workspaces) { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); margin-bottom: 1rem; }
+  .createBar { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
+  .main :global(.studio-workspaces) { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); }
   .main :global(.studio-workspaces a) { justify-content: center; min-width: 0; padding: .45rem .25rem; gap: .3rem; text-align: center; font-size: .72rem; }
   .main :global(.studio-workspaces svg) { width: .9rem; height: .9rem; }
   .main :global([data-template-choices]) { column-gap: 1.25rem; }

@@ -24,32 +24,36 @@ function compile(relativePath, dependencies, process) {
   return module.exports;
 }
 
-test('wallpaper reads one bounded local JPEG and falls back for unsafe or missing images', async (t) => {
+for (const artwork of ['wallpaper', 'logo']) test(artwork + ' reads its own bounded local JPEG and falls back for unsafe or missing images', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-wallpaper-'));
   const storage = path.join(root, 'storage');
   const directory = path.join(storage, 'ui');
-  const filename = path.join(directory, 'studio-wallpaper.jpg');
+  const filename = path.join(directory, 'studio-' + artwork + '.jpg');
+  const otherFilename = path.join(directory, artwork === 'logo' ? 'studio-wallpaper.jpg' : 'studio-logo.jpg');
   fs.mkdirSync(directory, { recursive: true });
+  const image = Buffer.from([0xff, 0xd8, 0x12, 0x34, 0xff, 0xd9]);
+  fs.writeFileSync(otherFilename, image);
   t.after(() => {
     if (fs.existsSync(filename)) fs.unlinkSync(filename);
+    fs.unlinkSync(otherFilename);
     for (const folder of [directory, storage, root]) fs.rmdirSync(folder);
   });
 
   const env = {};
-  const { GET } = compile('src/app/api/studio-wallpaper/route.ts', {
+  const localArtwork = compile('src/lib/studioArtwork.ts', {
     'node:fs/promises': require('node:fs/promises'),
     'node:path': path,
     '@/lib/localRequest': compile('src/lib/localRequest.ts', {}),
   }, { env, cwd: () => root });
+  const { GET } = compile('src/app/api/studio-' + artwork + '/route.ts', { '@/lib/studioArtwork': localArtwork });
   const host = 'http://localhost:3000';
-  const request = new Request(host + '/api/studio-wallpaper');
-  assert.equal((await GET(request)).status, 204, 'missing image uses the CSS fallback');
+  const request = new Request(host + '/api/studio-' + artwork);
+  assert.equal((await GET(request)).status, 204, 'a different image does not replace the missing asset');
   fs.writeFileSync(filename, Buffer.from('not an image'));
   assert.equal((await GET(request)).status, 204);
   fs.writeFileSync(filename, Buffer.alloc(512 * 1024 + 1));
   assert.equal((await GET(request)).status, 204, 'oversized images are declined');
 
-  const image = Buffer.from([0xff, 0xd8, 0x12, 0x34, 0xff, 0xd9]);
   fs.writeFileSync(filename, image);
   const response = await GET(new Request(request.url + '?file=../../other.jpg'));
   assert.equal(response.status, 200, 'query cannot select a different file');
@@ -58,7 +62,7 @@ test('wallpaper reads one bounded local JPEG and falls back for unsafe or missin
   assert.match(response.headers.get('cache-control'), /no-store/);
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), image);
 
-  assert.equal((await GET(new Request('https://studio.example/api/studio-wallpaper'))).status, 204);
+  assert.equal((await GET(new Request('https://studio.example/api/studio-' + artwork))).status, 204);
   assert.equal((await GET(new Request(request.url, { headers: { 'Sec-Fetch-Site': 'cross-site' } }))).status, 204);
   assert.equal((await GET(new Request(request.url, { headers: { Origin: 'https://elsewhere.example' } }))).status, 204);
   env.VERCEL = '1';

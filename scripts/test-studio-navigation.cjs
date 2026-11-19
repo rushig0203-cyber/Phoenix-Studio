@@ -29,7 +29,8 @@ test('section links restore the right screen and retain old bookmarks', () => {
 test('home shows creation workflows followed by inline Jobs, with Library and channel settings kept separate', () => {
   const Dashboard = require('../src/app/dashboard/DashboardClient').default;
   const html = renderToStaticMarkup(React.createElement(Dashboard));
-  assert.match(html, /What will you make today/);
+  assert.doesNotMatch(html, /What will you make today/);
+  assert.match(html, /<div class="sr-only"><h1[^>]*>Create<\/h1>/);
   assert.match(html, /aria-label="Studio sections"/);
   assert.match(html, /aria-label="Creation workflows"/);
   assert.match(html, /href="#create\?mode=clips"/);
