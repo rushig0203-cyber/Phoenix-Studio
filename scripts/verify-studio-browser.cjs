@@ -186,7 +186,7 @@ async function run() {
       return { image: image.backgroundImage, zoom: image.backgroundSize, label: mark.parentElement.textContent };
     });
     verify('The brand mark shows the local logo with a tight crop and the Phoenix name', logo.image.includes('/api/studio-logo')
-      && logo.zoom === '230% auto' && logo.label.endsWith('Phoenix Studio'), logo);
+      && ['230%', '230% auto'].includes(logo.zoom) && logo.label.endsWith('Phoenix Studio'), logo);
     await capture('studio-create-desktop');
     const workflows = page.getByRole('navigation', { name: 'Creation workflows', exact: true });
     await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
