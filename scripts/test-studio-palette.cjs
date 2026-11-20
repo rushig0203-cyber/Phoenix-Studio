@@ -13,6 +13,7 @@ function declaration(source, selector, property) {
   return value;
 }
 const token = name => declaration(css, selector => selector === ':root, .dark', `--${name}`);
+const night = name => declaration(studio, selector => selector === '.shell', `--night${name ? '-' + name : ''}`);
 function luminance(hex) {
   assert.match(hex, /^#[a-f\d]{6}$/i);
   const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
@@ -31,6 +32,15 @@ test('soft light surfaces retain readable body, secondary and action text', () =
     for (const foreground of ['foreground', 'muted-foreground']) contrast(token(foreground), token(surface), 4.5, `${foreground} on ${surface}`);
   }
   for (const surface of ['primary', 'secondary', 'accent', 'sidebar']) contrast(token(`${surface}-foreground`), token(surface), 4.5, surface);
+});
+
+test('night surfaces keep progress and attention text readable', () => {
+  for (const surface of ['', 'panel']) {
+    for (const role of ['text', 'muted', 'error']) contrast(night(role), night(surface), 4.5, role + ' on night ' + surface);
+  }
+  const scope = selector => selector.includes('[data-template-progress]') && selector.endsWith(', .jobs');
+  assert.equal(declaration(studio, scope, '--muted-foreground'), 'var(--night-muted)');
+  assert.equal(declaration(studio, scope, '--destructive'), 'var(--night-error)');
 });
 
 test('native fields, placeholders and keyboard focus remain visible on light surfaces', () => {
