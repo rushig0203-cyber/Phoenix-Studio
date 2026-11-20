@@ -378,15 +378,22 @@ export default function DashboardClient() {
   const queueLink = <a href="#jobs" className={styles.queueBadge} data-queue-state={queueState}><span aria-hidden="true" className={styles.queueDot} />{queueLabel}</a>;
   const pageCopy = { create: ["Create", ""], library: ["Your video library", ""], insights: ["Channel insights", "See how your posted videos are performing."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
-    <div className={`${styles.shell} min-h-screen`}>
-      <aside className={`${styles.sidebar} border-b p-4 md:fixed md:inset-y-0 md:left-0 md:w-56 md:border-b-0 md:border-r md:p-6`}>
-        <a href="#create" className={`${styles.brand} flex items-center gap-3 text-lg font-semibold tracking-tight`}><span aria-hidden="true" className="studio-brand-mark">P</span>Phoenix Studio</a>
-        <nav aria-label="Studio sections" className="mt-5 flex gap-1 overflow-x-auto md:mt-10 md:flex-col md:gap-2">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={`${styles.navLink} flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors`}><Icon className="h-4 w-4" />{label}{id === "library" ? <span className="ml-auto hidden text-xs opacity-70 md:block">{files.length}</span> : null}</a>)}</nav>
-      </aside>
-      <main className={`${styles.main} mx-auto max-w-[1500px] px-5 py-8 sm:px-8 md:ml-56 lg:px-12`}>
+    <div className={`${styles.shell} min-h-screen`} data-studio-theme="night">
+      <header className={styles.topbar} data-studio-topbar>
+        <div className={styles.topbarContent}>
+          <a href="#create" className={styles.brand}><span aria-hidden="true" className="studio-brand-mark">P</span>Phoenix Studio</a>
+          <nav aria-label="Studio sections">{sections.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={section === id ? "page" : undefined} className={styles.navLink}><Icon aria-hidden="true" className="h-4 w-4" />{label}</a>)}</nav>
+          {queueLink}
+        </div>
+      </header>
+      <main className={styles.main}>
         <header className={styles.header} data-studio-hero={section} data-artwork-only={artworkOnly ? "" : undefined}>
           <div className={artworkOnly ? "sr-only" : styles.heroCopy}><h1 className={styles.heading}>{section === "create" && workspace !== "reels" ? workspace === "clips" ? "Clip your video" : "Create a video" : pageCopy[section][0]}</h1>{pageCopy[section][1] ? <p className={styles.heroSubtitle}>{pageCopy[section][1]}</p> : null}</div>
-          {!artworkOnly && queueLink}
+          {section === "create" ? <nav aria-label="Creation workflows" className="studio-workspaces">
+            <a href="#create" aria-current={workspace === "reels" ? "page" : undefined}><Film aria-hidden="true" />Make a Reel</a>
+            <a href="#create?mode=clips" aria-current={workspace === "clips" ? "page" : undefined}><FileVideo aria-hidden="true" />Clip a Video</a>
+            <a href="#create?mode=video" aria-current={workspace === "video" ? "page" : undefined}><Sparkles aria-hidden="true" />Create a Video</a>
+          </nav> : null}
         </header>
         {monitorError ? <div role="alert" className="mb-4 rounded-xl bg-[#ffe1d3] p-3 text-sm text-[#914527]">
           <p className="font-semibold">{offline ? "Phoenix is disconnected" : "Studio data needs a refresh"}</p>
@@ -395,28 +402,20 @@ export default function DashboardClient() {
         </div> : null}
         {!offline && !openingStudio ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
-        <div className={styles.createBar}>
-        <nav aria-label="Creation workflows" className="studio-workspaces">
-          <a href="#create" aria-current={workspace === "reels" ? "page" : undefined}><Film aria-hidden="true" />Make a Reel</a>
-          <a href="#create?mode=clips" aria-current={workspace === "clips" ? "page" : undefined}><FileVideo aria-hidden="true" />Clip a Video</a>
-          <a href="#create?mode=video" aria-current={workspace === "video" ? "page" : undefined}><Sparkles aria-hidden="true" />Create a Video</a>
-        </nav>
-        {artworkOnly && queueLink}
-        </div>
         <div hidden={workspace !== "reels"} data-creation-workspace="reels">
-        <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }} />
-        <button type="button" className="mt-5 rounded-full border px-4 py-2 text-xs font-semibold" aria-expanded={stockOpen} onClick={() => setStockOpen(value => !value)}>{stockOpen ? "Close custom reel" : "Choose your own topic"}</button>
-        {stockOpen ? <StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /> : null}
+        <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }}
+          customTopicAction={<button type="button" className={styles.topAction} aria-expanded={stockOpen} onClick={() => setStockOpen(value => !value)}>{stockOpen ? "Close custom reel" : "Your own topic"}</button>} />
+        {stockOpen ? <div className={styles.workArea}><StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /></div> : null}
         </div>
-        <div hidden={workspace !== "clips"} data-creation-workspace="clips">
+        <div hidden={workspace !== "clips"} data-creation-workspace="clips" className={styles.workArea}>
           {sourceOpen ? <SourceProcessor active={section === "create" && workspace === "clips" && !offline} onClose={() => closeWorkspace("clips")} onStarted={() => started("Video queued. Follow its progress below.", "source")} /> : workspace === "clips" ? <Button onClick={() => setSourceOpen(true)}>Clip another video</Button> : null}
         </div>
-        <div hidden={workspace !== "video"} data-creation-workspace="video">
+        <div hidden={workspace !== "video"} data-creation-workspace="video" className={styles.workArea}>
           {aiOpen ? <AICreation key={idea?.id || "custom"} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
         </div>
         </fieldset>
-        {section === "library" ? <ReviewLibrary files={files} loading={loading} onRefresh={load} /> : null}
-        {section === "insights" ? <ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /> : null}
+        {section === "library" ? <div className={styles.workArea}><ReviewLibrary files={files} loading={loading} onRefresh={load} /></div> : null}
+        {section === "insights" ? <div className={styles.workArea}><ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /></div> : null}
         {section === "create" ? <>
         <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -464,7 +463,7 @@ export default function DashboardClient() {
                   <article key={retryKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
                     <details className="min-w-0">
                       <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time><JobProgress status={job.status} progress={completed ? 100 : job.progress} failed={failed} label={`${job.title} progress`} /></summary>
-                      <div className="mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]">
+                      <div className={`${styles.jobDetails} mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]`}>
                     <p className={failed ? "font-semibold text-[#914527]" : "font-semibold text-[#4f5c31]"}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</p>
                     {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
                     {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
@@ -496,7 +495,7 @@ export default function DashboardClient() {
         </section>
 
         </> : null}
-        {section === "settings" ? <div className="space-y-6"><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link><a href="#insights" className="rounded-lg border px-4 py-2 text-sm font-semibold">Channel insights</a></div></div><ChannelConnections /></div> : null}
+        {section === "settings" ? <div className={`${styles.workArea} space-y-6`}><div className="rounded-2xl border border-[#d3dbc5] bg-[#fffdf7] p-5"><h2 className="text-lg font-semibold">Studio preferences</h2><p className="mt-2 text-sm text-[#687657]">Instagram destination: {socialHandle("instagram")} · Free local processing</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/dashboard/manager" className="rounded-lg border px-4 py-2 text-sm font-semibold">Content quality manager</Link><Link href="/dashboard/settings" className="rounded-lg border px-4 py-2 text-sm font-semibold">Publishing settings</Link><a href="#insights" className="rounded-lg border px-4 py-2 text-sm font-semibold">Channel insights</a></div></div><ChannelConnections /></div> : null}
       </main>
       {previewFile ? <ReviewPlayer key={previewFile.id} file={previewFile} onClose={() => setPreview(null)} /> : null}
     </div>

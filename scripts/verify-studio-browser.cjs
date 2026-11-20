@@ -163,8 +163,8 @@ async function run() {
     verify('Six named template actions', await page.getByRole('button', { name: /^Make video: / }).count() === 6);
     await page.keyboard.press('Tab');
     await page.locator('[data-quick-template]').first().focus();
-    const style = await page.locator('[data-quick-template]').first().evaluate(element => { const css = getComputedStyle(element); return { radius: css.borderRadius, outline: css.outlineStyle, outlineWidth: css.outlineWidth, background: getComputedStyle(document.body).backgroundColor }; });
-    verify('Actual compiled CSS: open rows, warm canvas and keyboard focus', style.radius === '0px' && style.background === 'rgb(245, 243, 237)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
+    const style = await page.locator('[data-quick-template]').first().evaluate(element => { const css = getComputedStyle(element); return { radius: css.borderRadius, outline: css.outlineStyle, outlineWidth: css.outlineWidth, background: getComputedStyle(element.closest('[data-studio-theme]')).backgroundColor }; });
+    verify('Actual compiled CSS: rounded template cards, night canvas and keyboard focus', parseFloat(style.radius) >= 12 && style.background === 'rgb(9, 14, 29)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
     await page.locator('[data-quick-template]').first().blur();
     const hero = await page.locator('[data-studio-hero="create"]').evaluate(element => {
       const image = getComputedStyle(element, '::before'), panel = getComputedStyle(element);
@@ -173,15 +173,17 @@ async function run() {
     });
     verify('Aurora header keeps a readable navy fallback and an upright wallpaper layer', hero.width >= 190 && hero.height >= 900
       && hero.image.includes('/api/studio-wallpaper') && /^matrix\(0, 1, -1, 0, /.test(hero.transform)
-      && hero.color === 'rgb(248, 251, 255)' && hero.panel === 'rgb(18, 38, 58)', hero);
+      && hero.color === 'rgb(248, 251, 255)' && hero.panel === 'rgb(17, 27, 48)', hero);
     const artworkOnly = await page.locator('[data-studio-hero="create"]').evaluate(element => {
       const heading = element.querySelector('h1');
       return { heading: heading.textContent, headingSize: heading.parentElement.getBoundingClientRect().height,
         tint: getComputedStyle(element, '::after').content, actionCount: element.querySelectorAll('a,button').length };
     });
-    verify('Create artwork stands alone while the page retains its accessible heading',
-      artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint === 'none' && artworkOnly.actionCount === 0, artworkOnly);
-    const logo = await page.locator('aside .studio-brand-mark').evaluate(mark => {
+    verify('Create keeps the headline visually hidden and places the workflows on the artwork edge',
+      artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint !== 'none' && artworkOnly.actionCount === 3, artworkOnly);
+    const cover = await page.locator('[data-template-cover="owl"] [data-template-image]').evaluate(image => getComputedStyle(image).backgroundImage);
+    verify('Matching suggestions use only local category artwork', cover.includes('/api/studio-wallpaper?cover=owl'), cover);
+    const logo = await page.locator('[data-studio-topbar] .studio-brand-mark').evaluate(mark => {
       const image = getComputedStyle(mark, '::after');
       return { image: image.backgroundImage, zoom: image.backgroundSize, label: mark.parentElement.textContent };
     });
@@ -240,8 +242,8 @@ async function run() {
     await page.locator('a[data-queue-state][href="#jobs"]').click();
     await page.waitForFunction(() => {
       const heading = document.querySelector('#jobs h2').getBoundingClientRect();
-      const sidebar = document.querySelector('aside').getBoundingClientRect();
-      return location.hash === '#jobs' && heading.top >= sidebar.bottom - 1 && heading.bottom <= innerHeight;
+      const nav = document.querySelector('[data-studio-topbar]').getBoundingClientRect();
+      return location.hash === '#jobs' && heading.top >= nav.bottom - 1 && heading.bottom <= innerHeight;
     });
     verify('Jobs jump opens the queue below the sticky mobile navigation', await page.getByRole('heading', { name: 'Jobs', exact: true }).isVisible());
     await page.setViewportSize({ width: 1440, height: 1000 });

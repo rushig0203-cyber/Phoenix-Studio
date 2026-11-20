@@ -61,6 +61,19 @@ for (const artwork of ['wallpaper', 'logo']) test(artwork + ' reads its own boun
   assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
   assert.match(response.headers.get('cache-control'), /no-store/);
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), image);
+  if (artwork === 'wallpaper') {
+    const cover = path.join(directory, 'studio-cover-owl.jpg');
+    const coverImage = Buffer.from([0xff, 0xd8, 0x56, 0xff, 0xd9]);
+    fs.writeFileSync(cover, coverImage);
+    try {
+      const approved = await GET(new Request(request.url + '?cover=owl'));
+      assert.equal(approved.status, 200);
+      assert.deepEqual(Buffer.from(await approved.arrayBuffer()), coverImage);
+      for (const value of ['../../studio-logo.jpg', 'constructor', 'unknown']) {
+        assert.equal((await GET(new Request(request.url + '?cover=' + encodeURIComponent(value)))).status, 204);
+      }
+    } finally { fs.unlinkSync(cover); }
+  }
 
   assert.equal((await GET(new Request('https://studio.example/api/studio-' + artwork))).status, 204);
   assert.equal((await GET(new Request(request.url, { headers: { 'Sec-Fetch-Site': 'cross-site' } }))).status, 204);

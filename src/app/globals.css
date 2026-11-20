@@ -195,8 +195,8 @@ progress:indeterminate::-webkit-progress-bar { background: linear-gradient(90deg
 .studio-workspaces a[aria-current="page"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
 .studio-workspaces svg { width: 1rem; height: 1rem; flex-shrink: 0; }
 
-.studio-loading { min-height: 100dvh; display: grid; grid-template-columns: 14rem minmax(0, 1fr); background: var(--background); color: var(--foreground); }
-.studio-loading aside { background: var(--sidebar); padding: 1.5rem; }
+.studio-loading { min-height: 100dvh; background: #090e1d; color: #f4f3f7; }
+.studio-loading aside { background: #090e1d; border-bottom: 1px solid #27334a; padding: 1rem clamp(1rem, 3.5vw, 3rem); }
 .studio-loading-brand { display: flex; align-items: center; gap: .75rem; font-weight: 600; letter-spacing: -.035em; }
 .studio-brand-mark {
   position: relative;
@@ -219,14 +219,14 @@ progress:indeterminate::-webkit-progress-bar { background: linear-gradient(90deg
   inset: 0;
   background: url("/api/studio-logo") 83% 9% / 230% auto no-repeat;
 }
-.studio-loading-content { width: 100%; max-width: 76rem; padding: 3rem; }
+.studio-loading-content { width: min(100%, 88rem); margin-inline: auto; padding: 3rem clamp(1rem, 3.5vw, 3rem); }
 .studio-loading-content h1 { font-size: clamp(2rem, 3.5vw, 3rem); font-weight: 600; letter-spacing: -.055em; line-height: 1.12; }
-.studio-loading-content p { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; font-size: .875rem; color: var(--muted-foreground); }
-.studio-loading-dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--primary); animation: studio-breathe 1.8s ease-in-out infinite; }
+.studio-loading-content p { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; font-size: .875rem; color: #b3bed5; }
+.studio-loading-dot { width: .45rem; height: .45rem; border-radius: 50%; background: #bdc7fa; animation: studio-breathe 1.8s ease-in-out infinite; }
 .studio-loading-lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem; margin-top: 3rem; }
-.studio-loading-lines > div { display: grid; gap: .75rem; border-bottom: 1px solid var(--border); padding-bottom: 1.75rem; }
-.studio-loading-lines i { display: block; width: 80%; height: .65rem; border-radius: 999px; background: #e1e5df; }
-.studio-loading-lines i:first-child { width: 60%; height: 1.1rem; background: #d5dedb; }
+.studio-loading-lines > div { display: grid; gap: .75rem; border-bottom: 1px solid #27334a; padding-bottom: 1.75rem; }
+.studio-loading-lines i { display: block; width: 80%; height: .65rem; border-radius: 999px; background: #29364f; }
+.studio-loading-lines i:first-child { width: 60%; height: 1.1rem; background: #384866; }
 .studio-loading-lines i:last-child { width: 45%; }
 .studio-activity { display: grid; width: min(100%, 30rem); min-width: 0; gap: .65rem; padding-block: .5rem; font-size: .8125rem; line-height: 1.5; color: inherit; }
 .studio-activity-label { display: flex; align-items: center; gap: .65rem; min-width: 0; }
@@ -238,7 +238,6 @@ button .studio-activity-track { background-color: currentColor; opacity: .65; }
 @keyframes studio-breathe { 50% { opacity: .35; } }
 @keyframes studio-flow { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
 @media (max-width: 767px) {
-  .studio-loading { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .studio-loading aside { padding: 1rem 1.25rem; }
   .studio-loading-content { padding: 2rem 1.25rem; }
   .studio-loading-lines { gap: 1.5rem; }

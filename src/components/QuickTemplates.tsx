@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ContentIdea, SuggestionReason } from "@/lib/contentIdeas";
 import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
 import type { QuickTemplateRequest } from "@/lib/quickTemplates";
@@ -11,13 +11,23 @@ type Template = ContentIdea & SuggestionReason;
 type TemplateJob = { status: string; progress: number; stage?: string; error?: string };
 const catalogue = new Map(stockTopicPool().map(idea => [idea.id, idea]));
 
-export default function QuickTemplates({ request, job, onRequest, onStarted, onRetry, disabled = false }: {
+function templateCover(title: string) {
+  if (/\b(?:Switzerland|Alps|Alpine)\b/i.test(title)) return "alps";
+  if (/\bowls?\b/i.test(title)) return "owl";
+  if (/\bpandas?\b/i.test(title)) return "panda";
+  if (/\brabbits?\b/i.test(title)) return "rabbit";
+  if (/\b(?:parks?|gardens?)\b/i.test(title)) return "park";
+  return undefined;
+}
+
+export default function QuickTemplates({ request, job, onRequest, onStarted, onRetry, disabled = false, customTopicAction }: {
   request: QuickTemplateRequest | null;
   job?: TemplateJob;
   onRequest: (value: QuickTemplateRequest | null) => void;
   onStarted: (message: string) => void;
   onRetry: () => void;
   disabled?: boolean;
+  customTopicAction?: ReactNode;
 }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true), [preparing, setPreparing] = useState(false);
@@ -95,18 +105,20 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
     {!request.jobId && !preparing ? <div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={disabled} onClick={() => void create()} className="rounded-full border px-4 py-2 text-sm font-semibold">Retry confirmation</button>{canChange ? <button type="button" onClick={() => { setError(""); setCanChange(false); onRequest(null); }} className="rounded-full border px-4 py-2 text-sm">Choose another template</button> : null}</div> : null}
     {failed ? <button type="button" disabled={disabled} onClick={onRetry} className="mt-4 rounded-full border px-4 py-2 text-sm font-semibold">Retry video</button> : null}
     {request.jobId ? <div className="mt-4"><button type="button" title="Your saved job continues in Jobs." onClick={() => { setError(""); onRequest(null); }} className="rounded-full border px-4 py-2 text-sm">Back to templates</button></div> : null}
+    {customTopicAction}
   </section>;
 
   return <section data-quick-templates aria-label="Recommended video templates" aria-busy={loading}>
     <div data-template-heading className="flex flex-wrap items-start justify-between gap-4">
-      <div><h2 className="text-2xl font-semibold">Choose a template</h2><p className="mt-2 text-sm">Made for your page. One click prepares a complete video for review.</p></div>
-      <button type="button" disabled={loading || disabled} onClick={() => void reload.current()} className="rounded-full border px-4 py-2 text-xs font-semibold disabled:opacity-50">More templates</button>
+      <h2>Suggested reels</h2>
+      <div data-template-tools>{customTopicAction}<button type="button" disabled={loading || disabled} onClick={() => void reload.current()} className="rounded-full border px-4 py-2 text-xs font-semibold disabled:opacity-50">More templates</button></div>
     </div>
     {loading && !templates.length ? <StudioActivity label="Finding your next video…" /> : null}
     {error ? <p role="alert" className="mt-4 text-sm">{error}</p> : null}
-    <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template type="button" disabled={disabled || preparing} onClick={() => void create(template)} aria-label={`Make video: ${template.title}`}>
-      <span><span className="block text-lg font-semibold">{template.title}</span><span className="mt-2 block text-sm leading-6 opacity-70">{template.reason}</span></span>
-      <span data-template-action>Make video <span aria-hidden="true">↗</span></span>
+    <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template data-template-cover={templateCover(template.title)} type="button" disabled={disabled || preparing} onClick={() => void create(template)} aria-label={`Make video: ${template.title}`}>
+      <span data-template-image aria-hidden="true" />
+      <span data-template-copy><span data-template-title>{template.title}</span><span data-template-reason>{template.reason}</span></span>
+      <span data-template-action aria-hidden="true">↗</span>
     </button>)}</div>
   </section>;
 }

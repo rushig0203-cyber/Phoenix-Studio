@@ -355,7 +355,8 @@ test('Create has three dedicated workflow links without explanatory card paragra
   assert.deepEqual(nodes(workflows, node => node.type === 'a').map(text), ['Make a Reel', 'Clip a Video', 'Create a Video']);
   assert.deepEqual(nodes(workflows, node => node.type === 'a').map(node => node.props.href), ['#create', '#create?mode=clips', '#create?mode=video']);
   assert.equal(nodes(workflows, node => node.type === 'p').length, 0);
-  assert.ok(h.button('Choose your own topic'));
+  const customTopic = nodes(h.tree, node => node.type?.name === 'QuickTemplates')[0].props.customTopicAction;
+  assert.equal(text(customTopic), 'Your own topic');
 });
 
 for (const [workspaceHash, componentName, acceptedMessage] of [
@@ -367,7 +368,10 @@ for (const [workspaceHash, componentName, acceptedMessage] of [
   assert.ok(nodes(h.tree, node => node.props?.['aria-label'] === 'Jobs and progress')[0]);
   assert.equal(nodes(h.tree, node => node.props?.files)[0], undefined, 'Library remains a separate screen');
   global.window.location.hash = workspaceHash; await h.event('hashchange');
-  if (componentName === 'StockReels') { h.button('Choose your own topic').props.onClick(); await h.flush(); }
+  if (componentName === 'StockReels') {
+    nodes(h.tree, node => node.type?.name === 'QuickTemplates')[0].props.customTopicAction.props.onClick();
+    await h.flush();
+  }
   const workflow = nodes(h.tree, node => node.type?.name === componentName)[0]; assert.ok(workflow);
   h.setJobs([source('accepted-fixture', 'QUEUED')]);
   workflow.props.onStarted(acceptedMessage); await h.flush();
