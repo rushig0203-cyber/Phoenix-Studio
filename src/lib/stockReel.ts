@@ -10,7 +10,7 @@ export type StockReelOptions = {
   /** New automatic recipes only. Missing on older/manual jobs: no minimum. */
   minDuration?: number;
   /** Persisted only on new automatic recipes; missing retains saved timing. */
-  shotCadence?: "brisk-v1" | "adaptive-v2" | "adaptive-v3";
+  shotCadence?: "brisk-v1" | "adaptive-v2" | "adaptive-v3" | "adaptive-v4";
   /** Optional visual boundary matching for new automatic reels. */
   continuity?: "visual-v1";
   /** Grounded catalogue greenery cue, never a user-entered visual claim. */
@@ -25,7 +25,7 @@ export type StockReelOptions = {
   audioMastering?: "loudness-v1";
   /** Saved only on new recipes with fresh matching watch-time evidence. */
   openingExperiment?: "watch-time-v1";
-  /** New automatic experiment recipes only; absent preserves every saved plan. */
+  /** Retained for older automatic experiment recipes. */
   sequenceExperiment?: typeof STOCK_SEQUENCE_EXPERIMENTS[number];
   /** Bundled public-domain recordings for new automatic reels only. */
   musicLibrary?: "cc0-lofi-v1";
@@ -183,7 +183,8 @@ export function suggestStockTrim(duration: number, singleShot = false) {
 export function planStockIntervals(shots: StockIntervalInput[], maximum: number, pacing?: StockReelOptions["pacing"], minDuration?: number, shotCadence?: StockReelOptions["shotCadence"], rhythm?: { bpm: number }, openingExperiment?: StockReelOptions["openingExperiment"], sequenceExperiment?: StockReelOptions["sequenceExperiment"]): StockInterval[] {
   if (!shots.length || shots.length > MAX_STOCK_SHOTS || !Number.isFinite(maximum) || maximum <= 0 || maximum > 105) throw new Error("Choose one to twelve shots and a reel length up to 105 seconds.");
   if (pacing !== undefined && pacing !== "cinematic" && pacing !== "selected") throw new Error("Choose cinematic pacing or keep the selected moments.");
-  if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2" && shotCadence !== "adaptive-v3") throw new Error("Choose the supported automatic shot cadence.");
+  const natural = shotCadence === "adaptive-v4";
+  if (shotCadence !== undefined && shotCadence !== "brisk-v1" && shotCadence !== "adaptive-v2" && shotCadence !== "adaptive-v3" && !natural) throw new Error("Choose the supported automatic shot cadence.");
   if (openingExperiment !== undefined && (openingExperiment !== "watch-time-v1" || shotCadence !== "adaptive-v3")) throw new Error("The watch-time opening experiment requires the current automatic cadence.");
   if (sequenceExperiment !== undefined && (!STOCK_SEQUENCE_EXPERIMENTS.includes(sequenceExperiment) || shotCadence !== "adaptive-v3" || pacing !== "cinematic" || minDuration !== undefined
     || shots.some(shot => shot.trimMode !== "auto") || (sequenceExperiment === "focus-four-v1" && shots.length !== 4))) throw new Error("Sequence experiments require the current automatic cinematic cadence; focused sequences need exactly four sources and no minimum duration.");
@@ -195,9 +196,9 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     if (shot.trimMode !== undefined && shot.trimMode !== "manual" && shot.trimMode !== "auto") throw new Error("A shot has an invalid trim mode.");
     return { start, end: Math.min(end, shot.duration), automatic: shot.trimMode === "auto" };
   });
-  if (shotCadence === "adaptive-v2" || shotCadence === "adaptive-v3") {
-    // Saved v2 jobs retain their exact timing. Only new v3 recipes shorten cuts.
-    const compact = shotCadence === "adaptive-v3";
+  if (shotCadence === "adaptive-v2" || shotCadence === "adaptive-v3" || natural) {
+    const compact = shotCadence !== "adaptive-v2";
+    const hasPictureFloor = !focused && !natural;
     if (pacing !== "cinematic" || minDuration !== undefined || maximum < (compact ? 15 : 18) || maximum > 40 || shots.length < 4 || shots.length > 10 || selected.some(shot => !shot.automatic)) {
       throw new Error(`Adaptive cadence requires four to ten automatic cinematic shots, no minimum, and a ${compact ? "15" : "18"}–40-second cap.`);
     }
@@ -219,6 +220,7 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
     });
     let speeds = windows.map(window => {
       if (focused) return 1;
+      if (natural) return window.motion !== undefined && window.motion >= 4 && window.motion < 12 ? 1.15 : 1;
       if (!compact) return window.motion !== undefined && window.motion < 4 ? 1.25 : 1;
       // Do not guess speed from catalog text or accelerate a static/unknown
       // scene. Quieter measured movement gets a modest fast-forward; already
@@ -226,21 +228,26 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
       if (window.motion === undefined || window.motion === 0 || window.motion >= 12) return 1;
       return window.motion < 4 ? 1.35 : 1.15;
     });
-    const openingCeiling = compact ? 2 : 2.25, laterCeiling = compact ? 3.4 : 3.5;
+    const openingCeiling = natural ? 2.75 : compact ? 2 : 2.25, laterCeiling = natural ? 4 : compact ? 3.4 : 3.5;
     const ceilings = selected.map((_shot, index) => Math.floor((index === 0 ? openingCeiling : laterCeiling) * STOCK_REEL_FPS + 1e-7));
     const capacitiesAtSpeed = () => windows.map((window, index) => Math.min(ceilings[index], Math.floor(((window.end - window.start) / speeds[index]) * STOCK_REEL_FPS + 1e-7)));
     let capacities = capacitiesAtSpeed();
-    if (!focused && capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS && speeds.some(speed => speed > 1)) {
+    if (hasPictureFloor && capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS && speeds.some(speed => speed > 1)) {
       // Preserve the twelve-second minimum at native speed when the selected
       // low-motion windows cannot support the modest fast-forward pass.
       speeds = speeds.map(() => 1);
       capacities = capacitiesAtSpeed();
     }
-    if (capacities.some(frames => frames < 1) || (!focused && capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS)) {
+    if (capacities.some(frames => frames < 1) || (hasPictureFloor && capacities.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS)) {
       throw new Error("Not enough meaningful source footage for an adaptive reel; add more related videos or use wider source windows.");
     }
-    const cap = Math.floor(Math.min(maximum, 32) * STOCK_REEL_FPS + 1e-7);
+    const cap = Math.floor((natural ? maximum : Math.min(maximum, 32)) * STOCK_REEL_FPS + 1e-7);
     const naturalSeconds = windows.map((window, index) => {
+      if (natural) {
+        // Let quiet picture breathe at native speed and use tighter cuts for active moments.
+        const seconds = window.motion === undefined ? 2.7 : 3.6 - Math.min(window.motion, 24) / 24 * 1.4;
+        return index === 0 ? Math.min(openingCeiling, seconds) : seconds;
+      }
       if (compact) {
         if (index === 0) return openingExperiment ? 1.2 : 1.6;
         if (window.motion === undefined) return [2.2, 2.6, 2.4, 2.8, 2.3][(index - 1) % 5];
@@ -276,7 +283,7 @@ export function planStockIntervals(shots: StockIntervalInput[], maximum: number,
       }
     };
     // The minimum is a meaningful-footage floor, not a target to fill every reel.
-    if (!focused && budgets.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS) addFrames(12 * STOCK_REEL_FPS);
+    if (hasPictureFloor && budgets.reduce((sum, frames) => sum + frames, 0) < 12 * STOCK_REEL_FPS) addFrames(12 * STOCK_REEL_FPS);
     if (budgets.reduce((sum, frames) => sum + frames, 0) > cap) {
       const excessBefore = budgets.reduce((sum, frames) => sum + frames, 0) - cap;
       let excess = excessBefore;

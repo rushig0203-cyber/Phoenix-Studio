@@ -6,7 +6,7 @@ import { planStockIntervals, stockPortraitScore, STOCK_SEQUENCE_EXPERIMENTS, typ
 export const AUTOMATIC_STOCK_REEL_MAX_DURATION = 40;
 export const AUTOMATIC_STOCK_MIN_NATIVE_EDGE = 720;
 export const AUTOMATIC_STOCK_REEL_OPTIONS: StockReelOptions = {
-  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, musicLibrary: "cc0-lofi-v1", musicPolicy: "visual-calm-v1", audioMastering: "loudness-v1", shotCadence: "adaptive-v3", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
+  audio: "music", mood: "reflective", transition: "cut", framing: "auto", pacing: "cinematic", musicVersion: 2, musicLibrary: "cc0-lofi-v1", musicPolicy: "visual-calm-v1", audioMastering: "loudness-v1", shotCadence: "adaptive-v4", continuity: "visual-v1", reusePolicy: "four-in-18-months-v1",
 };
 
 /** Lightweight topic cue, not a claim to have understood the video's emotion. */
@@ -315,6 +315,7 @@ type CatalogAccess = {
 /** Resolve IDs again before download; a search result never supplies trusted trims or media. */
 export async function automaticStockSources(anchor: NaturalStock, query: string, providers: NaturalStock["provider"][], catalog: CatalogAccess, recentlyUsed: ReadonlySet<string> = new Set(), unavailable: ReadonlySet<string> = new Set(), sequenceExperiment?: StockReelOptions["sequenceExperiment"]) {
   if (sequenceExperiment !== undefined && !STOCK_SEQUENCE_EXPERIMENTS.includes(sequenceExperiment)) throw new Error("Unknown automatic sequence experiment.");
+  const cadence = sequenceExperiment ? "adaptive-v3" : AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence;
   const maximumSources = sequenceExperiment === "focus-four-v1" ? 4 : AUTOMATIC_STOCK_REEL_MAX_SOURCES;
   // Reject an unrelated selected ID before asking either catalog for companions.
   automaticStockCompanions(anchor, [], query, recentlyUsed, unavailable);
@@ -339,14 +340,14 @@ export async function automaticStockSources(anchor: NaturalStock, query: string,
       // bounds determine the final duration after download.
       if (sources.length >= 8) {
         try {
-          const preview = planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
+          const preview = planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, cadence);
           if (preview.at(-1)!.outputEnd >= 18) break;
         } catch { /* Resolve more related sources when the real windows are short. */ }
       }
     } catch { /* Skip missing, animated or changed catalog entries; never add unrelated filler. */ }
   }
   if (sources.length < AUTOMATIC_STOCK_REEL_MIN_SOURCES) throw new Error("Not enough related footage at native 720p was found in the starting video's context for a coherent reel. Clips at their four-use/18-month limit are excluded. Try another starting video; Phoenix will not add unrelated filler, upscale, slow or repeat footage.");
-  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence, undefined, undefined, sequenceExperiment);
+  planStockIntervals(sources.map(video => ({ duration: video.duration, trimMode: "auto" })), AUTOMATIC_STOCK_REEL_MAX_DURATION, "cinematic", undefined, cadence, undefined, undefined, sequenceExperiment);
   return sources;
 }
 

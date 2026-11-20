@@ -1430,7 +1430,7 @@ export async function createStockReelJob(
         const recording = selectStockRecording(input.options.mood, id, recent, true, [], input.options.musicPolicy === "visual-calm-v1");
         await stockRecordingFile(recording);
         job.stockSource!.musicRecording = recording;
-        if (input.options.shotCadence === "adaptive-v3") job.stockSource!.visualMusic = { version: 1 };
+        if (input.options.shotCadence === "adaptive-v3" || input.options.shotCadence === "adaptive-v4") job.stockSource!.visualMusic = { version: 1 };
       }
       jobs.unshift(job); await saveJobsUnlocked(jobs); return job;
     });
@@ -1667,7 +1667,8 @@ async function processStockReel(
   if (options.musicLibrary !== undefined && (options.musicLibrary !== "cc0-lofi-v1" || options.audio !== "music" || !stock.musicRecording || stock.musicRecording.library !== options.musicLibrary)) throw new Error("This licensed soundtrack recipe is incomplete. No different recording was substituted.");
   if (options.musicPolicy !== undefined && (options.musicPolicy !== "visual-calm-v1" || !options.musicLibrary || options.audioMastering !== "loudness-v1")) throw new Error("This saved visual music policy is unsupported.");
   let recording = options.musicLibrary ? stockRecordingMetadata(stock.musicRecording!) : undefined;
-  const adaptive = options.shotCadence === "adaptive-v2" || options.shotCadence === "adaptive-v3";
+  const natural = options.shotCadence === "adaptive-v4";
+  const adaptive = natural || options.shotCadence === "adaptive-v2" || options.shotCadence === "adaptive-v3";
   let shots = [...stock.shots!]; // Render order must never rewrite saved source provenance.
   const editVersion = stock.editVersion === STOCK_REEL_EDIT_VERSION ? STOCK_REEL_EDIT_VERSION : 1;
   const directory = path.join(workRoot, `source-${job.id}`, `stock-assembly-v${editVersion}`);
@@ -1920,7 +1921,7 @@ async function processStockReel(
   if (recording) item.quality.musicRecording = recording.credit;
   if (stock.musicRecording?.timing === "onset-v1") item.quality.musicEdit = { version: 1, shotDurations: intervals.map(interval => interval.frames / STOCK_REEL_FPS) };
   item.quality.checks = [
-    `Real footage reel: ${shots.length} shots in the ${adaptive ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${options.shotCadence === "adaptive-v3" ? "native speed or bounded 1.35× acceleration from measured movement" : adaptive ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
+    `Real footage reel: ${shots.length} shots in the ${adaptive ? "manager-selected" : "owner-selected"} order, ${duration.toFixed(3)} seconds at ${STOCK_REEL_FPS} fps; ${natural ? "native speed or bounded 1.15× acceleration from measured movement" : options.shotCadence === "adaptive-v3" ? "native speed or bounded 1.35× acceleration from measured movement" : adaptive ? "native speed or bounded 1.25× acceleration from measured movement" : "original playback speed"}, no slowdown, frozen endings or duration looping`,
     "Coherence is based on the selected subject and catalogue-described scene context; sampled movement is not semantic continuity verification",
     ...(greeneryCheck ? [greeneryCheck] : []),
     ...(continuityCheck ? [continuityCheck, ...(rhythm ? [reordered
@@ -1930,7 +1931,7 @@ async function processStockReel(
     ...(recordedTimingCheck ? [recordedTimingCheck] : []),
     ...framingChecks, ...credits,
     ...states.map((state, index) => `Shot ${index + 1} sound: ${preserveOriginal && state.usable ? `original retained (${state.mean.toFixed(1)} dB mean)` : options.audio === "music" ? "continuous instrumental soundtrack" : "absent or effectively silent"}`),
-    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${adaptive ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
+    `${options.transition === "soft" ? "Brief fades through dark at shot boundaries" : "Direct cuts"}; ${natural ? "adaptive cadence gives quiet scenes more room and cuts active moments tighter within measured picture bounds" : adaptive ? "adaptive cadence uses short varied cuts and the strongest sampled movement window per source; no fixed 45-second target or semantic best-moment claim" : options.shotCadence === "brisk-v1" ? "saved brisk cadence uses a short opening and varied native-speed cuts, with no hold beyond six seconds; not semantic best-moment selection" : options.pacing === "cinematic" ? "automatic windows receive bounded cinematic pacing heuristics, not semantic best-moment selection; manual intervals are retained" : options.pacing === "selected" ? "the selected source intervals are retained" : "legacy cap trimming keeps the selected source endings"}`,
     useMusic ? recording ? `CC0 recording: ${recording.credit.title} — ${recording.credit.artist}; ${recording.credit.sourcePage}; one continuous bed across every shot. Recorded instrumental, not AI music or a verified trending track; ${stock.musicRecording?.timing === "onset-v1" ? "start chosen from offline-measured recording attacks, without tempo changes" : "tempo/beat phase were not measured"}` : `Original locally composed ${options.mood} instrumental${anyOriginal ? options.audio === "auto" ? "; audible only in silent shot intervals, with no music over usable original ambience" : "; bed level follows each selected interval, below its quiet original ambience and audible in silent intervals" : "; one continuous bed across every shot"}; no licensed trending track copied` : anyOriginal ? "Original ambience retained without an added instrumental" : "No source sound was available; the explicit original-only choice produces a silent soundtrack",
     ...(useMusic && options.musicVersion === 2 && !recording ? [stockMusicArrangementDescription(options.mood, job.id)] : []),
     ...(options.openingExperiment ? [options.sequenceExperiment === "focus-four-v1"

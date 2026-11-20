@@ -86,8 +86,8 @@ test('visible Insights diagnostic needs no extra control and preserves current i
   const tree = component();
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   const text = value => value == null || typeof value === 'boolean' ? '' : Array.isArray(value) ? value.map(text).join('') : typeof value === 'object' ? text(value.props?.children) : String(value);
-  const diagnosis = nodes(tree).find(node => node.props?.['aria-label'] === 'Watch diagnosis and next test');
-  assert.ok(diagnosis); assert.match(text(diagnosis), /4 of 4.*3.0s.*20.0s.*15%/); assert.match(text(diagnosis), /Some eligible new Reels test four related shots/);
+  const diagnosis = nodes(tree).find(node => node.props?.['aria-label'] === 'Watch-time insights');
+  assert.ok(diagnosis); assert.match(text(diagnosis), /4 of 4.*3.0s.*20.0s.*15%/); assert.match(text(diagnosis), /available shots and sampled movement/);
   assert.match(text(tree), /Comments: 4 · Saves: 0 · Shares: 8/);
   assert.equal(nodes(diagnosis).some(node => ['details', 'button', 'select', 'input'].includes(node.type)), false);
 });

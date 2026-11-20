@@ -50,7 +50,7 @@ async function main() {
       creator: 'Synthetic test fixture only', title: 'Synthetic test fixture', start: 0, end: 8, trimMode: 'auto',
       open: async () => ({ stream: Readable.toWeb(fs.createReadStream(filename)), expectedBytes: fs.statSync(filename).size }) });
   }
-  const job = await source.createStockReelJob(downloads, { requestId: crypto.randomUUID(), caption: '', theme: 'mechanics only', maxDuration: 40, options: { ...automatic.automaticStockReelOptions('forest'), openingExperiment:'watch-time-v1' } });
+  const job = await source.createStockReelJob(downloads, { requestId: crypto.randomUUID(), caption: '', theme: 'mechanics only', maxDuration: 40, options: automatic.automaticStockReelOptions('forest') });
   await source.processNextSourceJob();
   const done = await source.getSourceJob(job.id);
   assert.equal(done.status, 'COMPLETED', done.error);
@@ -63,7 +63,6 @@ async function main() {
   assert.equal(picture.width, 720); assert.equal(picture.height, 1280);
   assert.ok(media.streams.some(stream => stream.codec_type === 'audio'));
   assert.deepEqual(file.quality.captions, []);
-  assert.match(file.quality.checks.join(' '),/Watch-time opening experiment v1/);
   assert.equal(file.quality.audioMastering?.version, 'loudness-v1');
   assert.equal(file.quality.musicRecording?.licence,'CC0-1.0');
   assert.equal(file.quality.musicRecording?.timing,'onset-v1');
@@ -76,14 +75,14 @@ async function main() {
   assert.equal(file.quality.audioMastering.targetLufs,-20);
   assert.ok(Math.abs(file.quality.audioMastering.integratedLufs + 20) <= 1.5);
   assert.ok(file.quality.audioMastering.truePeakDb <= -1);
-  assert.ok(!file.quality.checks.some(check => /1\.25× playback/.test(check)), 'New v3 recipes never reuse the old automatic acceleration rule');
+  assert.ok(!file.quality.checks.some(check => /1\.(25|35)× playback/.test(check)), 'New recipes keep acceleration modest');
   assert.ok(file.quality.checks.some(check => /1× playback/.test(check)), 'Meaningful movement keeps native speed');
   const checks = file.quality.checks.join(' ');
-  assert.match(checks, /adaptive cadence/); assert.match(checks, /no fixed 45-second target/);
+  assert.match(checks, /adaptive cadence gives quiet scenes more room/);
   const assembly = path.join(temp, 'storage', 'Phoenix Studio Review Files', 'work', `source-${job.id}`, 'stock-assembly-v2');
-  assert.equal(job.stockSource.options.shotCadence, 'adaptive-v3');
+  assert.equal(job.stockSource.options.shotCadence, 'adaptive-v4');
   assert.equal(JSON.parse(fs.readFileSync(path.join(assembly, 'motion-1.json'), 'utf8')).windows.every(window => window.motion === 0), true, 'Static picture is measured, not guessed');
-  assert.match(file.quality.checks.join(' '), /bounded 1\.35× acceleration/);
+  assert.match(file.quality.checks.join(' '), /bounded 1\.15× acceleration/);
   assert.equal(fs.existsSync(path.join(assembly, 'shot-1.mp4')), false, 'Completed per-shot scratch is cleaned automatically');
   assert.equal(fs.existsSync(path.join(assembly, 'editable-master.mp4')), true, 'Editable master survives scratch cleanup');
   assert.equal(fs.existsSync(path.join(assembly, 'original-assembly.mp4')), true, 'Original assembly survives scratch cleanup');
@@ -104,7 +103,7 @@ async function main() {
     ? { ...shot, end: 4, open: async () => ({ stream: Readable.toWeb(fs.createReadStream(portrait)), expectedBytes: fs.statSync(portrait).size }) }
     : shot);
   const focus = await source.createStockReelJob(focusedDownloads, { requestId: crypto.randomUUID(), caption: '', theme: 'isolated focused mechanics', maxDuration: 40,
-    options: { ...automatic.automaticStockReelOptions('animals'), background: 'soft-v1', openingExperiment: 'watch-time-v1', sequenceExperiment: 'focus-four-v1' } });
+    options: { ...automatic.automaticStockReelOptions('animals'), background: 'soft-v1', shotCadence: 'adaptive-v3', openingExperiment: 'watch-time-v1', sequenceExperiment: 'focus-four-v1' } });
   await source.processNextSourceJob();
   const focused = await source.getSourceJob(focus.id);
   assert.equal(focused.status, 'COMPLETED', focused.error);

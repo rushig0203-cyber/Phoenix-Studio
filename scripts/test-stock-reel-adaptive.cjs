@@ -101,6 +101,22 @@ test('adaptive picks the highest measured motion window and keeps output frame b
   plan.forEach((shot, index) => assert.equal(shot.outputStart, index ? plan[index - 1].outputEnd : 0));
 });
 
+test('the same number of shots can tell a fast moment or give quiet footage more time', () => {
+  const plan = shots => reel.planStockIntervals(shots, 40, 'cinematic', undefined, 'adaptive-v4');
+  const sample = (motion, end = 12) => automatic(12, { motionWindows: [{ start: 1, end, motion }] });
+  const calm = plan(Array.from({ length: 4 }, () => sample(1)));
+  const action = plan(Array.from({ length: 4 }, () => sample(26)));
+  const brief = plan(Array.from({ length: 4 }, () => sample(10, 2)));
+  assert.ok(calm.at(-1).outputEnd > 12);
+  assert.ok(action.at(-1).outputEnd < calm.at(-1).outputEnd - 3);
+  assert.ok([...calm, ...action].every(shot => shot.speed === 1 && shot.start >= 1 && shot.end <= 12));
+  assert.ok(brief.at(-1).outputEnd < 4 && brief.every(shot => shot.speed === 1.15 && shot.start >= 1 && shot.end <= 2));
+  for (const result of [calm, action, brief]) {
+    assert.equal(result.reduce((sum, shot) => sum + shot.frames, 0), Math.round(result.at(-1).outputEnd * 24));
+    result.forEach((shot, index) => assert.equal(shot.outputStart, index ? result[index - 1].outputEnd : 0));
+  }
+});
+
 test('unknown motion uses the centre of available footage and never guesses a speed change', () => {
   const plan = adaptive(Array.from({ length: 5 }, () => automatic(14)), 20);
   assert.ok(plan.every(shot => shot.speed === 1));

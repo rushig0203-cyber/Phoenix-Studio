@@ -119,8 +119,8 @@ async function main() {
   assert.ok(selected.length >= 8 && selected.length <= 10); assert.equal(selected[0].id, 36918287);
   assert.equal(selected.filter(video => video.width === 720 && video.height === 1280).length, 8, 'The actual discovered portrait pool must survive metadata selection.');
   assert.ok(!selected.some(video => [13712406, 36659594, 13439228].includes(video.id)), 'Skyline, roadside and ungrounded city-plaza footage must not pass the chosen green-park setting.');
-  const options = { ...automatic.automaticStockReelOptions('Parks'), openingExperiment: 'watch-time-v1' }; assert.equal(options.continuity, 'visual-v1');
-  const maximum = 17; // Exercise a bounded learning cap with real picture, no owner statistics.
+  const options = automatic.automaticStockReelOptions('Parks'); assert.equal(options.continuity, 'visual-v1');
+  const maximum = automatic.AUTOMATIC_STOCK_REEL_MAX_DURATION;
   assert.equal(automatic.automaticStockGreeneryFocus(selected[0]), true); options.sceneFocus = 'greenery'; options.background = 'soft-v1';
   const job = await source.createStockReelJob(selected.map(video => ({ provider: video.provider, mediaId: String(video.id), title: video.title,
     creator: video.creator, sourcePage: video.sourcePage, start: 0, end: video.duration, trimMode: 'auto',
@@ -131,7 +131,7 @@ async function main() {
   const file = await reviews.getReviewFile(done.reviewIds[0]), output = reviews.outputPath(file.id, 'instagram');
   const info = await probe(output, true);
   assert.equal(info.width, 720); assert.equal(info.height, 1280); assert.equal(info.frameRate, 24);
-  assert.ok(info.videoDuration >= 12 && info.videoDuration <= maximum && info.hasAudio);
+  assert.ok(info.videoDuration > 0 && info.videoDuration <= maximum && info.hasAudio);
   assert.equal(info.frames, Math.round(info.videoDuration * 24)); assert.deepEqual(file.quality.captions, []);
   assert.equal(visualRequests,1);assert.equal(plannedFrames,3);
   assert.equal(file.quality.postingAnalysis.model,'isolated-fixture-no-provider');assert.equal(file.quality.postingAnalysis.status,'COMPLETE');

@@ -30,19 +30,19 @@ async function queueAutomaticStockReel(input: { provider?: AutomaticStockProvide
   // Read only bounded local structured choices. A corrupt store is actionable,
   // not a reason to pretend the manager learned or silently discard preferences.
   const managerGuidance = await getStockProductionGuidance();
-  const maxDuration = Math.min(AUTOMATIC_STOCK_REEL_MAX_DURATION, managerGuidance.performanceMaxDuration || AUTOMATIC_STOCK_REEL_MAX_DURATION);
+  const maxDuration = AUTOMATIC_STOCK_REEL_MAX_DURATION;
   const unavailable = await readStockReuseBlocked();
   const { query } = input;
   const configured = configuredStock();
   const providers = AUTOMATIC_STOCK_PROVIDERS.filter(name => configured[name]);
   const recentlyUsed = recentStockMediaIdentities(await readSourceJobs(), managerGuidance.historyLimit);
-  function enoughCompanions(anchor: NaturalStock, pool: NaturalStock[], target = AUTOMATIC_STOCK_REEL_MAX_SOURCES) {
+  function enoughCompanions(anchor: NaturalStock, pool: NaturalStock[]) {
     const related = automaticStockCompanions(anchor, pool, query, recentlyUsed, unavailable);
     const fullFrame = related.filter(video => {
       const aspect = video.width / video.height, portrait = 720 / 1280;
       return Math.min(aspect / portrait, portrait / aspect) >= .92;
     }).length;
-    return related.length >= target - 1 && fullFrame >= Math.min(7, target - 1);
+    return related.length >= AUTOMATIC_STOCK_REEL_MAX_SOURCES - 1 && fullFrame >= 7;
   }
   let selected = input.provider && input.id ? { provider: input.provider, id: input.id } : undefined;
   let discovery: Map<AutomaticStockProvider, Promise<NaturalStock[]>> | undefined;
@@ -59,26 +59,19 @@ async function queueAutomaticStockReel(input: { provider?: AutomaticStockProvide
   }
   const anchor = await resolveNaturalStock(selected.provider, selected.id);
   if (anchor.provider !== selected.provider || anchor.id !== selected.id) throw new Error("This starting video is no longer available.");
-  // Greenery validation can omit sources; keep its established larger pool.
-  const sequenceExperiment = managerGuidance.attentionExperiment === "focus-four-v1" && !automaticStockGreeneryFocus(anchor)
-    ? Number.parseInt(input.requestId.slice(-1), 16) % 2 === 0 ? "focus-four-v1" as const : "montage-control-v1" as const
-    : undefined;
-  const sourceTarget = sequenceExperiment === "focus-four-v1" ? 4 : AUTOMATIC_STOCK_REEL_MAX_SOURCES;
   const sources = await automaticStockSources(anchor, query, providers, {
     search: (name, companionQuery) => companionQuery === query && discovery?.has(name) ? discovery.get(name)! : searchNaturalStockPool(name, companionQuery,
-      pool => enoughCompanions(anchor, pool, sourceTarget)),
+      pool => enoughCompanions(anchor, pool)),
     resolve: resolveNaturalStock,
-  }, recentlyUsed, unavailable, sequenceExperiment);
+  }, recentlyUsed, unavailable);
   const downloads: StockReelDownload[] = sources.map(video => {
     const url = trustedStockUrl(video.previewUrl, video.provider);
     return { provider: video.provider, mediaId: String(video.id), sourcePage: video.sourcePage, creator: video.creator, title: video.title, licence: video.licence, start: 0, end: video.duration, trimMode: "auto", open: () => openStockVideo(url) };
   });
   const options = automaticStockReelOptions(query);
-  if (sequenceExperiment) options.sequenceExperiment = sequenceExperiment;
-  if (managerGuidance.openingExperiment) options.openingExperiment = managerGuidance.openingExperiment;
   options.background = "soft-v1";
   if (automaticStockGreeneryFocus(anchor)) options.sceneFocus = "greenery";
-  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence, undefined, options.openingExperiment, options.sequenceExperiment);
+  planStockIntervals(sources.map(video => ({ duration: video.duration, start: 0, end: video.duration, trimMode: "auto" as const })), maxDuration, options.pacing, options.minDuration, options.shotCadence);
   return createStockReelJob(downloads, { requestId: input.requestId, caption: "", theme: query, maxDuration, options,
     managerGuidance: { revision: managerGuidance.revision, feedbackCount: managerGuidance.feedbackCount, rules: managerGuidance.rules } });
 }

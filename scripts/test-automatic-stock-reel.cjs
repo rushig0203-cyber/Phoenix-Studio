@@ -116,13 +116,13 @@ test('cached query-only greenery keeps the larger portrait-aware pool and bypass
   assert.ok(h.queued[0].downloads.length >= 8);
 });
 
-test('fresh attention guidance assigns saved focus/control recipes without changing manual or existing work', async () => {
+test('watch data does not assign new reels to a fixed four-shot recipe', async () => {
   const guidance = { ...baselineGuidance, attentionExperiment: 'focus-four-v1' };
-  for (const [tail, profile, count] of [['2', 'focus-four-v1', 4], ['1', 'montage-control-v1', 8]]) {
+  for (const tail of ['2', '1']) {
     const h = harness({ guidance }), payload = { ...automaticPayload, requestId: automaticPayload.requestId.slice(0, -1) + tail };
     assert.equal((await h.api.POST(request(payload))).status, 201);
-    assert.equal(h.queued[0].input.options.sequenceExperiment, profile);
-    assert.equal(h.queued[0].downloads.length, count);
+    assert.equal(h.queued[0].input.options.sequenceExperiment, undefined);
+    assert.equal(h.queued[0].downloads.length, 8);
     assert.equal(h.queued[0].input.options.minDuration, undefined);
   }
   const saved = harness({ guidance, existing: { id: 'saved', stockSource: { shots: [{}, {}] } } });
@@ -150,7 +150,7 @@ test('new automatic soundtrack uses compact adaptive timing without changing man
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MIN_SOURCES, 4);
   assert.equal(automatic.AUTOMATIC_STOCK_REEL_MAX_SOURCES, 10);
   for (const [topic, mood] of [['Sunrise over mountains', 'warm'], ['birds in a garden', 'warm'], ['Sun City videos', 'journey'], ['ocean waves', 'journey'], ['misty mountains', 'reflective'], ['moonlit lake', 'reflective']]) {
-    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', musicPolicy: 'visual-calm-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
+    assert.deepEqual(plain(automatic.automaticStockReelOptions(topic)), { audio: 'music', mood, transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', musicPolicy: 'visual-calm-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v4', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1' });
   }
   const first = automatic.automaticStockReelOptions('sunrise'); first.mood = 'journey';
   assert.equal(automatic.automaticStockReelOptions('sunrise').mood, 'warm', 'A caller cannot mutate later defaults');
@@ -209,7 +209,7 @@ test('authoritative slow-motion changes are skipped and selection gathers enough
   assert.equal(sources.length, 8); assert.equal(sources[0].id, anchor.id);
   assert.deepEqual(calls, [2, 3, 4, 5, 6, 7, 8, 9]); assert.equal(sources.some(item => item.id === 2), false);
   const plan = editing.planStockIntervals(sources.map(item => ({ duration: item.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
-  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20, 'New defaults stop gathering at a compact viable preview, not padding to the former duration');
+  assert.ok(plan.at(-1).outputEnd > 20 && plan.at(-1).outputEnd < 24, 'The same source pool can produce a longer natural edit');
   assert.ok(plan.every(item => item.speed === 1), 'Unanalysed windows remain at native playback speed');
 });
 
@@ -602,7 +602,7 @@ test('automatic composition resolves authoritative companions until its adaptive
   assert.deepEqual(calls, Array.from({ length: 10 }, (_, index) => ['pexels', index + 2]));
   assert.deepEqual(identities(sources), ['pexels:1', ...Array.from({ length: 7 }, (_, at) => `pexels:${at + 5}`)]);
   const plan = editing.planStockIntervals(sources.map(source => ({ duration: source.duration, trimMode: 'auto' })), 40, 'cinematic', undefined, automatic.AUTOMATIC_STOCK_REEL_OPTIONS.shotCadence);
-  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20);
+  assert.ok(plan.at(-1).outputEnd > 20 && plan.at(-1).outputEnd < 24);
 });
 
 test('one catalog can provide a compact reel while too few related shots remain an error', async () => {
@@ -616,7 +616,7 @@ test('one catalog can provide a compact reel while too few related shots remain 
   }), /Not enough related footage.*another starting video/);
 });
 
-test('five related sources are enough when the catalog is sparse and the adaptive plan reaches twelve seconds', async () => {
+test('five related sources are enough when the catalogue is sparse', async () => {
   const sources = await automatic.automaticStockSources(anchor, 'Sun City', ['pexels'], {
     async search() { return Array.from({ length: 4 }, (_, index) => video(index + 2)); },
     async resolve(provider, id) { return video(id, 'Sun City skyline', { provider }); },
@@ -834,14 +834,14 @@ test('minimal automatic POST persists adaptive options with eight authoritative 
   assert.equal(h.queued.length, 1); assert.equal(h.single.length, 0); assert.equal(h.fetches.length, 0);
   assert.deepEqual(h.calls[0], ['existing', automaticPayload.requestId]);
   assert.deepEqual(plain(h.queued[0].input), { requestId: automaticPayload.requestId, caption: '', theme: 'Sun City videos', maxDuration: 40,
-    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', musicPolicy: 'visual-calm-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v3', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
+    options: { audio: 'music', mood: 'journey', transition: 'cut', framing: 'auto', pacing: 'cinematic', musicVersion: 2, musicLibrary: 'cc0-lofi-v1', musicPolicy: 'visual-calm-v1', audioMastering: 'loudness-v1', shotCadence: 'adaptive-v4', continuity: 'visual-v1', reusePolicy: 'four-in-18-months-v1', background: 'soft-v1' },
     managerGuidance: { revision: baselineGuidance.revision, feedbackCount: 0, rules: baselineGuidance.rules },
   });
   assert.deepEqual(plain(h.queued[0].downloads.map(shot => [shot.provider, shot.mediaId, shot.start, shot.end, shot.trimMode])), [
     ...[1, 2, 3, 4].map(id => ['pexels', String(id), 0, 40, 'auto']), ...[5, 6, 7, 8].map(id => ['pixabay', String(id), 0, 40, 'auto']),
   ]);
   const plan = editing.planStockIntervals(h.queued[0].downloads.map(shot => ({ duration: shot.end, ...shot })), 40, 'cinematic', undefined, h.queued[0].input.options.shotCadence);
-  assert.ok(plan.at(-1).outputEnd >= 18 && plan.at(-1).outputEnd < 20);
+  assert.ok(plan.at(-1).outputEnd > 20 && plan.at(-1).outputEnd < 24);
   assert.ok(plan.every(interval => interval.speed === 1), 'Unmeasured catalog previews do not authorize speed changes');
 });
 
@@ -965,13 +965,13 @@ test('successful single-flight work clears so later retries use saved-job lookup
   assert.equal(h.queued.length, 1); assert.equal(h.fetches.length, 8);
 });
 
-test('unrelated or too-short source sets fail before any stream opens or job is queued', async () => {
+test('unrelated or insufficient source sets fail before any stream opens or job is queued', async () => {
   for (const options of [
     { search: async () => [anchor, video(2, 'Other city')] },
     { resolve: async (provider, id) => video(id, 'Other city', { provider }) },
     { search: async () => [anchor, video(2), video(3)] },
     { openDownloads: true, search: async () => [video(2), video(3), video(4)],
-      resolve: async (provider, id) => video(id, 'Sun City skyline', { provider, duration: 1.5 }) },
+      resolve: async (provider, id) => video(id, 'Sun City skyline', { provider, duration: .5 }) },
   ]) {
     const h = harness(options), result = await h.api.POST(request(automaticPayload)), data = await result.json();
     assert.equal(result.status, 400); assert.match(data.error, /Not enough related footage|meaningful source footage|starting video/);
@@ -998,13 +998,13 @@ test('missing FFmpeg stops before catalog or media access', async () => {
   assert.equal(h.fetches.length, 0); assert.equal(h.queued.length, 0);
 });
 
-test('measured Instagram duration experiment reaches new automatic recipes without changing manual trims', async () => {
+test('Instagram duration advice does not impose a cut length on new automatic reels or manual trims', async () => {
   const h = harness({ guidance: { ...baselineGuidance, performanceMaxDuration: 20 } });
   const result = await h.api.POST(request(automaticPayload));
   assert.equal(result.status, 201); assert.equal(h.queued.length, 1);
-  assert.equal(h.queued[0].input.maxDuration, 20);
+  assert.equal(h.queued[0].input.maxDuration, 40);
   assert.equal(h.queued[0].input.options.pacing, 'cinematic');
-  assert.equal(h.queued[0].input.options.shotCadence, 'adaptive-v3');
+  assert.equal(h.queued[0].input.options.shotCadence, 'adaptive-v4');
   const manual = harness({ guidance: { ...baselineGuidance, performanceMaxDuration: 20 } });
   const response = await manual.api.POST(request({ requestId: automaticPayload.requestId, theme: 'Sun City', duration: 60,
     shots: [{ provider: 'pexels', id: 1, start: 2, end: 8, trimMode: 'manual' }, { provider: 'pixabay', id: 2, start: 3, end: 9, trimMode: 'manual' }] }));
@@ -1083,11 +1083,11 @@ test('structured source feedback expands recent-history preference and snapshots
   assert.equal(saved.calls.filter(call=>call[0]==='guidance').length,0);
 });
 
-test('measured watch-time opening advice reaches only a newly queued automatic recipe', async () => {
+test('a new opening follows the picture while saved request and manual trim handling stay intact', async () => {
   const guidance={...baselineGuidance,openingExperiment:'watch-time-v1'};
   const h=harness({guidance}),response=await h.api.POST(request(automaticPayload));
   assert.equal(response.status,201);
-  assert.equal(h.queued[0].input.options.openingExperiment,'watch-time-v1');
+  assert.equal(h.queued[0].input.options.openingExperiment,undefined);
   const saved=harness({guidance,existing:{id:'saved',stockSource:{shots:[{},{}]}}});
   assert.equal((await saved.api.POST(request(automaticPayload))).status,200);
   assert.equal(saved.queued.length,0,'A saved request is not replanned when insight evidence changes.');

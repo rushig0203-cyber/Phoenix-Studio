@@ -105,19 +105,16 @@ export default function InstagramPerformance({ videoId }: { videoId?: string } =
       <p role="status" className={`text-xs ${["error", "permission_required"].includes(data.status) ? "text-red-700" : "text-[#687657]"}`}>{data.detail}</p>
       {data.status === "permission_required" && <p className="text-xs"><a href="/dashboard#settings" className="font-medium underline">Reconnect Instagram in Settings</a> with <code>instagram_manage_insights</code> while keeping your existing publishing permissions.</p>}
       {data.status === "not_connected" && <a href="/dashboard#settings" className="inline-block text-xs font-medium underline">Connect Instagram in Settings</a>}
-      {!videoId && <div aria-label="Watch diagnosis and next test" className="space-y-2 rounded-xl bg-[#edf1e5] p-3 text-xs">
+      {!videoId && <div aria-label="Watch-time insights" className="space-y-2 rounded-xl bg-[#edf1e5] p-3 text-xs">
         <p className="font-medium">Watch diagnosis</p>
         {attention ? <p>{metric(attention.belowHalfCount)} of {metric(attention.measuredCount)} measured, locally matched Reels averaged below half their runtime. Median average watch: {watchLabel(attention.medianWatchSeconds * 1000)} · Runtime: {watchLabel(attention.medianRuntimeSeconds * 1000)} · Watch/runtime ratio: {ratioLabel(attention.medianWatchRatio)}.</p>
           : <p>Fresh, mature matched Reels with comparable exposure, measured watch time and known runtime are needed for this diagnosis.</p>}
         <p className="text-[#687657]">Average watch/runtime is not a completion rate or a measured drop-off curve.</p>
-        <p><span className="font-medium">Next test: </span>{data.summary.attentionExperiment === "focus-four-v1"
-          ? "Some eligible new Reels test four related shots, native playback and a portrait opening where available; others keep the current montage. Short versions end naturally."
-          : "Waiting for enough fresh matched evidence before changing new automatic footage recipes."}</p>
+        <p>New footage reels choose their pacing from the available shots and sampled movement.</p>
         {cohorts.length ? <div className="space-y-2 border-t border-[#d5ddb8] pt-2">{cohorts.map(cohort => <div key={`${cohort.recipe}/${cohort.ageBand}/${cohort.exposureMeasure}`}>
           <p>{cohort.recipe === "focus-four-v1" ? "Focused version" : "Montage control"} · {metric(cohort.videoCount)} Reels · {cohort.ageBand} · {cohort.exposureMeasure === "reach" ? "reached accounts" : "views"}{cohort.comparable ? " · Both recipes have at least 3 in this band" : " · Waiting for at least 3 of each recipe in this band"}</p>
           <p className="text-[#687657]">Median watch: {watchLabel(cohort.attention ? cohort.attention.medianWatchSeconds * 1000 : undefined)} · Runtime: {watchLabel(cohort.attention ? cohort.attention.medianRuntimeSeconds * 1000 : undefined)} · Ratio: {ratioLabel(cohort.attention?.medianWatchRatio)} ({metric(cohort.attention?.measuredCount)} measured). Comments / saves / shares per 100: {(["comments", "saves", "shares"] as const).map(name => `${metric(cohort.rates[name].medianPer100)} (${metric(cohort.rates[name].measuredCount)} measured)`).join(" / ")}.</p>
-        </div>)}</div> : <p className="text-[#687657]">Test results appear after new Reels are posted and measured; older posts supply the diagnosis.</p>}
-        <p className="text-[#687657]">Comparisons need at least three of each version at similar ages with the same reach/view measure. No winner or growth result is assumed.</p>
+        </div>)}<p className="text-[#687657]">Past recipe comparisons need at least three of each version at similar ages with the same reach or view measure.</p></div> : null}
       </div>}
       {videos.length ? <div className="divide-y divide-[#45594d]">
         {videos.slice(page * pageSize, (page + 1) * pageSize).map(video => {
