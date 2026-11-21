@@ -2,22 +2,22 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ContentIdea, SuggestionReason } from "@/lib/contentIdeas";
-import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
-import type { QuickTemplateRequest } from "@/lib/quickTemplates";
+import { FOOTAGE_SUGGESTION_REFRESH_MS, installFootageSuggestionRefresh, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
+import { isQuickTemplateSource, type QuickTemplateOpening, type QuickTemplateRequest } from "@/lib/quickTemplates";
 import JobProgress from "./JobProgress";
 import StudioActivity from "./StudioActivity";
 
-type Template = ContentIdea & SuggestionReason;
+type Template = ContentIdea & SuggestionReason & { opening?: QuickTemplateOpening };
 type TemplateJob = { status: string; progress: number; stage?: string; error?: string };
 const catalogue = new Map(stockTopicPool().map(idea => [idea.id, idea]));
+const batchKey = "phoenix-quick-template-batch-v1";
 
-function templateCover(title: string) {
-  if (/\b(?:Switzerland|Alps|Alpine)\b/i.test(title)) return "alps";
-  if (/\bowls?\b/i.test(title)) return "owl";
-  if (/\bpandas?\b/i.test(title)) return "panda";
-  if (/\brabbits?\b/i.test(title)) return "rabbit";
-  if (/\b(?:parks?|gardens?)\b/i.test(title)) return "park";
-  return undefined;
+function validBatch(ideas: Template[]) {
+  return Array.isArray(ideas) && ideas.length >= 5 && ideas.length <= 6 && new Set(ideas.map(idea => idea?.id)).size === ideas.length
+    && ideas.every(idea => idea && catalogue.get(idea.id)?.query === idea.query && catalogue.get(idea.id)?.title === idea.title
+      && typeof idea.reason === "string" && !!idea.reason.trim() && idea.reason.length <= 220 && !/[\u0000-\u001f\u007f]/.test(idea.reason)
+      && (idea.opening === undefined || (isQuickTemplateSource(idea.opening) && typeof idea.opening.image === "string"
+        && idea.opening.image.startsWith("https://") && idea.opening.image.length <= 2048)));
 }
 
 export default function QuickTemplates({ request, job, onRequest, onStarted, onRetry, disabled = false, customTopicAction }: {
@@ -48,39 +48,68 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
       setItem(key: string, value: string) { memory.current.set(key, value); if (storageWorking.current) try { localStorage.setItem(key, value); } catch { storageWorking.current = false; } },
     };
     async function refresh() {
-      if (pending || busy.current) return;
+      if (pending || busy.current || controller.signal.aborted) return false;
       pending = true; setLoading(true); setError("");
       const saved = nextStoredFootageSuggestions(storage, cursor.current);
       try {
-        const query = new URLSearchParams({ workflow: "footage", cursor: String(saved.cursor), seen: saved.seen.join(",") });
-        const response = await fetch(`/api/content-suggestions?${query}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
+        const query = new URLSearchParams({ workflow: "footage", cursor: String(saved.cursor), seen: saved.seen.join(","), opening: "1" });
+        const response = await fetch(`/api/content-suggestions?${query}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)]) });
         if (!response.ok) throw new Error("Could not read your saved video preferences. Try refreshing templates.");
         const data = await response.json() as { ideas: Template[]; nextCursor: number };
-        if (!Array.isArray(data.ideas) || data.ideas.length < 5 || data.ideas.length > 6 || new Set(data.ideas.map(idea => idea?.id)).size !== data.ideas.length
-          || !Number.isSafeInteger(data.nextCursor) || data.nextCursor < 0 || data.nextCursor >= 1_000_000
-          || data.ideas.some(idea => !idea || catalogue.get(idea.id)?.query !== idea.query || catalogue.get(idea.id)?.title !== idea.title
-            || typeof idea.reason !== "string" || !idea.reason.trim() || idea.reason.length > 220 || /[\u0000-\u001f\u007f]/.test(idea.reason))) throw new Error("Could not read your saved templates. Try refreshing templates.");
-        if (!mounted.current) return;
+        if (!validBatch(data.ideas) || !Number.isSafeInteger(data.nextCursor) || data.nextCursor < 0 || data.nextCursor >= 1_000_000) {
+          throw new Error("Could not read your saved templates. Try refreshing templates.");
+        }
+        if (!mounted.current || controller.signal.aborted) return false;
+        if (!data.ideas.some(idea => idea.opening)) throw new Error("No eligible opening shots were found. Try More templates or enter a topic.");
         cursor.current = data.nextCursor;
         recordStoredFootageSuggestions(storage, data.ideas, data.nextCursor);
         setTemplates(data.ideas);
-      } catch (failure) { if (mounted.current && !controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Could not refresh templates."); }
-      finally { pending = false; if (mounted.current) setLoading(false); }
+        storage.setItem(batchKey, JSON.stringify({ savedAt: Date.now(), ideas: data.ideas }));
+        return true;
+      } catch (failure) {
+        if (mounted.current && !controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Could not refresh templates.");
+        return false;
+      } finally { pending = false; if (mounted.current && !controller.signal.aborted) setLoading(false); }
     }
-    reload.current = refresh;
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), FOOTAGE_SUGGESTION_REFRESH_MS);
-    return () => { mounted.current = false; controller.abort(); window.clearInterval(timer); };
+    reload.current = async () => { await refresh(); };
+    let initialDue = Date.now();
+    try {
+      const raw = storage.getItem(batchKey);
+      const batch = raw && raw.length <= 24_000 ? JSON.parse(raw) : null;
+      if (batch && validBatch(batch.ideas) && Number.isSafeInteger(batch.savedAt) && batch.savedAt <= Date.now()) {
+        setTemplates(batch.ideas);
+        setLoading(false);
+        initialDue = batch.savedAt + FOOTAGE_SUGGESTION_REFRESH_MS;
+      }
+    } catch { /* Preferences and saved jobs are separate from this preview cache. */ }
+    const stopRefresh = installFootageSuggestionRefresh({
+      key: "quick-templates", initialDue, refresh, storage, now: Date.now,
+      setTimeout: (listener, delay) => window.setTimeout(listener, delay),
+      clearTimeout: timer => { if (typeof timer === "number") window.clearTimeout(timer); },
+      subscribeResume(listener) {
+        const onVisible = () => { if (document.visibilityState !== "hidden") listener(); };
+        window.addEventListener("focus", listener);
+        document.addEventListener("visibilitychange", onVisible);
+        return () => {
+          window.removeEventListener("focus", listener);
+          document.removeEventListener("visibilitychange", onVisible);
+        };
+      },
+    });
+    return () => { mounted.current = false; controller.abort(); stopRefresh(); };
   }, []);
 
   async function create(template?: Template) {
-    if (disabled || busy.current || request?.jobId || (!request && !template)) return;
-    const selected = request || { requestId: crypto.randomUUID(), templateId: template!.id, title: template!.title, query: template!.query };
+    if (disabled || busy.current || request?.jobId || (!request && !template?.opening)) return;
+    const selected = request ?? {
+      requestId: crypto.randomUUID(), templateId: template!.id, title: template!.title, query: template!.query,
+      source: { provider: template!.opening!.provider, id: template!.opening!.id },
+    };
     busy.current = true; setPreparing(true); setError(""); setCanChange(false);
     onRequest(selected);
     try {
       const response = await fetch("/api/stock-reels", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ automatic: true, query: selected.query, requestId: selected.requestId }), signal: AbortSignal.timeout(780_000) });
+        body: JSON.stringify({ automatic: true, query: selected.query, requestId: selected.requestId, ...selected.source }), signal: AbortSignal.timeout(780_000) });
       const data = await response.json();
       if (!response.ok) {
         if (mounted.current) setCanChange([400, 409, 503].includes(response.status));
@@ -115,9 +144,13 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
     </div>
     {loading && !templates.length ? <StudioActivity label="Finding your next video…" /> : null}
     {error ? <p role="alert" className="mt-4 text-sm">{error}</p> : null}
-    <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template data-template-cover={templateCover(template.title)} type="button" disabled={disabled || preparing} onClick={() => void create(template)} aria-label={`Make video: ${template.title}`}>
-      <span data-template-image aria-hidden="true" />
-      <span data-template-copy><span data-template-title>{template.title}</span><span data-template-reason>{template.reason}</span></span>
+    <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template type="button"
+      disabled={disabled || preparing || !template.opening} onClick={() => void create(template)}
+      aria-label={template.opening ? `Make video: ${template.title}` : `${template.title}: opening shot unavailable`}>
+      <span data-template-image aria-hidden="true">
+        {template.opening ? <img alt="" src={template.opening.image} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={event => { event.currentTarget.hidden = true; }} /> : null}
+      </span>
+      <span data-template-copy><span data-template-title>{template.title}</span><span data-template-reason>{template.opening ? template.reason : "Opening shot unavailable"}</span></span>
       <span data-template-action aria-hidden="true">↗</span>
     </button>)}</div>
   </section>;

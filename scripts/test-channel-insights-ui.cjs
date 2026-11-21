@@ -21,7 +21,8 @@ function harness(fetcher, props = {}) {
     useEffect(callback, dependencies) { const at = index++, old = effects[at]; if (!old || dependencies.some((value, offset) => !Object.is(value, old.dependencies[offset]))) { old?.cleanup?.(); effects[at] = { callback, dependencies }; pending.push(() => { effects[at].cleanup = callback(); }); } },
   };
   const jsx = (type, props, key) => ({ type, props, key });
-  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, './InstagramPerformance': { default: () => null }, './PlatformIcon': { default: () => null }, './StudioActivity': { default: () => null } };
+  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, './InstagramPerformance': { default: () => null }, './PlatformIcon': { default: () => null }, './StudioActivity': { default: () => null },
+    '@/lib/rumbleWindow': { rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' } } };
   const mod = { exports: {} };
   new vm.Script(source, { filename }).runInNewContext({ module: mod, exports: mod.exports, URL, AbortController, setTimeout, clearTimeout,
     async fetch(url, init = {}) { requests.push({ url, ...init }); return fetcher ? fetcher(url, init, requests.length) : response(url === '/api/channels' ? { channels: [{ platform: 'facebook', name: 'Fixture Page', connected: true }, { platform: 'youtube', connected: false }] } : facebook()); },
@@ -83,6 +84,11 @@ test('YouTube status is verified separately and manual platforms show no invente
     ui.select(platform); assert.match(text(ui.tree()), /Manual analytics/); assert.match(text(ui.tree()), /no verified/);
     assert.equal(ui.all('dd').length, 0); assert.doesNotMatch(text(ui.tree()), /Channel connected|0 views|0 likes/);
   }
+  ui.select('Rumble');
+  const dashboard = ui.find('a', 'Open Rumble dashboard ↗');
+  assert.equal(dashboard.props.href, 'https://rumble.com/account/dashboard');
+  assert.equal(dashboard.props.target, 'phoenix-rumble-dashboard');
+  assert.equal(dashboard.props.rel, 'noopener noreferrer');
   assert.deepEqual(ui.requests.map(request => request.url), ['/api/channels', '/api/youtube-performance']);
   assert.ok(ui.requests.every(request => request.method === undefined)); ui.unmount();
 });

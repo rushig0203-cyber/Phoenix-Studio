@@ -47,6 +47,10 @@ function memoryStorage(initial = {}) {
 function harness(options = {}) {
   let active, uuid = 0, time = 0, timerId = 0, mounted = true, closed = 0;
   const requests = [], suggestionRequests = [], deadlines = [], started = [], timers = new Map();
+  const windowListeners = new Map(), documentListeners = new Map();
+  const FixtureDate = class extends Date { static now() { return time; } };
+  const listen = (listeners, name, callback) => { const values = listeners.get(name) || new Set(); values.add(callback); listeners.set(name, values); };
+  const unlisten = (listeners, name, callback) => listeners.get(name)?.delete(callback);
   const renderer = { index: 0, slots: [], effects: [], pending: [], dirty: true, tree: undefined };
   const hooks = {
     useState(initial) {
@@ -80,8 +84,10 @@ function harness(options = {}) {
     clearTimeout(id) { timers.delete(id); },
   };
   const shared = {
-    Error, AbortController, URLSearchParams, localStorage: options.storage || memoryStorage(),
-    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout },
+    Error, AbortController, URLSearchParams, Date: FixtureDate, localStorage: options.storage || memoryStorage(),
+    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+      addEventListener: (name, callback) => listen(windowListeners, name, callback), removeEventListener: (name, callback) => unlisten(windowListeners, name, callback) },
+    document: { visibilityState: 'visible', addEventListener: (name, callback) => listen(documentListeners, name, callback), removeEventListener: (name, callback) => unlisten(documentListeners, name, callback) },
     crypto: { randomUUID() { return 'fixture-request-' + ++uuid; } },
     AbortSignal: {
       timeout(milliseconds) { deadlines.push(milliseconds); return new AbortController().signal; },

@@ -60,7 +60,8 @@ test('footage recommendations are short broad topics while the rich creation cat
   assert.ok(all.length >= 240, 'The pool includes countries, more wildlife and searchable architecture');
   assert.ok(all.every(idea => idea.title.split(/\s+/).length <= 2 && idea.query.split(/\s+/).length <= 2));
   assert.ok(all.every(idea => idea.query === idea.title), 'Selected input uses the exact displayed label, not a hidden alias');
-  for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
+  for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'City streets', 'City traffic', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
+  assert.equal(all.some(idea => ['A city waking up', 'City lights'].includes(idea.title)), false, 'Urban prompts stay concrete and filmable');
   for (const title of ['Switzerland lakes', 'Norway fjords', 'Japan trains', 'Chile glaciers', 'Netherlands tulips']) assert.ok(all.some(idea => idea.title === title));
   for (const title of ['Switzerland coast', 'Nepal beaches', 'Austria coast']) assert.equal(all.some(idea => idea.title === title), false);
   const legacy = original.filter(idea => idea.workflow === 'stock-reel');
@@ -77,7 +78,7 @@ test('each batch mixes wildlife, nature, places, movement and other subjects whi
   for (let batch = 0; batch < allTopics.length; batch++) {
     const next = helper.nextStoredFootageSuggestions(storage);
     assert.ok(next.ideas[0].category === 'Animals & everyday moments' || ['Birds','Butterflies'].includes(next.ideas[0].title));
-    assert.ok(next.ideas.some(idea=>idea.category==='Architecture & design'||idea.title==='Cities'),'Architecture cannot be crowded out by countries');
+    assert.ok(next.ideas.some(idea=>idea.category==='Architecture & design'||idea.title==='City streets'),'Architecture cannot be crowded out by countries');
     assert.equal(new Set(next.ideas.map(idea => idea.id)).size, 6);
     if (previous) assert.ok(next.ideas.every(idea => !previous.includes(idea.id)), 'Adjacent mixed batches stay fresh');
     previous = next.ideas.map(idea => idea.id);
@@ -88,6 +89,51 @@ test('each batch mixes wildlife, nature, places, movement and other subjects whi
   const remembered = helper.nextStoredFootageSuggestions(memoryStorage({ [storageKey]: JSON.stringify({ version: 1, cursor: legacyCursor }) }));
   assert.deepEqual(plain(remembered.ideas), plain(helper.stockFootageSuggestions(legacyCursor)));
   assert.equal(remembered.remembered, true);
+});
+
+test('topic ranking uses measured subjects and refresh deadlines persist per surface', async () => {
+  const ranking = helper.personalizedStockSuggestions({ now: 1_000_000, recent: [], feedback: [], strongerTopics: [
+    { topic: 'Otters swimming', workflow: 'stock-reel', evidenceCount: 4 },
+  ] });
+  assert.equal(ranking.ideas[0].title, 'Otters');
+  assert.equal(ranking.ideas[0].basis, 'observed-response');
+  assert.match(ranking.ideas[0].reason, /measured Instagram results/);
+
+  const storage = memoryStorage();
+  let time = Date.parse('2026-01-01T00:00:00Z'), scheduled, resumed, refreshes = 0, succeeds = true, removed = false;
+  const flush = async () => { for (let count = 0; count < 10; count++) await Promise.resolve(); };
+  const key = `${helper.FOOTAGE_SUGGESTION_REFRESH_AT_KEY}:quick-templates`;
+  const stop = helper.installFootageSuggestionRefresh({
+    key: 'quick-templates', storage, now: () => time,
+    setTimeout(callback, delay) { scheduled = { callback, delay }; return scheduled; },
+    clearTimeout(handle) { if (scheduled === handle) scheduled = undefined; },
+    subscribeResume(listener) { resumed = listener; return () => { removed = true; }; },
+    async refresh() { refreshes++; return succeeds; },
+  });
+  assert.equal(Number(storage.getItem(key)), time + helper.FOOTAGE_SUGGESTION_REFRESH_MS);
+  assert.equal(refreshes, 0, 'A new page waits for its first persisted due date');
+  time += helper.FOOTAGE_SUGGESTION_REFRESH_MS;
+  scheduled.callback(); await flush();
+  assert.equal(refreshes, 1);
+  assert.equal(Number(storage.getItem(key)), time + helper.FOOTAGE_SUGGESTION_REFRESH_MS);
+  assert.equal(scheduled.delay, helper.FOOTAGE_SUGGESTION_REFRESH_MS);
+  succeeds = false; time += helper.FOOTAGE_SUGGESTION_REFRESH_MS; scheduled.callback(); await flush();
+  assert.equal(refreshes, 2);
+  assert.equal(Number(storage.getItem(key)), time, 'A failure keeps the due date overdue');
+  assert.equal(scheduled.delay, 60_000, 'A failed due refresh retries in one minute');
+  succeeds = true; time += 60_000; scheduled.callback(); await flush();
+  assert.equal(refreshes, 3);
+  assert.equal(Number(storage.getItem(key)), time + helper.FOOTAGE_SUGGESTION_REFRESH_MS);
+  resumed(); await flush();
+  stop(); assert.equal(removed, true); assert.equal(scheduled, undefined);
+
+  const reopenedStorage = memoryStorage({ [key]: String(time - 1) });
+  const reopened = helper.installFootageSuggestionRefresh({ key: 'quick-templates', storage: reopenedStorage, now: () => time,
+    setTimeout(callback, delay) { scheduled = { callback, delay }; return scheduled; }, clearTimeout(handle) { if (scheduled === handle) scheduled = undefined; },
+    async refresh() { refreshes++; return true; } });
+  await flush();
+  assert.equal(refreshes, 4, 'An overdue stored deadline refreshes when the dashboard reopens');
+  reopened();
 });
 
 test('mount, More ideas and reopening rotate locally without searching or creating a video', async () => {

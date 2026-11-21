@@ -233,3 +233,38 @@ test('API validates the local request and known bounded IDs before loading optio
   const songs=await songResponse.json();assert.equal(songResponse.status,200);assert.equal(songs.ideas.length,6);
   assert.ok(songs.ideas.every(idea=>idea.kind==="Children's song"));
 });
+
+test('opening previews select a concrete reusable clip once per card with bounded metadata calls', async () => {
+  const providers = load('src/lib/stockProviders.ts');
+  const calls = [];
+  const openings = load('src/lib/quickTemplateOpenings.ts', {
+    './stockProviders': providers,
+    './sourceProcessing': { async readStockReuseBlocked() { return new Set(['pexels:8']); } },
+    './automaticStockReel': {
+      automaticStockChoices(videos, query, blocked) { return videos.filter(video => !blocked.has(`${video.provider}:${video.id}`)); },
+      automaticStockCompanions(video) { return video.related ? [1, 2, 3] : []; },
+    },
+    './naturalStock': {
+      configuredStock: () => ({ pexels: true, pixabay: true, commons: true }),
+      trustedStockUrl(url) { if (!url.startsWith('https://images.pexels.com/') && !url.startsWith('https://cdn.pixabay.com/')) throw Error('untrusted'); return url; },
+      async searchNaturalStockPage(provider, query) {
+        calls.push([provider, query]);
+        if (query === 'No match') return { videos: [] };
+        return provider === 'pexels'
+          ? { videos: [
+            { provider, id: 8, image: 'https://images.pexels.com/blocked.jpg', related: true },
+            { provider, id: 9, image: 'https://other.example/untrusted.jpg', related: true },
+            { provider, id: 10, image: 'https://images.pexels.com/opening-10.jpg' },
+          ] }
+          : { videos: [{ provider, id: 11, image: 'https://cdn.pixabay.com/opening-11.jpg', related: true }] };
+      },
+    },
+  });
+  assert.deepEqual(plain(await openings.quickTemplateOpenings([{ query: 'Owl in a tree' }, { query: 'Panda climbing' }, { query: 'No match' }], new AbortController().signal)), [
+    { query: 'Owl in a tree', opening: { provider: 'pixabay', id: 11, image: 'https://cdn.pixabay.com/opening-11.jpg' } },
+    { query: 'Panda climbing', opening: { provider: 'pexels', id: 10, image: 'https://images.pexels.com/opening-10.jpg' } },
+    { query: 'No match' },
+  ]);
+  assert.equal(calls.length, 6);
+  assert.equal(calls.filter(([provider]) => provider === 'commons').length, 0);
+});

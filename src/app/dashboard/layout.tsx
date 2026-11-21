@@ -3,5 +3,5 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <div data-studio-theme="night" className="min-h-screen bg-background text-foreground">{children}</div>;
 }

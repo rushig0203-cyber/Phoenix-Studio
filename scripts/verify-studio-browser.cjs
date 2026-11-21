@@ -8,8 +8,9 @@ const { once } = require('node:events');
 const root = path.resolve(__dirname, '..');
 const date = '2026-11-17T12:00:00Z';
 const templateTitles = ['Owls', 'Pandas', 'Rabbits', 'Waterfall', 'Switzerland', 'Lake'];
-const templates = templateTitles.map(title => ({ id: `footage-${title.toLowerCase()}`, title, query: title,
-  workflow: 'stock-reel', category: 'Nature & wildlife', reason: `A fresh ${title.toLowerCase()} idea inspired by your saved wildlife and outdoor videos.` }));
+const templates = templateTitles.map((title, index) => ({ id: `footage-${title.toLowerCase()}`, title, query: title,
+  workflow: 'stock-reel', category: 'Nature & wildlife', reason: `A fresh ${title.toLowerCase()} idea inspired by your saved wildlife and outdoor videos.`,
+  opening: { provider: 'pexels', id: index + 1, image: `https://images.pexels.com/fixture-opening-${index + 1}.jpg` } }));
 const request = { requestId: '11111111-1111-4111-8111-111111111111', templateId: templates[0].id,
   title: templates[0].title, query: templates[0].query, jobId: 'fixture-template-job' };
 const file = {
@@ -100,6 +101,9 @@ async function run() {
     });
     await context.route('**/*', async route => {
       const incoming = route.request(), url = new URL(incoming.url());
+      if (incoming.method() === 'GET' && templates.some(template => template.opening.image === url.href)) {
+        return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
+      }
       if (url.origin !== origin || !['GET', 'HEAD'].includes(incoming.method())) {
         proof.deniedRequests.push(`${incoming.method()} ${incoming.url()}`);
         return route.abort('blockedbyclient');
@@ -119,6 +123,12 @@ async function run() {
       }
       if (url.pathname === '/api/singing/status') return json(route, { available: false, reason: 'Synthetic CI: no singing provider is contacted.' });
       if (url.pathname === '/api/channels') return json(route, { channels });
+      if (url.pathname === '/api/manager/status') return json(route, {
+        mode: 'local-feedback', checkedAt: date, queued: 0, running: 0, failed: 0, reviewReady: 1,
+        guidance: { feedbackCount: 0, revision: 'synthetic-night', rules: [] },
+        assessments: [{ reviewId: file.id, title: file.title, createdAt: date, creationType: 'source', decision: 'AWAITING_REVIEW', blockers: [], checks: ['Synthetic UI fixture.'] }],
+        capabilities: { singing: false, animation: 'Synthetic UI fixture', learning: 'No provider or owner feedback is used.' },
+      });
       if (url.pathname === '/api/writing-provider') return json(route, { provider: 'groq', model: 'fixture', configured: true, hasKey: false, freePlanConfirmed: true, detail: 'Synthetic CI writer settings. No provider requests are made.' });
       if (url.pathname === '/api/instagram-performance') return json(route, { status: 'ready', account: { name: '@fixture_wildlife' }, detail: 'Synthetic saved results for UI verification.', lastSuccessfulSyncAt: date, historyComplete: true, scannedVideos: 1,
         videos: [{ id: 'fixture-post', topic: 'A quiet river', timestamp: date, metricsUpdatedAt: date, metrics: { views: 120, likes: 8, comments: 2, saves: 3, shares: 1, reach: 100, averageWatchTimeMs: 5200 } }], summary: { assessments: [], rules: [], attentionCohorts: [] } });
@@ -130,6 +140,14 @@ async function run() {
             metrics: { views: youtube ? 73 : 61, likes: 3, comments: 1, shares: null } }] });
       }
       if (url.pathname === `/api/review-files/${file.id}`) return json(route, file);
+      if (url.pathname === `/api/review-files/${file.id}/edit`) return json(route, {
+        duration: 12, width: 1080, height: 1920, canReplaceCaptions: true, previewIsClean: true,
+        mediaUrl: `/api/review-files/${file.id}/media?target=instagram`, jobs: [],
+        draft: { title: file.title, postCopy: file.quality.postCopy, hashtags: file.quality.hashtags,
+          trimStart: 0, trimEnd: 12, format: 'original', framing: 'fit', cropPosition: .5, volume: 1,
+          captionsEnabled: true, captionPosition: 'bottom', captionSize: 36, captionColor: '#ffffff',
+          cues: [{ start: 0, end: 2, text: 'Synthetic subtitle color stays white.' }] },
+      });
       if (url.pathname === `/api/review-files/${file.id}/poster`) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === `/api/review-files/${file.id}/media`) return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Content-Length': String(media.length), 'Accept-Ranges': 'bytes' }, body: media });
       if (url.pathname === `/api/review-files/${file.id}/publish`) {
@@ -150,6 +168,20 @@ async function run() {
       verify(`${name}: no horizontal overflow`, widths.document <= widths.viewport + 1 && (!widths.dialog || widths.dialog <= widths.dialogClient + 1), widths);
       const openDialog = page.getByRole('dialog');
       verify(`${name}: named screen heading`, await openDialog.count() ? await openDialog.getByRole('heading', { level: 2 }).count() === 1 : await page.getByRole('heading', { level: 1 }).count() === 1);
+      const theme = await page.evaluate(() => {
+        const scope = document.querySelector('[data-studio-theme="night"]');
+        if (!scope) return { missing: true };
+        const style = getComputedStyle(scope), area = document.querySelector('dialog[open]') || document.querySelector('main');
+        const lightSurfaces = area ? [area, ...area.querySelectorAll('section, article, fieldset, details, label, select, textarea, input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"])')]
+          .filter(element => element.getClientRects().length > 0).flatMap(element => {
+            const background = getComputedStyle(element).backgroundColor;
+            const channels = background.match(/[\d.]+/g)?.map(Number) || [];
+            return channels.length >= 3 && channels.slice(0, 3).every(value => value > 175) && (channels[3] ?? 1) > .9
+              ? [{ tag: element.tagName, label: element.getAttribute('aria-label'), background }] : [];
+          }) : [];
+        return { canvas: style.backgroundColor, scheme: style.colorScheme, lightSurfaces };
+      });
+      verify(`${name}: Night covers panels and native fields`, theme.canvas === 'rgb(9, 14, 29)' && theme.scheme === 'dark' && theme.lightSurfaces.length === 0, theme);
       await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: true, animations: 'disabled' });
       proof.screenshots.push(`${name}.png`);
     };
@@ -181,8 +213,10 @@ async function run() {
     });
     verify('Create keeps the headline visually hidden and places the workflows on the artwork edge',
       artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint !== 'none' && artworkOnly.actionCount === 3, artworkOnly);
-    const cover = await page.locator('[data-template-cover="owl"] [data-template-image]').evaluate(image => getComputedStyle(image).backgroundImage);
-    verify('Matching suggestions use only local category artwork', cover.includes('/api/studio-wallpaper?cover=owl'), cover);
+    const covers = await page.locator('[data-quick-template]').evaluateAll(cards => cards.map(card =>
+      [...card.querySelectorAll('img')].map(image => image.src)));
+    verify('Each suggestion has exactly one image from its selected opening clip', covers.length === templates.length
+      && covers.every((images, index) => images.length === 1 && images[0] === templates[index].opening.image), covers);
     const logo = await page.locator('[data-studio-topbar] .studio-brand-mark').evaluate(mark => {
       const image = getComputedStyle(mark, '::after');
       return { image: image.backgroundImage, zoom: image.backgroundSize, label: mark.parentElement.textContent };
@@ -262,7 +296,7 @@ async function run() {
       verify(platform + ' displays its own measured counts', (await sample.locator('dd').allTextContents()).join(',') === '1,' + count + ',3,1');
       verify(platform + ' uses distinct readable metric tiles', await sample.locator('div').first().evaluate(tile => {
         const style = getComputedStyle(tile);
-        return style.backgroundColor === 'rgb(229, 238, 241)' && parseFloat(style.borderRadius) >= 8;
+        return style.backgroundColor === 'rgb(28, 40, 64)' && parseFloat(style.borderRadius) >= 8;
       }));
       await capture('studio-insights-' + platform.toLowerCase());
     }
@@ -340,6 +374,10 @@ async function run() {
     await destinations.getByRole('button', { name: 'Instagram', exact: true }).click();
     verify('Opening more platforms retains the Instagram caption and ready final action', await instagram.getByLabel('Caption and hashtags', { exact: true }).inputValue() === 'Owner-reviewed caption kept while choosing platforms.'
       && await instagram.getByRole('button', { name: 'Post to Instagram', exact: true }).isEnabled());
+    await destinations.getByRole('button', { name: 'Rumble · assisted', exact: true }).click();
+    const rumble = dialog.getByRole('region', { name: 'Rumble assisted upload', exact: true });
+    verify('Rumble opens alongside Instagram and links to the creator dashboard', await rumble.isVisible() && await instagram.isVisible()
+      && await rumble.getByRole('link', { name: /Open Rumble dashboard/ }).getAttribute('href') === 'https://rumble.com/account/dashboard');
     showPostingProgress = true;
     await instagram.getByRole('button', { name: 'Check status', exact: true }).click();
     const instagramIcon = strip.locator('[data-posting-platform="instagram"]');
@@ -349,6 +387,20 @@ async function run() {
       && (await strip.locator('[data-posting-platform="youtube"]').getAttribute('aria-description')) === 'Processing');
     verify('Saved transfer detail starts collapsed', await instagram.locator('details').filter({ hasText: 'Upload details' }).getAttribute('open') === null);
     await capture('studio-parallel-posting');
+    await page.goto(`${origin}/dashboard/settings`);
+    await page.getByRole('heading', { name: 'Publishing settings', exact: true }).waitFor();
+    await page.getByText('Writer connection', { exact: true }).click();
+    await page.getByText('Writing settings · preferred writer', { exact: true }).click();
+    await page.getByLabel('Groq API key', { exact: true }).waitFor();
+    await capture('studio-publishing-settings-night');
+    await page.goto(`${origin}/dashboard/manager`);
+    await page.getByRole('heading', { name: 'Quality manager', exact: true }).waitFor();
+    await page.getByText('Ratings & optional note', { exact: true }).click();
+    await page.getByRole('combobox').first().waitFor();
+    await capture('studio-quality-manager-night');
+    await page.goto(`${origin}/dashboard/edit/${file.id}`);
+    await page.getByLabel('Trim start', { exact: true }).waitFor();
+    await capture('studio-editor-night');
     verify('No browser runtime errors', proof.pageErrors.length === 0, proof.pageErrors);
     verify('No provider, external or mutating browser requests', proof.deniedRequests.length === 0, proof.deniedRequests);
     verify('Actual built stylesheets loaded', stylesheetUrls.size > 0);

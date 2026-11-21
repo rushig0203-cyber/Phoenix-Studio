@@ -16,7 +16,8 @@ function load(relative, dependencies = {}, globals = {}) {
 }
 const content = load('src/lib/contentIdeas.ts');
 const suggestions = load('src/lib/stockFootageSuggestions.ts', { './contentIdeas': content });
-const saved = load('src/lib/quickTemplates.ts');
+const providers = load('src/lib/stockProviders.ts');
+const saved = load('src/lib/quickTemplates.ts', { './stockProviders': providers });
 const activityJsx = (type, props, key) => ({ type, props, key });
 const Activity = load('src/components/StudioActivity.tsx', { 'react/jsx-runtime': { jsx: activityJsx, jsxs: activityJsx } }).default;
 const text = node => node == null || typeof node === 'boolean' ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
@@ -33,7 +34,7 @@ const context = { now: Date.parse('2026-11-17T12:00:00Z'), recent: [
 // owner job, credential, model, media download or real timers are reachable.
 async function harness(options = {}) {
   let index = 0, tree, request = options.request || null, job = options.job, uuids = 0;
-  const slots = [], effects = [], pending = [], cleanups = [], requests = [], started = [], states = [], stored = new Map();
+  const slots = [], effects = [], pending = [], cleanups = [], requests = [], started = [], states = [], stored = options.storage || new Map();
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
     useRef(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: initial }; return slots[at]; },
@@ -41,17 +42,21 @@ async function harness(options = {}) {
   };
   const jsx = (type, props, key) => type === Activity ? Activity(props) : ({ type, props, key });
   const Component = load('src/components/QuickTemplates.tsx', { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
-    '@/lib/stockFootageSuggestions': suggestions, './JobProgress': 'JobProgress', './StudioActivity': { default: Activity } }, {
-    Error, URLSearchParams, AbortController, AbortSignal,
+    '@/lib/stockFootageSuggestions': suggestions, '@/lib/quickTemplates': saved, './JobProgress': 'JobProgress', './StudioActivity': { default: Activity } }, {
+    Error, Date: options.Date || Date, URLSearchParams, AbortController, AbortSignal,
     localStorage: { getItem(key) { return stored.get(key) ?? null; }, setItem(key, value) { stored.set(key, value); } },
-    window: { setInterval() { return 1; }, clearInterval() {} },
+    window: { setTimeout() { return 1; }, clearTimeout() {}, addEventListener() {}, removeEventListener() {} },
+    document: { addEventListener() {}, removeEventListener() {} },
     crypto: { randomUUID() { uuids++; return uuid; } },
     async fetch(url, init = {}) {
       requests.push({ url, ...init });
       if (url.startsWith('/api/content-suggestions?')) {
         assert.ok(!init.method); const query = new URL(url, 'http://fixture').searchParams;
-        assert.equal(query.get('workflow'), 'footage');
-        return response(suggestions.personalizedStockSuggestions(context, Number(query.get('cursor')), query.get('seen').split(',').filter(Boolean)));
+        assert.equal(query.get('workflow'), 'footage'); assert.equal(query.get('opening'), '1');
+        const result = suggestions.personalizedStockSuggestions(context, Number(query.get('cursor')), query.get('seen').split(',').filter(Boolean));
+        return response({ ...result, ideas: result.ideas.map((idea, index) => ({ ...idea,
+          opening: options.missing === index ? undefined : { provider: 'pexels', id: index + 1, image: `https://images.pexels.com/fixture-${index + 1}.jpg` },
+        })) });
       }
       assert.equal(url, '/api/stock-reels'); assert.equal(init.method, 'POST');
       return options.post ? options.post(init) : response({ job: { id: 'exact-template-job' } }, 201);
@@ -66,21 +71,22 @@ async function harness(options = {}) {
   return { cards, button, render, flush, requests, started, states, get request() { return request; }, get tree() { return tree; }, get uuids() { return uuids; }, get retries() { return retries; }, setJob(value) { job = value; render(); }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
 }
 
-test('Create reads saved preferences into six templates without searching providers or starting jobs', async () => {
+test('Create shows six suggestions with one opening clip image each and starts no jobs', async () => {
   const h = await harness();
   assert.equal(h.cards().length, 6); assert.equal(h.requests.length, 1); assert.equal(h.uuids, 0);
   assert.equal(nodes(h.tree).filter(node => node.type === 'input' || node.type === 'select').length, 0);
+  assert.ok(h.cards().every(card => nodes(card).filter(node => node.type === 'img').length === 1));
   const before = h.cards().map(node => node.key); h.button('More templates').props.onClick(); await h.flush();
   assert.equal(h.cards().length, 6); assert.ok(h.cards().every(node => !before.includes(node.key)));
   assert.equal(h.requests.filter(request => request.method === 'POST').length, 0);
 });
 
-test('one click submits the exact displayed topic and blocks repeated dispatch before confirmation', async () => {
+test('one click submits the exact displayed topic and opening source without duplicate dispatch', async () => {
   let confirm; const gate = new Promise(resolve => { confirm = resolve; });
   const h = await harness({ post: () => gate }), card = h.cards()[0], title = card.props['aria-label'].slice('Make video: '.length);
   card.props.onClick(); card.props.onClick(); h.render();
   const posts = h.requests.filter(request => request.method === 'POST');
-  assert.equal(posts.length, 1); assert.deepEqual(JSON.parse(posts[0].body), { automatic: true, query: title, requestId: uuid });
+  assert.equal(posts.length, 1); assert.deepEqual(JSON.parse(posts[0].body), { automatic: true, query: title, requestId: uuid, provider: 'pexels', id: 1 });
   assert.equal(h.started.length, 0); assert.match(text(h.tree), /Preparing your video/);
   assert.equal(h.states[0].title, title); assert.equal(h.request.jobId, undefined);
   confirm(response({ job: { id: 'exact-template-job' } }, 201)); await h.flush();
@@ -97,7 +103,35 @@ test('failed confirmation and reopening retain the UUID and exact topic without 
   const reopened = await harness({ request: persisted });
   assert.equal(reopened.requests.filter(request => request.method === 'POST').length, 0); assert.equal(reopened.uuids, 0);
   reopened.button('Retry confirmation').props.onClick(); await reopened.flush();
-  assert.equal(JSON.parse(reopened.requests.at(-1).body).query, persisted.query); assert.equal(reopened.request.requestId, persisted.requestId);
+  assert.deepEqual(persisted.source, { provider: 'pexels', id: 1 });
+  assert.deepEqual(JSON.parse(reopened.requests.at(-1).body), { automatic: true, query: persisted.query, requestId: uuid, ...persisted.source });
+});
+
+test('a missing catalog image does not show a fake preview or secretly choose another clip', async () => {
+  const h = await harness({ missing: 0 });
+  const unavailable = h.cards()[0];
+  assert.equal(unavailable.props.disabled, true);
+  assert.match(unavailable.props['aria-label'], /opening shot unavailable/);
+  assert.equal(nodes(unavailable).filter(node => node.type === 'img').length, 0);
+  unavailable.props.onClick(); await h.flush();
+  assert.equal(h.requests.filter(request => request.method === 'POST').length, 0);
+});
+
+test('reopening within 15 days uses the same catalog previews and overdue reopening refreshes', async () => {
+  let time = context.now;
+  class Clock extends Date { static now() { return time; } }
+  const storage = new Map();
+  const first = await harness({ storage, Date: Clock });
+  first.unmount();
+  time += suggestions.FOOTAGE_SUGGESTION_REFRESH_MS - 1;
+  const reopened = await harness({ storage, Date: Clock });
+  assert.equal(reopened.requests.length, 0);
+  assert.deepEqual(reopened.cards().map(card => card.key), first.cards().map(card => card.key));
+  reopened.unmount();
+  time++;
+  const due = await harness({ storage, Date: Clock });
+  assert.equal(due.requests.length, 1);
+  assert.ok(due.cards().every(card => !first.cards().some(previous => previous.key === card.key)));
 });
 
 test('failed saved videos retry their job while a definite unavailable template can be changed', async () => {

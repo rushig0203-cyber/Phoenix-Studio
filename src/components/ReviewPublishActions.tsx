@@ -11,7 +11,7 @@ import { instagramLocationSuggestions } from "@/lib/instagramLocationSuggestions
 import { instagramAudioId, instagramAudioPreviewUrl, publicInstagramAudioDiscovery } from "@/lib/instagramAudio";
 import type { RecommendedInstagramAudio, ReelMusicRecommendation } from "@/lib/reelMusic";
 import { automaticInstagramUserTags } from "@/lib/instagramTags";
-import { openRumbleUpload } from "@/lib/rumbleWindow";
+import { openRumbleUpload, rumbleDashboardLink } from "@/lib/rumbleWindow";
 import StudioActivity from "./StudioActivity";
 import PlatformIcon from "./PlatformIcon";
 
@@ -237,7 +237,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
         <PlatformProgress destination="instagram" label={finalReview ? "Instagram" : "Post to Instagram"} selected={selected === "instagram"} busy={instagramBusy && instagram?.mode === "reel"} locked={instagramBusy} job={jobs.find(job => job.platform === "instagram" && !job.kind)} onClick={() => open("instagram")} />
         <PlatformProgress destination="facebook" label={finalReview ? "Facebook Page" : "Post to Facebook Page"} selected={selected === "facebook"} busy={facebookBusy} job={jobs.find(job => job.platform === "facebook")} onClick={() => open("facebook")} />
         <PlatformProgress destination="story" label={finalReview ? "Story only" : "Post Story only"} selected={selected === "story"} busy={instagramBusy && instagram?.mode === "story"} locked={instagramBusy} job={instagramStoryJob(jobs)} onClick={() => open("instagram", "story")} />
-        <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={selected === "rumble"} onClick={() => { destinationChosen.current = true; setSelected("rumble"); setRumbleOpen(true); setRumbleNotice(""); }} />
+        <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={rumbleOpen} onClick={() => { destinationChosen.current = true; setRumbleOpen(true); setRumbleNotice(""); }} />
       </div>
       {progressError && <p role="status" className="text-xs">{progressError}</p>}
       {choosingDestination && !youtube && !instagram && !facebook && <StudioActivity label="Checking destination…" />}
@@ -246,10 +246,13 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
       {instagram && <ReviewPublishPlatformPanel key="instagram" file={file} request={instagram} visible={selected === "instagram" || selected === "story"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setInstagramBusy} />}
       {facebook && <ReviewPublishPlatformPanel key="facebook" file={file} request={facebook} visible={selected === "facebook"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setFacebookBusy} />}
       {youtube && <ReviewPublishPlatformPanel key="youtube" file={file} request={youtube} visible={selected === "youtube"} jobs={jobs} readJobs={readJobs} onAccepted={accepted} onBusyChange={setYoutubeBusy} />}
-      {rumbleOpen && <section data-posting-destination hidden={selected !== "rumble"} aria-label="Rumble assisted upload" className="space-y-3 border-t border-[#bdc7a5] py-3 text-xs">
+      {rumbleOpen && <section data-posting-destination aria-label="Rumble assisted upload" className="space-y-3 border-t border-[#bdc7a5] py-3 text-xs">
         <h6 className="font-semibold">Rumble · assisted upload</h6>
         <p>Drag the saved MP4 onto Rumble, paste the text and confirm there. Automatic publishing is not connected.</p>
-        {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? <StudioActivity label="Opening saved video…" /> : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
+        <div className="flex flex-wrap gap-2">
+          {rumbleOutput ? <button type="button" className={button} disabled={rumbleBusy} onClick={() => void prepareRumble()}>{rumbleBusy ? <StudioActivity label="Opening saved video…" /> : "Open Rumble & show saved video ↗"}</button> : <p role="alert">No finished video is available. Check the saved output in Library.</p>}
+          <a {...rumbleDashboardLink} className={button}>Open Rumble dashboard ↗</a>
+        </div>
         {!file.quality.postCopy?.trim() && <p role="status">No analyzed posting caption is saved yet. The text below is a draft; review it before posting.</p>}
         <label className="block">Rumble title<input className={input} readOnly value={file.title.slice(0, 100)} /></label>
         <button type="button" className={button} onClick={() => void copyRumbleText(file.title.slice(0, 100), "Rumble title")}>Copy title</button>

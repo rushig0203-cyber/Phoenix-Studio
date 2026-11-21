@@ -6,6 +6,7 @@ import type { ReviewFile } from "@/lib/reviewFiles";
 import InstagramPerformance from "./InstagramPerformance";
 import PlatformIcon from "./PlatformIcon";
 import StudioActivity from "./StudioActivity";
+import { rumbleDashboardLink } from "@/lib/rumbleWindow";
 
 type Platform = "instagram" | "facebook" | "youtube" | "rumble" | "bilibili";
 type MeasuredPlatform = "facebook" | "youtube";
@@ -23,7 +24,7 @@ const platforms = [
 const dashboards = {
   facebook: { name: "Facebook", href: "https://business.facebook.com/", link: "Open Meta Business Suite" },
   youtube: { name: "YouTube", href: "https://studio.youtube.com/", link: "Open YouTube Studio" },
-  rumble: { name: "Rumble", href: "https://rumble.com/account/dashboard", link: "Open Rumble dashboard" },
+  rumble: { name: "Rumble", href: rumbleDashboardLink.href, link: "Open Rumble dashboard" },
   bilibili: { name: "Bilibili", href: "https://www.bilibili.tv/", link: "Open Bilibili" },
 };
 const button = "rounded-full border border-[#c3cdd1] px-3 py-2 text-sm font-medium disabled:opacity-50";
@@ -169,7 +170,7 @@ export default function ChannelInsights({ review, requestedReviewId }: { review?
       </div> : dashboard && <div className="space-y-3">
         <h2 className="text-lg font-semibold">{dashboard.name}</h2>
         <p className="text-sm text-[#465e69]">Manual analytics. Phoenix has no verified {dashboard.name} statistics connection.</p>
-        <a href={dashboard.href} target="_blank" rel="noopener noreferrer" className={button + " inline-block"}>{dashboard.link} ↗</a>
+        <a {...(platform === "rumble" ? rumbleDashboardLink : { href: dashboard.href, target: "_blank", rel: "noopener noreferrer" })} className={button + " inline-block"}>{dashboard.link} ↗</a>
       </div>}
     </div>
     {!requestedReviewId && <p className="text-xs text-[#465e69]">Phoenix uses video feedback and comparable Instagram results to guide suggestions. Facebook and YouTube counts are for reporting.</p>}

@@ -114,7 +114,8 @@ function uiHarness(options = {}) {
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = {
     react: hooks,
-    '@/lib/rumbleWindow': { openRumbleUpload: () => { options.onOpenRumble?.({ copied, downloads }); return !options.popupBlocked; } },
+    '@/lib/rumbleWindow': { openRumbleUpload: () => { options.onOpenRumble?.({ copied, downloads }); return !options.popupBlocked; },
+      rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
   };
   const shared = {
@@ -619,9 +620,11 @@ test('Facebook stays independent of Instagram and Rumble drafts, notices and sta
   assert.equal(h.control('Caption and hashtags', 'textarea', h.panel('Instagram')).props.value, 'Reviewed Instagram draft #One');
   assert.match(h.text, /Rumble title copied/); assert.equal(h.posts.length, 0);
   const chooser = nodes(h.tree).find(node => node.props['aria-label'] === 'Choose a platform');
-  assert.equal(h.button('Rumble upload', chooser).props['aria-pressed'], false);
+  assert.equal(h.button('Rumble upload', chooser).props['aria-pressed'], true, 'The independent Rumble handoff remains open beside Facebook');
   assert.equal(h.button('Post to Instagram', chooser).props['aria-pressed'], false);
   assert.equal(h.button('Post to Facebook Page', chooser).props['aria-pressed'], true);
+  assert.equal(Boolean(h.panel('Facebook Page').props.hidden), false);
+  assert.equal(Boolean(nodes(h.tree).find(node => node.props['aria-label'] === 'Rumble assisted upload').props.hidden), false);
   assert.ok(h.panel('Instagram') && h.panel('Facebook Page'), 'Showing Facebook preserves both mounted channel drafts');
 });
 
@@ -695,6 +698,10 @@ test('Rumble reveals the existing MP4 and copies its text without downloading or
   assert.equal(h.requests.length, 0); assert.equal(h.intervals.size, 0);
   assert.match(h.text, /Rumble · assisted upload/); assert.match(h.text, /Automatic publishing is not connected/);
   assert.match(h.text, /Instagram catalogue music is not included/);
+  const dashboard = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Open Rumble dashboard ↗');
+  assert.equal(dashboard.props.href, 'https://rumble.com/account/dashboard');
+  assert.equal(dashboard.props.target, 'phoenix-rumble-dashboard');
+  assert.equal(dashboard.props.rel, 'noopener noreferrer');
   assert.equal(h.control('Rumble title', 'input').props.value, file.title);
   assert.equal(h.control('Rumble description and hashtags', 'textarea').props.value, 'Light through the trees.\nCredit: source creator.\n\n#Forest #Nature');
   const action = h.button('Open Rumble & show saved video ↗');
@@ -729,6 +736,8 @@ test('Rumble preserves Instagram polling and both panels while using current sav
   h.choose('Rumble upload'); await h.flush(); assert.equal(h.intervals.size, 1);
   assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Instagram upload confirmation'));
   assert.ok(nodes(h.tree).some(node => node.props['aria-label'] === 'Rumble assisted upload'));
+  assert.equal(Boolean(h.panel('Instagram').props.hidden), false, 'Opening Rumble must not hide the active Instagram panel');
+  assert.equal(Boolean(nodes(h.tree).find(node => node.props['aria-label'] === 'Rumble assisted upload').props.hidden), false);
   h.tick(); await h.flush();
   const reads = h.requests.length;
   h.updateFile(sampleFile({ title: 'New saved title', updatedAt: '2026-10-23T01:00:00Z', outputs: { youtube: { width: 1080, height: 1920, duration: 24 } }, quality: { postCopy: 'New caption.', hashtags: ['#Mountains'], captions: [] } }));
@@ -745,6 +754,8 @@ test('Rumble stays visible when opening Instagram and blocked popups cannot clai
   const h = uiHarness({ popupBlocked: true }); t.after(() => h.unmount());
   h.choose('Rumble upload'); await h.flush();
   h.choose('Post to Instagram'); await h.flush();
+  assert.equal(Boolean(nodes(h.tree).find(node => node.props['aria-label'] === 'Rumble assisted upload').props.hidden), false, 'Opening Instagram must not hide the Rumble handoff');
+  assert.equal(Boolean(h.panel('Instagram').props.hidden), false);
   assert.ok(h.button('Open Rumble & show saved video ↗'));
   h.click('Open Rumble & show saved video ↗'); await h.flush();
   assert.match(h.text, /browser blocked the Rumble window/);

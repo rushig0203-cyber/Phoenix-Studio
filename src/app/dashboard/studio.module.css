@@ -87,20 +87,12 @@
 .main :global([data-template-image]) {
   position: absolute; inset: 0; z-index: -2; pointer-events: none;
   background-color: #121d35;
-  background-image: var(--template-photo, radial-gradient(ellipse at 75% 0%, #364970 0%, #182741 61%, #11182b 100%));
-  background-size: cover; background-position: center 51%; background-repeat: no-repeat;
+  background-image: radial-gradient(ellipse at 75% 0%, #364970 0%, #182741 61%, #11182b 100%);
 }
+.main :global([data-template-image] img) { width: 100%; height: 100%; object-fit: cover; object-position: center 50%; }
 .main :global([data-quick-template])::after {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(0deg, #0a0e19 0%, #0a0e19ed 28%, #0a0e1936 74%, #0a0e1914 100%);
-}
-.main :global([data-template-cover="alps"]) { --template-photo: url("/api/studio-wallpaper?cover=alps"); }
-.main :global([data-template-cover="owl"]) { --template-photo: url("/api/studio-wallpaper?cover=owl"); }
-.main :global([data-template-cover="panda"]) { --template-photo: url("/api/studio-wallpaper?cover=panda"); }
-.main :global([data-template-cover="rabbit"]) { --template-photo: url("/api/studio-wallpaper?cover=rabbit"); }
-.main :global([data-template-cover="park"] [data-template-image]) {
-  --template-photo: url("/api/studio-wallpaper?cover=park");
-  background-position: left bottom; background-size: 400% auto;
 }
 .main :global([data-template-copy]) { padding: .95rem 2.25rem .95rem 1rem; display: grid; gap: .3rem; overflow-wrap: anywhere; }
 .main :global([data-template-title]) { font-size: clamp(.99rem, 1.6vw, 1.22rem); font-weight: 660; letter-spacing: -.02em; line-height: 1.25; }
@@ -121,10 +113,10 @@
 .workArea :global(#library) { margin-top: 0; padding-top: 0; }
 .workArea :global(#library > .grid) { column-gap: 1.5rem; row-gap: 2rem; }
 .workArea :global(.review-library-card) { border: 0; border-radius: 0; background: transparent !important; padding: 0; }
-.workArea :global(#channels > .grid > div) { border: 0; border-top: 1px solid #cbd2d1; border-radius: 0; background: transparent !important; padding: 1.4rem 0; }
+.workArea :global(#channels > .grid > div) { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent !important; padding: 1.4rem 0; }
 .workArea :global(#channels > .grid) { gap: 1.5rem 2rem; }
 .workArea :global(#channel-insights > div[class~="bg-[#fffdf7]"]) { border: 0; border-radius: 0; background: transparent !important; padding-inline: 0; }
-.workArea :global(#channel-insights dl > div) { min-width: 0; padding: clamp(.55rem, 1.7vw, 1rem); border-radius: .8rem; background: #e5eef1 !important; }
+.workArea :global(#channel-insights dl > div) { min-width: 0; padding: clamp(.55rem, 1.7vw, 1rem); border-radius: .8rem; background: var(--muted) !important; }
 .workArea :global(#channel-insights dl dd) { font-size: clamp(1.05rem, 2vw, 1.65rem); overflow-wrap: anywhere; }
 .main :global([data-template-progress]), .jobs {
   --muted-foreground: var(--night-muted);
@@ -144,7 +136,6 @@
 }
 .jobs :global(details > div[class~="bg-[#fffdf7]"]), .jobDetails,
 .jobs :global(fieldset[aria-label="Video preparation controls"]) {
-  --muted-foreground: #52616a; --destructive: #803c31; --border: #cbd2d1;
   color: var(--foreground);
 }
 .jobs :global(fieldset[aria-label="Video preparation controls"]) { background: var(--card); border-radius: .75rem; }

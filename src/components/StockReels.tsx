@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { NaturalStock } from "@/lib/naturalStock";
 import type { ContentIdea, SuggestionReason } from "@/lib/contentIdeas";
-import { FOOTAGE_SUGGESTION_REFRESH_MS, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
+import { installFootageSuggestionRefresh, nextStoredFootageSuggestions, recordStoredFootageSuggestions, stockTopicPool } from "@/lib/stockFootageSuggestions";
 import { FOOTAGE_CANDIDATE_PAGE_SIZE, FOOTAGE_SEARCH_DELAY_MS, MAX_FOOTAGE_CANDIDATES, mergeStockFootageCandidates, stockFootageCandidates } from "@/lib/stockFootageCandidates";
 import { Button } from "./ui/button";
 
@@ -37,8 +37,8 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   const suggestionMemory = useRef(new Map<string, string>());
   const suggestionRequest = useRef<AbortController | null>(null);
 
-  async function moreSuggestions() {
-    if (creationBusy.current || suggestionRequest.current || !mounted.current) return;
+  async function moreSuggestions(): Promise<boolean> {
+    if (creationBusy.current || suggestionRequest.current || !mounted.current) return false;
     const storage = {
       getItem(key: string) {
         if (suggestionStorageWorking.current) {
@@ -70,16 +70,18 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
           || /[\u0000-\u001f\u007f]/.test(idea.reason) || !["recent-content", "owner-feedback", "observed-response", "explore"].includes(String(idea.basis))) throw new Error("Invalid suggestion response.");
         ids.add(registered.id); return { ...registered, reason: idea.reason, basis: idea.basis as SuggestionReason["basis"] };
       });
-      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return;
+      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return false;
       const recorded = recordStoredFootageSuggestions(storage, personalized, data.nextCursor);
       suggestionStorageWorking.current = recorded.remembered; suggestionCursor.current = data.nextCursor;
       setSuggestionsRemembered(recorded.remembered); setSuggestions(personalized);
       setSuggestionBasis(personalized.some(idea => idea.basis !== "explore") ? "Based on your videos and available feedback" : "New directions to explore");
+      return true;
     } catch {
-      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return;
+      if (!mounted.current || controller.signal.aborted || suggestionRequest.current !== controller) return false;
       const recorded = recordStoredFootageSuggestions(storage, next.ideas, next.nextCursor);
       suggestionStorageWorking.current = recorded.remembered; setSuggestionsRemembered(recorded.remembered);
       setSuggestions(next.ideas); setSuggestionBasis("Starter ideas · your page context could not load");
+      return false;
     } finally {
       if (suggestionRequest.current === controller) { suggestionRequest.current = null; if (mounted.current) setSuggestionsLoading(false); }
     }
@@ -142,10 +144,21 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   useEffect(() => {
     mounted.current = true;
     void moreSuggestions();
-    let suggestionTimer: number;
-    const refresh = () => { void moreSuggestions(); suggestionTimer = window.setTimeout(refresh, creationBusy.current ? 60_000 : FOOTAGE_SUGGESTION_REFRESH_MS); };
-    suggestionTimer = window.setTimeout(refresh, FOOTAGE_SUGGESTION_REFRESH_MS);
-    return () => { window.clearTimeout(suggestionTimer); mounted.current = false; suggestionRequest.current?.abort(); suggestionRequest.current = null; cancelSearch(); currentResults.current = null; };
+    const stopSuggestionSchedule = installFootageSuggestionRefresh({
+      refresh: moreSuggestions,
+      storage: { getItem: key => { try { return localStorage.getItem(key); } catch { return null; } }, setItem: (key, value) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } } },
+      now: Date.now,
+      setTimeout: (callback, delay) => window.setTimeout(callback, delay),
+      clearTimeout: handle => window.clearTimeout(handle as number),
+      subscribeResume(listener) {
+        const visible = () => { if (document.visibilityState !== "hidden") listener(); };
+        window.addEventListener("focus", listener);
+        document.addEventListener("visibilitychange", visible);
+        return () => { window.removeEventListener("focus", listener); document.removeEventListener("visibilitychange", visible); };
+      },
+      key: "stock-reels",
+    });
+    return () => { stopSuggestionSchedule(); mounted.current = false; suggestionRequest.current?.abort(); suggestionRequest.current = null; cancelSearch(); currentResults.current = null; };
   }, []);
   useEffect(() => {
     const wanted = query.trim(); latestQuery.current = wanted;
