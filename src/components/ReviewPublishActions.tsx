@@ -237,7 +237,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
         <PlatformProgress destination="instagram" label={finalReview ? "Instagram" : "Post to Instagram"} selected={selected === "instagram"} busy={instagramBusy && instagram?.mode === "reel"} locked={instagramBusy} job={jobs.find(job => job.platform === "instagram" && !job.kind)} onClick={() => open("instagram")} />
         <PlatformProgress destination="facebook" label={finalReview ? "Facebook Page" : "Post to Facebook Page"} selected={selected === "facebook"} busy={facebookBusy} job={jobs.find(job => job.platform === "facebook")} onClick={() => open("facebook")} />
         <PlatformProgress destination="story" label={finalReview ? "Story only" : "Post Story only"} selected={selected === "story"} busy={instagramBusy && instagram?.mode === "story"} locked={instagramBusy} job={instagramStoryJob(jobs)} onClick={() => open("instagram", "story")} />
-        <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={rumbleOpen} onClick={() => { destinationChosen.current = true; setRumbleOpen(true); setRumbleNotice(""); }} />
+        <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={rumbleOpen} onClick={() => { setRumbleOpen(true); setRumbleNotice(""); }} />
       </div>
       {progressError && <p role="status" className="text-xs">{progressError}</p>}
       {choosingDestination && !youtube && !instagram && !facebook && <StudioActivity label="Checking destination…" />}

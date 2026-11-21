@@ -89,7 +89,7 @@ const text = node => node == null || typeof node === 'boolean' ? '' : Array.isAr
 test('stock Create needs no manual description and leaves posting copy for video analysis', async t => {
   const react = require('react');
   const previousLoad = Module._load;
-  const previousGlobals = { fetch: global.fetch, window: global.window, localStorage: global.localStorage, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
+  const previousGlobals = { fetch: global.fetch, window: global.window, document: global.document, localStorage: global.localStorage, setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
   const slots = [], effects = [], pending = [], started = [], requests = [];
   let index = 0, dirty = true, tree;
   t.after(() => { effects.forEach(effect => effect?.cleanup?.()); Object.assign(global, previousGlobals); });
@@ -114,7 +114,9 @@ test('stock Create needs no manual description and leaves posting copy for video
   finally { Module._load = previousLoad; }
   global.localStorage = { getItem() { return null; }, setItem() {} };
   global.setTimeout = () => 1; global.clearTimeout = () => {};
-  global.window = { setTimeout: global.setTimeout, clearTimeout: global.clearTimeout };
+  const eventTarget = { addEventListener() {}, removeEventListener() {} };
+  global.window = { setTimeout: global.setTimeout, clearTimeout: global.clearTimeout, ...eventTarget };
+  global.document = { visibilityState: 'visible', ...eventTarget };
   global.fetch = async (url, init = {}) => {
     requests.push({ url, ...init });
     if (!init.method) {
