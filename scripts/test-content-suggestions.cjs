@@ -211,10 +211,15 @@ test('local loader bounds files, uses completed publication journals and invalid
 });
 
 test('API validates the local request and known bounded IDs before loading optional metadata', async () => {
-  let loads = 0;
+  let loads = 0, previewCalls = 0;
   const profile = context([record(1, 'Pandas'), record(2, 'Useful camera angles', { workflow: 'general' })], { feedback: [{ reviewId: uuid(1), decision: 'keep', storyRating: 5, visualRating: 4 }] });
   const local = load('src/lib/localRequest.ts');
-  const route = load('src/app/api/content-suggestions/route.ts', { '@/lib/localRequest': local, '@/lib/contentSuggestionContext': { async loadSuggestionContext() { loads++; return profile; } }, '@/lib/stockFootageSuggestions': footage, '@/lib/creationRecommendations': creation });
+  const route = load('src/app/api/content-suggestions/route.ts', { '@/lib/localRequest': local, '@/lib/contentSuggestionContext': { async loadSuggestionContext() { loads++; return profile; } }, '@/lib/stockFootageSuggestions': footage, '@/lib/creationRecommendations': creation,
+    '@/lib/quickTemplateOpenings': { async quickTemplateOpenings(batch, signal) {
+      previewCalls++; assert.ok(signal instanceof AbortSignal); assert.ok(batch.every(idea => typeof idea.query === 'string'));
+      return batch.map((idea, index) => ({ ...idea, opening: { provider: 'pexels', id: index + 1, image: 'https://images.pexels.com/fixture.jpg' } }));
+    } },
+  });
   for (const query of ['workflow=unknown', 'workflow=footage&cursor=-1', 'workflow=footage&cursor=1000000', 'workflow=footage&cursor=1.2', 'workflow=footage&seen=unknown', 'workflow=footage&seen=' + Array(49).fill('0-0').join(','), 'workflow=footage&workflow=creation', 'workflow=footage&topic=anything', 'workflow=footage&kind=General+video', 'workflow=creation&kind=Unsupported', 'workflow=creation&kind=General+video&kind=General+video']) {
     assert.equal((await route.GET(new Request('http://localhost:3000/api/content-suggestions?' + query))).status, 400, query);
   }
@@ -232,6 +237,13 @@ test('API validates the local request and known bounded IDs before loading optio
   const songResponse=await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=creation&kind=Children%27s+song'));
   const songs=await songResponse.json();assert.equal(songResponse.status,200);assert.equal(songs.ideas.length,6);
   assert.ok(songs.ideas.every(idea=>idea.kind==="Children's song"));
+  assert.equal(previewCalls, 0);
+  const invalidOpening = await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=creation&opening=1'));
+  assert.equal(invalidOpening.status, 400);
+  const withOpenings = await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=footage&opening=1'));
+  assert.equal(withOpenings.status, 200);
+  assert.equal((await withOpenings.json()).ideas[0].opening.id, 1);
+  assert.equal(previewCalls, 1);
 });
 
 test('opening previews select a concrete reusable clip once per card with bounded metadata calls', async () => {

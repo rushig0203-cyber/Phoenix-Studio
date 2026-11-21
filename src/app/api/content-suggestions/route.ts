@@ -36,7 +36,9 @@ export async function GET(request: Request) {
     const relevant = context.recent.filter(record => !record.news && (workflow === "creation" || record.workflow === "stock-reel"));
     const recentIds = new Set(relevant.map(record => record.reviewId));
     const batch = result.ideas.slice(0, 6);
-    const ideas = opening ? await (await import("@/lib/quickTemplateOpenings")).quickTemplateOpenings(batch, request.signal) : batch;
+    const ideas = opening
+      ? await (await import("@/lib/quickTemplateOpenings")).quickTemplateOpenings(batch.filter(idea => "query" in idea), request.signal)
+      : batch;
     return Response.json({ ...result, ideas, profile: { recentCount: relevant.length, feedbackCount: context.feedback.filter(record => recentIds.has(record.reviewId)).length }, refreshMs: FOOTAGE_SUGGESTION_REFRESH_MS }, { headers });
   } catch { return Response.json({ error: "Saved topic suggestions could not be read. Try More topics again." }, { status: 503, headers }); }
 }
