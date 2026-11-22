@@ -248,13 +248,15 @@ test('Delete is disabled for rendering, describes queued cancellation, and toler
   assert.ok(h.requests.every(request => !request.method));
 });
 
-test('empty active view says nothing is processing and long completed history mounts eight cards per page', async t => {
+test('finished history shows five jobs before expanding to eight cards per page, and empty Active is explicit', async t => {
   const h = harness(t);
   global.window.location.hash = '#jobs';
   h.setJobs(Array.from({ length: 23 }, (_, index) => source(`finished-${index}`, 'COMPLETED', index + 1)));
   await h.flush();
   assert.equal(h.filter('Completed · 23').selected, true);
   const cards = () => nodes(h.tree, node => node.type === 'article' && node.key);
+  assert.equal(cards().length, 5); assert.match(h.text, /Latest 5 of 23 finished jobs/);
+  h.button('Show older finished jobs').props.onClick(); await h.flush();
   assert.equal(cards().length, 8); assert.match(h.text, /Showing 1–8 of 23 saved jobs/);
   assert.match(text(cards()[0]), /Video finished-22/);
   h.button('Next').props.onClick(); await h.flush();

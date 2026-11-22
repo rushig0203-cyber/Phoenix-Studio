@@ -79,7 +79,7 @@ test('cohorts compare only mature same-age same-exposure recipes; missing intera
   }
 });
 
-test('visible Insights diagnostic needs no extra control and preserves current interaction totals', () => {
+test('Insights preserves interaction totals and keeps watch diagnosis in one disclosure', () => {
   const data = { ...state(four()), summary: summarize(state(four()), now) };
   const jsx = (type, props) => ({ type, props }); let slot = 0;
   const component = load('src/components/InstagramPerformance.tsx', { react: { useState(initial) { return [slot++ === 0 ? data : typeof initial === 'function' ? initial() : initial, () => {}]; }, useRef: value => ({ current: value }), useCallback: value => value, useEffect() {} }, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' } }).default;
@@ -88,6 +88,9 @@ test('visible Insights diagnostic needs no extra control and preserves current i
   const text = value => value == null || typeof value === 'boolean' ? '' : Array.isArray(value) ? value.map(text).join('') : typeof value === 'object' ? text(value.props?.children) : String(value);
   const diagnosis = nodes(tree).find(node => node.props?.['aria-label'] === 'Watch-time insights');
   assert.ok(diagnosis); assert.match(text(diagnosis), /4 of 4.*3.0s.*20.0s.*15%/); assert.match(text(diagnosis), /available shots and sampled movement/);
+  assert.equal(diagnosis.type, 'details');
+  assert.notEqual(diagnosis.props.open, true);
+  assert.equal(nodes(diagnosis).filter(node => node.type === 'summary').length, 1);
   assert.match(text(tree), /Comments: 4 · Saves: 0 · Shares: 8/);
-  assert.equal(nodes(diagnosis).some(node => ['details', 'button', 'select', 'input'].includes(node.type)), false);
+  assert.equal(nodes(diagnosis).slice(1).some(node => ['details', 'button', 'select', 'input'].includes(node.type)), false);
 });
