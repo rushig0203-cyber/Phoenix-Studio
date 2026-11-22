@@ -2,8 +2,8 @@ import { CONTENT_IDEAS, type ContentIdea, type SuggestionContext, type Suggestio
 
 export const FOOTAGE_SUGGESTION_STORAGE_KEY = "phoenix-footage-suggestions-v1";
 export const FOOTAGE_SUGGESTION_COUNT = 6;
-export const FOOTAGE_SUGGESTION_REFRESH_MS = 15 * 24 * 60 * 60 * 1000;
-export const FOOTAGE_SUGGESTION_REFRESH_AT_KEY = "phoenix-footage-suggestion-next-refresh-v1";
+export const FOOTAGE_SUGGESTION_REFRESH_MS = 24 * 60 * 60 * 1000;
+export const FOOTAGE_SUGGESTION_REFRESH_AT_KEY = "phoenix-footage-suggestion-next-refresh-v2";
 
 type RefreshScheduler = {
   refresh: () => Promise<boolean>;
@@ -19,14 +19,13 @@ type RefreshScheduler = {
 /** One persisted due date per UI surface; failed refreshes retry in one minute. */
 export function installFootageSuggestionRefresh({ refresh, storage, now, setTimeout, clearTimeout, subscribeResume, key, initialDue }: RefreshScheduler) {
   const storageKey = key ? `${FOOTAGE_SUGGESTION_REFRESH_AT_KEY}:${key}` : FOOTAGE_SUGGESTION_REFRESH_AT_KEY;
-  let stopped = false, running = false, timer: unknown;
-  let due = 0;
+  let stopped = false, running = false, invalidated = false, timer: unknown;
+  let due = now() + FOOTAGE_SUGGESTION_REFRESH_MS;
   try {
     const saved = Number(storage.getItem(storageKey));
     if (Number.isSafeInteger(saved) && saved > 0) due = saved;
   } catch { /* A memory-only deadline still keeps this visit on schedule. */ }
-  if (Number.isSafeInteger(initialDue) && initialDue! > 0) due = due ? Math.min(due, initialDue!) : initialDue!;
-  if (!due) due = now() + FOOTAGE_SUGGESTION_REFRESH_MS;
+  if (initialDue !== undefined && Number.isSafeInteger(initialDue) && initialDue >= 0) due = Math.min(due, initialDue);
   const persist = () => { try { storage.setItem(storageKey, String(due)); } catch { /* Browser storage can be unavailable. */ } };
   persist();
   const schedule = (delay: number) => {
@@ -37,22 +36,34 @@ export function installFootageSuggestionRefresh({ refresh, storage, now, setTime
     if (stopped) return;
     const remaining = due - now();
     if (remaining > 0) { schedule(remaining); return; }
-    if (running) { schedule(60_000); return; }
+    if (running) return;
+    invalidated = false;
     running = true;
     let succeeded = false;
     try { succeeded = await refresh(); } catch { succeeded = false; }
     running = false;
     if (stopped) return;
+    if (invalidated) { schedule(0); return; }
     if (succeeded) { due = now() + FOOTAGE_SUGGESTION_REFRESH_MS; persist(); schedule(FOOTAGE_SUGGESTION_REFRESH_MS); }
     else schedule(60_000);
   }
   void check();
   const unsubscribe = subscribeResume?.(() => { if (timer !== undefined) clearTimeout(timer); timer = undefined; void check(); });
-  return () => {
+  function stop() {
     stopped = true;
     if (timer !== undefined) clearTimeout(timer);
     unsubscribe?.();
-  };
+  }
+  function refreshNow() {
+    if (stopped) return;
+    due = now();
+    invalidated = true;
+    persist();
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    void check();
+  }
+  return { stop, refreshNow };
 }
 // Keep the existing IDs/cursor order; append visual keywords rather than scripted premises.
 const topics: Record<string, readonly [string, string]> = {
@@ -65,8 +76,10 @@ const topics: Record<string, readonly [string, string]> = {
 };
 const extraTopics: Array<{ category: string; titles: string[] }> = [
   { category: "Places & travel", titles: ["Switzerland", "Norway", "Iceland", "Italy", "Japan", "Canada", "Scotland", "Austria", "New Zealand", "Alps", "Dolomites", "Fjords", "Glaciers", "Lighthouse", "Coastal road", "Countryside"] },
-  { category: "Nature & wildlife", titles: ["Waterfall", "Lake", "River", "Beach", "Sunset", "Sunrise", "Aurora", "Desert", "Dunes", "Cliffs", "Island", "Meadow", "Snow", "Rainforest", "Tulips", "Lavender", "Autumn", "Spring"] },
-  { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish", "Otters", "Whales", "Seals", "Giraffes", "Lions", "Pandas", "Rabbits", "Flamingos", "Parrots", "Squirrels", "Dragonflies", "Bees"] },
+  { category: "Nature & wildlife", titles: ["Waterfall", "Lake", "River", "Beach", "Sunset", "Sunrise", "Aurora", "Desert", "Dunes", "Cliffs", "Island", "Meadow", "Snow", "Rainforest", "Tulips", "Lavender", "Autumn", "Spring",
+    "Tidal pools", "Ocean waves", "Ferns", "Pine forest", "Rocky coast", "Snowfall", "Mountain stream", "Wildflowers", "Birch trees", "Sea stacks", "Coral reef", "Bamboo forest"] },
+  { category: "Animals & everyday moments", titles: ["Dolphins", "Turtles", "Deer", "Foxes", "Owls", "Penguins", "Elephants", "Jellyfish", "Otters", "Whales", "Seals", "Giraffes", "Lions", "Pandas", "Rabbits", "Flamingos", "Parrots", "Squirrels", "Dragonflies", "Bees",
+    "Bison", "Wolves", "Zebras", "Cheetahs", "Meerkats", "Hummingbirds", "Woodpeckers", "Swans", "Puffins", "Chameleons", "Starfish", "Manta rays"] },
   { category: "Movement & outdoors", titles: ["Steam train", "Railway", "Tram", "Sailing", "Kayaking", "Skiing", "Surfing", "Hiking"] },
   { category: "Architecture & design", titles: ["Architecture", "Bridges", "Castles", "Skyscrapers", "Libraries", "Museums", "Courtyards", "Staircases", "Town streets", "Stone streets", "Windmills", "Greenhouses", "Lighthouses", "City traffic", "Glass buildings", "Wooden houses"] },
 ];
@@ -122,15 +135,25 @@ for (const idea of ideas) {
     : countryTopics.some(([country]) => idea.title.startsWith(country + " ")) ? 2 : 5;
   pools[group].push(idea);
 }
+// Legacy IDs stay in `ideas` for saved history and manual lookup. The default
+// suggestions stay within the visual subjects supported by this account.
+const rejectedSuggestions = /\b(?:class\w*|english|skate\w*|draw\w*|sketch\w*)\b/i;
+const suggestionPools = pools.slice(0, 5).map(pool => pool.filter(idea => !rejectedSuggestions.test(`${idea.title} ${idea.query}`)));
 const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
-const cursorLimit = pools.reduce((period, pool) => period / gcd(period, pool.length) * pool.length, 1) * FOOTAGE_SUGGESTION_COUNT;
+const cursorLimit = suggestionPools.reduce((period, pool) => period / gcd(period, pool.length) * pool.length, 1) * FOOTAGE_SUGGESTION_COUNT;
 function validCursor(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < cursorLimit;
 }
 export function stockFootageSuggestions(cursor = 0): ContentIdea[] {
   const start = validCursor(cursor) ? cursor : 0;
   const batch = Math.floor(start / FOOTAGE_SUGGESTION_COUNT);
-  return pools.map(pool => pool[batch % pool.length]);
+  const picked = suggestionPools.map(pool => pool[batch % pool.length]);
+  const animalPool = suggestionPools[0];
+  const adjacentBaseIds = new Set([...picked, ...suggestionPools.map(pool => pool[(batch + animalPool.length - 1) % pool.length])].map(idea => idea.id));
+  const extra = Array.from({ length: animalPool.length }, (_, offset) => animalPool[(batch + 2 + offset) % animalPool.length])
+    .find(idea => !adjacentBaseIds.has(idea.id));
+  if (extra) picked.push(extra);
+  return picked;
 }
 export function stockTopicPool(): ContentIdea[] { return [...ideas]; }
 const byId = new Map(ideas.map(idea => [idea.id, idea]));
@@ -178,8 +201,8 @@ const subjectPhrase = (value: string) => subjectWords(value).replace(/\b(?:bunny
   .replace(/\bcities\b/g, "city").replace(/\bleaves\b/g, "leaf").replace(/\b([a-z]{3,})s\b/g, "$1");
 const familyNames = ["wildlife", "nature", "travel", "outdoor movement", "architecture", "hands-on"];
 const familyCues = [
-  /\b(?:animals?|wildlife|birds?|butterfl(?:y|ies)|cats?|kittens?|dogs?|pupp(?:y|ies)|horses?|dolphins?|turtles?|deer|fox(?:es)?|owls?|penguins?|elephants?|jellyfish|otters?|whales?|seals?|giraffes?|lions?|pandas?|rabbits?|bunn(?:y|ies)|flamingos?|parrots?|squirrels?|dragonfl(?:y|ies)|bees?)\b/,
-  /\b(?:nature|forests?|woodlands?|trees?|leaves|foliage|gardens?|parks?|waterfalls?|lakes?|rivers?|ocean|sea|beach(?:es)?|sunsets?|sunrises?|aurora|deserts?|dunes?|cliffs?|islands?|meadows?|snow|rainforests?|tulips?|lavender|autumn|spring|mountains?|glaciers?|fjords?|landscapes?)\b/,
+  /\b(?:animals?|wildlife|birds?|butterfl(?:y|ies)|cats?|kittens?|dogs?|pupp(?:y|ies)|horses?|dolphins?|turtles?|deer|fox(?:es)?|owls?|penguins?|elephants?|jellyfish|otters?|whales?|seals?|giraffes?|lions?|pandas?|rabbits?|bunn(?:y|ies)|flamingos?|parrots?|squirrels?|dragonfl(?:y|ies)|bees?|bison|wolf|wolves|zebras?|cheetahs?|meerkats?|hummingbirds?|woodpeckers?|swans?|puffins?|chameleons?|starfish|manta rays?)\b/,
+  /\b(?:nature|forests?|woodlands?|trees?|leaves|foliage|gardens?|parks?|waterfalls?|lakes?|rivers?|ocean|sea|beach(?:es)?|sunsets?|sunrises?|aurora|deserts?|dunes?|cliffs?|islands?|meadows?|snow(?:fall)?|rainforests?|tulips?|lavender|autumn|spring|mountains?|glaciers?|fjords?|landscapes?|tidal pools?|ferns?|wildflowers?|coral reefs?)\b/,
   /\b(?:travel|scenery|scenic|alps|dolomites|countryside|coastal|villages?|journey|switzerland|norway|iceland|italy|japan|canada|scotland|austria|zealand|france|germany|portugal|spain|greece|croatia|slovenia|finland|sweden|netherlands|ireland|nepal|indonesia|thailand|australia|chile)\b/,
   /\b(?:trains?|railway|trams?|sailing|sailboats?|kayak(?:ing)?|skiing|surfing|hiking|cycling|bicycle|climbing|skating|skateboard)\b/,
   /\b(?:architecture|bridges?|castles?|skyscrapers?|libraries|library|museums?|courtyards?|staircases?|town|streets?|windmills?|greenhouses?|lighthouses?|buildings?|houses?|city|cities)\b/,
@@ -229,7 +252,8 @@ export function personalizedStockSuggestions(context: SuggestionContext, cursor 
   for (const record of rankingHistory.slice(0, 30)) {
     const age = Math.max(0, (context.now - Date.parse(record.createdAt)) / 86_400_000);
     const weight = Number.isFinite(age) ? (record.posted ? 8 : 4) / (1 + age / 15) : 0;
-    const literal = subjectWords(record.observations.length ? record.observations.slice(0, 3).join(" ") : record.title);
+    const literal = subjectWords(`${record.title} ${record.observations.slice(0, 3).join(" ")}`)
+      .replace(/\b(?:class\w*|english|skate\w*|draw\w*|sketch\w*)\b/g, " ");
     const review = feedback.get(record.reviewId);
     const approved = review?.decision === "keep" && review.storyRating >= 3 && review.visualRating >= 3;
     addTopicEvidence(`${record.title} ${record.observations.slice(0, 3).join(" ")}`, weight + (approved ? 4 : 0));
@@ -247,19 +271,34 @@ export function personalizedStockSuggestions(context: SuggestionContext, cursor 
   const hasProfile = scores.some(score => score > 0);
   const affinity = scores.map((score, group) => score + (group === 1 ? scores[0] * .35 : group === 2 ? scores[1] * .15 : 0)
     + [0.006, 0.005, 0.003, 0.004, 0.002, 0.001][group]);
-  const candidates = ideas.filter(idea => !hasProfile || idea.title !== "Nature")
+  const supportedGroups = new Set<number>(hasProfile
+    ? scores.flatMap((score, group) => score > 0 ? [group] : [])
+    : suggestionPools.flatMap((pool, group) => pool.length ? [group] : []));
+  const candidates = ideas.filter(idea => !rejectedSuggestions.test(`${idea.title} ${idea.query}`)
+      && supportedGroups.has(ideaGroup.get(idea.id)!)
+      && (ideaGroup.get(idea.id) !== 5 || (topicScores.get(subjectPhrase(idea.query)) || 0) > 0))
+    .filter(idea => !hasProfile || idea.title !== "Nature")
     .map(idea => ({ idea, subject: subjectKey(idea.query), topic: subjectPhrase(idea.query), group: ideaGroup.get(idea.id)!, tie: hash(`${period}:${safeCursor}:${idea.id}`) }))
-    .sort((a, b) => (topicScores.get(b.topic) || 0) - (topicScores.get(a.topic) || 0)
-      || (hasProfile ? affinity[b.group] - affinity[a.group] : 0) || a.tie - b.tie || a.idea.id.localeCompare(b.idea.id));
+    .sort((a, b) => Number(measuredTopics.has(b.topic)) - Number(measuredTopics.has(a.topic))
+      || (hasProfile ? affinity[b.group] - affinity[a.group] : 0)
+      || (topicScores.get(b.topic) || 0) - (topicScores.get(a.topic) || 0) || a.tie - b.tie || a.idea.id.localeCompare(b.idea.id));
   const selected: typeof candidates = [], usedGroups = new Map<number, number>(), usedSubjects = new Set<string>();
+  const fresh = candidates.filter(candidate => !blocked.has(candidate.subject) && !lastShown.has(candidate.subject));
+  const mainGroups = [...supportedGroups].sort((a, b) => affinity[b] - affinity[a]).slice(0, 2);
+  const floor = (affinity[mainGroups[0]] ?? Infinity) * .5;
+  const primaryGroups = hasProfile ? mainGroups.filter(group => affinity[group] >= floor) : [];
   let countryUsed = false;
-  function pickFrom(available: typeof candidates) {
+  function pickFrom(available: typeof candidates, count = FOOTAGE_SUGGESTION_COUNT) {
     const variety = Math.min(6, new Set(available.map(candidate => candidate.group)).size);
-    while (selected.length < FOOTAGE_SUGGESTION_COUNT) {
-      const choice = available.find(candidate => !usedSubjects.has(candidate.subject)
-        && (usedGroups.get(candidate.group) || 0) < 2
-        && (usedGroups.size >= variety || !usedGroups.has(candidate.group))
-        && (!countryUsed || !candidate.subject.startsWith("country:")));
+    const perGroupLimit = Math.max(1, Math.ceil(FOOTAGE_SUGGESTION_COUNT / Math.max(1, variety)));
+    while (selected.length < count) {
+      const choice = available.find(candidate => {
+        const limit = hasProfile ? (primaryGroups.includes(candidate.group) ? Math.max(perGroupLimit, 3) : 1) : perGroupLimit;
+        return !usedSubjects.has(candidate.subject)
+          && (usedGroups.get(candidate.group) || 0) < limit
+          && (usedGroups.size >= variety || !usedGroups.has(candidate.group))
+          && (!countryUsed || !candidate.subject.startsWith("country:"));
+      });
       if (!choice) break;
       selected.push(choice);
       usedSubjects.add(choice.subject);
@@ -267,15 +306,13 @@ export function personalizedStockSuggestions(context: SuggestionContext, cursor 
       countryUsed ||= choice.subject.startsWith("country:");
     }
   }
-  const outsideRecentHistory = candidates.filter(candidate => !blocked.has(candidate.subject));
-  pickFrom(outsideRecentHistory.filter(candidate => !lastShown.has(candidate.subject)));
-  if (selected.length < FOOTAGE_SUGGESTION_COUNT - 1) {
-    // Keep fresh choices and revisit the oldest suggestions when the rotation runs low.
-    const byLastShown = [...candidates].sort((a, b) => (lastShown.get(a.subject) ?? -1) - (lastShown.get(b.subject) ?? -1));
-    pickFrom(byLastShown.filter(candidate => !blocked.has(candidate.subject)));
-    if (selected.length < FOOTAGE_SUGGESTION_COUNT - 1) pickFrom(byLastShown);
+  if (hasProfile) {
+    // Start with areas the creator revisits; small incidental themes cannot
+    // take half of the visible deck just to satisfy a variety quota.
+    pickFrom(fresh.filter(candidate => primaryGroups.includes(candidate.group)), 3);
   }
-  const exploration = ["A fresh wildlife subject with one consistent setting.", "Explore a different natural setting and visual thread.", "A new place to explore with source-supported footage.", "Follow one journey or outdoor activity to its natural ending.", "A visual change of pace using related buildings and details.", "Try one clear hands-on process and its finished result."];
+  pickFrom(fresh);
+  const exploration = ["A fresh wildlife subject with one consistent setting.", "Explore a different natural setting and visual thread.", "A new place to explore with source-supported footage.", "Follow one journey or outdoor activity to its natural ending.", "A visual change of pace using related buildings and details.", "A fresh subject from a visual theme in your recent reels."];
   return { ideas: selected.map(({ idea, topic, group }) => ({ ...idea,
     basis: measuredTopics.has(topic) || measured[group] ? "observed-response" as const : kept[group] ? "owner-feedback" as const : scores[group] > 0 ? "recent-content" as const : "explore" as const,
     reason: measuredTopics.has(topic) ? "Related to subjects in your measured Instagram results, with a different filmable scene."

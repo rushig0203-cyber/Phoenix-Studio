@@ -46,12 +46,9 @@ test('recent literal visuals and keeper feedback change relevance, without repea
   assert.ok(value.ideas.every(idea => !/panda|waterfall/i.test(idea.title)));
   assert.ok(value.ideas.every(idea => idea.title !== 'Nature'), 'Personalized nature/animal batches name a concrete fresh subject');
   assert.ok(footage.stockTopicPool().some(idea => idea.title === 'Nature'), 'The manual catalogue and fallback keep the existing broad keyword');
-  assert.ok(new Set(value.ideas.map(idea => idea.category)).size >= 3);
+  assert.ok(new Set(value.ideas.map(idea => idea.category)).size >= 2, 'Related wildlife and nature themes provide variety without unrelated filler');
   const craft = footage.personalizedStockSuggestions(context([record(2, 'Pottery hands shape clay', { posted: true })]));
-  assert.equal(craft.ideas[0].category, 'Food & craft');
-  assert.equal(craft.ideas[0].basis, 'recent-content');
-  assert.match(craft.ideas[0].reason, /posted/);
-  assert.ok(!craft.ideas.some(idea => idea.title === 'Pottery'));
+  assert.equal(craft.ideas.length, 0, 'Do not refill a one-topic history with unrelated craft topics');
   const drafts = Array.from({ length: 35 }, (_, index) => record(index + 10, 'Pottery hands shape clay'));
   const posted = footage.personalizedStockSuggestions(context([...drafts, record(3, 'Panda', { posted: true })]));
   assert.match(posted.ideas[0].reason, /posted wildlife/);
@@ -64,23 +61,43 @@ test('actual saved observations outrank an unsupported place title and news does
   assert.ok(value.ideas.every(idea => !/observed-response/.test(idea.basis)));
 });
 
-test('More topics avoids known last48 IDs and keeps animals/nature/movement beside travel', () => {
+test('consistent posted themes lead before isolated background details', () => {
+  const profile = context([
+    ...Array.from({ length: 8 }, (_, index) => record(index + 1, 'Waterfall landscape', { posted: true, observations: ['River, water and trees'] })),
+    ...Array.from({ length: 6 }, (_, index) => record(index + 11, 'Panda and deer', { posted: true, observations: ['Panda walking near deer'] })),
+    record(30, 'City traffic and street lights', { posted: true }),
+  ]);
+  const batch = footage.personalizedStockSuggestions(profile).ideas;
+  assert.equal(batch.length, 6);
+  assert.ok(batch.slice(0, 3).every(idea => /nature|wildlife/.test(idea.reason)));
+  assert.ok(batch.filter(idea => idea.category === 'Architecture & design').length <= 1);
+
+  const covered = footage.stockTopicPool().filter(idea => ['Nature & wildlife', 'Animals & everyday moments'].includes(idea.category)
+    || /^(Gardens|Parks)$/.test(idea.title));
+  const exhausted = context([...profile.recent, ...covered.map((idea, index) => record(40 + index, idea.title))]);
+  const remaining = footage.personalizedStockSuggestions(exhausted).ideas;
+  assert.ok(remaining.length > 0);
+  assert.ok(remaining.filter(idea => /architecture/.test(idea.reason)).length <= 1,
+    'Running out of established themes cannot turn a single incidental city theme into the whole deck');
+});
+
+test('More topics avoids known last48 IDs and stays within the creator-supported travel theme', () => {
   let seen = [], cursor = 0;
   const profile = context([record(1, 'Switzerland lakes'), record(2, 'Norway fjords')]);
   for (let batch = 0; batch < 14; batch++) {
     const next = footage.personalizedStockSuggestions(profile, cursor, seen);
-    assert.equal(next.ideas.length, 6);
+    assert.ok(next.ideas.length <= 6);
     assert.ok(next.ideas.every(idea => !seen.includes(idea.id)));
-    assert.ok(next.ideas.some(idea => /wildlife/.test(idea.reason)));
-    assert.ok(next.ideas.some(idea => /nature|natural setting/.test(idea.reason)));
-    assert.ok(next.ideas.some(idea => /outdoor/.test(idea.reason)));
+    assert.ok(next.ideas.every(idea => ['Places & travel', 'Nature & wildlife'].includes(idea.category)
+      || /^(?:Gardens|Parks)$/.test(idea.title)), 'Travel history can expand into adjacent landscapes without unrelated craft or activity themes');
+    if (next.ideas.length) assert.ok(next.ideas.some(idea => /travel|nature/.test(idea.reason)));
     assert.ok(next.ideas.filter(idea => /^(Switzerland|Norway|Italy|Japan|Canada|France|Greece|Spain|Portugal|Austria|New Zealand)\b/.test(idea.title)).length <= 1);
     seen = [...seen, ...next.ideas.map(idea => idea.id)].slice(-48); cursor = next.nextCursor;
   }
   const first = footage.personalizedStockSuggestions(profile).ideas.map(idea => idea.id);
   const later = footage.personalizedStockSuggestions({ ...profile, now: now + footage.FOOTAGE_SUGGESTION_REFRESH_MS }).ideas.map(idea => idea.id);
   assert.notDeepEqual(plain(first), plain(later));
-  assert.equal(footage.FOOTAGE_SUGGESTION_REFRESH_MS, 15 * 24 * hour);
+  assert.equal(footage.FOOTAGE_SUGGESTION_REFRESH_MS, 24 * hour);
 });
 
 test('a crowded saved history keeps five or six valid templates and places fresh choices before older suggestions', () => {
@@ -94,9 +111,9 @@ test('a crowded saved history keeps five or six valid templates and places fresh
   assert.equal(seen.length, 48);
   const profile = context(completed.map((idea, index) => record(index + 1, idea.title, { posted: true })));
   const next = footage.personalizedStockSuggestions(profile, 48, seen);
-  assert.ok(next.ideas.length >= 5 && next.ideas.length <= 6, 'A valid sparse rotation still meets the QuickTemplates response contract');
+  assert.ok(next.ideas.length <= 6, 'A sparse profile can return fewer ideas instead of padding with completed or unrelated subjects');
   assert.equal(new Set(next.ideas.map(idea => idea.id)).size, next.ideas.length);
-  assert.ok(new Set(next.ideas.map(idea => idea.category)).size >= 3);
+  assert.ok(new Set(next.ideas.map(idea => idea.category)).size >= 1, 'Sparse relevant categories are preferable to unrelated variety');
   const known = new Map(pool.map(idea => [idea.id, idea]));
   for (const idea of next.ideas) {
     assert.equal(idea.title, known.get(idea.id)?.title);
@@ -104,10 +121,18 @@ test('a crowded saved history keeps five or six valid templates and places fresh
     assert.ok(idea.reason.trim() && idea.reason.length <= 220);
     assert.ok(!completed.some(previous => previous.title === idea.title), 'Previously shown suggestions are reused before completed-video subjects');
   }
-  const firstRecycled = next.ideas.findIndex(idea => seen.includes(idea.id));
-  assert.ok(firstRecycled >= 4, 'Keep all four fresh choices ahead of any recycled suggestion');
-  assert.equal(next.ideas[firstRecycled].id, seen[0], 'The oldest available shown craft is revisited first');
-  assert.ok(next.ideas.slice(firstRecycled).every(idea => seen.includes(idea.id)), 'Recycling cannot displace a fresh choice later in the batch');
+  assert.ok(next.ideas.every(idea => !completed.some(previous => previous.title === idea.title)), 'Never pad with subjects already covered by completed videos');
+});
+
+test('fallback and personalized batches omit rejected class, English, skating and drawing topics', () => {
+  const rejected = /class|english|skate|draw|sketch/i;
+  for (let cursor = 0; cursor < 300; cursor += 6) {
+    assert.ok(footage.stockFootageSuggestions(cursor).every(idea => !rejected.test(`${idea.title} ${idea.query}`)));
+  }
+  assert.ok(footage.stockTopicPool().some(idea => idea.id === '2-3'), 'Legacy IDs stay available for saved history');
+  const result = footage.personalizedStockSuggestions(context([record(30, 'Drawing class in English with skateboards', { posted: true })]));
+  assert.ok(result.ideas.every(idea => !rejected.test(`${idea.title} ${idea.query}`)));
+  assert.ok(result.ideas.every(idea => ['Nature & wildlife', 'Animals & everyday moments', 'Places & travel', 'Movement & outdoors', 'Architecture & design'].includes(idea.category)));
 });
 
 test('v1 history is compatible, bounded and records only the batch actually displayed', () => {
@@ -230,7 +255,7 @@ test('API validates the local request and known bounded IDs before loading optio
   const result = await response.json();
   assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(result.ideas.length, 6); assert.deepEqual(result.profile, { recentCount: 1, feedbackCount: 1 });
-  assert.ok(result.ideas.every(idea => idea.id !== seen)); assert.equal(result.refreshMs, 15 * 24 * hour);
+  assert.ok(result.ideas.every(idea => idea.id !== seen)); assert.equal(result.refreshMs, 24 * hour);
   const creationResponse = await route.GET(new Request('http://localhost:3000/api/content-suggestions?workflow=creation'));
   const creative = await creationResponse.json(); assert.equal(creationResponse.status, 200); assert.equal(creative.ideas.length, 6);
   assert.deepEqual(creative.profile, { recentCount: 2, feedbackCount: 1 });

@@ -40,6 +40,7 @@ channels.getChannelUploadSession = async id => { sessionReads++; return sessions
 channels.saveChannelUploadSession = async (id, value) => { if (value === null) sessions.delete(id); else sessions.set(id, value); };
 channels.getInstagramLocationAppSecretProof = async access => { proofCalls++; await channels.assertChannelPublishAccessCurrent(access); return appSecretProof; };
 const publishing = require(path.join(project, "src/lib/reviewPublishing.ts"));
+const { withUnpublishedReview } = require(path.join(project, "src/lib/reviewPublicationStore.ts"));
 const files = require(path.join(project, "src/lib/reviewFiles.ts"));
 const instagramTags = require(path.join(project, "src/lib/instagramTags.ts"));
 const scheduled = [];
@@ -49,6 +50,7 @@ Module._load = function(name, parent, main) {
   return originalLoad.call(this, name, parent, main);
 };
 const route = require(path.join(project, "src/app/api/review-files/[id]/publish/route.ts"));
+const progressRoute = require(path.join(project, "src/app/api/review-publications/route.ts"));
 Module._load = originalLoad;
 const realFetch = global.fetch;
 const location = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=fixture-private-session";
@@ -112,6 +114,48 @@ test("confirmation, local request, audience and Instagram visibility are explici
   assert.equal((await route.GET(new Request(`http://localhost:3000/api/review-files/${id}/publish`, { headers: { origin: "https://outside.example" } }), context(id))).status, 403);
   assert.equal(accessCalls, 0);
   assert.deepEqual(await publishing.listReviewPublishJobs(id), []);
+});
+
+test("the reload progress snapshot discovers durable independent uploads with no dispatch, credentials or provider reads", async () => {
+  const { id } = await confirmedStoryFixture();
+  const reel = await publishing.prepareReviewPublication(id, settings('instagram', { companionStory: true }));
+  const youtube = await publishing.prepareReviewPublication(id, settings('youtube'));
+  accessCalls = 0; assertionCalls = 0; sessionReads = 0; scheduled.length = 0;
+  fs.writeFileSync(path.join(process.env.PHOENIX_PUBLISH_STORAGE, 'unrelated.json'), '{private fixture}');
+  const response = await progressRoute.GET(new Request('http://localhost:3000/api/review-publications'));
+  assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  const snapshot = await response.json();
+  const saved = snapshot.jobs.filter(job => job.reviewId === id);
+  assert.equal(saved.length, 2); assert.ok(saved.some(job => job.id === youtube.job.id));
+  const instagram = saved.find(job => job.id === reel.job.id);
+  assert.equal(instagram.companionStory.kind, 'story'); assert.equal(snapshot.titles[id], 'Fixture title');
+  const serialized = JSON.stringify(snapshot);
+  for (const privateField of ['fixture-secret-token', 'fixture-private-session', 'connectionRevision', 'accountId', 'fingerprint', 'containerId']) assert.equal(serialized.includes(privateField), false);
+  assert.equal(accessCalls, 0); assert.equal(assertionCalls, 0); assert.equal(sessionReads, 0); assert.equal(scheduled.length, 0);
+  const denied = await progressRoute.GET(new Request('https://outside.example/api/review-publications'));
+  assert.equal(denied.status, 403); assert.equal(scheduled.length, 0);
+});
+
+test("edit retention reserves all posting destinations and protects current and historical uploads", async () => {
+  const { id } = await fixture();
+  const destinations = ["youtube", "instagram", "instagram-story", "facebook"];
+  let archives = 0;
+  const archive = async () => {
+    archives++;
+    assert.ok(destinations.every(destination => fs.existsSync(`${storedPath(id, destination)}.lock`)));
+    return true;
+  };
+  assert.equal(await withUnpublishedReview(id, archive), true);
+  const story = storedPath(id, "instagram-story");
+  fs.writeFileSync(story, "{}");
+  assert.equal(await withUnpublishedReview(id, archive), false);
+  fs.unlinkSync(story);
+  const history = path.join(process.env.PHOENIX_PUBLISH_STORAGE, "history");
+  fs.mkdirSync(history, { recursive: true });
+  fs.writeFileSync(path.join(history, `${id}-instagram-retained.json`), "{}");
+  assert.equal(await withUnpublishedReview(id, archive), false);
+  assert.equal(archives, 1);
+  assert.equal(accessCalls, 0);
 });
 
 const facebookVideo = "9988776655443322", facebookUpload = `https://rupload.facebook.com/video-upload/v26.0/${facebookVideo}`;

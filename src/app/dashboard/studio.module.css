@@ -39,23 +39,10 @@
   color: var(--night-text);
 }
 .header[data-artwork-only] {
-  height: clamp(13rem, 26vw, 22rem);
-  container-type: size;
-  background: radial-gradient(ellipse at 77% 83%, #573c6329, transparent 68%);
-}
-.header[data-artwork-only]::before {
-  content: ""; position: absolute; left: 50%; top: 50%; z-index: -2;
-  width: calc(100cqh + 2 * var(--hero-padding)); height: calc(100cqw + 2 * var(--hero-padding));
-  background: url("/api/studio-wallpaper") 70% 50% / cover no-repeat;
-  /* The supplied vertical image stores its horizon on the right edge. */
-  transform: translate(-50%, -50%) rotate(90deg);
-  filter: saturate(.35) brightness(.69);
-  mask-image: linear-gradient(to right, transparent 8%, #000 66%);
-  pointer-events: none;
-}
-.header[data-artwork-only]::after {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: linear-gradient(0deg, #101013e8, #10101330 30%, transparent 57%);
+  min-height: clamp(8rem, 14vw, 12rem);
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
 }
 .heroCopy { max-width: 38rem; }
 .heading { font-size: clamp(1.75rem, 3.4vw, 2.8rem); line-height: 1.12; letter-spacing: -.045em; font-weight: 650; }
@@ -71,7 +58,7 @@
 .main :global([data-quick-templates]) { padding-block: .15rem .65rem; }
 .main :global([data-template-heading]), .main :global([data-template-tools]) { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
 .main :global([data-template-heading]) { justify-content: space-between; }
-.main :global([data-quick-templates] h2) { font-size: clamp(1.4rem, 2.4vw, 1.85rem); font-weight: 660; letter-spacing: -.04em; }
+.main :global([data-quick-templates] h2) { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.75rem, 3vw, 2.35rem); font-weight: 500; line-height: 1.12; letter-spacing: -.035em; }
 .topAction, .main :global([data-template-tools] > button) {
   min-height: 2.625rem; border: 1px solid var(--night-edge); border-radius: 999px;
   background: var(--night-panel); color: var(--night-text); padding-inline: .9rem; font-size: .78rem; font-weight: 600;
@@ -96,8 +83,8 @@
   background: linear-gradient(0deg, #101013 0%, #101013ed 28%, #10101336 74%, #10101314 100%);
 }
 .main :global([data-template-copy]) { padding: .95rem 2.25rem .95rem 1rem; display: grid; gap: .3rem; overflow-wrap: anywhere; }
-.main :global([data-template-title]) { font-size: clamp(.99rem, 1.6vw, 1.22rem); font-weight: 660; letter-spacing: -.02em; line-height: 1.25; }
-.main :global([data-template-reason]) { color: var(--night-muted); font-size: .79rem; line-height: 1.45; }
+.main :global([data-template-title]) { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.15rem, 2vw, 1.5rem); font-weight: 500; letter-spacing: -.015em; line-height: 1.18; }
+.main :global([data-template-reason]) { color: var(--night-muted); font-size: .8rem; line-height: 1.45; }
 .main :global([data-template-action]) { position: absolute; right: .9rem; bottom: 1rem; color: var(--night-accent); }
 .main :global([data-template-progress]) { margin-block: 1rem 1.75rem; }
 .main :global([data-template-progress] h2) { max-width: 50rem; font-size: clamp(1.6rem, 3vw, 2.4rem); line-height: 1.2; letter-spacing: -.04em; }

@@ -69,6 +69,15 @@ async function run() {
     assertions: [], screenshots: [], stylesheets: [], apiReads: [], deniedRequests: [], pageErrors: [] };
   const verify = (name, condition, detail) => { assert.ok(condition, `${name}${detail ? `: ${JSON.stringify(detail)}` : ''}`); proof.assertions.push({ name, ...(detail ? { detail } : {}) }); };
   const json = (route, value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
+  const publicationJobs = () => {
+    if (!showPostingProgress) return [];
+    const updatedAt = new Date().toISOString();
+    return [
+      { id: 'fixture-upload-ig', reviewId: file.id, platform: 'instagram', status: 'UPLOADING', percent: 87, bytesUploaded: 92, totalBytes: 100, accountName: '@fixture_wildlife', detail: 'Sending the saved Reel.', privacy: 'public', updatedAt },
+      { id: 'fixture-upload-fb', reviewId: file.id, platform: 'facebook', status: 'COMPLETE', percent: 100, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture Facebook Page', detail: 'Reel published.', privacy: 'public', updatedAt },
+      { id: 'fixture-upload-yt', reviewId: file.id, platform: 'youtube', status: 'PROCESSING', percent: 96, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture YouTube Channel', detail: 'YouTube is processing the upload.', privacy: 'public', updatedAt },
+    ];
+  };
   try {
     const rendered = spawnSync(require('@ffmpeg-installer/ffmpeg').path,
       ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x657f78:s=360x640:r=12', '-t', '2', '-an', '-c:v', 'libvpx', '-deadline', 'realtime', '-threads', '1', '-pix_fmt', 'yuv420p', movie],
@@ -150,14 +159,11 @@ async function run() {
       });
       if (url.pathname === `/api/review-files/${file.id}/poster`) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === `/api/review-files/${file.id}/media`) return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Content-Length': String(media.length), 'Accept-Ranges': 'bytes' }, body: media });
+      if (url.pathname === '/api/review-publications') return json(route, { jobs: publicationJobs(), titles: { [file.id]: file.title } });
       if (url.pathname === `/api/review-files/${file.id}/publish`) {
         if (url.searchParams.get('check') === 'story') return json(route, { story: { ready: true, reason: 'Synthetic eligible Business account.' } });
         if (url.searchParams.get('check') === 'posting-defaults') return json(route, { defaults: { userTags: [] } });
-        if (!url.searchParams.has('check')) return json(route, { jobs: showPostingProgress ? [
-          { id: 'fixture-upload-ig', platform: 'instagram', status: 'UPLOADING', percent: 87, bytesUploaded: 92, totalBytes: 100, accountName: '@fixture_wildlife', detail: 'Sending the saved Reel.', privacy: 'public', updatedAt: date },
-          { id: 'fixture-upload-fb', platform: 'facebook', status: 'COMPLETE', percent: 100, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture Facebook Page', detail: 'Reel published.', privacy: 'public', updatedAt: date },
-          { id: 'fixture-upload-yt', platform: 'youtube', status: 'PROCESSING', percent: 96, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture YouTube Channel', detail: 'YouTube is processing the upload.', privacy: 'public', updatedAt: date },
-        ] : [] });
+        if (!url.searchParams.has('check')) return json(route, { jobs: publicationJobs() });
       }
       proof.deniedRequests.push(`${incoming.method()} ${url.pathname}${url.search}`);
       return route.fulfill({ status: 501, contentType: 'application/json', body: '{"error":"Unmocked CI request"}' });
@@ -199,31 +205,35 @@ async function run() {
     verify('Cards stay in focus above the space backdrop', parseFloat(style.radius) >= 12 && style.background === 'rgba(0, 0, 0, 0)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
     await page.locator('[data-quick-template]').first().blur();
     const hero = await page.locator('[data-studio-hero="create"]').evaluate(element => {
-      const image = getComputedStyle(element, '::before'), panel = getComputedStyle(element);
-      return { width: parseFloat(image.width), height: parseFloat(image.height), image: image.backgroundImage,
-        transform: image.transform, color: panel.color, panel: panel.backgroundColor, treatment: image.filter, mask: image.maskImage };
+      const panel = getComputedStyle(element);
+      return { panel: panel.backgroundColor, image: panel.backgroundImage,
+        before: getComputedStyle(element, '::before').backgroundImage, border: panel.borderTopColor };
     });
-    verify('Aurora header retains the upright photo with subdued colour and a fade into the starfield', hero.width >= 190 && hero.height >= 900
-      && hero.image.includes('/api/studio-wallpaper') && /^matrix\(0, 1, -1, 0, /.test(hero.transform)
-      && hero.color === 'rgb(238, 237, 240)' && hero.panel === 'rgba(0, 0, 0, 0)'
-      && hero.treatment.includes('saturate(0.35)') && hero.mask.includes('linear-gradient'), hero);
+    verify('The Create controls sit directly over the starfield without a separate picture panel',
+      hero.image === 'none' && hero.before === 'none' && hero.panel === 'rgba(0, 0, 0, 0)' && hero.border === 'rgba(0, 0, 0, 0)', hero);
     const artworkOnly = await page.locator('[data-studio-hero="create"]').evaluate(element => {
       const heading = element.querySelector('h1');
       return { heading: heading.textContent, headingSize: heading.parentElement.getBoundingClientRect().height,
-        tint: getComputedStyle(element, '::after').content, actionCount: element.querySelectorAll('a,button').length };
+        actionCount: element.querySelectorAll('a,button').length };
     });
-    verify('Create keeps the headline visually hidden and places the workflows on the artwork edge',
-      artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint !== 'none' && artworkOnly.actionCount === 3, artworkOnly);
+    verify('Create keeps the headline visually hidden and exposes all three workflows',
+      artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.actionCount === 3, artworkOnly);
+    const reelFont = await page.locator('[data-template-title]').first().evaluate(element => getComputedStyle(element).fontFamily);
+    verify('Reel cards use the new serif title style', reelFont.includes('Georgia'), reelFont);
     const stars = page.locator('[data-studio-starfield]');
     const starLayers = () => stars.evaluate(element => ({
       hidden: element.getAttribute('aria-hidden'), perspective: getComputedStyle(element).perspective,
       pointerEvents: getComputedStyle(element).pointerEvents,
+      artwork: getComputedStyle(element, '::before').backgroundImage,
+      artworkSize: getComputedStyle(element, '::before').backgroundSize,
       animations: [...element.querySelectorAll('[data-star-depth]')].map(layer => getComputedStyle(layer).animationName),
     }));
     const stillStars = await starLayers();
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     const movingStars = await starLayers();
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    verify('The original artwork covers the starfield behind the dashboard',
+      stillStars.artwork.includes('/api/studio-wallpaper') && stillStars.artworkSize === 'cover', stillStars);
     verify('Three perspective layers drift only when motion is allowed and stay behind interactive content',
       movingStars.hidden === 'true' && movingStars.pointerEvents === 'none' && parseFloat(movingStars.perspective) > 0
       && movingStars.animations.length === 3 && movingStars.animations.every(name => name !== 'none')
@@ -402,6 +412,17 @@ async function run() {
       && (await strip.locator('[data-posting-platform="youtube"]').getAttribute('aria-description')) === 'Processing');
     verify('Saved transfer detail starts collapsed', await instagram.locator('details').filter({ hasText: 'Upload details' }).getAttribute('open') === null);
     await capture('studio-parallel-posting');
+    await dialog.getByRole('button', { name: 'Close video preview', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    const dock = page.locator('[data-posting-dock]');
+    await dock.locator('button[aria-expanded="false"]').click();
+    verify('Closing the preview keeps the three distinct posting destinations available in the corner',
+      await dock.locator('[data-posting-dock-job]').count() === 3
+      && await dock.getByRole('progressbar', { name: 'Instagram Reel transfer', exact: true }).getAttribute('aria-valuenow') === '92');
+    await dock.getByRole('button', { name: 'Open video', exact: true }).click();
+    await dialog.waitFor();
+    await dialog.getByRole('button', { name: 'Close video preview', exact: true }).click();
+    showPostingProgress = false;
     await page.goto(`${origin}/dashboard/settings`);
     await page.getByRole('heading', { name: 'Publishing settings', exact: true }).waitFor();
     await page.getByText('Writer connection', { exact: true }).click();

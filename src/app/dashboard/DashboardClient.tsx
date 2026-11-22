@@ -27,7 +27,7 @@ import { completedTransitions } from "@/lib/creationIntent";
 import PostingActions from "@/components/PostingActions";
 import { dashboardHasPendingWork, dashboardMonitorReport, fetchDashboardSnapshot, startDashboardPolling } from "@/lib/dashboardMonitor";
 import { refreshInstalledRelease } from "@/lib/releaseRefresh";
-import { JOB_PAGE_SIZE, jobQueuePage, type JobFilter } from "@/lib/dashboardJobs";
+import { JOB_PAGE_SIZE, RECENT_FINISHED_JOBS, jobQueuePage, type JobFilter } from "@/lib/dashboardJobs";
 import styles from "./studio.module.css";
 
 
@@ -42,6 +42,8 @@ type SourceJob = {
   attempts?: number;
   error?: string;
   createdAt: string;
+  finishedAt?: string;
+  stockSource?: { requestId: string };
   elapsedSeconds?: number;
   estimatedRemainingSeconds?: number;
 };
@@ -146,6 +148,11 @@ export default function DashboardClient() {
   const previewFile = preview ? files.find(file => file.id === preview.id) ?? preview : null;
   const previousJobs = useRef(new Map<string, string>());
   const [sourceJobs, setSourceJobs] = useState<SourceJob[]>([]);
+  const reelActivityAt = useMemo(() => sourceJobs.reduce((latest, job) => {
+    if (!job.stockSource || !["QUEUED", "PROCESSING", "COMPLETED"].includes(job.status)) return latest;
+    const timestamp = job.status === "COMPLETED" ? job.finishedAt || job.createdAt : job.createdAt;
+    return Math.max(latest, Date.parse(timestamp) || 0);
+  }, 0), [sourceJobs]);
   const [aiJobs, setAiJobs] = useState<AiJob[]>([]);
   const [editJobs, setEditJobs] = useState<ReviewEditJob[]>([]);
   const [removingJob, setRemovingJob] = useState<string | null>(null);
@@ -170,6 +177,7 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [jobFilter, setJobFilter] = useState<JobFilter | null>(null);
   const [jobPage, setJobPage] = useState(1);
+  const [showOlderFinished, setShowOlderFinished] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
   const jobActionInFlight = useRef(false);
   const refreshInFlight = useRef<Promise<void> | null>(null);
@@ -360,7 +368,7 @@ export default function DashboardClient() {
   const queue = useMemo(() => jobQueuePage([
     ...jobs.map(job => ({ ...job, phase: "render" as const, job })),
     ...drafts.map(draft => ({ id: draft.id, status: draft.status, createdAt: draft.createdAt, phase: "preparation" as const, draft })),
-  ], jobFilter, jobPage), [jobs, drafts, jobFilter, jobPage]);
+  ], jobFilter, jobPage, showOlderFinished), [jobs, drafts, jobFilter, jobPage, showOlderFinished]);
   const activeCount = queue.counts.active;
   const failedCount = queue.counts.failed;
   const openingStudio = loading && !health && !monitorError;
@@ -403,7 +411,7 @@ export default function DashboardClient() {
         {!offline && !openingStudio ? <StudioHealth health={health} detailed={section === "settings"} /> : null}
         <fieldset disabled={offline} hidden={section !== "create"} data-studio-screen="create" className="min-w-0 border-0 p-0">
         <div hidden={workspace !== "reels"} data-creation-workspace="reels">
-        <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }}
+        <QuickTemplates request={templateRequest} job={sourceJobs.find(job => job.id === templateRequest?.jobId)} reelActivityAt={reelActivityAt} disabled={offline || retrying !== null} onRequest={updateTemplateRequest} onStarted={message => started(message, "stock")} onRetry={() => { const job = jobs.find(job => job.kind === "source" && job.id === templateRequest?.jobId); if (job) void retry(job); }}
           customTopicAction={<button type="button" className={styles.topAction} aria-expanded={stockOpen} onClick={() => setStockOpen(value => !value)}>{stockOpen ? "Close custom reel" : "Your own topic"}</button>} />
         {stockOpen ? <div className={styles.workArea}><StockReels initialQuery={stockQuery} onClose={() => setStockOpen(false)} onStarted={message => started(message, "stock")} /></div> : null}
         </div>
@@ -436,10 +444,13 @@ export default function DashboardClient() {
             </Button>
           </div>
           {notice ? <p role="status" className="mt-2 text-xs text-[#4f5c31]">{notice}</p> : null}
-          <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold"><span>Show</span><select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setJobPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-2 py-1">
+          <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold"><span>Show</span><select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setShowOlderFinished(false); setJobPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-2 py-1">
             {([["active", "Active"], ["failed", "Needs attention"], ["completed", "Completed"], ["all", "All jobs"]] as const).map(([value, label]) => <option key={value} value={value}>{label} · {queue.counts[value]}</option>)}
           </select></label>
-          {queue.total > 0 ? <p className="mt-2 text-xs text-[#687657]">Showing {(queue.page - 1) * JOB_PAGE_SIZE + 1}–{Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of {queue.total} {queue.filter === "active" ? "active jobs" : "saved jobs"}.</p> : null}
+          {queue.total > 0 ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#687657]">
+            <p>{queue.filter === "completed" && !showOlderFinished ? `Latest ${queue.total} of ${queue.counts.completed} finished jobs` : `Showing ${(queue.page - 1) * JOB_PAGE_SIZE + 1}–${Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of ${queue.total} ${queue.filter === "active" ? "active jobs" : "saved jobs"}.`}</p>
+            {queue.filter === "completed" && queue.counts.completed > RECENT_FINISHED_JOBS ? <button type="button" className="rounded px-2 py-1 font-semibold text-primary underline underline-offset-4" onClick={() => { setShowOlderFinished(value => !value); setJobPage(1); }}>{showOlderFinished ? "Show latest five" : "Show older finished jobs"}</button> : null}
+          </div> : null}
           <fieldset disabled={offline} aria-label="Job controls" className="min-w-0 border-0 p-0">
           {queue.total === 0 ? (
             loading ? <StudioActivity label="Loading jobs…" /> : <p className="mt-5 text-sm text-[#778269]">{queue.filter === "active" ? "No active jobs." : queue.filter === "failed" ? "No jobs need attention." : queue.filter === "completed" ? "No finished jobs yet." : "No saved jobs yet."}</p>
@@ -462,7 +473,7 @@ export default function DashboardClient() {
                 return (
                   <article key={retryKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
                     <details className="min-w-0">
-                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time><JobProgress status={job.status} progress={completed ? 100 : job.progress} failed={failed} label={`${job.title} progress`} /></summary>
+                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time>{!completed ? <JobProgress status={job.status} progress={job.progress} failed={failed} label={`${job.title} progress`} /> : null}</summary>
                       <div className={`${styles.jobDetails} mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]`}>
                     <p className={failed ? "font-semibold text-[#914527]" : "font-semibold text-[#4f5c31]"}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</p>
                     {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}

@@ -144,7 +144,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
   useEffect(() => {
     mounted.current = true;
     void moreSuggestions();
-    const stopSuggestionSchedule = installFootageSuggestionRefresh({
+    const schedule = installFootageSuggestionRefresh({
       refresh: moreSuggestions,
       storage: { getItem: key => { try { return localStorage.getItem(key); } catch { return null; } }, setItem: (key, value) => { try { localStorage.setItem(key, value); } catch { /* Storage is optional. */ } } },
       now: Date.now,
@@ -158,7 +158,7 @@ export default function StockReels({ initialQuery = "", onClose, onStarted }: { 
       },
       key: "stock-reels",
     });
-    return () => { stopSuggestionSchedule(); mounted.current = false; suggestionRequest.current?.abort(); suggestionRequest.current = null; cancelSearch(); currentResults.current = null; };
+    return () => { schedule.stop(); mounted.current = false; suggestionRequest.current?.abort(); suggestionRequest.current = null; cancelSearch(); currentResults.current = null; };
   }, []);
   useEffect(() => {
     const wanted = query.trim(); latestQuery.current = wanted;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { InstagramPerformanceAssessment, InstagramPerformanceResponse } from "@/lib/instagramPerformanceTypes";
 
 const pageSize = 5;
-const secondary = "rounded-lg border border-[#bfcaa6] px-3 py-2 text-xs font-medium disabled:opacity-50";
+const secondary = "rounded-lg border border-border px-3 py-2 text-xs font-medium disabled:opacity-50";
 const labels: Record<InstagramPerformanceAssessment["label"], string> = {
   stronger: "Stronger response", weaker: "Weaker response", typical: "Typical response",
   too_early: "Too early to compare", insufficient_data: "Limited evidence", unavailable: "Not compared",
@@ -89,43 +89,45 @@ export default function InstagramPerformance({ videoId }: { videoId?: string } =
     const available = videos.map(video => video.metrics[name]).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
     return available.length ? available.reduce((total, value) => total + value, 0) : null;
   };
+  const measuredCount = (name: "views" | "likes") => videos.filter(video => typeof video.metrics[name] === "number" && Number.isFinite(video.metrics[name]) && video.metrics[name]! >= 0).length;
   const attention = data?.summary.attentionDiagnostic;
   const cohorts = Array.isArray(data?.summary.attentionCohorts) ? data.summary.attentionCohorts.slice(0, 16) : [];
-  return <section aria-label="Instagram insights" className="space-y-3">
+  return <section aria-label="Instagram insights" className="space-y-4 text-foreground">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><p className="text-sm font-medium">{data?.account?.name || "Instagram"}</p><p className="mt-1 text-xs text-[#687657]">{data ? statusLabels[data.status] : busy ? "Loading…" : "Unavailable"} · Last measured batch: {dateLabel(data?.lastSuccessfulBatchAt || data?.lastSuccessfulSyncAt)}</p></div>
+      <div><h2 className="text-lg font-semibold">{data?.account?.name || "Instagram"}</h2><p role="status" className="mt-1 text-sm font-medium">{busy ? "Checking results…" : data ? statusLabels[data.status] : "No results loaded"}</p><p className="mt-1 text-xs text-muted-foreground">Last measured batch: {dateLabel(data?.lastSuccessfulBatchAt || data?.lastSuccessfulSyncAt)}</p></div>
       <button type="button" className={secondary} disabled={busy} onClick={() => void load(true)}>{busy ? "Checking…" : "Refresh insights"}</button>
     </div>
-    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {data && <>
-      <dl aria-label="Saved Instagram sample" className="grid grid-cols-3 gap-3">
-        {([["Videos", videos.length], ["Views", measuredTotal("views")], ["Likes", measuredTotal("likes")]] as const).map(([label, value]) => <div key={label} className="rounded-xl bg-[#edf1e5] p-4"><dt className="text-xs text-[#687657]">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metric(value)}</dd></div>)}
-      </dl>
-      <p className="text-xs text-[#687657]">Comments: {metric(measuredTotal("comments"))} · Saves: {metric(measuredTotal("saves"))} · Shares: {metric(measuredTotal("shares"))}</p>
-      <p role="status" className={`text-xs ${["error", "permission_required"].includes(data.status) ? "text-red-700" : "text-[#687657]"}`}>{data.detail}</p>
+      {(data.lastSuccessfulBatchAt || data.lastSuccessfulSyncAt || videos.length > 0) && <dl aria-label="Saved Instagram sample" className="grid grid-cols-3 gap-3">
+        {([["Videos", videos.length, undefined], ["Views", measuredTotal("views"), "views"], ["Likes", measuredTotal("likes"), "likes"]] as const).map(([label, value, key]) => <div key={label} className="rounded-xl bg-muted p-4"><dt className="text-xs text-muted-foreground">{label}<span className="mt-1 block text-[0.65rem]">{key ? `${measuredCount(key)} of ${videos.length} measured` : "Saved video sample"}</span></dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{metric(value)}</dd></div>)}
+      </dl>}
+      <p className="text-xs text-muted-foreground">Totals include measured counts only. A dash means unavailable; 0 is a measured zero.</p>
+      <p className="text-xs text-muted-foreground">Comments: {metric(measuredTotal("comments"))} · Saves: {metric(measuredTotal("saves"))} · Shares: {metric(measuredTotal("shares"))}</p>
+      <p className={`text-sm ${["error", "permission_required"].includes(data.status) ? "text-destructive" : "text-muted-foreground"}`}>{data.detail}</p>
       {data.status === "permission_required" && <p className="text-xs"><a href="/dashboard#settings" className="font-medium underline">Reconnect Instagram in Settings</a> with <code>instagram_manage_insights</code> while keeping your existing publishing permissions.</p>}
       {data.status === "not_connected" && <a href="/dashboard#settings" className="inline-block text-xs font-medium underline">Connect Instagram in Settings</a>}
-      {!videoId && <div aria-label="Watch-time insights" className="space-y-2 rounded-xl bg-[#edf1e5] p-3 text-xs">
-        <p className="font-medium">Watch diagnosis</p>
+      {!videoId && <details aria-label="Watch-time insights" className="space-y-2 rounded-xl bg-muted p-3 text-xs">
+        <summary className="cursor-pointer font-medium">Watch diagnosis</summary>
         {attention ? <p>{metric(attention.belowHalfCount)} of {metric(attention.measuredCount)} measured, locally matched Reels averaged below half their runtime. Median average watch: {watchLabel(attention.medianWatchSeconds * 1000)} · Runtime: {watchLabel(attention.medianRuntimeSeconds * 1000)} · Watch/runtime ratio: {ratioLabel(attention.medianWatchRatio)}.</p>
           : <p>Fresh, mature matched Reels with comparable exposure, measured watch time and known runtime are needed for this diagnosis.</p>}
-        <p className="text-[#687657]">Average watch/runtime is not a completion rate or a measured drop-off curve.</p>
+        <p className="text-muted-foreground">Average watch/runtime is not a completion rate or a measured drop-off curve.</p>
         <p>New footage reels choose their pacing from the available shots and sampled movement.</p>
-        {cohorts.length ? <div className="space-y-2 border-t border-[#d5ddb8] pt-2">{cohorts.map(cohort => <div key={`${cohort.recipe}/${cohort.ageBand}/${cohort.exposureMeasure}`}>
+        {cohorts.length ? <div className="space-y-2 border-t border-border pt-2">{cohorts.map(cohort => <div key={`${cohort.recipe}/${cohort.ageBand}/${cohort.exposureMeasure}`}>
           <p>{cohort.recipe === "focus-four-v1" ? "Focused version" : "Montage control"} · {metric(cohort.videoCount)} Reels · {cohort.ageBand} · {cohort.exposureMeasure === "reach" ? "reached accounts" : "views"}{cohort.comparable ? " · Both recipes have at least 3 in this band" : " · Waiting for at least 3 of each recipe in this band"}</p>
-          <p className="text-[#687657]">Median watch: {watchLabel(cohort.attention ? cohort.attention.medianWatchSeconds * 1000 : undefined)} · Runtime: {watchLabel(cohort.attention ? cohort.attention.medianRuntimeSeconds * 1000 : undefined)} · Ratio: {ratioLabel(cohort.attention?.medianWatchRatio)} ({metric(cohort.attention?.measuredCount)} measured). Comments / saves / shares per 100: {(["comments", "saves", "shares"] as const).map(name => `${metric(cohort.rates[name].medianPer100)} (${metric(cohort.rates[name].measuredCount)} measured)`).join(" / ")}.</p>
-        </div>)}<p className="text-[#687657]">Past recipe comparisons need at least three of each version at similar ages with the same reach or view measure.</p></div> : null}
-      </div>}
-      {videos.length ? <div className="divide-y divide-[#45594d]">
+          <p className="text-muted-foreground">Median watch: {watchLabel(cohort.attention ? cohort.attention.medianWatchSeconds * 1000 : undefined)} · Runtime: {watchLabel(cohort.attention ? cohort.attention.medianRuntimeSeconds * 1000 : undefined)} · Ratio: {ratioLabel(cohort.attention?.medianWatchRatio)} ({metric(cohort.attention?.measuredCount)} measured). Comments / saves / shares per 100: {(["comments", "saves", "shares"] as const).map(name => `${metric(cohort.rates[name].medianPer100)} (${metric(cohort.rates[name].measuredCount)} measured)`).join(" / ")}.</p>
+        </div>)}<p className="text-muted-foreground">Past recipe comparisons need at least three of each version at similar ages with the same reach or view measure.</p></div> : null}
+      </details>}
+      {videos.length ? <div className="divide-y divide-border">
         {videos.slice(page * pageSize, (page + 1) * pageSize).map(video => {
           const assessment = assessments.get(video.id), link = instagramLink(video.permalink);
           const title = (video.topic || video.caption || "Untitled Instagram video").slice(0, 100);
           return <details key={video.id} data-instagram-result open={videoId ? true : undefined} className="py-2">
             <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-[#687657]">{dateLabel(video.timestamp)}</span></span>
-              <span className="shrink-0 text-[#687657]"><span className="tabular-nums">{metric(video.metrics.views)}</span> views · <span className="tabular-nums">{metric(video.metrics.likes)}</span> likes</span>
+              <span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block font-normal text-muted-foreground">{dateLabel(video.timestamp)}</span></span>
+              <span className="shrink-0 text-muted-foreground"><span className="tabular-nums">{metric(video.metrics.views)}</span> views · <span className="tabular-nums">{metric(video.metrics.likes)}</span> likes</span>
             </summary>
-            <div className="mt-3 space-y-2 text-xs text-[#687657]">
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
               <p className="font-medium">{assessment ? labels[assessment.label] : "Not compared"}</p>
               <p>{assessment?.reason || "This video is outside the current comparison set. Its available saved counts are shown separately."}</p>
               <p>Comments: {metric(video.metrics.comments)} · Saves: {metric(video.metrics.saves)} · Shares: {metric(video.metrics.shares)} · Reach: {metric(video.metrics.reach)}</p>
@@ -137,13 +139,13 @@ export default function InstagramPerformance({ videoId }: { videoId?: string } =
         })}
       </div> : <p className="text-sm">{videoId ? "This post has no saved Instagram results yet. Refresh to collect its available counts; other videos are not substituted." : "No posted video results collected yet."}</p>}
       {videos.length > pageSize && <nav aria-label="Instagram results pages" className="flex items-center justify-between gap-2 text-xs"><button type="button" className={secondary} disabled={page === 0} onClick={() => setPage(current => Math.max(0, current - 1))}>Previous</button><span>Page {page + 1} of {Math.ceil(videos.length / pageSize)}</span><button type="button" className={secondary} disabled={(page + 1) * pageSize >= videos.length} onClick={() => setPage(current => current + 1)}>Next</button></nav>}
-      <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-[#d5ddb8] pt-3">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-3">
         <details className="min-w-0 text-xs"><summary className="cursor-pointer font-medium">What the manager learned</summary>
           <p className="mt-2">Guides new suggestions and plans, not existing videos. Comparisons use your account&apos;s available evidence; they do not prove why a video worked or guarantee growth.</p>
           {data.summary.rules.length ? <ul className="mt-2 list-disc space-y-1 pl-4">{data.summary.rules.map(rule => <li key={rule}>{rule}</li>)}</ul> : <p className="mt-2">Not enough comparable results for a reliable content preference yet.</p>}
-          <p className="mt-2 text-[#687657]">{data.summary.eligibleCount} videos eligible for comparison.</p>
+          <p className="mt-2 text-muted-foreground">{data.summary.eligibleCount} videos eligible for comparison.</p>
         </details>
-        <details className="min-w-0 text-xs text-[#687657]"><summary className="cursor-pointer">Collection details</summary>
+        <details className="min-w-0 text-xs text-muted-foreground"><summary className="cursor-pointer">Collection details</summary>
           <p className="mt-2">Totals cover saved videos with available counts. Missing metrics mean unavailable, not zero.</p>
           <p className="mt-1">{data.historyComplete ? "Available account video history scanned." : data.status === "syncing" ? `${data.scannedVideos} videos scanned; older available history is still being collected.` : `${data.scannedVideos} videos saved; available history is not fully collected yet.`}</p>
           {!data.historyComplete && data.lastSuccessfulBatchAt && <p className="mt-1">Guidance uses the current comparable sample. Older history is still incomplete; this is not a ranking of the whole account.</p>}

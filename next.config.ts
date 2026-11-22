@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { selectNextBuild } from "./scripts/next-build-selection.cjs";
 import { WORKER_RUNTIME } from "./scripts/worker-runtime.cjs";
 
@@ -19,5 +20,17 @@ const nextConfig: NextConfig = {
 
 export default function configureNext(phase: string): NextConfig {
   const directory = selectNextBuild(phase);
-  return { ...nextConfig, distDir: directory, env: { NEXT_PUBLIC_PHOENIX_RELEASE: directory, PHOENIX_WORKER_RUNTIME: WORKER_RUNTIME } };
+  const config = { ...nextConfig, distDir: directory, env: { NEXT_PUBLIC_PHOENIX_RELEASE: directory, PHOENIX_WORKER_RUNTIME: WORKER_RUNTIME } };
+  if (phase === PHASE_PRODUCTION_BUILD && process.platform === "win32" && process.env.PHOENIX_BUILD_DIR) {
+    // Guarded builds use a fresh directory, so retaining the compiler cache adds memory without helping later builds.
+    return {
+      ...config,
+      experimental: { ...config.experimental, webpackBuildWorker: true },
+      webpack(webpackConfig) {
+        webpackConfig.cache = false;
+        return webpackConfig;
+      },
+    };
+  }
+  return config;
 }

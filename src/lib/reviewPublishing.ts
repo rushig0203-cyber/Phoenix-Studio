@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
 import { writeAtomicJson } from "./atomicJson";
 import { withFileLock } from "./fileLock";
+import { publicationStoreRoot as storeRoot, publicationJobPath as jobPath, publicationPairLock as pairLock } from "./reviewPublicationStore";
 import { captionHashtags, INSTAGRAM_HASHTAG_LIMIT, youtubePostingTextIssue, YOUTUBE_DESCRIPTION_BYTE_LIMIT } from "./postingCopyPolicy";
 import { facebookReelPermalink, stripFootageProvenance } from "./posting";
 import { stockPostingCredits } from "./stockProviders";
@@ -63,12 +64,9 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 const AUDIO_GRAPH = `https://graph.facebook.com/${INSTAGRAM_AUDIO_GRAPH_VERSION}`;
 const FACEBOOK_GRAPH = `https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}`;
 const instagramGraph = (job: StoredJob) => job.instagramGraphVersion === INSTAGRAM_AUDIO_GRAPH_VERSION ? AUDIO_GRAPH : GRAPH;
-const storeRoot = () => process.env.PHOENIX_PUBLISH_STORAGE || path.join(process.cwd(), "storage", "private", "review-publications");
 const storyBusinessPath = () => path.join(storeRoot(), "instagram-story-business.json");
 const postingDefaultsPath = () => path.join(storeRoot(), "instagram-posting-defaults.json");
 const STORY_BUSINESS_CONFIRMATION = "Confirm that this connected Instagram account is Business, not Creator, before enabling Stories. Facebook Login does not expose a reliable account-type check. Reel posting is unaffected.";
-const jobPath = (reviewId: string, platform: ChannelPlatform, kind?: "story") => path.join(storeRoot(), `${reviewId}-${platform}${kind === "story" ? "-story" : ""}.json`);
-const pairLock = (reviewId: string, platform: ChannelPlatform, kind?: "story") => `${jobPath(reviewId, platform, kind)}.lock`;
 const operationLock = (job: StoredJob) => `${jobPath(job.reviewId, job.platform, job.kind)}.operation.lock`;
 const isPlatform = (value: unknown): value is ChannelPlatform => value === "youtube" || value === "instagram" || value === "facebook";
 const isRenderTarget = (value: unknown): value is ReviewTarget => value === "youtube" || value === "instagram";
@@ -292,6 +290,38 @@ export async function listReviewPublishJobs(reviewId: string) {
   const [youtubeJob, instagramJob, story, facebookJob] = await Promise.all([readStored(reviewId, "youtube"), readStored(reviewId, "instagram"), readStored(reviewId, "instagram", "story"), readStored(reviewId, "facebook")]);
   const jobs = [youtubeJob, instagramJob, story?.standaloneStory ? story : null, facebookJob];
   return Promise.all(jobs.filter((job): job is StoredJob => Boolean(job)).map(publicJob));
+}
+
+/** One local snapshot for the dock. Never reads media, credentials or provider sessions. */
+export async function listReviewPublicationProgress() {
+  const jobs: ReviewPublishJob[] = [], titles: Record<string, string> = {};
+  let limited = false, inspectionIssue = false, inspected = 0;
+  const reviews = new Set<string>();
+  try {
+    const directory = await fs.opendir(storeRoot());
+    for await (const entry of directory) {
+      if (++inspected > 4000) { limited = true; break; }
+      if (!entry.isFile()) continue;
+      const match = entry.name.match(/^([a-f0-9-]{36})-(youtube|instagram|facebook)(-story)?\.json$/i);
+      if (!match || !validId(match[1]) || (match[3] && match[2] !== "instagram")) continue;
+      reviews.add(match[1]);
+      if (reviews.size >= 500) { limited = true; break; }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  for (const reviewId of reviews) {
+    try {
+      const saved = await listReviewPublishJobs(reviewId);
+      jobs.push(...saved);
+      const first = saved[0];
+      if (first) {
+        const record = await readStored(reviewId, first.platform, first.kind);
+        if (typeof record?.title === "string") titles[reviewId] = record.title.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 100);
+      }
+    } catch { inspectionIssue = true; }
+  }
+  return { jobs, titles, limited, inspectionIssue };
 }
 async function accessFor(platform: ChannelPlatform, revision: string) {
   try { return await getChannelPublishAccess(platform, revision); }

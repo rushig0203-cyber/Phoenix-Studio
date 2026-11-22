@@ -65,6 +65,7 @@ jobs:
           src/lib/stockBrief.ts src/lib/stockEditorial.ts src/lib/newsResearch.ts src/lib/timedCaptions.ts
           src/lib/videoPostingAnalysis.ts src/lib/postingCopyPolicy.ts
           src/lib/reviewPublishing.ts src/lib/instagramAudio.ts src/lib/instagramTags.ts
+          src/lib/postingProgress.ts src/lib/reviewPublicationStore.ts src/components/PostingProgress.tsx src/components/PostingProgressContext.ts src/app/api/review-publications/route.ts
           src/lib/channelConnections.ts src/lib/instagramPerformanceTypes.ts src/lib/instagramPerformance.ts
           src/lib/posting.ts src/lib/reviewPublicationSummary.ts src/app/api/channels/[platform]/route.ts
           src/lib/instagramPerformanceLearning.ts src/lib/instagramLearningGuidance.ts src/lib/instagramPublishedReviews.ts
@@ -173,6 +174,7 @@ jobs:
           scripts/test-worker-startup.cjs
           scripts/test-review-publishing.cjs
           scripts/test-review-publish-ui.cjs
+          scripts/test-posting-progress.cjs
           scripts/test-review-reveal.cjs
           scripts/test-review-publication-summary.cjs
           scripts/test-instagram-location-suggestions.cjs
@@ -224,6 +226,7 @@ jobs:
           scripts/test-stock-playback.cjs
           scripts/test-local-voice-protocol.cjs
           scripts/test-review-workflows.cjs
+          scripts/test-review-edit-retention.cjs
           scripts/test-worker-workflows.cjs
           scripts/test-worker-readiness.cjs
           scripts/test-queue-history.cjs

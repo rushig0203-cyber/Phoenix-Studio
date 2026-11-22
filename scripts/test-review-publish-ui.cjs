@@ -114,6 +114,7 @@ function uiHarness(options = {}) {
   const jsx = (type, props, key) => ({ type, props, key });
   const dependencies = {
     react: hooks,
+    './PostingProgressContext': { usePostingProgress: () => options.sharedProgress || null },
     '@/lib/rumbleWindow': { openRumbleUpload: () => { options.onOpenRumble?.({ copied, downloads }); return !options.popupBlocked; },
       rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
@@ -1152,6 +1153,24 @@ test('an ambiguous saved submission requires checking and never exposes a contin
   h.click('Check status'); await h.flush();
   assert.equal(h.posts.length, 0);
   assert.ok(h.requests.every(request => request.method === 'GET'));
+});
+
+test('dashboard shared progress retains accepted destination slots after panel close without a second poll loop', async t => {
+  const file = sampleFile();
+  const saved = job({ reviewId: file.id, status: 'UPLOADING', totalBytes: 1000, bytesUploaded: 370 });
+  const observed = [], accepted = [];
+  const sharedProgress = { jobs: [saved], error: '', observe: (...args) => observed.push(args), accepted: (...args) => accepted.push(args) };
+  const h = uiHarness({ file, jobs: [saved], sharedProgress, post: () => response({ job: job({ id: 'new-facebook', reviewId: file.id, platform: 'facebook', status: 'QUEUED' }) }), channels: [channel('facebook')] });
+  t.after(() => h.unmount());
+  h.choose('Post to Facebook Page'); await h.flush();
+  assert.equal(h.intervals.size, 0, 'The dashboard owns the sole bounded progress loop');
+  assert.equal(h.progress('youtube').props['aria-description'], 'Uploading · 37%');
+  assert.equal(observed.length, 1);
+  h.submit(); await h.flush();
+  assert.equal(accepted.length, 1); assert.equal(accepted[0][1].platform, 'facebook');
+  h.click('Close'); await h.flush();
+  assert.equal(sharedProgress.jobs[0].id, saved.id, 'Closing posting controls cannot erase shared saved progress');
+  assert.equal(h.intervals.size, 0); assert.equal(h.posts.length, 1);
 });
 
 test('active job polling is read-only, skips hidden pages, avoids overlapping reads and aborts when closed', async t => {

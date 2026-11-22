@@ -74,6 +74,19 @@ test('missing values remain unavailable while real zero is zero and watch time c
   assert.match(text(ui.tree()), /Missing metrics mean unavailable, not zero/);
 });
 
+test('limited Instagram results keep actual totals with coverage instead of looking like failed collection', async () => {
+  const videos = [video(1), video(2, { metrics: { views: null, likes: 0, comments: null, shares: null, saves: null } })];
+  const ui = harness({ fetch: () => response(state(videos, { status: 'limited' })) }); await ui.settle();
+  assert.match(text(ui.tree()), /Some metrics unavailable/);
+  assert.deepEqual(ui.all('dd').map(text), ['2', '1,000', '50']);
+  assert.match(text(ui.tree()), /1 of 2 measured/); assert.match(text(ui.tree()), /2 of 2 measured/);
+  assert.match(text(ui.tree()), /0 is a measured zero/);
+  assert.ok(nodes(ui.tree()).every(node => !/\[#[\da-f]+\]/i.test(node.props.className || '')));
+  assert.ok(nodes(ui.tree()).some(node => /\bbg-muted\b/.test(node.props.className || '')));
+  assert.equal(ui.find('details', node => node.props['aria-label'] === 'Watch-time insights').props.open, undefined);
+  assert.ok(ui.requests.every(request => request.method === undefined)); ui.unmount();
+});
+
 test('missing permission tells the owner exactly what to reconnect without claiming live analytics', async () => {
   const ui = harness({ fetch: () => response(state([], { status: 'permission_required', detail: 'Publishing still works, but account insights permission is missing.', lastSuccessfulSyncAt: undefined, historyComplete: false })) });
   await ui.settle();
@@ -84,6 +97,7 @@ test('missing permission tells the owner exactly what to reconnect without claim
   assert.match(text(ui.tree()), /available history is not fully collected yet/);
   assert.doesNotMatch(text(ui.tree()), /older available history is still being collected/);
   assert.doesNotMatch(text(ui.tree()), /Results saved/);
+  assert.equal(ui.all('dd').length, 0, 'Missing access is not a measured zero-video account');
 });
 
 test('partial collection reports its measured batch without claiming whole-account results', async () => {

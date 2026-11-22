@@ -58,3 +58,16 @@ test('pagination safely clamps after removal, invalid page values and malformed 
   for (const page of [-5, 0, 999, NaN, Infinity]) assert.equal(jobQueuePage(records, 'all', page).page, 1);
   assert.deepEqual(jobQueuePage(records, 'all', 1).displayed.map(item => item.id), ['safe', 'legacy']);
 });
+
+test('quiet Finished Jobs shows the latest five and reveals the full older history on demand', () => {
+  const entries = Array.from({ length: 16 }, (_, index) => entry(`finished-${index + 1}`, 'COMPLETED', 'render', index + 1));
+  const compact = jobQueuePage(entries, null, 2, false);
+  assert.equal(compact.total, 5);
+  assert.equal(compact.counts.completed, 16);
+  assert.equal(compact.pages, 1);
+  assert.deepEqual(compact.displayed.map(item => item.id), ['finished-16', 'finished-15', 'finished-14', 'finished-13', 'finished-12']);
+  const expanded = jobQueuePage(entries, 'completed', 2, true);
+  assert.equal(expanded.total, 16);
+  assert.ok(expanded.displayed.some(item => item.id === 'finished-1'));
+  assert.equal(jobQueuePage(entries, 'all', 1, false).total, 16);
+});

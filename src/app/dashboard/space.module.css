@@ -15,6 +15,20 @@
   perspective-origin: 50% 40%;
 }
 
+.starfield::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* The saved artwork is sideways. Swap the viewport dimensions before rotating it. */
+  width: 100dvh;
+  height: 100vw;
+  transform: translate(-50%, -50%) rotate(90deg);
+  background: url("/api/studio-wallpaper") center / cover no-repeat;
+  opacity: .52;
+  mask-image: linear-gradient(to right, #000, #000e 43%, #0007 77%, #0003);
+}
+
 .content {
   position: relative;
   z-index: 1;

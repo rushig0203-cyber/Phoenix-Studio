@@ -14,6 +14,7 @@ import { automaticInstagramUserTags } from "@/lib/instagramTags";
 import { openRumbleUpload, rumbleDashboardLink } from "@/lib/rumbleWindow";
 import StudioActivity from "./StudioActivity";
 import PlatformIcon from "./PlatformIcon";
+import { usePostingProgress } from "./PostingProgressContext";
 
 const button = "inline-flex rounded-lg border border-[#bdc7a5] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50";
 
@@ -87,7 +88,10 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   const [instagram, setInstagram] = useState<PublishPanelRequest | null>(null);
   const [facebook, setFacebook] = useState<PublishPanelRequest | null>(null);
   const [selected, setSelected] = useState<Destination | null>(null);
-  const [jobs, setJobs] = useState<ReviewPublishJob[]>([]);
+  const [localJobs, setJobs] = useState<ReviewPublishJob[]>([]);
+  const sharedProgress = usePostingProgress();
+  const observeProgress = sharedProgress?.observe;
+  const jobs = sharedProgress ? sharedProgress.jobs.filter(job => job.reviewId === file.id) : localJobs;
   const [progressError, setProgressError] = useState("");
   const jobRead = useRef(0);
   const committedRead = useRef(0);
@@ -100,11 +104,12 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     if (!abort.aborted && version > committedRead.current) {
       committedRead.current = version;
       setJobs(data.jobs);
+      observeProgress?.(file, data.jobs);
       setProgressError("");
     }
     return data.jobs as ReviewPublishJob[];
-  }, [endpoint]);
-  const polling = chooserOpen && jobs.some(active);
+  }, [endpoint, file, observeProgress]);
+  const polling = !sharedProgress && chooserOpen && jobs.some(active);
   useEffect(() => {
     if (!polling) return;
     const abort = new AbortController();
@@ -120,6 +125,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
   }, [polling, readJobs]);
 
   function accepted(job: ReviewPublishJob) {
+    sharedProgress?.accepted(file, job);
     // A read started before this approval must not erase the accepted request.
     committedRead.current = ++jobRead.current;
     setJobs(current => job.kind === "story" && !job.standaloneStory
@@ -185,7 +191,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
     rumbleEpoch.current++; rumblePreparing.current = false; setRumbleBusy(false);
     committedRead.current = ++jobRead.current;
     setChooserOpen(false); setRumbleOpen(false); setYoutube(null); setInstagram(null); setFacebook(null);
-    setSelected(null); setJobs([]); setProgressError("");
+    setSelected(null); if (!sharedProgress) setJobs([]); setProgressError("");
   }
   async function copyRumbleText(value: string, label: string) {
     const version = rumbleEpoch.current, revision = videoRevision;
@@ -239,7 +245,7 @@ export default function ReviewPublishActions({ file, finalReview = false }: { fi
         <PlatformProgress destination="story" label={finalReview ? "Story only" : "Post Story only"} selected={selected === "story"} busy={instagramBusy && instagram?.mode === "story"} locked={instagramBusy} job={instagramStoryJob(jobs)} onClick={() => open("instagram", "story")} />
         <PlatformProgress destination="rumble" label={finalReview ? "Rumble · assisted" : "Rumble upload"} selected={rumbleOpen} onClick={() => { setRumbleOpen(true); setRumbleNotice(""); }} />
       </div>
-      {progressError && <p role="status" className="text-xs">{progressError}</p>}
+      {(progressError || sharedProgress?.error) && <p role="status" className="text-xs">{progressError || sharedProgress?.error}</p>}
       {choosingDestination && !youtube && !instagram && !facebook && <StudioActivity label="Checking destination…" />}
       {!choosingDestination && !youtube && !instagram && !facebook && !rumbleOpen && <p className="text-xs">Choose a destination.</p>}
       <div data-posting-destinations>

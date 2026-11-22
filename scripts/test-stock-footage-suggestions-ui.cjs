@@ -40,9 +40,13 @@ const catalog = loadPure('src/lib/contentIdeas.ts');
 const helper = loadPure('src/lib/stockFootageSuggestions.ts', { './contentIdeas': catalog });
 const storageKey = helper.FOOTAGE_SUGGESTION_STORAGE_KEY;
 const allTopics = helper.stockTopicPool();
+const fallbackTopics = new Map();
+for (let cursor = 0; cursor < allTopics.length * 6; cursor += 6) {
+  for (const idea of helper.stockFootageSuggestions(cursor)) fallbackTopics.set(idea.id, idea);
+}
 
-test('catalogue returns six distinct stock-only ideas and rejects malformed saved cursors', () => {
-  const expected = allTopics, first = helper.stockFootageSuggestions();
+test('fallback returns six distinct supported ideas and rejects malformed saved cursors', () => {
+  const expected = [...fallbackTopics.values()], first = helper.stockFootageSuggestions();
   assert.equal(first.length, 6); assert.equal(new Set(first.map(idea => idea.id)).size, 6);
   assert.ok(first.every(idea => idea.workflow === 'stock-reel' && idea.query.length >= 2 && idea.query.length <= 100));
   const seen = new Set();
@@ -57,7 +61,7 @@ test('catalogue returns six distinct stock-only ideas and rejects malformed save
 test('footage recommendations are short broad topics while the rich creation catalogue remains unchanged', () => {
   const original = plain(catalog.CONTENT_IDEAS), all = allTopics;
   assert.ok(all.length >= 60, 'The scenic catalogue should not repeat after only a few small batches');
-  assert.ok(all.length >= 240, 'The pool includes countries, more wildlife and searchable architecture');
+  assert.ok(all.length >= 240, 'The complete catalogue retains countries, wildlife and architecture IDs for legacy history');
   assert.ok(all.every(idea => idea.title.split(/\s+/).length <= 2 && idea.query.split(/\s+/).length <= 2));
   assert.ok(all.every(idea => idea.query === idea.title), 'Selected input uses the exact displayed label, not a hidden alias');
   for (const title of ['Nature', 'Train', 'Mountains', 'Forest', 'City streets', 'City traffic', 'Switzerland', 'Waterfall', 'Steam train', 'Dolphins', 'Coastal road']) assert.ok(all.some(idea => idea.title === title));
@@ -84,7 +88,7 @@ test('each batch mixes wildlife, nature, places, movement and other subjects whi
     previous = next.ideas.map(idea => idea.id);
     for (const idea of next.ideas) seen.add(idea.id);
   }
-  assert.equal(seen.size, allTopics.length);
+  assert.equal(seen.size, fallbackTopics.size);
   const legacyCursor = catalog.CONTENT_IDEAS.filter(idea => idea.workflow === 'stock-reel').length - 1;
   const remembered = helper.nextStoredFootageSuggestions(memoryStorage({ [storageKey]: JSON.stringify({ version: 1, cursor: legacyCursor }) }));
   assert.deepEqual(plain(remembered.ideas), plain(helper.stockFootageSuggestions(legacyCursor)));
@@ -103,7 +107,7 @@ test('topic ranking uses measured subjects and refresh deadlines persist per sur
   let time = Date.parse('2026-01-01T00:00:00Z'), scheduled, resumed, refreshes = 0, succeeds = true, removed = false;
   const flush = async () => { for (let count = 0; count < 10; count++) await Promise.resolve(); };
   const key = `${helper.FOOTAGE_SUGGESTION_REFRESH_AT_KEY}:quick-templates`;
-  const stop = helper.installFootageSuggestionRefresh({
+  const { stop } = helper.installFootageSuggestionRefresh({
     key: 'quick-templates', storage, now: () => time,
     setTimeout(callback, delay) { scheduled = { callback, delay }; return scheduled; },
     clearTimeout(handle) { if (scheduled === handle) scheduled = undefined; },
@@ -128,7 +132,7 @@ test('topic ranking uses measured subjects and refresh deadlines persist per sur
   stop(); assert.equal(removed, true); assert.equal(scheduled, undefined);
 
   const reopenedStorage = memoryStorage({ [key]: String(time - 1) });
-  const reopened = helper.installFootageSuggestionRefresh({ key: 'quick-templates', storage: reopenedStorage, now: () => time,
+  const { stop: reopened } = helper.installFootageSuggestionRefresh({ key: 'quick-templates', storage: reopenedStorage, now: () => time,
     setTimeout(callback, delay) { scheduled = { callback, delay }; return scheduled; }, clearTimeout(handle) { if (scheduled === handle) scheduled = undefined; },
     async refresh() { refreshes++; return true; } });
   await flush();
@@ -153,7 +157,7 @@ test('mount, More ideas and reopening rotate locally without searching or creati
   assert.notDeepEqual(ideaKeys(reopened), ideaKeys(h)); assert.equal(reopened.requests.length, 0);
 });
 
-test('an open footage screen refreshes every fifteen days without searching or changing the chosen topic/results',async()=>{
+test('an open footage screen refreshes daily without searching or changing the chosen topic/results',async()=>{
   const h=harness();h.changeTopic('Otters');await h.advance(600);
   const first=ideaKeys(h),requestCount=h.requests.length,candidates=h.candidates().map(node=>node.key);
   await h.advance(helper.FOOTAGE_SUGGESTION_REFRESH_MS-601);assert.deepEqual(ideaKeys(h),first);
@@ -197,7 +201,7 @@ test('every displayed chip inserts its exact label after repeated More ideas rot
     }
     h.click('More ideas'); await h.flush();
   }
-  assert.equal(seen.size, allTopics.length);
+  assert.equal(seen.size, fallbackTopics.size);
   assert.equal(h.posts.length, 0);
   assert.equal(h.started.length, 0);
 });

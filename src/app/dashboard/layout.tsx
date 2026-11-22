@@ -1,4 +1,5 @@
 import styles from "./space.module.css";
+import PostingProgress from "@/components/PostingProgress";
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,6 @@ export default function DashboardLayout({
       <div data-star-depth="middle" className={`${styles.layer} ${styles.middle}`} />
       <div data-star-depth="near" className={`${styles.layer} ${styles.near}`} />
     </div>
-    <div data-studio-space-content className={styles.content}>{children}</div>
+    <div data-studio-space-content className={styles.content}><PostingProgress>{children}</PostingProgress></div>
   </div>;
 }

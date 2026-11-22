@@ -2,6 +2,7 @@
 export type JobFilter = "all" | "active" | "failed" | "completed";
 export type QueueEntry = { id: string; phase: "preparation" | "render"; status: string; createdAt: string };
 export const JOB_PAGE_SIZE = 8;
+export const RECENT_FINISHED_JOBS = 5;
 
 export function jobGroup(entry: Pick<QueueEntry, "phase" | "status">): Exclude<JobFilter, "all"> | "history" | "hidden" {
   if (entry.phase === "preparation") {
@@ -14,7 +15,7 @@ export function jobGroup(entry: Pick<QueueEntry, "phase" | "status">): Exclude<J
   return "history";
 }
 
-export function jobQueuePage<T extends QueueEntry>(entries: readonly T[], selected: JobFilter | null, requestedPage: number) {
+export function jobQueuePage<T extends QueueEntry>(entries: readonly T[], selected: JobFilter | null, requestedPage: number, showOlderFinished = true) {
   const saved = entries.filter(entry => jobGroup(entry) !== "hidden");
   const counts = { all: saved.length, active: 0, failed: 0, completed: 0 };
   for (const entry of saved) {
@@ -29,7 +30,8 @@ export function jobQueuePage<T extends QueueEntry>(entries: readonly T[], select
     const order = filter === "active" ? timestamp(left) - timestamp(right) : timestamp(right) - timestamp(left);
     return order || `${left.phase}:${left.id}`.localeCompare(`${right.phase}:${right.id}`);
   });
-  const pages = Math.max(1, Math.ceil(matching.length / JOB_PAGE_SIZE));
+  const visible = filter === "completed" && !showOlderFinished ? matching.slice(0, RECENT_FINISHED_JOBS) : matching;
+  const pages = Math.max(1, Math.ceil(visible.length / JOB_PAGE_SIZE));
   const page = Math.min(pages, Math.max(1, Number.isFinite(requestedPage) ? Math.trunc(requestedPage) : 1));
-  return { filter, counts, total: matching.length, page, pages, displayed: matching.slice((page - 1) * JOB_PAGE_SIZE, page * JOB_PAGE_SIZE) };
+  return { filter, counts, total: visible.length, page, pages, displayed: visible.slice((page - 1) * JOB_PAGE_SIZE, page * JOB_PAGE_SIZE) };
 }

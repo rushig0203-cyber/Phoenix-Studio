@@ -10,22 +10,23 @@ import StudioActivity from "./StudioActivity";
 type Template = ContentIdea & SuggestionReason & { opening?: QuickTemplateOpening };
 type TemplateJob = { status: string; progress: number; stage?: string; error?: string };
 const catalogue = new Map(stockTopicPool().map(idea => [idea.id, idea]));
-const batchKey = "phoenix-quick-template-batch-v1";
+const batchKey = "phoenix-quick-template-batch-v3";
 
 function validBatch(ideas: Template[]) {
-  return Array.isArray(ideas) && ideas.length >= 5 && ideas.length <= 6 && new Set(ideas.map(idea => idea?.id)).size === ideas.length
+  return Array.isArray(ideas) && ideas.length <= 6 && new Set(ideas.map(idea => idea?.id)).size === ideas.length
     && ideas.every(idea => idea && catalogue.get(idea.id)?.query === idea.query && catalogue.get(idea.id)?.title === idea.title
       && typeof idea.reason === "string" && !!idea.reason.trim() && idea.reason.length <= 220 && !/[\u0000-\u001f\u007f]/.test(idea.reason)
       && (idea.opening === undefined || (isQuickTemplateSource(idea.opening) && typeof idea.opening.image === "string"
         && idea.opening.image.startsWith("https://") && idea.opening.image.length <= 2048)));
 }
 
-export default function QuickTemplates({ request, job, onRequest, onStarted, onRetry, disabled = false, customTopicAction }: {
+export default function QuickTemplates({ request, job, onRequest, onStarted, onRetry, reelActivityAt = 0, disabled = false, customTopicAction }: {
   request: QuickTemplateRequest | null;
   job?: TemplateJob;
   onRequest: (value: QuickTemplateRequest | null) => void;
   onStarted: (message: string) => void;
   onRetry: () => void;
+  reelActivityAt?: number;
   disabled?: boolean;
   customTopicAction?: ReactNode;
 }) {
@@ -35,7 +36,8 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
   const busy = useRef(false), mounted = useRef(true);
   const cursor = useRef(0), memory = useRef(new Map<string, string>());
   const storageWorking = useRef(true);
-  const reload = useRef<() => Promise<void>>(async () => {});
+  const reload = useRef<() => void>(() => {});
+  const batchStartedAt = useRef(0);
   useEffect(() => {
     mounted.current = true;
     let pending = false;
@@ -50,6 +52,8 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
     async function refresh() {
       if (pending || busy.current || controller.signal.aborted) return false;
       pending = true; setLoading(true); setError("");
+      const startedAt = Date.now();
+      batchStartedAt.current = startedAt;
       const saved = nextStoredFootageSuggestions(storage, cursor.current);
       try {
         const query = new URLSearchParams({ workflow: "footage", cursor: String(saved.cursor), seen: saved.seen.join(","), opening: "1" });
@@ -60,18 +64,18 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
           throw new Error("Could not read your saved templates. Try refreshing templates.");
         }
         if (!mounted.current || controller.signal.aborted) return false;
-        if (!data.ideas.some(idea => idea.opening)) throw new Error("No eligible opening shots were found. Try More templates or enter a topic.");
+        const choices = data.ideas.filter(idea => idea.opening);
+        if (data.ideas.length && !choices.length) throw new Error("No eligible opening shots were found. Try More templates or enter a topic.");
         cursor.current = data.nextCursor;
-        recordStoredFootageSuggestions(storage, data.ideas, data.nextCursor);
-        setTemplates(data.ideas);
-        storage.setItem(batchKey, JSON.stringify({ savedAt: Date.now(), ideas: data.ideas }));
+        recordStoredFootageSuggestions(storage, choices, data.nextCursor);
+        setTemplates(choices);
+        storage.setItem(batchKey, JSON.stringify({ savedAt: startedAt, ideas: choices }));
         return true;
       } catch (failure) {
         if (mounted.current && !controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Could not refresh templates.");
         return false;
       } finally { pending = false; if (mounted.current && !controller.signal.aborted) setLoading(false); }
     }
-    reload.current = async () => { await refresh(); };
     let initialDue = Date.now();
     try {
       const raw = storage.getItem(batchKey);
@@ -79,10 +83,11 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
       if (batch && validBatch(batch.ideas) && Number.isSafeInteger(batch.savedAt) && batch.savedAt <= Date.now()) {
         setTemplates(batch.ideas);
         setLoading(false);
+        batchStartedAt.current = batch.savedAt;
         initialDue = batch.savedAt + FOOTAGE_SUGGESTION_REFRESH_MS;
       }
     } catch { /* Preferences and saved jobs are separate from this preview cache. */ }
-    const stopRefresh = installFootageSuggestionRefresh({
+    const schedule = installFootageSuggestionRefresh({
       key: "quick-templates", initialDue, refresh, storage, now: Date.now,
       setTimeout: (listener, delay) => window.setTimeout(listener, delay),
       clearTimeout: timer => { if (typeof timer === "number") window.clearTimeout(timer); },
@@ -96,8 +101,14 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
         };
       },
     });
-    return () => { mounted.current = false; controller.abort(); stopRefresh(); };
+    reload.current = schedule.refreshNow;
+    return () => { mounted.current = false; controller.abort(); schedule.stop(); };
   }, []);
+  useEffect(() => {
+    if (reelActivityAt <= batchStartedAt.current) return;
+    setTemplates([]);
+    reload.current();
+  }, [reelActivityAt]);
 
   async function create(template?: Template) {
     if (disabled || busy.current || request?.jobId || (!request && !template?.opening)) return;
@@ -107,6 +118,7 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
     };
     busy.current = true; setPreparing(true); setError(""); setCanChange(false);
     onRequest(selected);
+    let confirmed = false;
     try {
       const response = await fetch("/api/stock-reels", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ automatic: true, query: selected.query, requestId: selected.requestId, ...selected.source }), signal: AbortSignal.timeout(780_000) });
@@ -117,11 +129,18 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
       }
       if (typeof data?.job?.id !== "string" || !/^[a-z0-9_-]{1,180}$/i.test(data.job.id)) throw new Error("Could not confirm your video. Retry checks the same request.");
       if (mounted.current) {
+        confirmed = data.existing !== true;
         onRequest({ ...selected, jobId: data.job.id });
         onStarted(`“${selected.title}” is processing. Your finished video will open here for review.`);
       }
     } catch (failure) { if (mounted.current) setError(failure instanceof Error ? failure.message : "Could not confirm your video. Retry checks the same request."); }
-    finally { busy.current = false; if (mounted.current) setPreparing(false); }
+    finally {
+      busy.current = false;
+      if (mounted.current) {
+        setPreparing(false);
+        if (confirmed) { setTemplates([]); reload.current(); }
+      }
+    }
   }
 
   const failed = job && ["FAILED", "BLOCKED"].includes(job.status);
@@ -144,6 +163,7 @@ export default function QuickTemplates({ request, job, onRequest, onStarted, onR
     </div>
     {loading && !templates.length ? <StudioActivity label="Finding your next video…" /> : null}
     {error ? <p role="alert" className="mt-4 text-sm">{error}</p> : null}
+    {!loading && !error && !templates.length ? <p className="mt-4 text-sm text-muted-foreground">No fresh matches yet. Try your own topic.</p> : null}
     <div data-template-choices>{templates.map(template => <button key={template.id} data-quick-template type="button"
       disabled={disabled || preparing || !template.opening} onClick={() => void create(template)}
       aria-label={template.opening ? `Make video: ${template.title}` : `${template.title}: opening shot unavailable`}>

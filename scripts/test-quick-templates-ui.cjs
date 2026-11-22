@@ -33,7 +33,7 @@ const context = { now: Date.parse('2026-11-17T12:00:00Z'), recent: [
 // Real UI handlers with inert JSX and isolated API fixtures. No server, provider,
 // owner job, credential, model, media download or real timers are reachable.
 async function harness(options = {}) {
-  let index = 0, tree, request = options.request || null, job = options.job, uuids = 0;
+  let index = 0, tree, request = options.request || null, job = options.job, uuids = 0, reelActivityAt = options.reelActivityAt || 0;
   const slots = [], effects = [], pending = [], cleanups = [], requests = [], started = [], states = [], stored = options.storage || new Map();
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
@@ -63,12 +63,12 @@ async function harness(options = {}) {
     },
   }).default;
   let retries = 0;
-  function render() { index = 0; tree = Component({ request, job, onRequest(value) { request = value; states.push(plain(value)); }, onStarted(message) { started.push(message); }, onRetry() { retries++; } }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } }
+  function render() { index = 0; tree = Component({ request, job, reelActivityAt, onRequest(value) { request = value; states.push(plain(value)); }, onStarted(message) { started.push(message); }, onRetry() { retries++; } }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } }
   async function flush() { for (let count = 0; count < 12; count++) await Promise.resolve(); render(); }
   const cards = () => nodes(tree).filter(node => node.props['data-quick-template'] !== undefined);
   const button = label => nodes(tree).find(node => node.type === 'button' && text(node) === label);
   render(); await flush();
-  return { cards, button, render, flush, requests, started, states, get request() { return request; }, get tree() { return tree; }, get uuids() { return uuids; }, get retries() { return retries; }, setJob(value) { job = value; render(); }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
+  return { cards, button, render, flush, requests, started, states, get request() { return request; }, get tree() { return tree; }, get uuids() { return uuids; }, get retries() { return retries; }, setJob(value) { job = value; render(); }, setReelActivity(value) { reelActivityAt = value; render(); }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
 }
 
 test('Create shows six suggestions with one opening clip image each and starts no jobs', async () => {
@@ -104,20 +104,18 @@ test('failed confirmation and reopening retain the UUID and exact topic without 
   assert.equal(reopened.requests.filter(request => request.method === 'POST').length, 0); assert.equal(reopened.uuids, 0);
   reopened.button('Retry confirmation').props.onClick(); await reopened.flush();
   assert.deepEqual(persisted.source, { provider: 'pexels', id: 1 });
-  assert.deepEqual(JSON.parse(reopened.requests.at(-1).body), { automatic: true, query: persisted.query, requestId: uuid, ...persisted.source });
+  assert.deepEqual(JSON.parse(reopened.requests.filter(request => request.method === 'POST').at(-1).body), { automatic: true, query: persisted.query, requestId: uuid, ...persisted.source });
 });
 
 test('a missing catalog image does not show a fake preview or secretly choose another clip', async () => {
   const h = await harness({ missing: 0 });
-  const unavailable = h.cards()[0];
-  assert.equal(unavailable.props.disabled, true);
-  assert.match(unavailable.props['aria-label'], /opening shot unavailable/);
-  assert.equal(nodes(unavailable).filter(node => node.type === 'img').length, 0);
-  unavailable.props.onClick(); await h.flush();
+  const wholeDeck = await harness();
+  assert.equal(h.cards().length, wholeDeck.cards().length - 1);
+  assert.ok(h.cards().every(card => card.key !== wholeDeck.cards()[0].key && nodes(card).some(node => node.type === 'img')));
   assert.equal(h.requests.filter(request => request.method === 'POST').length, 0);
 });
 
-test('reopening within 15 days uses the same catalog previews and overdue reopening refreshes', async () => {
+test('reopening within a day uses the same catalog previews and overdue reopening refreshes', async () => {
   let time = context.now;
   class Clock extends Date { static now() { return time; } }
   const storage = new Map();
@@ -132,6 +130,25 @@ test('reopening within 15 days uses the same catalog previews and overdue reopen
   const due = await harness({ storage, Date: Clock });
   assert.equal(due.requests.length, 1);
   assert.ok(due.cards().every(card => !first.cards().some(previous => previous.key === card.key)));
+});
+
+test('a confirmed reel refreshes the next deck and later saved activity refreshes once again', async () => {
+  let time = context.now;
+  class Clock extends Date { static now() { return time; } }
+  const h = await harness({ Date: Clock });
+  const initial = h.cards().map(card => card.key);
+  time += 5_000;
+  h.cards()[0].props.onClick(); await h.flush();
+  assert.equal(h.requests.filter(request => !request.method).length, 2);
+  h.button('Back to templates').props.onClick(); await h.flush();
+  assert.ok(h.cards().length && h.cards().every(card => !initial.includes(card.key)));
+  const queued = h.cards().map(card => card.key);
+  time += 60_000;
+  h.setReelActivity(time); await h.flush();
+  assert.equal(h.requests.filter(request => !request.method).length, 3);
+  assert.ok(h.cards().length && h.cards().every(card => !queued.includes(card.key)));
+  h.setReelActivity(time); await h.flush();
+  assert.equal(h.requests.filter(request => !request.method).length, 3);
 });
 
 test('failed saved videos retry their job while a definite unavailable template can be changed', async () => {

@@ -4,8 +4,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { z } from "zod";
 import { withFileLock } from "./fileLock";
+import { withUnpublishedReview } from "./reviewPublicationStore";
 import { writeAtomicJson } from "./atomicJson";
-import { getReviewFile, outputPath, reviewRoot, safeReviewId, saveReviewFile, sourcePath, type ReviewFile } from "./reviewFiles";
+import { getReviewFile, outputPath, readReviewFiles, removeReviewFile, reviewRoot, safeReviewId, saveReviewFile, sourcePath, type ReviewFile } from "./reviewFiles";
 import { FFMPEG_ENCODER_RESOURCE_ARGS, FFMPEG_FILTER_RESOURCE_ARGS, lowerChildProcessPriority, tryWithLocalRenderSlot } from "./renderResources";
 import type { EditCue, ReviewEditDraft, ReviewEditJob, ReviewEditState } from "./reviewEditTypes";
 import { artifactReference, resolveArtifact } from "./reviewArtifacts";
@@ -74,6 +75,58 @@ async function mutate<T>(fn: (jobs: ReviewEditJob[]) => T | Promise<T>): Promise
     if (JSON.stringify(jobs) !== before) await atomicJson(store(), jobs);
     return result;
   });
+}
+/** Return the original review ID only when the entire editedFrom chain is intact and acyclic. */
+export function reviewEditFamilyRoot(id: string, files: ReviewFile[]): string | null {
+  const byId = new Map(files.map(file => [file.id, file]));
+  const visited = new Set<string>();
+  let current = id;
+  while (true) {
+    if (!safeReviewId(current) || visited.has(current)) return null;
+    visited.add(current);
+    const file = byId.get(current);
+    if (!file) return null;
+    if (!file.editedFrom) return file.id;
+    if (!safeReviewId(file.editedFrom)) return null;
+    current = file.editedFrom;
+  }
+}
+function editFamilyVersions(rootId: string, files: ReviewFile[]) {
+  return files.filter(file => !file.trashedAt && file.status === "READY" && !!file.editedFrom
+      && reviewEditFamilyRoot(file.id, files) === rootId)
+    .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || b.id.localeCompare(a.id));
+}
+/** Retain the five newest READY edited versions of the one family just exported. */
+export async function retainEditedReviewFamily(newReviewId: string, keep = 5): Promise<void> {
+  if (!safeReviewId(newReviewId) || !Number.isSafeInteger(keep) || keep < 1) return;
+  const files = await readReviewFiles(true);
+  const current = files.find(file => file.id === newReviewId && !file.trashedAt && file.status === "READY" && file.editedFrom);
+  if (!current) return;
+  const rootId = reviewEditFamilyRoot(current.id, files);
+  // Missing parents and cycles are ambiguous ancestry; leave those records alone.
+  if (!rootId || rootId === current.id || !files.some(file => file.id === rootId && !file.trashedAt && !file.editedFrom)) return;
+  const candidates = editFamilyVersions(rootId, files).slice(keep);
+  if (!candidates.length) return;
+  for (const candidate of candidates) {
+    try {
+      await withUnpublishedReview(candidate.id, async () => mutate(async jobs => {
+        if (jobs.some(job => !job.archivedAt && ["QUEUED", "PROCESSING"].includes(job.status)
+          && (job.reviewId === candidate.id || job.outputId === candidate.id))) return false;
+        const latest = await readReviewFiles(true);
+        const live = latest.find(file => file.id === candidate.id && !file.trashedAt && file.status === "READY" && !!file.editedFrom);
+        if (!live || reviewEditFamilyRoot(live.id, latest) !== rootId
+          || !latest.some(file => file.id === rootId && !file.trashedAt && !file.editedFrom)
+          || !editFamilyVersions(rootId, latest).slice(keep).some(file => file.id === live.id)) return false;
+        const trashed = await removeReviewFile(live.id);
+        if (!trashed || !trashed.trashedAt) return false;
+        const archivedAt = new Date().toISOString();
+        for (const job of jobs) if (job.outputId === live.id && job.status === "COMPLETED" && !job.archivedAt) job.archivedAt = archivedAt;
+        return true;
+      }));
+    } catch {
+      // Retention is best effort; a locked store must not turn a saved export into a failed edit.
+    }
+  }
 }
 function timed(job: ReviewEditJob): ReviewEditJob {
   const elapsedSeconds = job.startedAt ? Math.max(0, Math.round((Date.parse(job.finishedAt || new Date().toISOString()) - Date.parse(job.startedAt)) / 1000)) : 0;
@@ -179,6 +232,7 @@ export async function queueReviewEdit(id: string, value: unknown) {
   if (!state.canReplaceCaptions && draft.captionsEnabled) throw new Error("This video has no clean master for replacing its baked-in captions.");
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify(draft)).digest("hex");
   return mutate(async jobs => {
+    if (!(await getReviewFile(id))) throw new Error("This edit source is in Trash. Restore it before editing.");
     const existing = jobs.find(j => j.reviewId === id && !j.archivedAt && ["QUEUED","PROCESSING"].includes(j.status));
     if (existing) {
       const prior = existing.draftFingerprint || crypto.createHash("sha256").update(JSON.stringify(existing.draft)).digest("hex");
@@ -284,6 +338,7 @@ export function processNextReviewEdit(): Promise<void> {
       file.quality.checks.push("Manually edited copy: trim, framing, audio and caption settings applied");
       await saveReviewFile(file);
       await patchJob(job.id,{status:"COMPLETED",progress:100,stage:"Edited copy ready for review",finishedAt:now});
+      try { await retainEditedReviewFamily(file.id); } catch { /* Keep the successful export if retention is unavailable. */ }
     } catch(error) { await patchJob(job.id,{status:"FAILED",stage:"Edited export failed",error:error instanceof Error?error.message:String(error),finishedAt:new Date().toISOString()}); }
   }, "Manual video edit");
   })().finally(()=>{inFlight=null;});

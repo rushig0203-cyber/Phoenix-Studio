@@ -76,6 +76,69 @@ test('Facebook displays real zeroes and unavailable values distinctly and preser
   ui.unmount();
 });
 
+test('partial saved totals identify measured coverage and use the active studio theme', async () => {
+  const sample = facebook({ status: 'limited', videos: [
+    { id: '101', caption: 'Measured zero', timestamp: '2026-11-08T10:00:00Z', metrics: { views: 0, likes: 3, comments: 0 } },
+    { id: '102', caption: 'Unavailable views', timestamp: '2026-11-09T10:00:00Z', metrics: { views: null, likes: 4, comments: null } },
+  ] });
+  const ui = harness(url => response(url === '/api/channels' ? { channels: [] } : sample));
+  await ui.settle(); ui.select('Facebook'); await ui.settle();
+  assert.match(text(ui.tree()), /Some metrics unavailable/);
+  assert.match(text(ui.tree()), /Last measured:/);
+  assert.deepEqual(ui.all('dd').map(text), ['2', '0', '7', '0']);
+  assert.match(text(ui.tree()), /1 of 2 measured/); assert.match(text(ui.tree()), /2 of 2 measured/);
+  assert.match(text(ui.tree()), /0 is a measured zero/);
+  assert.ok(nodes(ui.tree()).some(node => /\bbg-card\b/.test(node.props.className || '')));
+  assert.ok(nodes(ui.tree()).some(node => /\bbg-muted\b/.test(node.props.className || '')));
+  assert.ok(nodes(ui.tree()).every(node => !/\[#[\da-f]+\]/i.test(node.props.className || '')));
+  assert.equal(ui.requests.filter(request => request.method === 'POST').length, 0); ui.unmount();
+});
+
+test('a pending foreground refresh keeps measured counts visible until the check settles', async () => {
+  let finish;
+  const ui = harness((url, request) => url === '/api/channels' ? response({ channels: [] })
+    : request.method === 'POST' ? new Promise(resolve => { finish = resolve; }) : response(facebook()));
+  await ui.settle(); ui.select('Facebook'); await ui.settle();
+  const saved = ui.all('dd').map(text);
+  ui.find('button', 'Refresh insights').props.onClick(); ui.render();
+  assert.match(text(ui.tree()), /Checking results…/); assert.deepEqual(ui.all('dd').map(text), saved);
+  assert.equal(ui.find('button', 'Refresh insights').props.disabled, true);
+  finish(response({ error: 'The platform asked to wait.' }, 429)); await ui.settle();
+  assert.match(text(ui.tree()), /The platform asked to wait/);
+  assert.match(text(ui.tree()), /Saved counts below have not been replaced/);
+  assert.deepEqual(ui.all('dd').map(text), saved); ui.unmount();
+});
+
+test('YouTube connection, permission and pending states never invent collected counts', async () => {
+  for (const [status, label] of [['not_connected', 'Not connected to Phoenix'], ['permission_required', 'Read permission needed'], ['syncing', 'Collection pending'], ['rate_limited', 'Waiting for platform quota'], ['error', 'Refresh needs attention']]) {
+    const ui = harness(url => response(url === '/api/channels' ? { channels: [] } : { status, detail: 'Actionable saved status.', videos: [] }));
+    await ui.settle(); ui.select('YouTube'); await ui.settle();
+    assert.match(text(ui.tree()), new RegExp(label));
+    assert.match(text(ui.tree()), /Last measured: Not yet/);
+    assert.match(text(ui.tree()), /No measured results are saved yet/);
+    assert.equal(ui.all('dd').length, 0);
+    if (status === 'permission_required') assert.equal(ui.find('a', 'Check YouTube read access in Settings').props.href, '/dashboard#settings');
+    assert.ok(ui.requests.every(request => request.method === undefined)); ui.unmount();
+  }
+});
+
+test('an unchecked YouTube connection requests its first read only after the explicit counts action', async () => {
+  let checks = 0;
+  const ui = harness((url, request) => response(url === '/api/channels' ? { channels: [{ platform: 'youtube', connected: true }] }
+    : request.method === 'POST' ? (checks++, { status: 'ready', videos: [], detail: 'No confirmed YouTube posts are saved for this channel.' })
+      : { status: 'syncing', detail: 'Choose Refresh to read basic counts for confirmed Phoenix YouTube posts.', videos: [] }));
+  await ui.settle(); ui.select('YouTube'); await ui.settle();
+  assert.match(text(ui.tree()), /Not checked yet/); assert.doesNotMatch(text(ui.tree()), /Collection pending/);
+  assert.match(text(ui.tree()), /not videos uploaded elsewhere/);
+  assert.equal(checks, 0); assert.equal(ui.all('dd').length, 0);
+  ui.find('button', 'Check YouTube counts').props.onClick(); await ui.settle();
+  assert.equal(checks, 1); assert.equal(ui.requests.at(-1).url, '/api/youtube-performance');
+  assert.deepEqual(JSON.parse(ui.requests.at(-1).body), { action: 'refresh' });
+  assert.match(text(ui.tree()), /No confirmed uploads/); assert.match(text(ui.tree()), /No confirmed YouTube posts/);
+  assert.match(text(ui.tree()), /YouTube Studio may contain other videos/); assert.equal(ui.all('dd').length, 0);
+  assert.ok(ui.find('button', 'Refresh insights')); ui.unmount();
+});
+
 test('YouTube status is verified separately and manual platforms show no invented results or connection badge', async () => {
   const ui = harness(); await ui.settle();
   ui.select('YouTube'); assert.match(text(ui.tree()), /Not connected to Phoenix/);
