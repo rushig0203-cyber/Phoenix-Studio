@@ -7,7 +7,7 @@ const postcss = require('postcss');
 const nano = require('next/dist/compiled/cssnano-simple');
 const parser = require('next/dist/compiled/postcss-scss');
 
-for (const name of ['src/app/globals.css', 'src/app/dashboard/studio.module.css']) {
+for (const name of ['src/app/globals.css', 'src/app/dashboard/studio.module.css', 'src/app/dashboard/space.module.css']) {
   test(`${name} survives production selector optimization and Next minification`, async () => {
     const filename = path.resolve(__dirname, '..', name);
     // Parsing alone misses escaped attribute-value spaces emitted by optimization.

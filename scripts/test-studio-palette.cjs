@@ -41,8 +41,9 @@ test('soft light surfaces retain readable body, secondary and action text', () =
 });
 
 test('night surfaces keep progress and attention text readable', () => {
+  const shellColor = name => resolved(night(name), dashboardToken);
   for (const surface of ['', 'panel']) {
-    for (const role of ['text', 'muted', 'error']) contrast(night(role), night(surface), 4.5, role + ' on night ' + surface);
+    for (const role of ['text', 'muted', 'error']) contrast(shellColor(role), shellColor(surface), 4.5, role + ' on night ' + surface);
   }
   const scope = selector => selector.includes('[data-template-progress]') && selector.endsWith(', .jobs');
   assert.equal(declaration(studio, scope, '--muted-foreground'), 'var(--night-muted)');
@@ -52,7 +53,9 @@ test('night surfaces keep progress and attention text readable', () => {
 test('the complete dashboard palette keeps text, fields, status messages and focus readable on Night surfaces', () => {
   assert.equal(declaration(css, selector => selector === '[data-studio-theme="night"]', 'color-scheme'), 'dark');
   for (const surface of ['background', 'card', 'popover', 'muted', 'field']) {
-    assert.ok(luminance(dashboardToken(surface)) < .1, surface + ' must remain a dark surface');
+    const hex = dashboardToken(surface);
+    const channels = hex.slice(1).match(/../g).map(value => parseInt(value, 16));
+    assert.ok(Math.max(...channels) - Math.min(...channels) <= 8 && luminance(hex) < .035, surface + ' must stay close to neutral black');
     for (const foreground of ['foreground', 'muted-foreground', 'link-foreground', 'destructive']) contrast(dashboardToken(foreground), dashboardToken(surface), 4.5, foreground + ' on Night ' + surface);
     contrast(dashboardToken('ring'), dashboardToken(surface), 3, 'Night keyboard focus on ' + surface);
   }
@@ -78,7 +81,8 @@ test('native fields, placeholders and keyboard focus remain visible on light sur
 
 test('selected navigation, brand mark and warning/error messages remain readable', () => {
   for (const [source, selector] of [[css, '.studio-brand-mark'], [studio, '.navLink[aria-current="page"]']]) {
-    const read = property => declaration(source, rule => rule === selector, property);
+    const read = property => resolved(declaration(source, rule => rule === selector, property),
+      name => name.startsWith('night-') ? night(name.slice(6)) : dashboardToken(name));
     contrast(read('color'), read('background'), 4.5, selector);
   }
   for (const [backgroundClass, foregroundClass] of [['bg-amber-100', 'text-amber-900'], ['bg-red-100', 'text-red-700'], ['bg-green-100', 'text-[#245b2e]']]) {

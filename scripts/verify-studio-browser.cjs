@@ -181,7 +181,7 @@ async function run() {
           }) : [];
         return { canvas: style.backgroundColor, scheme: style.colorScheme, lightSurfaces };
       });
-      verify(`${name}: Night covers panels and native fields`, theme.canvas === 'rgb(9, 14, 29)' && theme.scheme === 'dark' && theme.lightSurfaces.length === 0, theme);
+      verify(`${name}: The charcoal palette covers panels and native fields`, theme.canvas === 'rgb(16, 16, 19)' && theme.scheme === 'dark' && theme.lightSurfaces.length === 0, theme);
       await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: true, animations: 'disabled' });
       proof.screenshots.push(`${name}.png`);
     };
@@ -196,16 +196,17 @@ async function run() {
     await page.keyboard.press('Tab');
     await page.locator('[data-quick-template]').first().focus();
     const style = await page.locator('[data-quick-template]').first().evaluate(element => { const css = getComputedStyle(element); return { radius: css.borderRadius, outline: css.outlineStyle, outlineWidth: css.outlineWidth, background: getComputedStyle(element.closest('[data-studio-theme]')).backgroundColor }; });
-    verify('Actual compiled CSS: rounded template cards, night canvas and keyboard focus', parseFloat(style.radius) >= 12 && style.background === 'rgb(9, 14, 29)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
+    verify('Cards stay in focus above the space backdrop', parseFloat(style.radius) >= 12 && style.background === 'rgba(0, 0, 0, 0)' && style.outline !== 'none' && parseFloat(style.outlineWidth) >= 2, style);
     await page.locator('[data-quick-template]').first().blur();
     const hero = await page.locator('[data-studio-hero="create"]').evaluate(element => {
       const image = getComputedStyle(element, '::before'), panel = getComputedStyle(element);
       return { width: parseFloat(image.width), height: parseFloat(image.height), image: image.backgroundImage,
-        transform: image.transform, color: panel.color, panel: panel.backgroundColor };
+        transform: image.transform, color: panel.color, panel: panel.backgroundColor, treatment: image.filter, mask: image.maskImage };
     });
-    verify('Aurora header keeps a readable navy fallback and an upright wallpaper layer', hero.width >= 190 && hero.height >= 900
+    verify('Aurora header retains the upright photo with subdued colour and a fade into the starfield', hero.width >= 190 && hero.height >= 900
       && hero.image.includes('/api/studio-wallpaper') && /^matrix\(0, 1, -1, 0, /.test(hero.transform)
-      && hero.color === 'rgb(248, 251, 255)' && hero.panel === 'rgb(17, 27, 48)', hero);
+      && hero.color === 'rgb(238, 237, 240)' && hero.panel === 'rgba(0, 0, 0, 0)'
+      && hero.treatment.includes('saturate(0.35)') && hero.mask.includes('linear-gradient'), hero);
     const artworkOnly = await page.locator('[data-studio-hero="create"]').evaluate(element => {
       const heading = element.querySelector('h1');
       return { heading: heading.textContent, headingSize: heading.parentElement.getBoundingClientRect().height,
@@ -213,6 +214,20 @@ async function run() {
     });
     verify('Create keeps the headline visually hidden and places the workflows on the artwork edge',
       artworkOnly.heading === 'Create' && artworkOnly.headingSize <= 1 && artworkOnly.tint !== 'none' && artworkOnly.actionCount === 3, artworkOnly);
+    const stars = page.locator('[data-studio-starfield]');
+    const starLayers = () => stars.evaluate(element => ({
+      hidden: element.getAttribute('aria-hidden'), perspective: getComputedStyle(element).perspective,
+      pointerEvents: getComputedStyle(element).pointerEvents,
+      animations: [...element.querySelectorAll('[data-star-depth]')].map(layer => getComputedStyle(layer).animationName),
+    }));
+    const stillStars = await starLayers();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const movingStars = await starLayers();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    verify('Three perspective layers drift only when motion is allowed and stay behind interactive content',
+      movingStars.hidden === 'true' && movingStars.pointerEvents === 'none' && parseFloat(movingStars.perspective) > 0
+      && movingStars.animations.length === 3 && movingStars.animations.every(name => name !== 'none')
+      && stillStars.animations.length === 3 && stillStars.animations.every(name => name === 'none'), { stillStars, movingStars });
     const covers = await page.locator('[data-quick-template]').evaluateAll(cards => cards.map(card =>
       [...card.querySelectorAll('img')].map(image => image.src)));
     verify('Each suggestion has exactly one image from its selected opening clip', covers.length === templates.length
@@ -296,7 +311,7 @@ async function run() {
       verify(platform + ' displays its own measured counts', (await sample.locator('dd').allTextContents()).join(',') === '1,' + count + ',3,1');
       verify(platform + ' uses distinct readable metric tiles', await sample.locator('div').first().evaluate(tile => {
         const style = getComputedStyle(tile);
-        return style.backgroundColor === 'rgb(28, 40, 64)' && parseFloat(style.borderRadius) >= 8;
+        return style.backgroundColor === 'rgb(36, 35, 41)' && parseFloat(style.borderRadius) >= 8;
       }));
       await capture('studio-insights-' + platform.toLowerCase());
     }
