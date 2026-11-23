@@ -147,7 +147,9 @@ if __name__ == "__main__":
             downloaded.append((fixture_item, filename, info))
 
         audio = directory / "narration.wav"
-        observed = voice["synthesize"](script, audio, 1.0, "English")
+        speech_output = sources / audio.name
+        observed = voice["synthesize"](script, speech_output, 1.0, "English")
+        speech_output.replace(audio)
         with wave.open(str(audio), "rb") as recording:
             audio_duration = recording.getnframes() / recording.getframerate()
         assert 2 < audio_duration < 60 and observed
@@ -209,6 +211,7 @@ if __name__ == "__main__":
                  "note": "Synthetic descriptive nature script; public clips and original local speech only. This media proof does not itself create a persisted Review or invoke posting analysis."}
         proof_path = directory / "proof.json"
         proof_path.write_text(json.dumps(proof, indent=2), encoding="utf-8")
-        assert sorted(path.name for path in directory.iterdir()) == ["captions.srt", "clean.mp4", "final.mp4", "narration.wav", "proof.json"]
-        print(json.dumps({"proof": str(proof_path), "duration": audio_duration, "shots": len(proof_shots),
-                          "finalBytes": final.stat().st_size, "cleanBytes": clean.stat().st_size, "fullyDecoded": True}))
+    files = sorted(path.name for path in directory.iterdir())
+    assert files == ["captions.srt", "clean.mp4", "final.mp4", "narration.wav", "proof.json"], files
+    print(json.dumps({"proof": str(proof_path), "duration": audio_duration, "shots": len(proof_shots),
+                      "finalBytes": final.stat().st_size, "cleanBytes": clean.stat().st_size, "fullyDecoded": True}))
