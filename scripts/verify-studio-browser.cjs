@@ -257,9 +257,13 @@ async function run() {
       && await highlights.isChecked() && await page.getByRole('button', { name: /^Make video:/ }).count() === 0);
     await capture('studio-clips');
     await workflows.getByRole('link', { name: 'Create a Video', exact: true }).click();
-    await page.getByRole('button', { name: /^Use idea:/ }).first().waitFor();
-    verify('Create a Video has its own six registered suggestions', await page.getByRole('button', { name: /^Use idea:/ }).count() === 6
-      && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible());
+    const creationIdeas = page.getByRole('button', { name: /^Use idea:/ });
+    await creationIdeas.first().waitFor();
+    const visibleAngles = await creationIdeas.evaluateAll(buttons => buttons.map(button =>
+      Array.from(button.querySelectorAll('span'), line => line.textContent.trim())));
+    verify('Create a Video starts with five short nature mini-doc ideas and their angles', visibleAngles.length === 5
+      && visibleAngles.every(([title, angle]) => title?.length > 0 && title.length <= 60 && angle?.length > 0)
+      && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible(), visibleAngles);
     await capture('studio-create-video');
     await page.getByText('Describe your video', { exact: true }).click();
     await page.getByLabel('Your idea').fill('Krishna and Meera watch stars at night');
