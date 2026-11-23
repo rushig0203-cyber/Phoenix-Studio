@@ -36,6 +36,13 @@ def cue(text, start, end):
     return SimpleNamespace(content=text, start=timedelta(seconds=start), end=timedelta(seconds=end))
 
 class TestMeasuredNarration(unittest.TestCase):
+    def test_subtitle_round_trip_keeps_exact_millisecond_word_boundaries(self):
+        with tempfile.TemporaryDirectory(prefix="phoenix-narration-cues-") as temporary:
+            filename = Path(temporary) / "subtitle.srt"
+            captions = [(1.118, 1.294, "The path."), (62.118, 62.294, "The trees.")]
+            renderer.save_caption_cues(captions, filename)
+            self.assertEqual(renderer.subtitle_cues(filename), captions)
+
     def test_real_single_thread_decoder_keeps_measured_pcm_pauses_and_ending(self):
         project = Path(__file__).resolve().parent.parent
         executable = project / 'node_modules' / '@ffmpeg-installer' / 'win32-x64' / 'ffmpeg.exe'

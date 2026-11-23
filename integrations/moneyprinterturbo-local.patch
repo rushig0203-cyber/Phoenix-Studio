@@ -604,7 +604,7 @@ index 2176fa1..2fc193a 100644
                  return _FakeVideoClip(end_time - start_time)
 diff --git a/app/services/phoenix_storyboard.py b/app/services/phoenix_storyboard.py
 new file mode 100644
-index 0000000..6589d9b
+index 0000000..b2d0bd1
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
 @@ -0,0 +1,955 @@
@@ -1202,8 +1202,8 @@ index 0000000..6589d9b
 +    cues = []
 +    for match in pattern.finditer(text):
 +        values = list(map(int, match.groups()[:8]))
-+        start = values[0] * 3600 + values[1] * 60 + values[2] + values[3] / 1000
-+        end = values[4] * 3600 + values[5] * 60 + values[6] + values[7] / 1000
++        start = (values[0] * 3600000 + values[1] * 60000 + values[2] * 1000 + values[3]) / 1000
++        end = (values[4] * 3600000 + values[5] * 60000 + values[6] * 1000 + values[7]) / 1000
 +        content = re.sub(r"<[^>]*>", "", match.group(9)).strip()
 +        if end <= start or (cues and start < cues[-1][1] - 0.02):
 +            raise ValueError("Storyboard needs ordered, non-overlapping speech captions.")
