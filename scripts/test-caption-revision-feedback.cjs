@@ -4,6 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const childProcess = require('node:child_process');
+const { EventEmitter } = require('node:events');
+const { PassThrough } = require('node:stream');
+const previousCwd = process.cwd();
 const project = path.resolve(__dirname, '..'), temp = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-caption-revision-'));
 require('ts-node').register({ project: path.join(project, 'tsconfig.json'), transpileOnly: true, compilerOptions: { module: 'commonjs', moduleResolution: 'node' } });
 process.chdir(temp);
@@ -30,7 +34,7 @@ beforeEach(async () => {
   resources.heavyWorkStatus = async () => ({ lease: null, waitingForMemory: false });
   global.fetch = async (url, init) => { calls.push({ url, init }); throw new Error('Unexpected external request in isolated feedback test'); };
 });
-after(() => { global.fetch = original.fetch; settings.readVideoAnalysisSettings = original.settings; resources.heavyWorkStatus = original.resources; process.chdir(project); fs.rmSync(temp, { recursive: true, force: true }); });
+after(() => { global.fetch = original.fetch; settings.readVideoAnalysisSettings = original.settings; resources.heavyWorkStatus = original.resources; process.chdir(previousCwd); fs.rmSync(temp, { recursive: true, force: true }); });
 
 async function fileFixture(creationType = 'source', complete = true) {
   const file = reviews.makeReviewFile({ id: crypto.randomUUID(), title: 'Sailboat', status: 'READY', audience: 'general', targets: ['instagram'],
@@ -85,6 +89,44 @@ test('known free-quota waits retain the revision and manager feedback without ex
   const waiting = (await reviews.getReviewFile(file.id)).quality.postingAnalysis;
   assert.equal(waiting.status, 'WAITING'); assert.equal(waiting.waitReason, 'quota'); assert.ok(waiting.captionRevision);
   assert.equal((await feedback.readCaptionRevisionFeedback()).length, 1); assert.equal(calls.length, 0);
+});
+
+for (const creationType of ['general', 'business']) test(`${creationType} reanalysis preserves manager feedback and measured narration while choosing a different supplied angle`, async t => {
+  const file = await fileFixture(creationType);
+  await manager.saveCreativeFeedback({ reviewId: file.id, decision: 'revise', ratings: { story: 5, visuals: 5, audio: 5, captions: 1 }, note: 'Private review notes remain local.' });
+  const guidance = await manager.getCreativeGuidance(creationType);
+  const captionCues = [{ start: 0, end: 20, text: 'A white sailboat rests on open blue water.' }];
+  await reviews.updateReviewFile(file.id, value => ({ ...value, captionCues, quality: { ...value.quality, managerGuidance: guidance } }));
+  const manualBefore = fs.readFileSync(dataPath('manager-feedback.json'), 'utf8');
+  const mediaBefore = fs.readFileSync(reviews.outputPath(file.id, 'instagram'));
+  const queued = await analysis.queuePostingAnalysis(file.id), revision = queued.quality.postingAnalysis.captionRevision;
+  let frames = 0;
+  t.mock.method(resources, 'tryWithLocalRenderSlot', async work => ({ acquired: true, value: await work() }));
+  t.mock.method(childProcess, 'spawn', () => {
+    frames++;
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.kill = () => true;
+    setImmediate(() => { child.stdout.end(jpeg); child.emit('close', 0); });
+    return child;
+  });
+  global.fetch = async (url, init) => {
+    assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions'); calls.push({ url, init });
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ observations: [{ frame: 1, visible: 'A white sailboat on open blue water.' }],
+      caption: 'In clear blue water sits a white sailboat.', captionVariants: [newCaption], hashtags: ['#Sailing', '#OpenWater'], confidence: 'clear', alignment: 'consistent' }) } }] });
+  };
+  await analysis.processNextPostingAnalysis();
+  const saved = await reviews.getReviewFile(file.id);
+  assert.equal(saved.quality.postingAnalysis.status, 'COMPLETE'); assert.equal(saved.quality.postCopy, newCaption);
+  assert.equal(saved.quality.postingAnalysis.copyPolicy, 'narrated-editorial-line-v1');
+  assert.equal(saved.quality.postingAnalysis.captionRevision.id, revision.id);
+  assert.deepEqual(saved.quality.managerGuidance, guidance); assert.deepEqual(saved.captionCues, captionCues);
+  assert.equal(fs.readFileSync(dataPath('manager-feedback.json'), 'utf8'), manualBefore);
+  assert.deepEqual(fs.readFileSync(reviews.outputPath(file.id, 'instagram')), mediaBefore);
+  assert.equal((await feedback.readCaptionRevisionFeedback()).length, 1);
+  assert.equal(frames, 3); assert.equal(calls.length, 1);
+  const content = JSON.parse(calls[0].init.body).messages[0].content, prompt = content[0].text;
+  assert.equal(content.filter(part => part.type === 'image_url').length, 3);
+  assert.match(prompt, /one audience-facing line/); assert.match(prompt, /A white sailboat rests on open blue water/);
+  assert.match(prompt, /Saved preference:/); assert.doesNotMatch(prompt, /Private review notes/);
 });
 
 test('initial analysis requests and background copies never fabricate a complaint signal', async () => {

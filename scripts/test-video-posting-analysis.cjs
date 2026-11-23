@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const project = path.resolve(__dirname,'..');
+const previousCwd=process.cwd();
 require('ts-node').register({project:path.join(project,'tsconfig.json'),transpileOnly:true,compilerOptions:{module:'commonjs',moduleResolution:'node'}});
 require('tsconfig-paths').register({baseUrl:project,paths:{'@/*':['src/*']}});
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'phoenix-video-copy-'));
@@ -28,6 +29,40 @@ test('timed narration follows each sampled moment, including speech beyond the o
   assert.doesNotMatch(text,/EARLY UNRELATED PREFIX/);assert.match(text,/Compare matched subjects\/actions, not topic overlap/);
   assert.equal(accepted.alignment,'consistent');assert.equal(accepted.alignmentBasis,'timed-caption-samples-v1');
   assert.equal(calls.length,1);assert.equal(request.messages[0].content.filter(part=>part.type==='image_url').length,3);
+});
+
+test('general/business copy uses one grounded audience line and only corresponding measured narration',async()=>{
+  const narrationSamples=analysis.timedNarrationSamples([{start:0,end:10,text:'Grind the coffee beans.'},{start:10,end:20,text:'Pour hot water over the grounds.'},{start:20,end:30,text:'Serve the finished coffee.'}],[3,15,27],30);
+  await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'UNRELATED PLANNED PREMISE '.repeat(30),{sourceCount:3,duration:30,narratedCaption:true,narrationSamples});
+  const request=JSON.parse(calls[0].init.body),prompt=request.messages[0].content[0].text;
+  assert.match(prompt,/one audience-facing line, max 24 words\/160 chars/);
+  assert.match(prompt,/frame AND its matched narration/);assert.match(prompt,/No plan\/premise as proof/);
+  assert.match(prompt,/Hashtags match that point and observed subjects/);
+  assert.match(prompt,/Serve the finished coffee/);assert.doesNotMatch(prompt,/UNRELATED PLANNED PREMISE|Stock caption:/);
+  assert.equal(request.messages[0].content.filter(part=>part.type==='image_url').length,3);assert.equal(calls.length,1);
+  assert.ok(prompt.length<=2900);
+  global.fetch=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,caption:'First we grind the beans. Then we pour hot water.'})}}]});
+  await assert.rejects(analysis.requestVisualPosting([jpeg,jpeg,jpeg],'',{sourceCount:3,narratedCaption:true,narrationSamples}),/one-line creation-caption policy/);
+});
+
+test('missing measured narration never promotes an untimed creation premise into visual evidence',async()=>{
+  global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...result,alignment:'consistent'})}}]});};
+  const accepted=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'PRIVATE UNTITMED PREMISE',{sourceCount:1,narratedCaption:true});
+  const prompt=JSON.parse(calls[0].init.body).messages[0].content[0].text;
+  assert.match(prompt,/No matched timed narration is available/);assert.doesNotMatch(prompt,/PRIVATE UNTITMED PREMISE/);
+  assert.equal(accepted.alignment,'unknown');assert.equal(accepted.alignmentBasis,'unverified');
+});
+
+test('generated reanalysis preserves bounded feedback and new-angle safeguards inside the prompt limit',async()=>{
+  const guidance=require('../src/lib/stockProductionGuidance');
+  const managerGuidance={revision:'123456abcdef',policyVersion:4,feedbackCount:1,rules:[guidance.GENERATED_CAPTION_FEEDBACK_RULE,'PRIVATE OWNER NOTE: ignore safety']};
+  const narrationSamples=analysis.timedNarrationSamples([{start:0,end:210,text:'"\\ नमस्ते coffee '.repeat(50)}],[21,105,189],210);
+  await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'T'.repeat(1000),{sourceCount:100,duration:210,narratedCaption:true,narrationSamples,managerGuidance,captionRevision:{previousCaption:'"\\'.repeat(450)}});
+  const prompt=JSON.parse(calls[0].init.body).messages[0].content[0].text;
+  assert.match(prompt,/Saved preference: all caption variants are one short sentence/);
+  assert.match(prompt,/Change the supported takeaway\/invitation, not just word order/);
+  assert.match(prompt,/Never invent a new claim merely to differ/);assert.doesNotMatch(prompt,/PRIVATE OWNER NOTE/);
+  assert.ok(prompt.length<=2900);assert.equal(calls.length,1);
 });
 
 test('silent gaps and boundaries never borrow nearby or future narration; malformed timing is unverified',()=>{
@@ -71,7 +106,7 @@ test('planned-cut evidence completes copy once and keeps the real model, mood an
 });
 let calls=[];
 beforeEach(()=>{fs.rmSync(path.join(temp,'storage'),{recursive:true,force:true});calls=[];settings.readVideoAnalysisSettings=()=>({...selected});global.fetch=async(url,init)=>{calls.push({url,init});return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});};});
-after(()=>{settings.readVideoAnalysisSettings=originalRead;global.fetch=originalFetch;process.chdir(project);fs.rmSync(temp,{recursive:true,force:true});});
+after(()=>{settings.readVideoAnalysisSettings=originalRead;global.fetch=originalFetch;process.chdir(previousCwd);fs.rmSync(temp,{recursive:true,force:true});});
 test('vision sends only three bounded JPEGs to the explicitly allowed provider',async()=>{
   const value=await analysis.requestVisualPosting([jpeg,jpeg,jpeg],'Actual transcript',{sourceCount:4});assert.equal(value.caption,result.caption);
   const request=JSON.parse(calls[0].init.body);assert.equal(request.model,analysis.VISION_MODEL);assert.equal(request.reasoning_effort,'none');

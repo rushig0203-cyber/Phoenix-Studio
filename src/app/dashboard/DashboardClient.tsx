@@ -56,6 +56,7 @@ type AiJob = {
   retryCount: number;
   manualRetryCount?: number;
   createdAt: string;
+  finishedAt?: string;
   elapsedSeconds?: number;
   estimatedRemainingSeconds?: number;
   project: { title: string };
@@ -154,6 +155,8 @@ export default function DashboardClient() {
     return Math.max(latest, Date.parse(timestamp) || 0);
   }, 0), [sourceJobs]);
   const [aiJobs, setAiJobs] = useState<AiJob[]>([]);
+  const creationActivityAt = useMemo(() => aiJobs.reduce((latest, job) => job.status === "COMPLETED"
+    ? Math.max(latest, Date.parse(job.finishedAt || job.createdAt) || 0) : latest, 0), [aiJobs]);
   const [editJobs, setEditJobs] = useState<ReviewEditJob[]>([]);
   const [removingJob, setRemovingJob] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -419,7 +422,7 @@ export default function DashboardClient() {
           {sourceOpen ? <SourceProcessor active={section === "create" && workspace === "clips" && !offline} onClose={() => closeWorkspace("clips")} onStarted={() => started("Video queued. Follow its progress below.", "source")} /> : workspace === "clips" ? <Button onClick={() => setSourceOpen(true)}>Clip another video</Button> : null}
         </div>
         <div hidden={workspace !== "video"} data-creation-workspace="video" className={styles.workArea}>
-          {aiOpen ? <AICreation key={idea?.id || "custom"} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
+          {aiOpen ? <AICreation key={idea?.id || "custom"} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} creationActivityAt={creationActivityAt} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
         </div>
         </fieldset>
         {section === "library" ? <div className={styles.workArea}><ReviewLibrary files={files} loading={loading} onRefresh={load} /></div> : null}

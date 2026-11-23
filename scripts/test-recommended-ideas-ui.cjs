@@ -38,7 +38,7 @@ const natureContext = () => ({ now: Date.parse('2026-11-15T12:00:00Z'), recent: 
 // Exercise the real component and selector against an inert, local API fixture.
 // No owner files, providers, jobs, browser, real timers or server are started.
 async function harness(options = {}) {
-  let index = 0, tree, clock = 0, nextTimer = 0, context = natureContext();
+  let index = 0, tree, clock = 0, nextTimer = 0, context = natureContext(), activityAt = options.creationActivityAt;
   const timers = new Map(), slots = [], effects = [], pending = [], cleanups = [], chosen = [], requests = [];
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
@@ -54,33 +54,35 @@ async function harness(options = {}) {
       requests.push(parsed);
       const seen = parsed.searchParams.get('seen').split(',').filter(Boolean); assert.ok(seen.length <= 48);
       if (options.fail?.()) return { ok: false };
-      const result = recommendations.personalizedCreationRecommendations(context, Number(parsed.searchParams.get('cursor')), seen);
+      const result = recommendations.personalizedCreationRecommendations(context, Number(parsed.searchParams.get('cursor')), seen, parsed.searchParams.get('kind') || undefined);
       return { ok: true, async json() { return { ...result, ideas: result.ideas.map(idea => options.decorate ? options.decorate(idea) : idea) }; } };
     },
   };
   if (options.propertyDenied) Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Browser property blocked'); } });
   else sandbox.localStorage = options.storage || memoryStorage();
   const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, './StudioActivity': { __esModule: true, default: Activity }, '@/lib/creationRecommendations': recommendations }, sandbox).default;
-  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea) }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } return tree; }
+  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea), kind: options.kind || 'General video', creationActivityAt: activityAt }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } return tree; }
   async function settle() { for (let count = 0; count < 8; count++) await Promise.resolve(); render(); }
   const cards = () => nodes(tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Use idea: '));
   const ids = () => cards().map(node => node.props['aria-label']);
   const more = async () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'More ideas').props.onClick(); await settle(); };
+  const categories = async () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'Other categories').props.onClick(); await settle(); };
   render(); await settle();
   async function advance(milliseconds) { const target = clock + milliseconds; for (let passes = 0; ; passes++) { assert.ok(passes < 20); const next = [...timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0]; if (!next) break; clock = next[1].at; timers.delete(next[0]); next[1].callback(); await settle(); } clock = target; }
-  return { cards, ids, more, chosen, advance, requests, tree: () => tree, setContext(value) { context = value; }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
+  return { cards, ids, more, categories, chosen, advance, requests, tree: () => tree, setContext(value) { context = value; }, async setActivityAt(value) { activityAt = value; await settle(); }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
 }
 
 test('creation fetches local recent subjects on open and remembers them across visits', async () => {
   const storage = memoryStorage(), first = await harness({ storage });
-  assert.equal(first.cards().length, 6); assert.equal(first.requests.length, 1);
-  assert.ok(first.cards().slice(0, 5).every(card => /posted wildlife/.test(text(card))));
+  assert.equal(first.cards().length, 5); assert.equal(first.requests.length, 1);
+  assert.equal(first.requests[0].searchParams.get('kind'), 'General video');
+  assert.ok(first.cards().every(card => /Nature & places/.test(card.props.title)));
   assert.ok(first.cards().every(card => !/panda|rabbit|waterfall|bamboo/i.test(card.props['aria-label'])));
   await first.more(); const previous = first.ids(); first.unmount();
   const reopened = await harness({ storage });
   assert.ok(reopened.ids().every(id => !previous.includes(id)));
   assert.equal(reopened.chosen.length, 0); assert.match(text(reopened.tree()), /Recently shown subjects are remembered/);
-  assert.ok(reopened.requests[0].searchParams.get('seen').split(',').length >= 12);
+  assert.ok(reopened.requests[0].searchParams.get('seen').split(',').length >= 10);
 });
 
 test('blocked browser storage preserves in-session history without replaying stale cards', async () => {
@@ -97,19 +99,31 @@ test('blocked browser storage preserves in-session history without replaying sta
   assert.equal(reads, 1, 'Do not reload stale saved history after a failed write');
 });
 
-test('concise cards show one evidence reason and preserve the entire selected premise', async () => {
-  const ui = await harness({ decorate: idea => ({ ...idea, title: `Visible topic ${idea.id} — Explain a concrete comparison — keep its full payoff.` }) });
+test('nature cards show their registered short title and one angle', async () => {
+  const ui = await harness();
   for (const card of ui.cards()) {
-    const premise = card.props['aria-label'].slice('Use idea: '.length);
+    const title = card.props['aria-label'].slice('Use idea: '.length);
     const spans = nodes(card).filter(node => node.type === 'span');
-    assert.equal(spans.length, 2); assert.equal(spans[0].props.children, premise.slice(0, premise.indexOf(' — ')));
-    assert.doesNotMatch(text(card), /Explain a concrete comparison/);
-    assert.ok(spans[1].props.children); card.props.onClick();
-    assert.equal(ui.chosen.at(-1).title, premise);
+    const resolved = recommendations.recommendationPool().map(idea => recommendations.resolveCreationRecommendation(idea.id)).find(idea => idea.title === title && idea.visualSubject);
+    assert.equal(spans.length, 2); assert.equal(spans[0].props.children, title);
+    assert.ok(resolved); assert.equal(spans[1].props.children, resolved.premise);
+    card.props.onClick(); assert.equal(ui.chosen.at(-1).title, title);
   }
-  const premises = nodes(ui.tree()).filter(node => node.type === 'details' && text(node).startsWith('Video premise'));
-  assert.equal(premises.length, 6); assert.ok(premises.every(node => !node.props.open));
-  assert.equal(ui.chosen.length, 6);
+  assert.equal(ui.chosen.length, 5);
+});
+
+test('other categories remain selectable and children stay in the existing 2D workflow', async () => {
+  const all = await harness();
+  await all.categories();
+  assert.equal(all.requests.at(-1).searchParams.get('kind'), null);
+  assert.ok(all.cards().length > 0 && all.cards().length <= 6);
+  all.cards()[0].props.onClick();
+  assert.ok(all.chosen[0].kind);
+  const children = await harness({ kind: "Children's short story" });
+  assert.equal(children.cards().length, 6);
+  assert.ok(children.cards().every(card => /Ages 3–6/.test(card.props.title)));
+  assert.equal(nodes(children.tree()).some(node => node.type === 'button' && text(node) === 'Other categories'), false);
+  children.cards()[0].props.onClick(); assert.equal(children.chosen[0].kind, "Children's short story");
 });
 
 test('More ideas uses newly saved subjects rather than shuffling the previous profile', async () => {
@@ -117,17 +131,19 @@ test('More ideas uses newly saved subjects rather than shuffling the previous pr
   ui.setContext({ ...natureContext(), recent: [{ reviewId: 'bread', title: 'Bread kneaded by hand', workflow: 'general', observations: [], createdAt: '2026-11-15', posted: true }] });
   await ui.more();
   assert.ok(ui.ids().every(id => !previous.includes(id)));
-  assert.ok(ui.cards().slice(0, 5).every(card => /food and craft/.test(text(card))));
+  assert.ok(ui.cards().every(card => /Nature & places/.test(card.props.title)));
   assert.ok(ui.cards().every(card => !/bread|bakery|kneading/i.test(card.props['aria-label'])));
 });
 
-test('automatic refresh checks the local context after 15 days and never chooses an idea', async () => {
-  assert.equal(recommendations.RECOMMENDATION_REFRESH_MS, 15 * 24 * 60 * 60 * 1000);
+test('automatic refresh checks daily, on finished creation activity and on demand without choosing an idea', async () => {
+  assert.equal(recommendations.RECOMMENDATION_REFRESH_MS, 24 * 60 * 60 * 1000);
   const ui = await harness(), before = ui.ids(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS - 1);
   assert.deepEqual(plain(ui.ids()), plain(before)); assert.equal(ui.requests.length, 1);
   await ui.advance(1); assert.ok(ui.ids().every(id => !before.includes(id)));
   assert.equal(ui.requests.length, 2); assert.equal(ui.chosen.length, 0);
-  ui.unmount(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 2);
+  await ui.setActivityAt(Date.parse('2026-11-16T12:00:00Z'));
+  assert.equal(ui.requests.length, 3, 'A successful draft/render completion timestamp refreshes the list');
+  ui.unmount(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 3);
 });
 
 test('a failed refresh retains usable cards and does not record an unseen batch', async () => {

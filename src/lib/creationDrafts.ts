@@ -56,7 +56,8 @@ export async function createCreationDrafts(inputs: GenerationInput[]) {
       const changedTopic = existing.input.requestTopic === undefined
         ? input.requestTopic !== "" && existing.input.topic !== input.topic
         : existing.input.requestTopic !== (input.requestTopic ?? input.topic);
-      if (changedTopic || (existing.input.creationType || "general") !== (input.creationType || "general") || existing.input.language !== input.language) {
+      if (changedTopic || (existing.input.creationType || "general") !== (input.creationType || "general") || existing.input.language !== input.language
+        || existing.input.recommendation?.id !== input.recommendation?.id) {
         throw new DraftConflict("This saved request belongs to a different idea. Start this selection as a new creation; the earlier video was kept.");
       }
       return existing;

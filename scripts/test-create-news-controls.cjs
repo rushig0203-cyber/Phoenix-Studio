@@ -64,7 +64,24 @@ test('the dedicated video workspace opens personalized ideas without creating un
   assert.equal(nodes(h.tree).filter(node => node.type === 'Recommendations').length, 0);
   h.submit(); await h.flush();
   assert.equal(h.requests.length, 1); assert.equal(JSON.parse(h.requests[0].body).topic, idea.title);
+  assert.equal(JSON.parse(h.requests[0].body).recommendationId, idea.id);
   assert.equal(h.started.length, 1);
+});
+test('curated nature submission keeps the exact visible title and clears its ID after a manual edit', async () => {
+  const h = harness('AICreation', async () => Response.json({ draftIds: ['12345678-1234-4234-8234-123456789abc'], count: 1 }), { initialSuggestionsOpen: true, creationActivityAt: 1234 });
+  const recommendationArea = () => nodes(h.tree).find(node => node.type === 'Recommendations');
+  assert.equal(recommendationArea().props.kind, 'General video');
+  assert.equal(recommendationArea().props.creationActivityAt, 1234);
+  const id = 'otter-swimming:observation', resolved = recommendations.resolveCreationRecommendation(id);
+  const canonical = recommendations.recommendationPool().find(idea => idea.id === id);
+  recommendationArea().props.onChoose({ ...canonical, title: resolved.title, premise: resolved.premise, visualSubject: resolved.visualSubject }); h.render();
+  assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, resolved.title);
+  h.submit(); await h.flush();
+  let request = JSON.parse(h.requests.at(-1).body);
+  assert.equal(request.topic, resolved.title); assert.equal(request.recommendationId, id);
+  nodes(h.tree).find(node => node.type === 'textarea').props.onChange({ target: { value: 'A new hand-written topic' } }); h.render();
+  h.submit(); await h.flush(); request = JSON.parse(h.requests.at(-1).body);
+  assert.equal(request.topic, 'A new hand-written topic'); assert.equal(request.recommendationId, undefined);
 });
 test('creation shows shared activity while pending and preserves a retryable service error', async () => {
   let resolve;
@@ -85,7 +102,7 @@ test('selected news submits the displayed report once and only accepts a real du
   nodes(h.tree).find(n => n.type === 'NewsIdeas').props.onChoose({ id: 'a'.repeat(32), title: 'A selected report', url: 'https://www.bbc.co.uk/news/articles/example', publishedAt: '2026-10-30', source: 'BBC News' }); h.render();
   h.submit(); h.submit(); await h.flush();
   assert.equal(h.requests.length, 1); assert.equal(h.requests[0].url, '/api/generations');
-  assert.equal(JSON.parse(h.requests[0].body).newsId, 'a'.repeat(32)); assert.ok(h.requests[0].signal);
+  assert.equal(JSON.parse(h.requests[0].body).newsId, 'a'.repeat(32)); assert.equal(JSON.parse(h.requests[0].body).recommendationId, undefined); assert.ok(h.requests[0].signal);
   assert.equal(h.started.length, 1);
 });
 test('choosing the Hindi Krishna starter submits the displayed title and requests natural timing', async () => {
@@ -177,7 +194,7 @@ test('child suggestions use the current kind and fixed starters stay in a closed
   assert.ok(examples);assert.notEqual(examples.props.open,true);
   assert.ok(nodes(examples).some(node=>node.type==='button'&&text(node)===krishna.KRISHNA_STORY_TITLE));
   const general=harness('AICreation',()=>assert.fail('Opening suggestions must not create a job'),{initialSuggestionsOpen:true});
-  assert.equal(nodes(general.tree).find(node=>node.type==='Recommendations').props.kind,undefined);
+  assert.equal(nodes(general.tree).find(node=>node.type==='Recommendations').props.kind,'General video');
 });
 test('generic Krishna edits and explicit starter selection preserve an intentionally chosen series',async()=>{
   const h=harness('AICreation',async()=>Response.json({draftIds:['12345678-1234-4234-8234-123456789abc'],count:10}),{initialKind:"Children's short story",initialTopic:'Krishna and a lost flute',initialSuggestionsOpen:true});

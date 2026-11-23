@@ -6,7 +6,7 @@ import { selectedFootage } from "./stockCatalog";
 import { withWritingSession } from "./writingModel";
 import { NEWS_MIXED_VISUAL_POLICY, newsIllustrationQuery, newsStockQueryIssue, readNewsIllustration } from "./newsVisualPolicy";
 
-export type StockPreparation = { version: 1; scenes: DraftScene[] };
+export type StockPreparation = { version: 1; scenes: DraftScene[]; repairUsed?: true };
 type Checkpoint = (input: GenerationInput, scenes: DraftScene[], stage: string) => Promise<unknown>;
 const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -16,9 +16,12 @@ const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
 export async function prepareStockCreation(original: GenerationInput, savedScenes: DraftScene[] = [], checkpoint: Checkpoint = async () => {}, selectFootage = true) {
   let input = { ...original };
   let scenes = savedScenes.map(scene => ({ ...scene }));
+  const evidence = input.narrationPresentation === "measured-speech-v1" && !input.research
+    ? { subject: input.recommendation?.visualSubject } : undefined;
+  let repairUsed = input.stockPreparation?.repairUsed;
   const save = async (current: DraftScene[], stage: string) => {
     scenes = current.map(scene => ({ ...scene }));
-    input = { ...input, stockPreparation: { version: 1, scenes } };
+    input = { ...input, stockPreparation: { version: 1, scenes, ...(repairUsed ? { repairUsed } : {}) } };
     await checkpoint(input, scenes, stage);
   };
   // Keep writing stages together, then release any local runner before footage
@@ -26,7 +29,10 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
   await withWritingSession(async () => {
     const scriptOrigin = input.scriptOrigin || (input.script?.trim() ? "owner" : "local-model");
     const script = await createStockScript(input, stage => checkpoint(input, scenes, stage));
-    if (normalize(scenes.map(scene => scene.narration).join(" ")) !== normalize(script)) scenes = [];
+    if (normalize(scenes.map(scene => scene.narration).join(" ")) !== normalize(script)) {
+      scenes = [];
+      repairUsed = undefined;
+    }
     input = { ...input, script, scriptOrigin };
     // The saved script/editorial verdict survives an interrupted shot-list call.
     await checkpoint(input, scenes, "Narration saved — planning the matching visual sequence");
@@ -36,8 +42,8 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
         ? input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY || scene.footage || !readNewsIllustration(scene.illustration) || scene.query !== newsIllustrationQuery(scene.illustration)
         : newsStockQueryIssue(scene.query, input.research));
       if (unsafe >= 0) throw new Error(`News section ${unsafe + 1}: ${newsStockQueryIssue(scenes[unsafe].query, input.research)}. The saved narration is retained; create a new visual plan instead of rendering this legacy shot.`);
-    } else if (input.visualTermsOrigin === "local-model") {
-      const unsafe = scenes.findIndex(scene => stockQueryMismatch(scene.narration, scene.query));
+    } else if (input.visualTermsOrigin === "local-model" || evidence && input.visualTermsOrigin !== "owner") {
+      const unsafe = scenes.findIndex(scene => stockQueryMismatch(scene.narration, scene.query, evidence?.subject));
       if (unsafe >= 0) throw new Error(`Saved section ${unsafe + 1} has footage for a different narrated action. Create a fresh visual plan; selected assets and saved narration were not replaced.`);
     }
     await save(scenes, "Shot plan saved — checking exact footage");
@@ -52,12 +58,17 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     await save(scenes, `Restored selected footage ${index + 1}/${scenes.length}`);
   }
   if (selectFootage) {
-    const canRepairQueries = input.scriptOrigin === "local-model" && !input.scriptApproved && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
+    const canRepairQueries = input.scriptOrigin === "local-model" && !input.scriptApproved && !repairUsed
+      && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
     await selectAutomaticFootage(scenes, input.duration, input.aspect, save, input.research,
-      canRepairQueries && input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY ? (current, failedIndex, titles) => repairUnavailableStockQueries(input, current, failedIndex, titles) : undefined, input.newsVisualPolicy);
+      canRepairQueries && input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY ? async (current, failedIndex, titles) => {
+        const queries = await repairUnavailableStockQueries(input, current, failedIndex, titles);
+        if (evidence) repairUsed = true;
+        return queries;
+      } : undefined, input.newsVisualPolicy, evidence);
   }
   if (selectFootage && scenes.some(scene => !scene.footage && !scene.illustration)) throw new Error("The footage plan is incomplete. No backend search fallback was allowed.");
-  input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query, ...(scene.illustration ? { illustration: { ...scene.illustration } } : { assetId: scene.footage?.id }) })), stockPreparation: { version: 1, scenes } };
+  input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query, ...(scene.illustration ? { illustration: { ...scene.illustration } } : { assetId: scene.footage?.id }) })), stockPreparation: { version: 1, scenes, ...(repairUsed ? { repairUsed } : {}) } };
   await checkpoint(input, scenes, selectFootage ? "Exact footage saved — ready for rendering" : "Visual sequence saved");
   return { input, scenes };
 }

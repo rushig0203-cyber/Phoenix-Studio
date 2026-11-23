@@ -20,6 +20,8 @@ import { readWritingSettings } from "@/lib/writingSettings";
 import { researchNews } from "@/lib/newsResearch";
 import { buildKidsStorySeries, inventKidsIdea, kidsRendererAvailable } from "@/lib/kidsRenderer";
 import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, krishnaStoryPreset } from "@/lib/krishnaStory";
+import { resolveCreationRecommendation } from "@/lib/creationRecommendations";
+import { NEWS_MIXED_VISUAL_POLICY } from "@/lib/newsVisualPolicy";
 import {
   durationFitsPublishingFormat,
   inferPublishingFormat,
@@ -35,6 +37,7 @@ const schema = z.object({
   songStyle: z.string().trim().max(500).optional(),
   songAudioId: z.string().uuid().optional(),
   requestId: z.string().uuid().optional(),
+  recommendationId: z.string().trim().min(1).max(160).optional(),
   topic: z.string().max(500).default(""),
   autoIdea: z.boolean().default(false),
   autoDuration: z.boolean().default(false),
@@ -75,6 +78,12 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
+    const recommendation = data.recommendationId ? resolveCreationRecommendation(data.recommendationId) : null;
+    if (data.recommendationId && (!recommendation || data.newsId || data.autoIdea
+      || ![recommendation.title, recommendation.legacyTitle].includes(data.topic.trim())
+      || { "Children's short story": "children-story", "Children's song": "children-song", "Business video": "business", "General video": "general" }[recommendation.kind] !== data.creationType)) {
+      return NextResponse.json({ error: "This idea no longer matches the selected title or format. Choose the idea again, or enter your own topic." }, { status: 400 });
+    }
     if (data.newsId && !["general", "business"].includes(data.creationType)) return NextResponse.json({ error: "News reports use real-footage explainers, not children's animation or songs." }, { status: 400 });
     if (data.newsId && (data.script?.trim() || data.visualTerms?.length)) return NextResponse.json({ error: "Report mode writes from its source. Remove the custom narration and shot brief, or create an ordinary video without selecting a news report." }, { status: 400 });
     if (data.creationType === "children-song") {
@@ -100,7 +109,7 @@ export async function POST(request: Request) {
     // Older/manual callers and children's minimums keep their existing contract.
     if (data.autoDuration && !children) {
       const words = data.script?.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-      data.duration = data.script?.trim() ? Math.max(8, Math.min(90, Math.floor(words / 2.7))) : 60;
+      data.duration = data.script?.trim() ? Math.max(8, Math.min(90, Math.floor(words / 2.7))) : recommendation?.visualSubject ? 35 : 60;
       data.publishingFormat = "youtube-short";
     }
     const needsWriter = !studioStory && (!data.script?.trim() || (!children && !data.visualTerms?.length));
@@ -140,7 +149,7 @@ export async function POST(request: Request) {
     if (!children && !(await generatorReachable())) {
       return NextResponse.json({ error: "The optional free stock-video service is offline." }, { status: 503 });
     }
-    if (!children) await requireStockStoryboardRenderer(Boolean(data.newsId), Boolean(data.newsId), data.voice === "local-windows-voice");
+    if (!children) await requireStockStoryboardRenderer(Boolean(data.newsId), Boolean(data.newsId), data.voice === "local-windows-voice", data.newsId ? NEWS_MIXED_VISUAL_POLICY : undefined, true);
 
     const baseTopic = studioStory ? (studioStory.language === "Hindi" ? HINDI_KRISHNA_STORY_TITLE : KRISHNA_STORY_TITLE) : children && data.autoIdea
       ? await inventKidsIdea(data.creationType as "children-story" | "children-song")
@@ -153,6 +162,8 @@ export async function POST(request: Request) {
     const research = data.newsId ? await researchNews(data.newsId) : undefined;
     const common = {
       research,
+      recommendation: recommendation ? { id: recommendation.id, premise: recommendation.premise, visualSubject: recommendation.visualSubject } : undefined,
+      narrationPresentation: children ? undefined : "measured-speech-v1",
       reviewMode: "final",
       songMode: data.songMode,
       hostedSongConsent: data.hostedSongConsent,

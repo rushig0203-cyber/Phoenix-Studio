@@ -25,7 +25,7 @@ def added_source(filename):
     return "\n".join(lines) + "\n"
 
 
-names = {"words", "edge_caption_cues", "save_edge_captions", "subtitle_cues", "news_caption_lines", "save_news_captions"}
+names = {"words", "edge_caption_cues", "save_edge_captions", "save_caption_cues", "subtitle_cues", "news_caption_lines", "save_news_captions"}
 source = ast.parse(added_source("app/services/phoenix_storyboard.py"))
 functions = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name in names]
 assert {node.name for node in functions} == names
@@ -63,7 +63,7 @@ class TestShippedCaptionIntegration(unittest.TestCase):
 
     def test_news_render_groups_captions_after_preserving_the_full_shot_timeline(self):
         patch = (Path(__file__).resolve().parent.parent / "integrations" / "moneyprinterturbo-local.patch").read_text(encoding="utf-8")
-        self.assertIn('+            if getattr(params, "phoenix_news_caption_style", None) == "measured-phrases-v1":', patch)
+        self.assertIn('+            if measured_speech_cues is None and getattr(params, "phoenix_news_caption_style", None) == "measured-phrases-v1":', patch)
         self.assertLess(patch.index('storyboard_timeline, public_storyboard = phoenix_storyboard.prepare_timeline('), patch.index('+                subtitle_path = phoenix_storyboard.save_news_captions('))
 
     def test_real_edge_caption_recovery_is_only_for_missing_edge_storyboard_captions(self):

@@ -10,6 +10,8 @@ export type CreationRecommendation = {
   topicKey: string;
   angleKey: string;
   title: string;
+  premise?: string;
+  visualSubject?: string;
   category: RecommendationGroup;
   kind: CreationKind;
   audience: "General audience" | "Working adults" | "Ages 3–6";
@@ -17,7 +19,7 @@ export type CreationRecommendation = {
 
 export const RECOMMENDATION_STORAGE_KEY = "phoenix-recommendations-v1";
 export const RECOMMENDATION_HISTORY_LIMIT = 256;
-export const RECOMMENDATION_REFRESH_MS = 15 * 24 * 60 * 60 * 1000;
+export const RECOMMENDATION_REFRESH_MS = 24 * 60 * 60 * 1000;
 export type RecommendationMemory = { version: 1; shown: string[]; cursor: number };
 export const emptyRecommendationMemory = (): RecommendationMemory => ({ version: 1, shown: [], cursor: 0 });
 
@@ -222,6 +224,46 @@ const recommendationById = new Map(RECOMMENDATIONS.map(idea => [idea.id, idea]))
 export function recommendationPool(): CreationRecommendation[] { return [...RECOMMENDATIONS]; }
 
 export type PersonalizedCreationRecommendation = CreationRecommendation & SuggestionReason;
+const MINI_DOC_VISUAL_SUBJECTS: Readonly<Record<string, string>> = {
+  "catalogue-0-0": "waterfall", "catalogue-0-1": "waves", "catalogue-0-2": "birds", "catalogue-0-3": "forest", "catalogue-0-4": "butterfly",
+  "catalogue-1-1": "mountains", "catalogue-1-3": "train", "catalogue-3-0": "cat", "catalogue-3-1": "dog", "catalogue-3-2": "horses", "catalogue-3-3": "garden insects",
+  "catalogue-8-0": "park",
+  "bird-nest:materials": "bird nest", "lake-reflection:reveal": "lake", "coastal-tide:movement": "waves", "alpine-valley:scale": "mountains",
+  "fjord-shore:reveal": "fjord", "rail-window:journey": "train", "old-town-morning:observation": "old town", "snow-texture:contrast": "snow",
+  "desert-lines:patterns": "dunes", "autumn-path:color": "autumn forest", "misty-woodland:reveal": "forest", "otter-river:observation": "otter",
+  "shore-birds:movement": "shorebird", "otter-swimming:observation": "otter", "penguin-feathers:adaptation": "penguin", "bee-pollen:process": "bee",
+  "japan-train-platform:observation": "train", "iceland-waterfall-landscape:comparison": "waterfall", "elephant-trunk:adaptation": "elephant",
+  "giraffe-feeding:adaptation": "giraffe", "turtle-swimming:adaptation": "sea turtle", "squirrel-balance:adaptation": "squirrel",
+  "flamingo-feeding:adaptation": "flamingo", "deer-ears:observation": "deer", "zebra-stripes:observation": "zebra",
+  "duck-feathers:adaptation": "duck", "frog-skin:adaptation": "frog", "hummingbird-hover:adaptation": "hummingbird",
+  "dragonfly-flight:observation": "dragonfly", "ladybird-wing:observation": "ladybird", "snail-movement:adaptation": "snail",
+  "crab-walking:adaptation": "crab", "jellyfish-pulse:adaptation": "jellyfish", "octopus-arms:observation": "octopus",
+  "seal-swimming:adaptation": "seal", "chameleon-feet:adaptation": "chameleon", "hedgehog-spines:adaptation": "hedgehog",
+  "moss-moisture:observation": "moss", "fern-fronds:process": "fern", "bamboo-stems:structure": "bamboo",
+  "cactus-water:adaptation": "cactus", "mangrove-roots:adaptation": "mangrove roots",
+};
+export type ResolvedCreationRecommendation = {
+  id: string; title: string; premise: string; kind: CreationKind; category: RecommendationGroup; audience: CreationRecommendation["audience"];
+  legacyTitle: string; visualSubject?: string;
+};
+/** Server validation and the UI use the same stable ID-to-visible-title mapping. */
+export function resolveCreationRecommendation(id: unknown): ResolvedCreationRecommendation | null {
+  if (typeof id !== "string") return null;
+  const idea = recommendationById.get(id);
+  if (!idea) return null;
+  const divider = idea.title.indexOf(" — ");
+  const legacyHeadline = divider < 0 ? idea.title : idea.title.slice(0, divider);
+  const legacyPremise = divider < 0 ? "" : idea.title.slice(divider + 3);
+  const visualSubject = MINI_DOC_VISUAL_SUBJECTS[id];
+  if (!visualSubject) return { id: idea.id, title: idea.title, premise: legacyPremise, kind: idea.kind, category: idea.category, audience: idea.audience, legacyTitle: idea.title };
+  const shortHeadline = legacyHeadline.length <= 56 ? legacyHeadline : visualSubject.replace(/\b\w/g, character => character.toUpperCase());
+  return { id: idea.id, title: shortHeadline, premise: legacyPremise || idea.title, kind: idea.kind, category: idea.category, audience: idea.audience,
+    legacyTitle: idea.title, visualSubject };
+}
+const natureMiniDoc = (idea: CreationRecommendation): (CreationRecommendation & { premise: string; visualSubject: string }) | null => {
+  const resolved = resolveCreationRecommendation(idea.id);
+  return resolved?.visualSubject ? { ...idea, title: resolved.title, premise: resolved.premise, visualSubject: resolved.visualSubject } : null;
+};
 const subjectPatterns = [
   "rabbit|bunny", "panda", "cat|kitten", "dog|puppy", "otter", "penguin", "bee|bees|pollen", "bird|birds|nest|shorebird|shorebirds", "butterfly|butterflies",
   "elephant", "giraffe", "turtle", "squirrel", "flamingo", "deer", "zebra", "duck", "frog", "hummingbird", "dragonfly", "ladybird|ladybug", "snail", "crab", "jellyfish", "octopus", "seal", "chameleon", "hedgehog", "horse|horses",
@@ -271,12 +313,13 @@ export function personalizedCreationRecommendations(context: SuggestionContext, 
     for (const interest of item.interests) interestWeights.set(interest, (interestWeights.get(interest) || 0) + weight);
   }
   const preferredKind = selectedKind ?? [...kindWeights].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "General video";
+  const miniDocMode = selectedKind === "General video";
   const leadingInterest = [...interestWeights].sort((a, b) => b[1] - a[1])[0]?.[0];
   const lastShown = new Map(seen.slice(-48).flatMap((id, index) => recommendationById.has(id) ? [[recommendationById.get(id)!.topicKey, index] as const] : []));
   const recentSubjects = new Set(recent.flatMap(item => item.subjects));
   const recentTitles = new Set(recent.map(item => canonicalRecommendationKey(headline(item.title))));
   const epoch = Math.floor(context.now / RECOMMENDATION_REFRESH_MS);
-  const candidates = RECOMMENDATIONS.filter(idea => idea.kind === preferredKind
+  const candidates = RECOMMENDATIONS.filter(idea => idea.kind === preferredKind && (!miniDocMode || !!MINI_DOC_VISUAL_SUBJECTS[idea.id])
     && !recentTitles.has(canonicalRecommendationKey(headline(idea.title)))
     && (preferredKind.startsWith("Children") || !subjects(`${idea.topicKey} ${headline(idea.title)}`).some(subject => recentSubjects.has(subject)))).map((idea, index) => {
     const tags = interests(`${idea.topicKey} ${headline(idea.title)}`, recommendationWorkflow(idea));
@@ -297,26 +340,27 @@ export function personalizedCreationRecommendations(context: SuggestionContext, 
   }).sort((a, b) => Number(a.shownAt !== undefined) - Number(b.shownAt !== undefined)
     || (a.shownAt !== undefined && b.shownAt !== undefined ? a.shownAt - b.shownAt : 0) || b.score - a.score || a.order - b.order);
   const ideas: PersonalizedCreationRecommendation[] = [];
+  const limit = miniDocMode ? 5 : 6;
   const used = new Set<string>();
   const relevant = candidates.filter(item => leadingInterest === "wildlife" ? item.tags.includes("wildlife") : item.score > 0 || !leadingInterest);
   for (const candidate of relevant) {
     if (used.has(candidate.idea.topicKey)) continue;
-    ideas.push(candidate.idea); used.add(candidate.idea.topicKey);
-    if (ideas.length === 5) break;
+    ideas.push(miniDocMode ? { ...natureMiniDoc(candidate.idea)!, reason: candidate.idea.reason, basis: candidate.idea.basis } : candidate.idea); used.add(candidate.idea.topicKey);
+    if (ideas.length === Math.min(5, limit)) break;
   }
   const nearby = candidates.find(item => !used.has(item.idea.topicKey) && (leadingInterest === "wildlife"
     ? !item.tags.includes("wildlife") && item.tags.includes("nature") && ["Nature & places", "Science & curiosity"].includes(item.idea.category)
     : item.score === 0 && (!leadingInterest || leadingInterest !== "nature" || item.tags.includes("science"))));
-  if (nearby) { ideas.push(nearby.idea); used.add(nearby.idea.topicKey); }
+  if (nearby && ideas.length < limit) { ideas.push(miniDocMode ? { ...natureMiniDoc(nearby.idea)!, reason: nearby.idea.reason, basis: nearby.idea.basis } : nearby.idea); used.add(nearby.idea.topicKey); }
   for (const candidate of relevant) {
-    if (ideas.length === 6) break;
-    if (!used.has(candidate.idea.topicKey)) { ideas.push(candidate.idea); used.add(candidate.idea.topicKey); }
+    if (ideas.length === limit) break;
+    if (!used.has(candidate.idea.topicKey)) { ideas.push(miniDocMode ? { ...natureMiniDoc(candidate.idea)!, reason: candidate.idea.reason, basis: candidate.idea.basis } : candidate.idea); used.add(candidate.idea.topicKey); }
   }
   for (const candidate of candidates) {
-    if (ideas.length === 6) break;
-    if (!used.has(candidate.idea.topicKey)) { ideas.push(candidate.idea); used.add(candidate.idea.topicKey); }
+    if (ideas.length === limit) break;
+    if (!used.has(candidate.idea.topicKey)) { ideas.push(miniDocMode ? { ...natureMiniDoc(candidate.idea)!, reason: candidate.idea.reason, basis: candidate.idea.basis } : candidate.idea); used.add(candidate.idea.topicKey); }
   }
-  return { ideas, nextCursor: (safeCursor + 6) % RECOMMENDATIONS.length };
+  return { ideas, nextCursor: (safeCursor + limit) % RECOMMENDATIONS.length };
 }
 
 export const PERSONALIZED_RECOMMENDATION_STORAGE_KEY = "phoenix-creation-suggestions-v2";
@@ -398,8 +442,8 @@ export function nextStoredRecommendations(storage: RecommendationStorage, fallba
 
 type RecommendationForm = { kind: CreationKind; topic: string; autoIdea: boolean; publishingFormat: PublishingFormat; duration: number; batchCount: 1 | 10; narration: string };
 export function applyRecommendationToForm<T extends RecommendationForm>(current: T, recommendation: CreationRecommendation) {
-  const idea = recommendationById.get(recommendation.id);
-  if (!idea || typeof recommendation.title !== "string" || !recommendation.title.trim() || recommendation.title.length > 400
+  const idea = recommendationById.get(recommendation.id), resolved = resolveCreationRecommendation(recommendation.id);
+  if (!idea || !resolved || ![resolved.title, resolved.legacyTitle].includes(recommendation.title) || typeof recommendation.title !== "string" || !recommendation.title.trim() || recommendation.title.length > 400
       || /[\u0000-\u001f\u007f]/.test(recommendation.title)) return current;
   const changedType = current.kind !== idea.kind;
   const format = changedType ? idea.kind === "Children's song" ? "youtube-full" : "youtube-short" : current.publishingFormat;

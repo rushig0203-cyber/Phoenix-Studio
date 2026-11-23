@@ -1,7 +1,7 @@
 import type { DraftScene, FootageChoice } from "./creationDraftTypes";
 import { searchFootage } from "./stockCatalog";
 import { visualWords } from "./stockBrief";
-import { footageMetadataMismatch } from "./footageSemantics";
+import { footageMetadataMismatch, hasFootageEvidence } from "./footageSemantics";
 import type { NewsResearch } from "./newsResearch";
 import { NEWS_MIXED_VISUAL_POLICY, newsContextSearches, newsEditorialIllustration, newsIllustrationQuery, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms, readNewsIllustration, type NewsVisualPolicy } from "./newsVisualPolicy";
 
@@ -10,7 +10,9 @@ const tokens = (value: string) => visualWords(value).filter(word => !generic.has
 const footageTitle = (choice: FootageChoice) => new URL(choice.sourcePage).pathname.replace(/[-_/\d]+/g, " ").trim();
 
 /** Metadata heuristics, not visual recognition. Never silently use an unrelated search. */
-export function rankFootage(choices: FootageChoice[], query: string, minimumSeconds: number, aspect: "9:16" | "16:9", used: Set<number>, previous?: FootageChoice, research?: NewsResearch) {
+type ShotEvidence = { subject?: string };
+
+export function rankFootage(choices: FootageChoice[], query: string, minimumSeconds: number, aspect: "9:16" | "16:9", used: Set<number>, previous?: FootageChoice, research?: NewsResearch, evidence?: ShotEvidence) {
   const wanted = research ? newsVisualTerms(query) : tokens(query);
   const target = aspect === "9:16" ? 9 / 16 : 16 / 9;
   return choices.flatMap((choice, index) => {
@@ -18,6 +20,7 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
     const title = footageTitle(choice);
     const description = research ? newsVisualTerms(title) : tokens(title);
     if (research && newsFootageMetadataIssue(title, query, research)) return [];
+    if (evidence && (!hasFootageEvidence(title, query) || evidence.subject && !hasFootageEvidence(title, evidence.subject))) return [];
     // A shared noun is insufficient: "bread" cannot justify footage of a
     // finished loaf while the requested shot is dough rising in a bowl.
     if (description.length && footageMetadataMismatch(title, query)) return [];
@@ -33,7 +36,7 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
 }
 
 export async function selectAutomaticFootage(scenes: DraftScene[], duration: number, aspect: "9:16" | "16:9", onScene: (scenes: DraftScene[], stage: string) => Promise<unknown>, research?: NewsResearch,
-  repairQueries?: (scenes: DraftScene[], failedIndex: number, catalogTitles: string[]) => Promise<string[]>, newsPolicy?: NewsVisualPolicy) {
+  repairQueries?: (scenes: DraftScene[], failedIndex: number, catalogTitles: string[]) => Promise<string[]>, newsPolicy?: NewsVisualPolicy, evidence?: ShotEvidence) {
   const selected = scenes.map(scene => ({ ...scene }));
   let repairAttempted = false;
   const words = selected.reduce((sum, scene) => sum + scene.narration.split(/\s+/).length, 0);
@@ -49,6 +52,9 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
     if (research && newsStockQueryIssue(scene.query, research)) throw new Error(`News section ${index + 1}: ${newsStockQueryIssue(scene.query, research)}. Saved work is retained; create a new visual plan.`);
     if (scene.footage) {
       if (research && !rankFootage([scene.footage], scene.query, minimum, aspect, new Set(), undefined, research).length) throw new Error(`News section ${index + 1}: saved footage does not support this neutral contextual shot. No approved asset was silently replaced; create a new visual plan.`);
+      if (evidence && !rankFootage([scene.footage], scene.query, minimum, aspect, new Set(), undefined, undefined, evidence).length) {
+        throw new Error(`Scene ${index + 1} · ${scene.query}: saved footage does not support this shot. The narration and selected clip were retained.`);
+      }
       continue;
     }
     await onScene(selected, `Selecting footage ${index + 1}/${selected.length}: ${scene.query}`);
@@ -59,7 +65,7 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
           const title = footageTitle(choice).slice(0, 160);
           if (title) catalogTitles.add(title);
         }
-        return rankFootage(choices, scene.query, minimum, aspect, used, selected[index - 1]?.footage, research)[0];
+        return rankFootage(choices, scene.query, minimum, aspect, used, selected[index - 1]?.footage, research, evidence)[0];
       };
       let best = rank(await searchFootage(scene.query, aspect));
       // Keep subject and quality checks, but consider more than eight portraits.
@@ -101,6 +107,7 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       await onScene(selected, "Corrected visual searches saved — checking exact footage");
       best = await search();
     }
+    if (!best && evidence) throw new Error(`Scene ${index + 1} · ${scene.query}: no distinct clip supported the planned subject and action for ${Math.ceil(minimum)} seconds. Your draft and any selected clips are saved.`);
     if (!best) throw new Error(`Section ${index + 1}: no distinct, suitable footage of at least ${Math.ceil(minimum)} seconds for “${scene.query}” after an expanded search. Retry later. No unrelated filler or paid fallback was used.`);
     scene.footage = best.choice;
     scene.footageReason = best.reason;

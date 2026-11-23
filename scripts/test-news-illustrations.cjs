@@ -16,7 +16,7 @@ function load(relative, dependencies) {
   return mod.exports;
 }
 const brief = load('src/lib/stockBrief.ts', {});
-const semantics = load('src/lib/footageSemantics.ts', {});
+const semantics = load('src/lib/footageSemantics.ts', { './stockBrief': brief });
 const policy = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
 const research = { title: 'Australian author jailed', summary: 'An author pleaded guilty during a court case.', text: 'The report concerns court proceedings.' };
 const narration = 'The author was jailed after pleading guilty. The court heard the case earlier this year.';

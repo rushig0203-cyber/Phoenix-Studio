@@ -1,3 +1,46 @@
+import { visualWords } from "./stockBrief";
+
+const framingWords = new Set(["video", "stock", "clip", "footage", "view", "close", "closeup", "shot", "wide", "macro"]);
+const natureActions = [
+  { name: "pulsing", pattern: /^(?:puls(?:e|es|ed|ing)|contract(?:s|ed|ing|ion|ions)?)$/ },
+  { name: "preening", pattern: /^(?:preen\w*|groom\w*)$/ },
+  { name: "hovering", pattern: /^hover\w*$/ },
+  { name: "feeding", pattern: /^(?:feed\w*|eat\w*|graz(?:e|es|ing|ed))$/ },
+  { name: "climbing", pattern: /^climb\w*$/ },
+  { name: "surfacing", pattern: /^surfac(?:e|es|ing|ed)$/ },
+];
+
+function evidenceWords(text: string) {
+  return visualWords(text.replace(/\bjelly[ -]fish\b/gi, "jellyfish")).filter(word => !framingWords.has(word));
+}
+
+function wordForms(word: string) {
+  const forms = [word];
+  const action = natureActions.find(item => item.pattern.test(word));
+  if (action) forms.push(action.name);
+  if (word.length > 4 && word.endsWith("ies")) forms.push(word.slice(0, -3) + "y");
+  if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) forms.push(word.slice(0, -1));
+  if (word.length > 4 && /(?:ing|ed|es)$/.test(word)) {
+    const stem = word.replace(/(?:ing|ed|es)$/, "");
+    if (stem.length >= 3) forms.push(stem, stem + "e", stem.replace(/([a-z])\1$/, "$1"));
+  }
+  return forms;
+}
+
+/** Require positive subject/action vocabulary in descriptive metadata for new planned shots. */
+export function hasFootageEvidence(description: string, requirement: string) {
+  const required = evidenceWords(requirement);
+  const supplied = new Set(evidenceWords(description).flatMap(wordForms));
+  return required.length > 0 && required.every(word => wordForms(word).some(form => supplied.has(form)));
+}
+
+export function natureShotActionMismatch(narration: string, query: string) {
+  const spoken = evidenceWords(narration);
+  const requested = evidenceWords(query);
+  const visibleActions = natureActions.filter(action => spoken.some(word => action.pattern.test(word)));
+  if (visibleActions.length && !visibleActions.some(action => requested.some(word => action.pattern.test(word)))) return visibleActions[0].name;
+}
+
 /** Explicit action vocabulary only. These checks do not inspect video frames. */
 const actions: Array<{ name: string; query: RegExp; evidence: RegExp }> = [
   { name: "writing", query: /writ|taking notes/i, evidence: /writ|not(?:e|ing)|jot|pen|paper|record|checklist/i },

@@ -78,6 +78,9 @@ selected = {
     "test_news_shortfall_never_searches_unverified_swimming_river_stock",
     "test_news_requires_every_approved_asset_before_fetching_any_footage",
     "test_news_with_sufficient_approved_footage_keeps_one_native_speed_asset",
+    "test_measured_narration_shortfall_never_searches_for_supplemental_footage",
+    "test_measured_narration_requires_all_locked_ids_and_native_timing_before_fetch",
+    "test_measured_narration_keeps_exact_approved_asset_and_native_ending",
     "test_small_measured_shortfall_adds_distinct_same_query_footage_at_native_speed",
 }
 test_class.body = [node for node in test_class.body if isinstance(node, ast.FunctionDef) and node.name in selected]

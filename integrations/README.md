@@ -10,6 +10,12 @@ backend after applying the patch. Installed Windows voices create an actual WAV
 and measured word events; missing language voices fail clearly without online
 or paid fallback. VoiceStudio's children's engine is configured separately.
 
+New narrated stock videos require `phoenix_narration_protocol: "measured-speech-v1"`.
+One set of measured speech events drives scene cuts and short, unboxed captions.
+Approved source IDs cover every scene at original speed. Narration is clean by
+default, and an explicit quiet bed can use only a verified track from the bundled
+CC0 catalogue. News uses clean narration and its labeled illustration policy.
+
 Phoenix's optional stock renderer is the MIT-licensed [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo) project.
 
 This folder preserves the local laptop-safety adjustments without committing credentials, model weights or the entire dependency checkout. The patch is based on commit `3ade9fbc40e18db32a5edb340d49e31ea0dd5528`.

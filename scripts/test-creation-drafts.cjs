@@ -401,6 +401,36 @@ test('automatic length never loosens children, manual caller or complete-owner-t
   assert.equal(read().length,0);assert.equal((await generation.listGenerationJobs()).length,0);
 });
 
+test('a selected mini-doc saves its exact title, registered angle, and subject before any render', async () => {
+  const route = require('../src/app/api/generations/route.ts');
+  const { resolveCreationRecommendation } = require('../src/lib/creationRecommendations.ts');
+  const idea = resolveCreationRecommendation('jellyfish-pulse:adaptation');
+  const reachable = generation.generatorReachable, requireRenderer = generation.requireStockStoryboardRenderer;
+  generation.generatorReachable = async () => true;
+  generation.requireStockStoryboardRenderer = async (...args) => assert.equal(args[4], true);
+  const body = { ...input(), requestId: crypto.randomUUID(), topic: idea.title, recommendationId: idea.id, autoDuration: true, script: undefined, visualTerms: undefined };
+  const submit = patch => route.POST(new Request('http://localhost/api/generations', { method: 'POST', headers: { origin: 'http://localhost' }, body: JSON.stringify({ ...body, ...patch }) }));
+  try {
+    assert.equal((await submit({ topic: 'A different animal' })).status, 400);
+    assert.equal((await submit({ recommendationId: 'missing-catalogue-id' })).status, 400);
+    assert.equal((await submit({ creationType: 'business' })).status, 400);
+    const response = await submit({});
+    assert.equal(response.status, 201);
+    const receipt = await response.json(), saved = read().find(draft => draft.id === receipt.draftIds[0]).input;
+    assert.equal(receipt.title, idea.title);
+    assert.equal(saved.topic, idea.title);
+    assert.equal(saved.duration, 35);
+    assert.equal(saved.narrationPresentation, 'measured-speech-v1');
+    assert.deepEqual(saved.recommendation, { id: idea.id, premise: idea.premise, visualSubject: 'jellyfish' });
+    assert.equal((await (await submit({})).json()).draftIds[0], receipt.draftIds[0]);
+    assert.equal((await submit({ recommendationId: undefined })).status, 409);
+    assert.equal((await generation.listGenerationJobs()).length, 0);
+  } finally {
+    generation.generatorReachable = reachable;
+    generation.requireStockStoryboardRenderer = requireRenderer;
+  }
+});
+
 test('worker migration resumes legacy approval gates once, retaining scenes and final-mode failures', async () => {
   const draft = await ready();
   const failed = { ...draft, id: crypto.randomUUID(), status: 'FAILED', input: { ...draft.input, reviewMode: 'final' }, error: 'Provider unavailable' };

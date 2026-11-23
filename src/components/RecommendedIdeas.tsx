@@ -3,17 +3,19 @@ import { useEffect, useRef, useState } from "react";
 import StudioActivity from "./StudioActivity";
 import {
   parsePersonalizedRecommendationMemory, PERSONALIZED_RECOMMENDATION_STORAGE_KEY, recommendationPool, RECOMMENDATION_REFRESH_MS,
-  type CreationKind, type CreationRecommendation, type PersonalizedCreationRecommendation, type PersonalizedRecommendationMemory,
+  resolveCreationRecommendation, type CreationKind, type CreationRecommendation, type PersonalizedCreationRecommendation, type PersonalizedRecommendationMemory,
 } from "@/lib/creationRecommendations";
 
-export default function RecommendedIdeas({ onChoose, kind }: { onChoose: (idea: CreationRecommendation) => void; kind?: CreationKind }) {
+export default function RecommendedIdeas({ onChoose, kind, creationActivityAt }: { onChoose: (idea: CreationRecommendation) => void; kind?: CreationKind; creationActivityAt?: number }) {
   const [ideas, setIdeas] = useState<PersonalizedCreationRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [remembered, setRemembered] = useState(true);
   const [loadedKind, setLoadedKind] = useState<CreationKind | undefined>();
-  const currentSelection = useRef({ kind, ready: false });
-  useEffect(() => { currentSelection.current = { kind, ready: !loading && loadedKind === kind }; }, [kind, loading, loadedKind]);
+  const [otherCategories, setOtherCategories] = useState(false);
+  const requestKind = kind === "General video" && otherCategories ? undefined : kind;
+  const currentSelection = useRef({ kind, ready: false, allowOther: false });
+  useEffect(() => { currentSelection.current = { kind, ready: !loading && loadedKind === kind, allowOther: kind === "General video" && otherCategories }; }, [kind, otherCategories, loading, loadedKind]);
   const memory = useRef<PersonalizedRecommendationMemory>({ shown: [], cursor: 0 });
   const storageWorking = useRef(true);
   const reload = useRef<() => Promise<void>>(async () => {});
@@ -32,16 +34,22 @@ export default function RecommendedIdeas({ onChoose, kind }: { onChoose: (idea: 
       }
       try {
         const query = new URLSearchParams({ workflow: "creation", cursor: String(memory.current.cursor), seen: memory.current.shown.join(",") });
-        if (kind) query.set("kind", kind);
+        if (requestKind) query.set("kind", requestKind);
         const response = await fetch(`/api/content-suggestions?${query}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
         if (!response.ok) throw new Error("Suggestions unavailable");
         const result = await response.json() as { ideas: PersonalizedCreationRecommendation[]; nextCursor: number };
         const registered = recommendationPool();
-        if (!Array.isArray(result.ideas) || result.ideas.length > 6 || new Set(result.ideas.map(idea => idea?.id)).size !== result.ideas.length || !Number.isSafeInteger(result.nextCursor) || result.nextCursor < 0
-          || result.ideas.some(idea => !idea || kind && idea.kind !== kind || !registered.some(known => known.id === idea.id && known.kind === idea.kind)
+        const limit = requestKind === "General video" ? 5 : 6;
+        if (!Array.isArray(result.ideas) || result.ideas.length > limit || new Set(result.ideas.map(idea => idea?.id)).size !== result.ideas.length || !Number.isSafeInteger(result.nextCursor) || result.nextCursor < 0
+          || result.ideas.some(idea => {
+            const known = idea && registered.find(item => item.id === idea.id), resolved = idea && resolveCreationRecommendation(idea.id);
+            return !idea || requestKind && idea.kind !== requestKind || !known || !resolved || idea.kind !== resolved.kind
+            || idea.title !== resolved.title || (resolved.visualSubject ? idea.premise !== resolved.premise || idea.visualSubject !== resolved.visualSubject
+              : idea.title !== resolved.legacyTitle)
             || typeof idea.title !== "string" || !idea.title.trim() || idea.title.length > 400 || /[\u0000-\u001f\u007f]/.test(idea.title)
             || typeof idea.reason !== "string" || !idea.reason.trim() || idea.reason.length > 220 || /[\u0000-\u001f\u007f]/.test(idea.reason)
-            || !["recent-content", "owner-feedback", "observed-response", "explore"].includes(idea.basis))) throw new Error("Invalid suggestions");
+            || !["recent-content", "owner-feedback", "observed-response", "explore"].includes(idea.basis);
+          })) throw new Error("Invalid suggestions");
         if (!active) return;
         memory.current = parsePersonalizedRecommendationMemory(JSON.stringify({ shown: [...memory.current.shown, ...result.ideas.map(idea => idea.id)], cursor: result.nextCursor }));
         try { localStorage.setItem(PERSONALIZED_RECOMMENDATION_STORAGE_KEY, JSON.stringify(memory.current)); }
@@ -58,7 +66,7 @@ export default function RecommendedIdeas({ onChoose, kind }: { onChoose: (idea: 
     const schedule = () => { timer = window.setTimeout(() => { void refresh(); schedule(); }, RECOMMENDATION_REFRESH_MS); };
     schedule();
     return () => { active = false; controller.abort(); window.clearTimeout(timer); };
-  }, [kind]);
+  }, [kind, requestKind, creationActivityAt]);
 
   const currentIdeas = loadedKind === kind ? ideas : [];
   const selectionReady = !loading && loadedKind === kind;
@@ -67,24 +75,28 @@ export default function RecommendedIdeas({ onChoose, kind }: { onChoose: (idea: 
   return <section aria-label="Recommended ideas" aria-busy={showingActivity} className="rounded-xl bg-[#f1f5e8] p-3">
     <div className="flex items-center justify-between gap-3">
       <h4 className="text-sm font-semibold">Ideas for your next video</h4>
-      <button type="button" onClick={() => void reload.current()} disabled={loading} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">More ideas</button>
+      <div className="flex gap-2">
+        {kind === "General video" ? <button type="button" onClick={() => setOtherCategories(value => !value)} disabled={loading} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">{otherCategories ? "Nature mini-docs" : "Other categories"}</button> : null}
+        <button type="button" onClick={() => void reload.current()} disabled={loading} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">More ideas</button>
+      </div>
     </div>
     {showingActivity && !currentIdeas.length ? <StudioActivity label="Finding ideas from your saved videos…" /> : null}
     {error ? <p role="status" className="mt-2 text-xs text-[#59634d]">{error}</p> : null}
     {!loading && !error && !currentIdeas.length ? <p className="mt-2 text-xs text-[#59634d]">No matching ideas are available. You can describe your own video.</p> : null}
     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{currentIdeas.map(idea => {
       const divider = idea.title.indexOf(" — ");
+      const miniDoc = !!idea.visualSubject;
       return <article key={idea.id} className="rounded-lg border bg-white p-2">
-        <button type="button" aria-label={`Use idea: ${idea.title}`} title={`${idea.category} · ${idea.audience}`} disabled={!selectionReady} onClick={() => { const current = currentSelection.current; if (current.ready && (!current.kind || idea.kind === current.kind)) onChoose(idea); }} className="w-full rounded text-left text-sm hover:bg-[#e7eed8] disabled:opacity-50">
-          <span className="block font-medium">{divider < 0 ? idea.title : idea.title.slice(0, divider)}</span>
-          <span className="mt-1 block text-xs leading-5 text-[#59634d]">{idea.reason}</span>
+        <button type="button" aria-label={`Use idea: ${idea.title}`} title={`${idea.category} · ${idea.audience}`} disabled={!selectionReady} onClick={() => { const current = currentSelection.current; if (current.ready && (current.allowOther || !current.kind || idea.kind === current.kind)) onChoose(idea); }} className="w-full rounded text-left text-sm hover:bg-[#e7eed8] disabled:opacity-50">
+          <span className="block font-medium">{miniDoc || divider < 0 ? idea.title : idea.title.slice(0, divider)}</span>
+          <span className="mt-1 block text-xs leading-5 text-[#59634d]">{miniDoc ? idea.premise : idea.reason}</span>
         </button>
-        {divider < 0 ? null : <details className="mt-1 text-xs text-[#59634d]"><summary className="cursor-pointer">Video premise</summary><p className="mt-1 leading-5">{idea.title.slice(divider + 3)}</p></details>}
+        {!miniDoc && divider >= 0 ? <details className="mt-1 text-xs text-[#59634d]"><summary className="cursor-pointer">Video premise</summary><p className="mt-1 leading-5">{idea.title.slice(divider + 3)}</p></details> : null}
         {idea.kind === "Children's song" ? <span className="mt-1 block text-xs text-[#59634d]">Sung audio needed</span> : null}
       </article>;
     })}</div>
     <details className="mt-2 text-xs text-[#59634d]"><summary className="cursor-pointer">About these ideas</summary>
-      <p className="mt-2">Ideas use your saved videos, story reviews and available results, not live trends; nothing starts until you click Create video. They refresh every 15 days and when reopened; More ideas checks your latest work now. Once matching subjects have all been shown, older ideas return in rotation.</p>
+      <p className="mt-2">Nature mini-doc ideas use your saved videos, story reviews and available results, not live trends. Other categories, children&apos;s 2D ideas and news reports remain available. Suggestions refresh daily, after a finished video and when reopened; More ideas checks your latest work now. Nothing starts until you choose an idea and click Create video.</p>
       <p className="mt-1">{remembered ? "Recently shown subjects are remembered for your next visit." : "Browser history storage is unavailable; subjects may repeat on your next visit."}</p>
     </details>
   </section>;

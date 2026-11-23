@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const path=require('node:path');
 require('ts-node').register({project:path.join(__dirname,'../tsconfig.json'),transpileOnly:true,compilerOptions:{module:'commonjs',moduleResolution:'node'}});
-const {choosePostingCaption,videoHashtags,captionHashtags,postingCaptionOnly,postingAnalysisMayApply,stockPostingCaptionIssue,usesConciseStockPostingCaption,VIDEO_HASHTAG_BANK_LIMIT,INSTAGRAM_HASHTAG_LIMIT}=require('../src/lib/postingCopyPolicy');
+const {choosePostingCaption,videoHashtags,captionHashtags,postingCaptionOnly,postingAnalysisMayApply,stockPostingCaptionIssue,usesConciseStockPostingCaption,usesConciseCreationPostingCaption,VIDEO_HASHTAG_BANK_LIMIT,INSTAGRAM_HASHTAG_LIMIT}=require('../src/lib/postingCopyPolicy');
 test('stock posting copy keeps one short natural subject rather than camera or scene inventories',()=>{
   for(const copy of ['A curious dog explores the leafy path.','Rain gathers in small ripples.','A dog looks through the window frame.','Two window frames catch the afternoon light.','Three butterflies rest on bright petals.','Rain softens a quiet street scene.']) assert.equal(stockPostingCaptionIssue(copy),undefined);
   for(const copy of [
@@ -33,6 +33,22 @@ test('concise stock posting policy excludes narrated creations and uploaded epis
   assert.equal(usesConciseStockPostingCaption({...file,quality:{audio:'natural-audio-preserved'}}),true);
   for(const audio of ['local-narration-music','local-narration','supplied-song']) assert.equal(usesConciseStockPostingCaption({...file,quality:{audio}}),false);
   assert.equal(usesConciseStockPostingCaption({...file,source:{kind:'upload'}}),false);
+});
+
+test('the new one-line creation policy applies only to general and business delivery records',()=>{
+  for(const creationType of ['general','business']) assert.equal(usesConciseCreationPostingCaption({delivery:{creationType}}),true);
+  for(const creationType of ['source','children-story','children-song']) assert.equal(usesConciseCreationPostingCaption({delivery:{creationType}}),false);
+  assert.equal(usesConciseCreationPostingCaption({}),false);
+});
+
+test('generated revisions reject reordered or nearly identical descriptions, selecting only a supplied alternative',()=>{
+  const old='Coffee grounds rest in a white paper filter.';
+  const fresh='Give your next coffee a little more attention.';
+  for(const repeated of ['In a white paper filter, coffee grounds rest.','Coffee grounds rest in the white paper filter.']) {
+    assert.equal(choosePostingCaption(repeated,[fresh],[],true,old,true).caption,fresh);
+    assert.throws(()=>choosePostingCaption(repeated,[],[],true,old,true),/repeated the caption/);
+    assert.equal(choosePostingCaption(repeated,[],[],true,old).caption,repeated,'Stock and legacy revision selection stays unchanged');
+  }
 });
 test('explicit refresh chooses a grounded alternate, ignoring appended provider credits',()=>{
   const result=choosePostingCaption('Water runs over the rocky ledge.',['A waterfall fills the narrow gap between rocks.'],['Water runs over the rocky ledge.\nFootage sources: https://example.com/']);

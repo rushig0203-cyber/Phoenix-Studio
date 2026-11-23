@@ -22,6 +22,11 @@ export function usesConciseStockPostingCaption(file: Pick<ReviewFile, "source" |
   return file.source.kind !== "upload" && ["natural-audio-preserved", "local-music-replaced", "no-audio", "needs-review"].includes(file.quality.audio);
 }
 
+/** General/business creations use short posting copy, not shortened narration. */
+export function usesConciseCreationPostingCaption(file: Pick<ReviewFile, "delivery">) {
+  return file.delivery?.creationType === "general" || file.delivery?.creationType === "business";
+}
+
 /** Reject verbose generated candidates without cutting a sentence or owner text. */
 export function stockPostingCaptionIssue(copy: string) {
   const clean = copy.trim().normalize("NFKC").replace(/[‐-―]/g, "-");
@@ -58,15 +63,24 @@ function similarity(left: string, right: string) {
   return overlap / Math.max(x.size, y.size);
 }
 
+function repeatsCaptionAngle(left: string, right: string) {
+  if (similarity(left, right) >= 0.8) return true;
+  const terms = (copy: string) => new Set(words(copy).filter(word => !/^(?:a|an|the|and|or|is|are|was|were|in|on|at|of|to|with|by|for|from|as|its|it|this|that)$/.test(word)));
+  const a = terms(left), b = terms(right);
+  // Catch reordered descriptions without pretending to infer a new semantic claim.
+  const smaller = Math.min(a.size, b.size), larger = Math.max(a.size, b.size);
+  return smaller >= 3 && smaller / larger >= 0.65 && [...a].filter(word => b.has(word)).length / smaller >= 0.85;
+}
+
 /** A soft editorial preference, not a factual rejection when every option is plain. */
 export function hasPostingCaptionBoilerplate(copy: string) {
   return /\b(?:scenes?|setting)\b|\ba look at\b/i.test(copy);
 }
 
 /** Keep the model's preference unless a valid supplied alternative avoids a near-exact recent repeat. */
-export function choosePostingCaption(caption: string, alternatives: string[], previousCopies: string[], conciseStockCaption = false, rejectedCaption?: string) {
+export function choosePostingCaption(caption: string, alternatives: string[], previousCopies: string[], conciseStockCaption = false, rejectedCaption?: string, requireDifferentAngle = false) {
   const candidates = [...new Set([caption, ...alternatives].map(text => text.trim()).filter(Boolean))].slice(0, 4)
-    .filter(text => (!conciseStockCaption || !stockPostingCaptionIssue(text)) && (!rejectedCaption || similarity(text, rejectedCaption) !== 1));
+    .filter(text => (!conciseStockCaption || !stockPostingCaptionIssue(text)) && (!rejectedCaption || (requireDifferentAngle ? !repeatsCaptionAngle(text, rejectedCaption) : similarity(text, rejectedCaption) !== 1)));
   if (!candidates.length) throw new Error(rejectedCaption ? "The analysis repeated the caption you asked to replace; no new grounded alternative was supplied." : "No grounded posting caption was supplied.");
   const editorial = candidates.filter(text => !hasPostingCaptionBoilerplate(text));
   const history = previousCopies.map(postingCaptionOnly).filter(Boolean).slice(0, 30);

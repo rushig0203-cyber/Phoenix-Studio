@@ -21,7 +21,7 @@ function load(relative, dependencies) {
   return mod.exports;
 }
 const brief = load('src/lib/stockBrief.ts', {});
-const semantics = load('src/lib/footageSemantics.ts', {});
+const semantics = load('src/lib/footageSemantics.ts', { './stockBrief': brief });
 const news = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
 const plain = value => JSON.parse(JSON.stringify(value));
 const scenes = [
@@ -96,6 +96,25 @@ test('a second unavailable section cannot trigger another repair or generic fill
   assert.equal(h.calls.writer.length, 1);
   const saved = h.calls.checkpoints.at(-1).selected;
   assert.equal(saved[0].footage.id, 1); assert.equal(saved[1].query, replacements[1]);
+});
+
+test('a mini-doc scene with no supported action keeps the exact footage, narration and spent repair for retry', async () => {
+  const start = { narration: 'The jellyfish drifts in the water.', query: 'jellyfish drifting', footage: footage(901, 'jellyfish drifting') };
+  const ending = { narration: 'Watch the jellyfish pulse to move forward.', query: 'jellyfish pulsing' };
+  const input = { ...base, topic: 'How a jellyfish moves', script: start.narration + ' ' + ending.narration,
+    narrationPresentation: 'measured-speech-v1', recommendation: { id: 'jellyfish-pulse:adaptation', visualSubject: 'jellyfish' } };
+  const search = async () => [footage(7, 'quiet waves'), footage(8, 'jellyfish in water')];
+  const h = harness({ reply: [start.query, 'jellyfish contracting'], search });
+  await assert.rejects(h.preparation.prepareStockCreation(input, [start, ending], h.checkpoint), /Scene 2.*planned subject and action/);
+  assert.equal(h.calls.writer.length, 1);
+  const saved = h.calls.checkpoints.at(-1).input;
+  assert.equal(saved.stockPreparation.repairUsed, true);
+  assert.equal(saved.stockPreparation.scenes[0].footage.id, 901);
+  assert.equal(saved.stockPreparation.scenes[1].query, 'jellyfish contracting');
+  const resumed = harness({ search });
+  await assert.rejects(resumed.preparation.prepareStockCreation(saved, saved.stockPreparation.scenes, resumed.checkpoint), /Scene 2/);
+  assert.equal(resumed.calls.writer.length, 0);
+  assert.ok(resumed.calls.search.every(([query]) => query === 'jellyfish contracting'));
 });
 
 test('owner-written, approved, explicit visual briefs and exact-ID plans cannot receive query repair', async () => {

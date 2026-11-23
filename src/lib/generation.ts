@@ -14,7 +14,7 @@ import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
 import { stockVisualBrief, stockNarrationError, stockScriptTargetWords, checkStockScript } from "./stockBrief";
-import { readStockShots, type StockBeat } from "./stockStoryboard";
+import { assertMeasuredStockRender, readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { LOCAL_STOCK_VOICE_PROTOCOL, supportsLocalStockVoice } from "./localVoiceProtocol";
 import { getCreativeGuidance } from "./qualityManager";
@@ -23,7 +23,8 @@ import { generateWritingModel, withWritingSession, isWritingWaitError, WritingQu
 import { editStockNarration, stockVoiceRate, stockPostCopy, type EditorialReview, type EditorialAttempt, type EditorialCheckpoint } from "./stockEditorial";
 import { newsWritingContext, type NewsResearch } from "./newsResearch";
 import { NEWS_STOCK_VISUAL_POLICY, NEWS_MIXED_VISUAL_POLICY, supportsNewsStockVisualPolicy, assertNewsStockRender, type NewsVisualPolicy } from "./newsVisualPolicy";
-import { newsPresentation, supportsNewsPresentation } from "./newsPresentation";
+import { newsPresentation, stockNarrationPresentation, supportsNewsPresentation, supportsStockNarrationPresentation } from "./newsPresentation";
+import { selectStockRecording, stockRecordingFile, stockRecordingMetadata, type StockRecordingSelection } from "./stockMusicLibrary";
 import { artifactReference, type ReviewArtifacts } from "./reviewArtifacts";
 import { parseSrt, validateTimedCaptions } from "./timedCaptions";
 import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
@@ -56,6 +57,9 @@ export type GenerationInput = {
   requestId?: string;
   /** Original selected topic; empty only when the owner explicitly requests an invented idea. */
   requestTopic?: string;
+  recommendation?: { id: string; premise: string; visualSubject?: string };
+  narrationPresentation?: "measured-speech-v1";
+  narrationBed?: StockRecordingSelection | null;
   topic: string;
   script?: string;
   scriptOrigin?: "owner" | "local-model";
@@ -385,7 +389,7 @@ async function claimQueuedJob() {
 
 export const isGeneratorConfigured = () => Boolean(process.env.MPT_BASE_URL);
 
-export async function requireStockStoryboardRenderer(approvedFootage = false, news = false, localVoice = false, newsPolicy: NewsVisualPolicy = NEWS_STOCK_VISUAL_POLICY) {
+export async function requireStockStoryboardRenderer(approvedFootage = false, news = false, localVoice = false, newsPolicy: NewsVisualPolicy = NEWS_STOCK_VISUAL_POLICY, measuredNarration = false) {
   const response = await fetch(providerUrl("/openapi.json"), { headers: providerHeaders(), signal: AbortSignal.timeout(8_000) });
   const api = response.ok ? await response.json() : null;
   if (!api?.components?.schemas?.TaskVideoRequest?.properties?.phoenix_storyboard) {
@@ -397,6 +401,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false, ne
   if (news && !supportsNewsStockVisualPolicy(api?.components?.schemas?.TaskVideoRequest?.properties, newsPolicy)) throw new Error("Update and restart the local renderer for news footage and original editorial illustrations. Existing narration, approved shots and exports are retained.");
   if (newsPolicy === NEWS_MIXED_VISUAL_POLICY && news && !api?.components?.schemas?.PhoenixStoryBeat?.properties?.illustration) throw new Error("Update and restart the local renderer for the exact saved editorial illustration plan before creating this report.");
   if (news && !supportsNewsPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for measured news captions before creating this report. Existing videos and narration are retained.");
+  if (measuredNarration && !supportsStockNarrationPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Restart the updated stock renderer for measured narration, captions and scene cuts.");
   if (localVoice && !supportsLocalStockVoice(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the stock renderer for offline local narration. The selected local voice will not be replaced with an online voice.");
 }
 
@@ -550,6 +555,7 @@ export async function regenerateGenerationJob(id: string) {
       if (input.visualTermsOrigin === "local-model") delete input.visualTerms;
       delete input.storyboard;
       delete input.stockPreparation;
+      delete input.narrationBed;
       delete input.editorial;
     }
     const pending = jobs.find(job => job.requestKey === requestKey && !job.archivedAt && ["QUEUED", "RUNNING"].includes(job.status));
@@ -699,9 +705,14 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
     return script;
   }
   return withWritingSession(async () => {
-  const targetWords = input.research && input.autoDuration ? Math.min(90, stockScriptTargetWords(input.duration)) : stockScriptTargetWords(input.duration);
+  const requestedWords = stockScriptTargetWords(input.duration);
+  const targetWords = input.research && input.autoDuration ? Math.min(90, requestedWords)
+    : input.recommendation?.visualSubject && input.autoDuration ? Math.min(75, requestedWords) : requestedWords;
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
+  const miniDocDirection = input.recommendation?.visualSubject
+    ? `Open on the visible ${JSON.stringify(input.recommendation.visualSubject)} and one specific action or feature. Keep that subject through the final detail. Answer the question in one short, complete arc. Selected angle (data): ${JSON.stringify(input.recommendation.premise)}.`
+    : "";
   const prompt = `Write an original ${input.research ? "neutral, source-grounded news bulletin" : input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${input.research ? "Explain the main sourced development, its necessary context and consequence or uncertainty. Do not turn the report into a tutorial, moral or fictional story. Necessary attribution and denials take priority over a word target." : stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
@@ -711,7 +722,7 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
     await onStage("Creative brief saved — writing the selected explanation and complete ending");
     const response = await generateWritingModel({
         model: process.env.OLLAMA_MODEL || "qwen2.5:3b",
-        prompt: `${prompt}\nSelected outline: ${creativeBriefInstructions(input.creativeBrief)}\nImprovements from your structured reviews: ${guidance.rules.join(" ") || "Keep useful specifics and a coherent explanation."}${researchContext}`,
+        prompt: `${prompt}\n${miniDocDirection}\nSelected outline: ${creativeBriefInstructions(input.creativeBrief)}\nImprovements from your structured reviews: ${guidance.rules.join(" ") || "Keep useful specifics and a coherent explanation."}${researchContext}`,
         options: { temperature: 0.55, num_predict: Math.ceil(targetWords * 2.35) + 64, num_thread: 2, num_ctx: 4096 },
       }, { timeoutMs: Math.max(150_000, input.duration * 1_200) });
     if (!response.ok) throw new Error(`The selected writer returned ${response.status}`);
@@ -873,10 +884,14 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   const textCheck = checkStockScript(input.topic, input.script || "", input.duration, input.scriptOrigin !== "local-model", input.autoDuration);
   const actualShots = input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined;
   if (input.research) assertNewsStockRender(input.newsVisualPolicy, input.storyboard, actualShots || []);
+  const measured = input.narrationPresentation === "measured-speech-v1";
+  if (measured) assertMeasuredStockRender(input.storyboard, actualShots);
   const illustrationCount = actualShots?.filter(shot => shot.illustration).length || 0;
   const hasStock = Boolean(actualShots?.some(shot => !shot.illustration));
   const visualRights = illustrationCount ? `${illustrationCount} original local editorial 2D illustration(s), labelled Illustration${hasStock ? "; remaining shots use Pexels free licensed stock" : "; no external visual media"}` : "Pexels free stock footage assembled by the local MoneyPrinterTurbo service";
   const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts, input.script) : undefined;
+  const musicRecording = retained?.musicPresent && input.narrationBed ? stockRecordingMetadata(input.narrationBed).credit : undefined;
+  const reportCopy = input.research ? `Report source: ${input.research.source} (${input.research.publishedAt.slice(0, 10)}) ${input.research.url}\n${input.research.limitation}` : undefined;
   const review = makeReviewFile({
     id: job.id,
     title: input.topic.slice(0, 120),
@@ -886,15 +901,18 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     quality: {
       audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
       captions: retained ? retained.cues.map(cue => cue.text) : captionLines(input.script),
-      hashtags: topicHashtags(input.research?.title || input.topic, input.script || ""),
-      postCopy: stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\n${illustrationCount ? "Original editorial illustrations and any contextual stock are illustrative;" : "Illustrative stock footage;"} not footage of this event. Single-source summary; verify developments before posting.` : ""),
+      musicRecording,
+      subtitles: measured ? { decision: "speech", reason: "Short subtitle phrases use the measured narration timeline." } : undefined,
+      hashtags: measured ? [] : topicHashtags(input.research?.title || input.topic, input.script || ""),
+      postCopy: measured ? reportCopy : stockPostCopy(input.script || "", input.research?.title || input.topic) + (input.research ? `\nReport: ${input.research.source}, ${input.research.publishedAt.slice(0, 10)} — ${input.research.url}\n${illustrationCount ? "Original editorial illustrations and any contextual stock are illustrative;" : "Illustrative stock footage;"} not footage of this event. Single-source summary; verify developments before posting.` : ""),
+      postingTextOrigin: measured ? "automatic" : undefined,
       research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
       editorial: input.editorial,
       managerGuidance: input.managerGuidance,
       checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), illustrationCount ? visualRights : "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
       storyboard: actualShots,
-      warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Stock search is keyword-based, not visual understanding. Review every shot against the narration before posting.`,
+      warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent && (!measured || input.narrationBed) ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Review every shot against the narration before posting.`,
     },
     processing: { jobId: job.id, start: 0, end: media.duration, format: input.aspect, score: textCheck.score, scoreKind: "script-checks", rank: 0, reason: textCheck.reason, status: "COMPLETED" },
     delivery: {
@@ -910,7 +928,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       status: "NOT_REVIEWED",
       madeForKids: false,
       originality: illustrationCount && !hasStock ? "original-local" : "licensed-transformed",
-      rightsBasis: illustrationCount ? `${visualRights}. Original narration, captions and edit; review any music separately.` : "Pexels free-stock footage with an original local script, narration, music, captions, and edit.",
+      rightsBasis: illustrationCount ? `${visualRights}. Original narration, captions and edit; review any music separately.` : `Pexels free-stock footage with an original script, narration, captions and edit.${musicRecording ? ` Music: ${musicRecording.title}, CC0 1.0.` : ""}`,
       checks: ["Confirm every stock clip still matches its provider licence", "Watch the complete export for factual and visual accuracy", "Confirm title, thumbnail, and upload copy are original"],
       manualReviewRequired: true,
       syntheticDisclosureReview: "REVIEW_REQUIRED",
@@ -1058,15 +1076,33 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
   await updateJob(job.id, { status: "COMPLETED", progress: 100, stage: `${episodeLabel}children's video ready for review`, requestJson: JSON.stringify({ ...input, script: result.script }), duration: media.duration, error: undefined, finishedAt: new Date().toISOString() });
 }
 
+async function chooseNarrationBed(job: LocalGenerationJob, input: GenerationInput): Promise<StockRecordingSelection | null> {
+  if (input.research || !input.recommendation?.visualSubject) return null;
+  const visuals = input.stockPreparation?.scenes.flatMap(scene => scene.footage ? [new URL(scene.footage.sourcePage).pathname.replaceAll("-", " ")] : []) || [];
+  const direction = `${input.recommendation.premise} ${visuals.join(" ")}`;
+  if (!/\b(?:calm|peaceful|quiet|gentl\w*|glid\w*|drift\w*|float\w*|still water)\b/i.test(direction)
+    || /\b(?:chase|hunt|attack|fight|rescue|rapid\w*|storm|crash|distress)\b/i.test(direction)) return null;
+  try {
+    const recent = (await readReviewFiles()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .flatMap(file => file.quality.musicRecording ? [file.quality.musicRecording.trackId] : []).slice(0, 20);
+    const bed = selectStockRecording("reflective", job.id, recent, false, [], true);
+    await stockRecordingFile(bed);
+    return bed;
+  } catch { return null; }
+}
+
 async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
-  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research), Boolean(input.research), input.voice === "local-windows-voice", input.newsVisualPolicy);
+  const measured = input.narrationPresentation === "measured-speech-v1";
+  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research) || measured, Boolean(input.research), input.voice === "local-windows-voice", input.newsVisualPolicy, measured);
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
   const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, duration: saved.duration, requestedDuration: saved.requestedDuration ?? saved.duration, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
   const storyboard = plan.input.storyboard!;
   const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? plan.input.newsVisualPolicy || NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
+  if (measured && prepared.narrationBed === undefined) prepared.narrationBed = await chooseNarrationBed(job, prepared);
+  const bed = measured && !prepared.research ? prepared.narrationBed : undefined;
   await updateJob(job.id, { progress: 12, stage: "Submitting the script to the local stock-video renderer", requestJson: JSON.stringify(prepared) });
   let response: Response;
   await retainExternalRender(job.id);
@@ -1103,7 +1139,9 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
       text_background_color: true,
       stroke_color: "#000000",
       stroke_width: 2,
+      ...(measured ? stockNarrationPresentation(prepared.aspect) : {}),
       ...(prepared.research ? newsPresentation(prepared.aspect) : {}),
+      ...(bed ? { phoenix_music_bed: { library: bed.library, trackId: bed.trackId, offsetSeconds: bed.offsetSeconds } } : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     });

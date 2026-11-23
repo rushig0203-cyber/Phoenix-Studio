@@ -7,7 +7,7 @@ import RecommendedIdeas from "@/components/RecommendedIdeas";
 import NewsIdeas from "@/components/NewsIdeas";
 import StudioActivity from "./StudioActivity";
 import type { NewsIdea } from "@/lib/newsResearch";
-import { applyRecommendationToForm, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
+import { applyRecommendationToForm, resolveCreationRecommendation, type CreationKind, type CreationRecommendation } from "@/lib/creationRecommendations";
 import { creationIntent } from "@/lib/creationIntent";
 import { HINDI_KRISHNA_STORY_TITLE, KRISHNA_STORY_TITLE, krishnaStoryPreset } from "@/lib/krishnaStory";
 import {
@@ -21,7 +21,7 @@ function defaultFormat(kind: Kind): PublishingFormat {
   return kind === "Children's song" ? "youtube-full" : "youtube-short";
 }
 
-export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic, initialSuggestionsOpen = false }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string; initialSuggestionsOpen?: boolean }) {
+export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic, initialSuggestionsOpen = false, creationActivityAt }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string; initialSuggestionsOpen?: boolean; creationActivityAt?: number }) {
   const [kind, setKind] = useState<Kind>(initialKind);
   const [topic, setTopic] = useState<string>(initialTopic || "");
   const [autoIdea, setAutoIdea] = useState(false);
@@ -42,6 +42,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [activeWriting, setActiveWriting] = useState({ narration: true, visualBrief: true, lyrics: true });
   const [uploadingSong, setUploadingSong] = useState(false);
   const [recommendationNotice, setRecommendationNotice] = useState("");
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(initialSuggestionsOpen);
   const [ideaOpen, setIdeaOpen] = useState(!initialTopic?.trim() && !initialSuggestionsOpen);
   const [selectedNews, setSelectedNews] = useState<NewsIdea | null>(null);
@@ -62,6 +63,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   }, [kind]);
 
   function changeTopic(value: string) {
+    setSelectedRecommendationId(null);
     if (value.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setSelectedNews(null);
     setTopic(value);
@@ -80,11 +82,14 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   }
 
   function chooseRecommendation(idea: CreationRecommendation) {
+    const resolved = resolveCreationRecommendation(idea.id);
+    if (!resolved || idea.title !== resolved.title || idea.kind !== resolved.kind) return;
     setSelectedNews(null);
     const next = applyRecommendationToForm({ kind, topic, autoIdea, publishingFormat, duration, batchCount, narration: idea.title.trim() === topic.trim() ? activeNarration : "", visualBrief, lyrics, songMode, songAudio }, idea);
     if (next.topic.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setKind(next.kind);
     setTopic(next.topic);
+    setSelectedRecommendationId(idea.id);
     setAutoIdea(next.autoIdea);
     setPublishingFormat(next.publishingFormat);
     setDuration(next.duration);
@@ -97,6 +102,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   }
 
   function chooseNews(idea: NewsIdea) {
+    setSelectedRecommendationId(null);
     if (idea.title.trim() !== topic.trim()) setActiveWriting({ narration: false, visualBrief: false, lyrics: false });
     setSelectedNews(idea); setTopic(idea.title); setKind("General video");
     setAutoIdea(false); setBatchCount(1); setPublishingFormat("youtube-short"); setDuration(60);
@@ -113,6 +119,11 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
       setIdeaOpen(true);
       return;
     }
+    const selectedRecommendation = selectedRecommendationId ? resolveCreationRecommendation(selectedRecommendationId) : null;
+    if (selectedRecommendationId && (!selectedRecommendation || selectedRecommendation.title !== topic || selectedRecommendation.kind !== kind)) {
+      setError("The selected idea changed. Choose it again or edit your idea before creating the video.");
+      return;
+    }
     submitInFlight.current = true;
     setBusy(true);
     setError("");
@@ -125,6 +136,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             ? "business"
             : "general";
       const payload = {
+          recommendationId: selectedRecommendationId || undefined,
           newsId: selectedNews?.id,
           planOnly: false,
           songMode,
@@ -238,7 +250,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             <input
               type="checkbox"
               checked={autoIdea}
-              onChange={(event) => { setAutoIdea(event.target.checked); if (event.target.checked) setActiveWriting({ narration: false, visualBrief: false, lyrics: false }); }}
+              onChange={(event) => { setAutoIdea(event.target.checked); if (event.target.checked) { setSelectedRecommendationId(null); setActiveWriting({ narration: false, visualBrief: false, lyrics: false }); } }}
               className="mt-1"
             />
             <span>
@@ -252,7 +264,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           <>
             <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas kind={children ? kind : undefined} onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
+              {suggestionsOpen ? <><RecommendedIdeas kind={kind} creationActivityAt={creationActivityAt} onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
                 <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Starter examples</summary><div className="mt-3 flex flex-wrap gap-2">
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
                 </div></details></> : null}

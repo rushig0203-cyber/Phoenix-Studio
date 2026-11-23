@@ -5,7 +5,7 @@ const {
   CREATION_KINDS, RECOMMENDATION_GROUPS, RECOMMENDATION_HISTORY_LIMIT,
   recommendationPool, canonicalRecommendationKey, creationRecommendations,
   emptyRecommendationMemory, parseRecommendationMemory, nextStoredRecommendations, applyRecommendationToForm,
-  personalizedCreationRecommendations, parsePersonalizedRecommendationMemory,
+  personalizedCreationRecommendations, parsePersonalizedRecommendationMemory, resolveCreationRecommendation, RECOMMENDATION_REFRESH_MS,
 } = require('../src/lib/creationRecommendations');
 const { publishingProfile } = require('../src/lib/publishingFormats');
 
@@ -142,20 +142,20 @@ test('every displayed card inserts its exact title throughout repeated recommend
   assert.equal(selectedIds.size, recommendationPool().length, 'all catalogue cards were selected');
 });
 
-test('a displayed sentence overrides the registry title while the known ID controls its workflow', () => {
+test('a recommendation ID only accepts its registered title and keeps its known workflow', () => {
   const current = { kind: 'General video', topic: 'Earlier idea', autoIdea: true, publishingFormat: 'instagram-reel', duration: 90, batchCount: 1, narration: '' };
   for (const canonical of recommendationPool()) {
     const displayed = { ...canonical, title: `  The exact visible sentence for ${canonical.id}.  `, kind: canonical.kind === 'General video' ? "Children's song" : 'General video' };
     const next = applyRecommendationToForm(current, displayed);
     const expectedWorkflow = applyRecommendationToForm(current, canonical);
     assert.notEqual(displayed.title, canonical.title);
-    assert.equal(next.topic, displayed.title, 'preserve the visible sentence including its surrounding spaces');
+    assert.equal(next, current, 'A different visible title cannot be silently attached to a registered ID');
     for (const field of ['kind', 'publishingFormat', 'duration', 'batchCount']) {
-      assert.equal(next[field], expectedWorkflow[field], `spoofed kind changed ${field} for ${canonical.id}`);
+      assert.equal(expectedWorkflow[field], applyRecommendationToForm(current, canonical)[field], `registered workflow remains stable for ${canonical.id}`);
     }
   }
   const displayed = { ...recommendationPool()[0], title: 'x'.repeat(400) };
-  assert.equal(applyRecommendationToForm(current, displayed).topic, displayed.title, '400 characters is valid');
+  assert.equal(applyRecommendationToForm(current, displayed), current);
 });
 
 test('invalid displayed titles leave the form unchanged even for a known recommendation ID', () => {
@@ -223,6 +223,30 @@ test('foreground wildlife outranks incidental green backgrounds and does not imp
     assert.ok(result.ideas.every(idea => idea.kind === 'General video'));
     seen.push(...result.ideas.map(idea => idea.id)); cursor = result.nextCursor;
   }
+});
+
+test('general video suggestions use five fresh nature mini-docs with stable title, angle and visual subject', () => {
+  assert.equal(RECOMMENDATION_REFRESH_MS, 24 * 60 * 60 * 1000);
+  const context = suggestionContext();
+  const first = personalizedCreationRecommendations(context, 0, [], 'General video');
+  assert.equal(first.ideas.length, 5);
+  assert.equal(new Set(first.ideas.map(idea => idea.id)).size, 5);
+  for (const idea of first.ideas) {
+    const resolved = resolveCreationRecommendation(idea.id);
+    assert.ok(resolved?.visualSubject);
+    assert.equal(idea.title, resolved.title);
+    assert.equal(idea.premise, resolved.premise);
+    assert.equal(idea.visualSubject, resolved.visualSubject);
+    assert.equal(idea.kind, 'General video');
+    assert.equal(idea.category, 'Nature & places');
+    assert.ok(idea.title.length <= 56 && idea.premise.length > 0);
+  }
+  const second = personalizedCreationRecommendations(context, first.nextCursor, first.ideas.map(idea => idea.id), 'General video');
+  assert.ok(second.ideas.every(idea => !first.ideas.some(previous => previous.topicKey === idea.topicKey)));
+  const legacy = resolveCreationRecommendation('arched-bridge:structure');
+  assert.equal(legacy.title, legacy.legacyTitle); assert.equal(legacy.visualSubject, undefined);
+  const oldNatureCard = resolveCreationRecommendation('catalogue-0-0');
+  assert.equal(oldNatureCard.visualSubject, 'waterfall'); assert.notEqual(oldNatureCard.title, oldNatureCard.legacyTitle);
 });
 
 test('saved response evidence is used only with enough matching workflow evidence and never called popular', () => {

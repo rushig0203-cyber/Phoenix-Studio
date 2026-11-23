@@ -45,7 +45,7 @@ index c4d12e1..3c78873 100644
          raise ValueError(f"unsupported video aspect: {self}")
  
  
-@@ -70,6 +70,26 @@ class MaterialInfo:
+@@ -70,6 +70,33 @@ class MaterialInfo:
      source_info: Optional[dict[str, Any]] = None
  
  
@@ -69,10 +69,17 @@ index c4d12e1..3c78873 100644
 +        return self
 +
 +
++class PhoenixMusicBed(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++    library: Literal["cc0-lofi-v1"]
++    trackId: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
++    offsetSeconds: float = Field(default=0, ge=0, le=12, allow_inf_nan=False)
++
++
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +115,12 @@ class VideoParams(BaseModel):
+@@ -95,6 +122,14 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
@@ -82,10 +89,12 @@ index c4d12e1..3c78873 100644
 +    phoenix_local_voice_protocol: Optional[Literal["windows-speech-events-v1"]] = None
 +    phoenix_news_visual_policy: Optional[Literal["context-only-no-supplement-v1", "context-stock-or-editorial-2d-v2"]] = None
 +    phoenix_news_caption_style: Optional[Literal["measured-phrases-v1"]] = None
++    phoenix_narration_protocol: Optional[Literal["measured-speech-v1"]] = None
++    phoenix_music_bed: Optional[PhoenixMusicBed] = None
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,11 +157,21 @@ class VideoParams(BaseModel):
+@@ -131,11 +166,25 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -100,6 +109,10 @@ index c4d12e1..3c78873 100644
  
 +    @pydantic.model_validator(mode="after")
 +    def editorial_policy(self):
++        if self.phoenix_music_bed is not None and (self.phoenix_narration_protocol != "measured-speech-v1" or self.phoenix_news_visual_policy is not None):
++            raise ValueError("A quiet licensed bed requires measured stock narration outside news; random music is never substituted.")
++        if self.phoenix_narration_protocol == "measured-speech-v1" and not self.phoenix_storyboard:
++            raise ValueError("Measured narration requires its locked approved storyboard.")
 +        if any(beat.illustration is not None for beat in self.phoenix_storyboard or []):
 +            if self.phoenix_news_visual_policy != "context-stock-or-editorial-2d-v2":
 +                raise ValueError("Original editorial illustrations require the explicit version 2 news policy.")
@@ -207,7 +220,34 @@ index a310390..0721cc5 100644
  
          _progress += 50 / params.video_count / 2
          sm.state.update_task(task_id, progress=_progress)
-@@ -1410,13 +1429,38 @@ def _run_pipeline(
+@@ -1396,6 +1415,23 @@ def _run_pipeline(
+     # 4. Generate subtitle
+-    subtitle_path = generate_subtitle(
+-        task_id, params, video_script, sub_maker, audio_file
+-    )
++    measured_speech_cues = None
++    if getattr(params, "phoenix_narration_protocol", None) == "measured-speech-v1":
++        try:
++            measured_audio_duration = voice.get_audio_duration(audio_file)
++            speech_spans = phoenix_storyboard.audio_speech_spans(audio_file, measured_audio_duration, utils.get_ffmpeg_binary())
++            measured_speech_cues = phoenix_storyboard.measured_narration_cues(
++                video_script, getattr(sub_maker, "cues", None), measured_audio_duration, speech_spans,
++            )
++            subtitle_path = phoenix_storyboard.save_narration_captions(
++                video_script, measured_speech_cues, path.join(utils.task_dir(task_id), "subtitle.srt"),
++                scene_narration=[beat.narration for beat in params.phoenix_storyboard],
++            )
++            phoenix_storyboard.configure_narration_presentation(params, utils.task_dir(task_id), measured_audio_duration, utils.get_ffmpeg_binary())
++            audio_duration = measured_audio_duration
++        except Exception as exc:
++            return _mark_task_failed(task_id, "narration-timing", str(exc))
++    else:
++        subtitle_path = generate_subtitle(
++            task_id, params, video_script, sub_maker, audio_file
++        )
+ 
+     if stop_at == "subtitle":
+@@ -1410,13 +1446,39 @@ def _run_pipeline(
      sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
  
      # 5. Get video materials
@@ -233,8 +273,9 @@ index a310390..0721cc5 100644
 +            storyboard_timeline, public_storyboard = phoenix_storyboard.prepare_timeline(
 +                task_id, params, subtitle_path, measured_audio_duration,
 +                lambda percent, stage: sm.state.update_task(task_id, progress=percent, phoenix_stage=stage),
++                **({"measured_cues": measured_speech_cues} if measured_speech_cues is not None else {}),
 +            )
-+            if getattr(params, "phoenix_news_caption_style", None) == "measured-phrases-v1":
++            if measured_speech_cues is None and getattr(params, "phoenix_news_caption_style", None) == "measured-phrases-v1":
 +                subtitle_path = phoenix_storyboard.save_news_captions(
 +                    video_script, getattr(sub_maker, "cues", None), measured_audio_duration,
 +                    path.join(utils.task_dir(task_id), "subtitle.srt"),
@@ -253,7 +294,7 @@ index a310390..0721cc5 100644
      if not downloaded_videos:
          return _mark_task_failed(
              task_id,
-@@ -1449,6 +1493,7 @@ def _run_pipeline(
+@@ -1449,6 +1511,7 @@ def _run_pipeline(
              audio_file,
              subtitle_path,
              audio_duration,
@@ -261,7 +302,7 @@ index a310390..0721cc5 100644
          )
      )
  
-@@ -1466,7 +1511,8 @@ def _run_pipeline(
+@@ -1466,7 +1529,8 @@ def _run_pipeline(
      # 7. 先完成视频生成任务，再按需提交跨平台发布。第三方上传可能耗时
      # 数分钟，不应阻塞视频结果返回，也不能反向影响已经生成的成片。
      cross_post_enabled = (
@@ -271,7 +312,7 @@ index a310390..0721cc5 100644
          and upload_post.upload_post_service.auto_upload
      )
      platforms = (
-@@ -1493,7 +1539,11 @@ def _run_pipeline(
+@@ -1493,7 +1557,11 @@ def _run_pipeline(
          "cross_post_error": None,
          "cross_post_owner": _cross_post_process_owner if should_cross_post else None,
          "warnings": generation_warnings or None,
@@ -566,7 +607,7 @@ new file mode 100644
 index 0000000..6589d9b
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,799 @@
+@@ -0,0 +1,955 @@
 +"""Narration-timed approved stock and explicit original editorial illustrations."""
 +
 +import hashlib
@@ -971,6 +1012,10 @@ index 0000000..6589d9b
 +
 +def save_edge_captions(script_lines, observed_cues, audio_duration, filename):
 +    captions = edge_caption_cues(script_lines, observed_cues, audio_duration)
++    return save_caption_cues(captions, filename)
++
++
++def save_caption_cues(captions, filename):
 +    if not isinstance(filename, (str, os.PathLike)) or not str(filename).strip():
 +        raise ValueError("A valid timed narration caption destination is required.")
 +    destination = Path(filename)
@@ -1001,6 +1046,150 @@ index 0000000..6589d9b
 +    return str(destination)
 +
 +
++def audio_speech_spans(audio_file, audio_duration, ffmpeg):
++    """Measure real narration pauses with bounded, single-thread decoding; no speech model."""
++    if not math.isfinite(audio_duration) or not 0 < audio_duration <= 900:
++        raise ValueError("Measured narration requires a bounded actual audio duration.")
++    result = subprocess.run([str(ffmpeg), "-nostdin", "-hide_banner", "-loglevel", "info", "-filter_threads", "1", "-threads", "1",
++        "-i", str(audio_file), "-vn", "-sn", "-af", "silencedetect=noise=-45dB:duration=0.18", "-f", "null", "-"],
++        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=180)
++    if result.returncode or len(result.stderr) > 2 * 1024 * 1024:
++        raise ValueError("The narration's actual pauses could not be measured safely.")
++    events = re.findall(r"silence_(start|end):\s*([0-9.eE+-]+)", result.stderr)
++    spans, cursor, silence = [], 0.0, None
++    for kind, raw in events:
++        value = float(raw)
++        if not math.isfinite(value) or value < 0 or value > audio_duration + .3:
++            raise ValueError("The narration returned invalid silence boundaries.")
++        value = min(value, audio_duration)
++        if kind == "start":
++            if silence is not None or value < cursor:
++                raise ValueError("The narration returned unordered silence boundaries.")
++            if value > cursor:
++                spans.append((cursor, value))
++            silence = value
++        else:
++            if silence is None or value < silence:
++                raise ValueError("The narration returned unordered silence boundaries.")
++            cursor, silence = value, None
++    if silence is None and cursor < audio_duration:
++        spans.append((cursor, audio_duration))
++    if not spans:
++        raise ValueError("The narration contains no measured audible speech; no captions were created.")
++    return spans
++
++
++def measured_narration_cues(script, observed_cues, audio_duration, speech_spans):
++    """Keep provider boundaries, trimming only measured silence on the same audio clock."""
++    native = edge_caption_cues(script.split(), observed_cues, audio_duration)
++    if not speech_spans or any(not 0 <= start < end <= audio_duration for start, end in speech_spans):
++        raise ValueError("Measured narration needs actual audible speech intervals.")
++    result = []
++    for start, end, text in native:
++        overlaps = [(max(start, a), min(end, b)) for a, b in speech_spans if min(end, b) - max(start, a) > .001]
++        if len(overlaps) != 1:
++            raise ValueError("A voice phrase crosses a measured pause or contains no audible speech. Use a word-timed Windows or Edge voice; no timestamps were guessed.")
++        left, right = overlaps[0]
++        left, right = round(left, 3), round(right, 3)
++        if right <= left:
++            raise ValueError("A narration word has no measurable audible duration.")
++        result.append((left, right, text))
++    return result
++
++
++def save_narration_captions(script, native_cues, filename, scene_narration=None):
++    """Group whole measured words into readable phrases without crossing real pauses."""
++    if not native_cues or words(" ".join(text for _, _, text in native_cues)) != words(script):
++        raise ValueError("Measured narration captions must retain the complete exact script.")
++    boundaries, offset = set(), 0
++    if scene_narration is not None:
++        if not scene_narration or words(" ".join(scene_narration)) != words(script):
++            raise ValueError("Caption scenes must retain the exact approved narration.")
++        for scene in scene_narration[:-1]:
++            offset += len(words(scene))
++            boundaries.add(offset)
++    groups, current = [], None
++    offset = 0
++    for start, end, text in native_cues:
++        next_offset = offset + len(words(text))
++        if any(offset < boundary < next_offset for boundary in boundaries):
++            raise ValueError("A scene boundary falls inside a provider phrase; no caption or scene timing was guessed.")
++        if len(words(text)) > 6 or len(text) > 42:
++            raise ValueError("The voice returned a phrase too long for readable measured captions. Use a word-timed voice; no phrase was divided with guessed timing.")
++        if current and (offset in boundaries or start - current[1] >= .12 or len(words(current[2] + " " + text)) > 6 or len(current[2] + " " + text) > 42
++                or re.search(r"[.!?;।][\"'’”)]*$", current[2])):
++            groups.append(current)
++            current = None
++        current = (current[0], end, current[2] + " " + text) if current else (start, end, text)
++        offset = next_offset
++    if current:
++        groups.append(current)
++    return save_caption_cues(groups, filename)
++
++
++def licensed_narration_bed(selection, directory, duration, ffmpeg):
++    """Only an explicit quiet CC0 manifest asset can become a narration bed."""
++    message = "The selected quiet licensed music is missing, changed or invalid; no random music was substituted."
++    if not isinstance(selection, dict) or set(selection) != {"library", "trackId", "offsetSeconds"} or selection.get("library") != "cc0-lofi-v1":
++        raise ValueError(message)
++    offset = selection.get("offsetSeconds")
++    if type(offset) not in (int, float) or not math.isfinite(offset) or not 0 <= offset <= 12 or not math.isfinite(duration) or not 0 < duration <= 900:
++        raise ValueError(message)
++    root = Path(os.environ.get("PHOENIX_STUDIO_ROOT", ""))
++    if not root.is_absolute() or str(root).startswith("\\\\"):
++        raise ValueError(message)
++    root = root.resolve(strict=True)
++    library = root / "assets" / "music" / "lofi-cc0-v1"
++    manifest_file = library / "manifest.json"
++    if library.resolve(strict=True) != library or manifest_file.is_symlink() or not manifest_file.is_file() or not 0 < manifest_file.stat().st_size <= 128 * 1024:
++        raise ValueError(message)
++    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
++    if manifest.get("library") != "cc0-lofi-v1" or manifest.get("licence") != "CC0-1.0" or not isinstance(manifest.get("recordings"), list):
++        raise ValueError(message)
++    matches = [track for track in manifest["recordings"] if isinstance(track, dict) and track.get("id") == selection.get("trackId")]
++    if len(matches) != 1:
++        raise ValueError(message)
++    track = matches[0]
++    filename, size, digest = track.get("filename"), track.get("bytes"), track.get("sha256")
++    recording_seconds = track.get("durationSeconds")
++    if (track.get("style") != "quiet-instrumental" or not isinstance(filename, str) or not re.fullmatch(r"[a-z-]+\.m4a", filename)
++            or type(recording_seconds) not in (int, float) or not math.isfinite(recording_seconds) or not offset < recording_seconds <= 900
++            or type(size) is not int or not 0 < size <= 1_200_000 or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)):
++        raise ValueError(message)
++    source = library / filename
++    if source.is_symlink() or not source.is_file() or source.resolve(strict=True) != source or source.stat().st_size != size:
++        raise ValueError(message)
++    with source.open("rb") as stream:
++        data = stream.read(size + 1)
++    if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
++        raise ValueError(message)
++    output = Path(directory) / "narration-bed.m4a"
++    if output.is_symlink():
++        raise ValueError(message)
++    result = subprocess.run([str(ffmpeg), "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-threads", "1",
++        "-stream_loop", "-1", "-ss", str(offset), "-i", str(source), "-t", str(duration), "-vn",
++        "-af", f"afade=t=in:d=0.5,afade=t=out:st={max(0, duration - min(3, duration / 2))}:d={min(3, duration / 2)}",
++        "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "128k", "-threads", "1", str(output)],
++        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=180)
++    if result.returncode or not output.is_file() or not 0 < output.stat().st_size <= 24 * 1024 * 1024:
++        raise ValueError(message)
++    return str(output)
++
++
++def configure_narration_presentation(params, directory, duration, ffmpeg):
++    bed = getattr(params, "phoenix_music_bed", None)
++    if bed is not None and getattr(params, "phoenix_news_visual_policy", None):
++        raise ValueError("News retains clean narration without background music.")
++    params.subtitle_enabled, params.subtitle_position, params.custom_position = True, "custom", 78
++    params.font_size = 34 if str(params.video_aspect) in ("9:16", "VideoAspect.portrait") else 28
++    params.text_fore_color, params.text_background_color, params.rounded_subtitle_background = "#FFFFFF", False, False
++    params.stroke_color, params.stroke_width, params.voice_volume = "#000000", 1, 1
++    params.bgm_type, params.bgm_volume, params.bgm_file = "", 0, ""
++    if bed is not None:
++        params.bgm_file = licensed_narration_bed(bed.model_dump(), directory, duration, ffmpeg)
++        params.bgm_type, params.bgm_volume = "custom", .04
++
++
 +def subtitle_cues(filename):
 +    if (not isinstance(filename, (str, os.PathLike)) or not str(filename).strip()
 +            or not Path(filename).is_file()):
@@ -1025,7 +1214,7 @@ index 0000000..6589d9b
 +    return cues
 +
 +
-+def align_beats(beats, script, cues, duration):
++def align_beats(beats, script, cues, duration, strict=False):
 +    """Use actual caption timestamps, with explicitly labelled within-cue interpolation."""
 +    if not math.isfinite(duration) or duration <= 0:
 +        raise ValueError("Storyboard requires a valid narration duration.")
@@ -1040,13 +1229,15 @@ index 0000000..6589d9b
 +    for start, end, text in cues:
 +        count = len(words(text))
 +        for index in range(count):
-+            positions.append((start + (end - start) * index / count, index == 0))
++            positions.append((start if strict else start + (end - start) * index / count, index == 0))
 +    result = []
 +    offset = 0
 +    for index, beat in enumerate(beats):
 +        start, exact = (0.0, True) if index == 0 else positions[offset]
 +        offset += len(words(beat["narration"]))
 +        end, end_exact = (duration, True) if offset == len(positions) else positions[offset]
++        if strict and (not exact or not end_exact):
++            raise ValueError("A scene boundary falls inside a provider phrase. Use a word-timed voice; no scene timing was interpolated.")
 +        if end - start < 0.2:
 +            raise ValueError(f"Narration section {index + 1} is too short for a readable shot.")
 +        result.append({**beat, "start": start, "end": end, "timing": "subtitle-boundary" if exact and end_exact else "within-caption-estimate"})
@@ -1193,25 +1384,31 @@ index 0000000..6589d9b
 +    return True
 +
 +
-+def prepare_timeline(task_id, params, subtitle_path, audio_duration, progress):
++def prepare_timeline(task_id, params, subtitle_path, audio_duration, progress, measured_cues=None):
 +    from app.config import config
 +    from app.services import material, task_artifacts
 +    from app.utils import utils
 +
 +    if params.video_source not in ("pexels", "pixabay") or params.video_count != 1:
 +        raise ValueError("Phoenix storyboard accepts one stock-only Pexels/Pixabay export.")
-+    beats = align_beats([{key: value for key, value in beat.model_dump().items() if value is not None} for beat in params.phoenix_storyboard], params.video_script, subtitle_cues(subtitle_path), audio_duration)
++    measured_policy = getattr(params, "phoenix_narration_protocol", None) == "measured-speech-v1"
++    if measured_policy and measured_cues is None:
++        raise ValueError("Measured narration requires its native speech timeline; no subtitle interpolation or footage search was used.")
++    cues = measured_cues if measured_cues is not None else subtitle_cues(subtitle_path)
++    beats = align_beats([{key: value for key, value in beat.model_dump().items() if value is not None} for beat in params.phoenix_storyboard], params.video_script, cues, audio_duration, strict=measured_cues is not None)
 +    news_policy = params.phoenix_news_visual_policy
 +    news_context_only = news_policy in ("context-only-no-supplement-v1", "context-stock-or-editorial-2d-v2")
++    locked_assets = news_context_only or measured_policy
++    section_label = "News" if news_context_only else "Narration"
 +    for index, beat in enumerate(beats):
 +        if beat.get("illustration") is not None:
 +            editorial_illustration(beat["illustration"])
 +            if news_policy != "context-stock-or-editorial-2d-v2" or beat.get("assetId"):
 +                raise ValueError("Original editorial illustrations require their exact version 2 news plan without a stock asset.")
-+    if news_context_only:
++    if locked_assets:
 +        for index, beat in enumerate(beats):
 +            if not beat.get("assetId") and not (news_policy == "context-stock-or-editorial-2d-v2" and beat.get("illustration")):
-+                raise ValueError(f"News section {index + 1} requires an approved contextual asset before rendering. No supplemental stock search was allowed.")
++                raise ValueError(f"{section_label} section {index + 1} requires an approved contextual asset before rendering. No supplemental stock search was allowed.")
 +    search = material.search_videos_pexels if params.video_source == "pexels" else material.search_videos_pixabay
 +    directory = config.app.get("material_directory", "").strip()
 +    if directory == "task":
@@ -1239,7 +1436,7 @@ index 0000000..6589d9b
 +        def candidates():
 +            if approved_id:
 +                yield approved_pexels_asset(approved_id, beat["query"]), True
-+            if news_context_only:
++            if locked_assets:
 +                return
 +            # The generator reaches search only if the chosen native-speed
 +            # footage did not cover this section. Never broaden its query.
@@ -1276,8 +1473,8 @@ index 0000000..6589d9b
 +            # resampling. This truncates footage; it never retimes or holds it.
 +            available_frames = max(0, math.floor(available * _OUTPUT_FPS + 1e-6) - 1)
 +            remaining_frames = end_frame - start_frame
-+            if news_context_only and available_frames < remaining_frames:
-+                raise ValueError(f"News section {index + 1} ({beat['query']}) has only {available_frames / _OUTPUT_FPS:.2f}s of approved native-speed footage for {remaining_frames / _OUTPUT_FPS:.2f}s of narration. No supplemental stock, slowing, repetition or frozen frames were used.")
++            if locked_assets and available_frames < remaining_frames:
++                raise ValueError(f"{section_label} section {index + 1} ({beat['query']}) has only {available_frames / _OUTPUT_FPS:.2f}s of approved native-speed footage for {remaining_frames / _OUTPUT_FPS:.2f}s of narration. No supplemental stock, slowing, repetition or frozen frames were used. The saved plan is retained; choose longer approved footage or shorten this section before retrying.")
 +            frames = min(available_frames, remaining_frames)
 +            # A brief source deficit must not become a flash of another clip.
 +            # Reserve up to two seconds for the final shot, or half of a
@@ -1524,7 +1721,7 @@ new file mode 100644
 index 0000000..d097208
 --- /dev/null
 +++ b/test/services/test_phoenix_storyboard.py
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,614 @@
 +import json
 +import os
 +import shutil
@@ -1706,6 +1903,46 @@ index 0000000..d097208
 +            self.assertEqual([shot["playbackRate"] for shot in public], [1])
 +            self.assertEqual([(shot["start"], shot["end"]) for shot in timeline], [(0, 10.2)])
 +            self.assertNotIn("supplementalReason", public[0])
++            search.assert_not_called()
++
++    def test_measured_narration_shortfall_never_searches_for_supplemental_footage(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        narration = "Open curtains and pour water."
++        params = VideoParams(video_subject="Morning", video_script=narration, phoenix_narration_protocol="measured-speech-v1", phoenix_storyboard=[{"narration": narration, "query": "opening curtains", "assetId": 123}])
++        approved = MaterialInfo(url="approved", duration=9, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues") as subtitles, patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 9)) as download, patch("app.services.material._search_videos_with_cache") as search, patch("app.services.task_artifacts.patch_script_data") as persist:
++            with self.assertRaisesRegex(ValueError, "Narration section 1.*No supplemental stock") as stopped:
++                storyboard.prepare_timeline("unused-measured-test", params, "unused.srt", 10.2, lambda *_: None, measured_cues=[(.2, 9.8, narration)])
++            self.assertIn("saved plan is retained", str(stopped.exception))
++            self.assertIn("choose longer approved footage", str(stopped.exception))
++            self.assertEqual(download.call_count, 1)
++            subtitles.assert_not_called()
++            search.assert_not_called()
++            persist.assert_not_called()
++
++    def test_measured_narration_requires_all_locked_ids_and_native_timing_before_fetch(self):
++        from app.models.schema import VideoParams
++        params = VideoParams(video_subject="Morning", video_script="Open curtains. Pour water.", phoenix_narration_protocol="measured-speech-v1", phoenix_storyboard=[{"narration": "Open curtains.", "query": "opening curtains", "assetId": 123}, {"narration": "Pour water.", "query": "pouring water"}])
++        with patch.object(storyboard, "approved_pexels_asset") as selected, patch("app.services.material._search_videos_with_cache") as search:
++            with self.assertRaisesRegex(ValueError, "native speech timeline"):
++                storyboard.prepare_timeline("unused-measured-test", params, "unused.srt", 10, lambda *_: None)
++            with self.assertRaisesRegex(ValueError, "Narration section 2 requires an approved"):
++                storyboard.prepare_timeline("unused-measured-test", params, "unused.srt", 10, lambda *_: None, measured_cues=[(.2, 4.8, "Open curtains."), (5, 9.7, "Pour water.")])
++            selected.assert_not_called()
++            search.assert_not_called()
++
++    def test_measured_narration_keeps_exact_approved_asset_and_native_ending(self):
++        from app.models.schema import VideoParams, MaterialInfo
++        narration = "Open curtains."
++        params = VideoParams(video_subject="Morning", video_script=narration, phoenix_narration_protocol="measured-speech-v1", phoenix_storyboard=[{"narration": narration, "query": "opening curtains", "assetId": 123}])
++        approved = MaterialInfo(url="approved", duration=12, source_info={"asset_id": "123"})
++        with patch.object(storyboard, "subtitle_cues") as subtitles, patch.object(storyboard, "approved_pexels_asset", return_value=approved), patch.object(storyboard, "download_stock_video", return_value=("approved.mp4", 12)), patch("app.services.material._search_videos_with_cache") as search, patch("app.services.task_artifacts.patch_script_data", return_value=True):
++            timeline, public = storyboard.prepare_timeline("unused-measured-test", params, "unused.srt", 10.2, lambda *_: None, measured_cues=[(.2, 9.8, narration)])
++            self.assertEqual([shot["assetId"] for shot in public], [123])
++            self.assertEqual([shot["playbackRate"] for shot in public], [1])
++            self.assertEqual([(shot["start"], shot["end"]) for shot in timeline], [(0, 10.2)])
++            self.assertNotIn("supplementalReason", public[0])
++            subtitles.assert_not_called()
 +            search.assert_not_called()
 +
 +    def test_small_measured_shortfall_adds_distinct_same_query_footage_at_native_speed(self):

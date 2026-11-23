@@ -150,3 +150,24 @@ test('returned shot records must cover the actual export and expose only public 
   assert.throws(()=>readStockShots([shot],3),/does not cover/);
   assert.throws(()=>readStockShots([{...shot,start:1}],2),/invalid or missing/);
 });
+
+test('new mini-doc stock requires descriptive evidence for subject and action together', () => {
+  const { rankFootage } = require('../src/lib/automaticFootage.ts');
+  const makeChoice = (id, title) => ({ id, duration: 14, width: 720, height: 1280,
+    sourcePage: 'https://www.pexels.com/video/' + (title ? title + '-' : '') + id + '/', creator: 'Fixture' });
+  const candidates = [makeChoice(1, 'ocean-waves'), makeChoice(2, 'jellyfish-in-an-aquarium'), makeChoice(3, ''), makeChoice(4, 'jellyfish-swimming-in-ocean')];
+  const ranked = rankFootage(candidates, 'jellyfish swims', 6, '9:16', new Set(), undefined, undefined, { subject: 'jellyfish' });
+  assert.deepEqual(ranked.map(item => item.choice.id), [4]);
+  const { stockQueryMismatch } = require('../src/lib/stockStoryboard.ts');
+  assert.match(stockQueryMismatch('It propels itself with each pulse.', 'blue ocean waves', 'jellyfish'), /jellyfish/);
+});
+
+test('measured renders must prove each exact planned asset and speech boundary', () => {
+  const { assertMeasuredStockRender } = require('../src/lib/stockStoryboard.ts');
+  const approved = [{ narration: 'A jellyfish moves with a pulse.', query: 'jellyfish swimming', assetId: 4 }];
+  const raw = { ...approved[0], start: 0, end: 3, playbackRate: 1, timing: 'subtitle-boundary', sourcePage: 'https://www.pexels.com/video/jellyfish-swimming-4/' };
+  assert.doesNotThrow(() => assertMeasuredStockRender(approved, readStockShots([raw], 3, true)));
+  for (const patch of [{ assetId: 99 }, { timing: 'within-caption-estimate' }, { supplementalReason: 'fallback' }, { sourcePage: 'https://www.pexels.com/video/jellyfish-swimming-5/' }]) {
+    assert.throws(() => assertMeasuredStockRender(approved, readStockShots([{ ...raw, ...patch }], 3, true)), /Scene 1.*measured speech cut/);
+  }
+});
