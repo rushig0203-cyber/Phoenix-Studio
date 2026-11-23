@@ -149,7 +149,7 @@ class TestLicensedNarrationBed(unittest.TestCase):
             root, library, _, selection = self.fixture(temporary)
             def prepare(args, **options):
                 self.assertEqual(options["timeout"], 180)
-                self.assertEqual(Path(args[args.index("-i") + 1]), library / "quiet-test.m4a")
+                self.assertEqual(Path(args[args.index("-i") + 1]).resolve(), (library / "quiet-test.m4a").resolve())
                 self.assertEqual(args[args.index("-ss") + 1], "2.5")
                 self.assertEqual(args[args.index("-t") + 1], "5.6")
                 self.assertEqual(args[args.index("-threads") + 1], "1")
