@@ -226,14 +226,16 @@ async function run() {
       pointerEvents: getComputedStyle(element).pointerEvents,
       artwork: getComputedStyle(element, '::before').backgroundImage,
       artworkSize: getComputedStyle(element, '::before').backgroundSize,
+      artworkMask: getComputedStyle(element, '::before').maskImage,
       animations: [...element.querySelectorAll('[data-star-depth]')].map(layer => getComputedStyle(layer).animationName),
     }));
     const stillStars = await starLayers();
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     const movingStars = await starLayers();
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    verify('The original artwork covers the starfield behind the dashboard',
-      stillStars.artwork.includes('/api/studio-wallpaper') && stillStars.artworkSize === 'cover', stillStars);
+    verify('The wallpaper keeps its proportions and fades into the starfield',
+      stillStars.artwork.includes('/api/studio-wallpaper') && stillStars.artworkSize === 'contain'
+      && stillStars.artworkMask.startsWith('radial-gradient('), stillStars);
     verify('Three perspective layers drift only when motion is allowed and stay behind interactive content',
       movingStars.hidden === 'true' && movingStars.pointerEvents === 'none' && parseFloat(movingStars.perspective) > 0
       && movingStars.animations.length === 3 && movingStars.animations.every(name => name !== 'none')

@@ -18,15 +18,15 @@
 .starfield::before {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
-  /* The saved artwork is sideways. Swap the viewport dimensions before rotating it. */
-  width: 100dvh;
-  height: 100vw;
+  top: 39%;
+  left: 55%;
+  /* Fit the sideways artwork inside the starfield before rotating it upright. */
+  width: min(44vw, 58dvh);
+  height: min(88vw, 116dvh);
   transform: translate(-50%, -50%) rotate(90deg);
-  background: url("/api/studio-wallpaper") center / cover no-repeat;
+  background: url("/api/studio-wallpaper") center / contain no-repeat;
   opacity: .52;
-  mask-image: linear-gradient(to right, #000, #000e 43%, #0007 77%, #0003);
+  mask-image: radial-gradient(ellipse closest-side, #000 48%, #000d 66%, #0006 84%, transparent);
 }
 
 .content {
