@@ -137,7 +137,6 @@ export default function ChannelInsights({ review, requestedReviewId }: { review?
     return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
   };
   return <section id="channel-insights" aria-label="Channel insights" className="space-y-5 text-foreground">
-    {!requestedReviewId && <header className="space-y-1"><h1 className="text-xl font-semibold">Channel insights</h1><p className="text-sm text-muted-foreground">Saved platform results. Refresh to check for new counts; opening this screen does not post a video.</p></header>}
     {requestedReviewId && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3"><h2 className="font-semibold">{review?.title || "Selected video"}</h2><a href="#insights" className={button}>All videos</a></div>}
     <div role="group" aria-label="Insight platforms" className="flex flex-wrap gap-2">{platforms.map(item => <button key={item.id} type="button" aria-pressed={platform === item.id} onClick={() => { setPlatform(item.id); setPage(0); }} className={button + " inline-flex items-center gap-2 " + (platform === item.id ? "bg-primary text-primary-foreground" : "bg-card text-foreground")}><PlatformIcon platform={item.id} className="size-4" />{item.name}</button>)}</div>
     <div className="rounded-2xl border border-border bg-card p-4 sm:p-6">
