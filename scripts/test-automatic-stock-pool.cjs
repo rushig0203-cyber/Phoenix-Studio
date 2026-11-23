@@ -16,8 +16,8 @@ function compile(relative, dependencies, globals = {}) {
   return mod.exports;
 }
 const reel = compile('src/lib/stockReel.ts', {});
-const semantics = compile('src/lib/footageSemantics.ts', {});
 const brief = compile('src/lib/stockBrief.ts', {});
+const semantics = compile('src/lib/footageSemantics.ts', { './stockBrief': brief });
 const providers = compile('src/lib/stockProviders.ts', {});
 const automatic = compile('src/lib/automaticStockReel.ts', { './stockReel': reel, './footageSemantics': semantics, './stockProviders': providers });
 const video = (id, subject = 'horse grazing in meadow', changes = {}) => ({ id, duration: 20, width: 720, height: 1280,

@@ -22,13 +22,19 @@ function load(relative, dependencies = {}, globals = {}) {
 const local = load('src/lib/localRequest.ts');
 const formats = load('src/lib/publishingFormats.ts');
 const krishnaStory = load('src/lib/krishnaStory.ts');
+const stockBrief = load('src/lib/stockBrief.ts');
+const recommendations = load('src/lib/creationRecommendations.ts', {
+  './contentIdeas': load('src/lib/contentIdeas.ts'), './publishingFormats': formats,
+});
+const newsVisualPolicy = load('src/lib/newsVisualPolicy.ts', { './stockBrief': stockBrief });
 function harness() {
   const calls = [], generation = load('src/app/api/generations/route.ts', {
     'node:crypto': require('node:crypto'), 'next/server': { NextResponse: Response }, zod: require('zod'),
     '@/lib/localRequest': local, '@/lib/publishingFormats': formats,
     '@/lib/krishnaStory': krishnaStory,
-    '@/lib/songAudio': {}, '@/lib/stockBrief': {}, '@/lib/localSinging': {},
-    '@/lib/writingSettings': {}, '@/lib/newsResearch': {},
+    '@/lib/songAudio': {}, '@/lib/stockBrief': stockBrief, '@/lib/localSinging': {},
+    '@/lib/writingSettings': {}, '@/lib/newsResearch': {}, '@/lib/newsVisualPolicy': newsVisualPolicy,
+    '@/lib/creationRecommendations': recommendations,
     '@/lib/jobHistory': { JobHistoryConflictError: class extends Error {} },
     '@/lib/generation': {
       removeGenerationJob: async value => { calls.push(['delete', value]); return { id: value, status: 'CANCELLED' }; },

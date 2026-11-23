@@ -26,7 +26,8 @@ function isolate(source, dependencies, globals = {}) {
   return isolatedModule.exports;
 }
 const editing = isolate(compile('src/lib/stockReel.ts'), {});
-const semantics = isolate(compile('src/lib/footageSemantics.ts'), {});
+const brief = isolate(compile('src/lib/stockBrief.ts'), {});
+const semantics = isolate(compile('src/lib/footageSemantics.ts'), { './stockBrief': brief });
 const providers = isolate(compile('src/lib/stockProviders.ts'), {});
 const automatic = isolate(compile('src/lib/automaticStockReel.ts'), { './stockReel': editing, './footageSemantics': semantics, './stockProviders': providers });
 const routeSource = compile('src/app/api/stock-reels/route.ts');

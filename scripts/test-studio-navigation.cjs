@@ -72,8 +72,8 @@ test('creation loads compact recommendations from saved work without automatic g
   assert.match(html, /Finding ideas from your saved videos/);
   assert.match(html, /aria-busy="true"/);
   assert.doesNotMatch(html, /Use idea:/, 'Do not flash unrelated catalogue ideas before saved context arrives');
-  assert.match(html, /nothing starts until you click Create video/);
-  assert.match(html, /not live trends/);
+  assert.match(html, /Your saved videos and feedback guide these ideas/);
+  assert.match(html, /Select an idea, then click Create video/);
   const creation = renderToStaticMarkup(React.createElement(require('../src/components/AICreation').default, { onClose() {}, onStarted() {} }));
   assert.match(creation, /Explore suggestions/);
   assert.match(creation, /Narration &amp; visual brief \(optional\)/);

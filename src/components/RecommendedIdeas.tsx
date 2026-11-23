@@ -96,7 +96,7 @@ export default function RecommendedIdeas({ onChoose, kind, creationActivityAt }:
       </article>;
     })}</div>
     <details className="mt-2 text-xs text-[#59634d]"><summary className="cursor-pointer">About these ideas</summary>
-      <p className="mt-2">Nature mini-doc ideas use your saved videos, story reviews and available results, not live trends. Other categories, children&apos;s 2D ideas and news reports remain available. Suggestions refresh daily, after a finished video and when reopened; More ideas checks your latest work now. Nothing starts until you choose an idea and click Create video.</p>
+      <p className="mt-2">Your saved videos and feedback guide these ideas. Ideas refresh daily and after you finish a video. Select an idea, then click Create video.</p>
       <p className="mt-1">{remembered ? "Recently shown subjects are remembered for your next visit." : "Browser history storage is unavailable; subjects may repeat on your next visit."}</p>
     </details>
   </section>;
