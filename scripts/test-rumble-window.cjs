@@ -27,6 +27,20 @@ test('an existing cross-origin named tab is focused, never overwritten, and bloc
 const click = (extra = {}) => ({ button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, prevented: false,
   preventDefault() { this.prevented = true; }, ...extra });
 
+test('only the explicit fresh upload link navigates the remembered tab back to upload', () => {
+  let opens = 0;
+  const tab = { closed: false, opener: null, location: { href: 'about:blank', replace(href) { this.href = href; } }, focus() {} };
+  const app = load({ open() { opens++; return tab; } });
+  assert.equal(app.openRumbleUpload(), true);
+  tab.location.href = 'https://rumble.com/account/dashboard';
+  assert.equal(app.openRumbleUpload(), true);
+  assert.equal(tab.location.href, 'https://rumble.com/account/dashboard');
+  const event = click(); app.rumbleUploadLink.onClick(event);
+  assert.equal(event.prevented, true);
+  assert.equal(tab.location.href, 'https://rumble.com/upload');
+  assert.equal(opens, 1);
+});
+
 test('the shared dashboard link reuses its own tab without replacing an unfinished upload', () => {
   const opened = [], navigated = [], focused = [];
   const tabs = new Map();
@@ -60,6 +74,11 @@ test('dashboard modified clicks and popup failures leave the real safe link usab
   assert.equal(app.rumbleDashboardLink.href, 'https://rumble.com/account/dashboard');
   assert.equal(app.rumbleDashboardLink.target, 'phoenix-rumble-dashboard');
   assert.equal(app.rumbleDashboardLink.rel, 'noopener noreferrer');
+  const upload = click(); app.rumbleUploadLink.onClick(upload);
+  assert.equal(opens, 2); assert.equal(upload.prevented, false);
+  assert.equal(app.rumbleUploadLink.href, 'https://rumble.com/upload');
+  assert.equal(app.rumbleUploadLink.target, 'phoenix-rumble-upload');
+  assert.equal(app.rumbleUploadLink.rel, 'noopener noreferrer');
 });
 
 test('a separately recovered dashboard tab is only focused and a closed tab can reopen', () => {

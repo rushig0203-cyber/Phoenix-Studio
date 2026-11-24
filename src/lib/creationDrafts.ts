@@ -137,7 +137,7 @@ export async function saveCreationDraft(id: string, version: number, scenes: Dra
         ...(saved?.query === query && saved?.narration === narration && saved.illustration ? { illustration: { ...saved.illustration } } : {}) };
     });
     // A manually saved shot plan is an owner visual brief, not permission to rewrite searches.
-    if (isStockDraft(draft)) draft.input = { ...draft.input, visualTerms: draft.scenes.map(scene => scene.query) };
+    if (isStockDraft(draft)) draft.input = { ...draft.input, visualTerms: draft.scenes.map(scene => scene.query), visualTermsOrigin: "owner" };
     draft.version++;
     draft.updatedAt = new Date().toISOString();
     return draft;

@@ -1,4 +1,4 @@
-import { actionMismatch, hasFootageEvidence, natureShotActionMismatch } from "./footageSemantics";
+import { actionMismatch, hasFootageEvidence, natureShotActionMismatch, natureDepictionMismatch, stockNatureSubject } from "./footageSemantics";
 import type { CreativeBrief } from "./creativeBrief";
 import { generateWritingModel, withWritingSession } from "./writingModel";
 import type { NewsResearch } from "./newsResearch";
@@ -9,6 +9,7 @@ export type StockShot = StockBeat & { start: number; end: number; sourcePage?: s
 /** Catch explicit subject/action swaps; this is not a semantic vision score. */
 export function stockQueryMismatch(narration: string, query: string, visualSubject?: string) {
   if (visualSubject && !hasFootageEvidence(query, visualSubject)) return `the planned subject ${visualSubject}`;
+  if (visualSubject && natureDepictionMismatch(query, visualSubject)) return `a real ${visualSubject}, not an animal-shaped object`;
   const missingAction = visualSubject && natureShotActionMismatch(narration, query);
   if (missingAction) return `the visible ${missingAction} action`;
   const concepts: Array<[RegExp, RegExp, string]> = [
@@ -83,7 +84,8 @@ export function narrationBeats(script: string, count: number): string[] {
   return groups;
 }
 
-export async function createStockStoryboard(input: { topic: string; script: string; duration: number; visualTerms?: string[]; storyboard?: StockBeat[]; creativeBrief?: CreativeBrief; research?: NewsResearch; newsVisualPolicy?: NewsVisualPolicy; recommendation?: { visualSubject?: string } }): Promise<StockBeat[]> {
+export async function createStockStoryboard(input: { topic: string; script: string; duration: number; creationType?: string; visualTerms?: string[]; visualTermsOrigin?: string; storyboard?: StockBeat[]; creativeBrief?: CreativeBrief; research?: NewsResearch; newsVisualPolicy?: NewsVisualPolicy; recommendation?: { visualSubject?: string } }): Promise<StockBeat[]> {
+  const subject = stockNatureSubject(input);
   const validateNewsQueries = (plan: StockBeat[]) => {
     if (!input.research) return plan;
     const index = plan.findIndex(beat => beat.illustration
@@ -92,9 +94,12 @@ export async function createStockStoryboard(input: { topic: string; script: stri
     if (index >= 0) throw new Error(`News section ${index + 1}: ${newsStockQueryIssue(plan[index].query, input.research)}. The saved narration is retained; unsafe footage was not substituted. Create a new visual plan.`);
     return plan;
   };
-  if (input.storyboard?.length && input.storyboard.map(beat => beat.narration).join(" ") === input.script) return validateNewsQueries(input.storyboard);
+  if (input.storyboard?.length && input.storyboard.map(beat => beat.narration).join(" ") === input.script) {
+    const mismatch = subject && input.storyboard.findIndex(beat => stockQueryMismatch(beat.narration, beat.query, subject));
+    if (typeof mismatch === "number" && mismatch >= 0) throw new Error(`Saved section ${mismatch + 1} does not retain the planned ${subject} subject and action. Create a fresh visual plan; narration and chosen clips were retained.`);
+    return validateNewsQueries(input.storyboard);
+  }
   const supplied = input.visualTerms?.map(term => term.trim()).filter(Boolean);
-  const subject = supplied?.length ? undefined : input.recommendation?.visualSubject;
   const beats = narrationBeats(input.script, supplied?.length || (subject ? input.creativeBrief?.beats?.length : undefined) || Math.ceil(input.duration / 6));
   if (!beats.length) throw new Error("The narration has no complete visual sections.");
   if (supplied?.length) return validateNewsQueries(beats.map((narration, index) => ({ narration, query: supplied[Math.floor(index * supplied.length / beats.length)] })));
@@ -110,7 +115,7 @@ export async function createStockStoryboard(input: { topic: string; script: stri
   return withWritingSession(async () => {
   const continuity = `Selected structure: ${input.creativeBrief?.structure || "follow the narration"}. Preserve subjects, object states and setting when consecutive sections describe one continuing action. Explanations and comparisons may use different relevant subjects and settings; do not invent a recurring character or force a fictional shop story. Keep a coherent visual treatment, not an identical cast. Different stock actors must not be treated as proof of the same person's identity. ${input.research ? newsStockVisualInstructions(input.research) : ""}`;
   const depiction = input.research ? "For news, use only relevant neutral contextual subjects/settings; do NOT depict the reported event or people literally."
-    : subject ? `Keep the visual subject ${JSON.stringify(subject)} in every query, including the opening and closing. Search its current action or feature with the fewest concrete words needed; omit decorative framing terms. The saved visual plan is evidence of intent, never evidence of an actual event: ${JSON.stringify(input.creativeBrief?.beats.map(beat => beat.visual) || [])}.`
+    : subject ? `Keep the visual subject ${JSON.stringify(subject)} explicitly named in every query, including body-part details, the opening and closing. A query for an animal's arms or ears must name that animal; human arms or ears, robotic arms and animal-shaped toys or kites are unrelated. Search its current action or feature with the fewest concrete words needed; omit decorative framing terms. The saved visual plan is evidence of intent, never evidence of an actual event: ${JSON.stringify(input.creativeBrief?.beats.map(beat => beat.visual) || [])}.`
     : "Depict ONLY what that section says. Search only the essential visible subject and action.";
   const response = await generateWritingModel({
       model: process.env.OLLAMA_MODEL || "qwen2.5:3b", format: "json",
@@ -172,7 +177,7 @@ export async function repairUnavailableStockQueries(input: { topic: string; rese
   const titles = [...new Set(catalogTitles.filter(title => typeof title === "string" && title.trim()).map(title => title.trim().slice(0, 200)))].slice(0, 24);
   return withWritingSession(async () => {
     const focused = input.narrationPresentation === "measured-speech-v1";
-    const subject = input.recommendation?.visualSubject;
+    const subject = stockNatureSubject(input);
     const direction = `${focused ? `Only section ${index + 1} may change. ` : ""}${subject ? `The changed query must keep ${JSON.stringify(subject)} as its visible subject.` : ""}`;
     const response = await generateWritingModel({ model: process.env.OLLAMA_MODEL || "qwen2.5:3b",
       format: { type: "object", properties: { queries: { type: "array", minItems: scenes.length, maxItems: scenes.length, items: { type: "string", minLength: 2, maxLength: 80 } } }, required: ["queries"], additionalProperties: false },

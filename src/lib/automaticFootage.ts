@@ -1,7 +1,7 @@
 import type { DraftScene, FootageChoice } from "./creationDraftTypes";
 import { searchFootage } from "./stockCatalog";
 import { visualWords } from "./stockBrief";
-import { footageMetadataMismatch, hasFootageEvidence } from "./footageSemantics";
+import { footageMetadataMismatch, hasFootageEvidence, natureDepictionMismatch } from "./footageSemantics";
 import type { NewsResearch } from "./newsResearch";
 import { NEWS_MIXED_VISUAL_POLICY, newsContextSearches, newsEditorialIllustration, newsIllustrationQuery, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms, readNewsIllustration, type NewsVisualPolicy } from "./newsVisualPolicy";
 
@@ -21,6 +21,7 @@ export function rankFootage(choices: FootageChoice[], query: string, minimumSeco
     const description = research ? newsVisualTerms(title) : tokens(title);
     if (research && newsFootageMetadataIssue(title, query, research)) return [];
     if (evidence && (!hasFootageEvidence(title, query) || evidence.subject && !hasFootageEvidence(title, evidence.subject))) return [];
+    if (evidence?.subject && natureDepictionMismatch(title, evidence.subject)) return [];
     // A shared noun is insufficient: "bread" cannot justify footage of a
     // finished loaf while the requested shot is dough rising in a bowl.
     if (description.length && footageMetadataMismatch(title, query)) return [];

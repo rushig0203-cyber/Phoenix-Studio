@@ -191,11 +191,12 @@ test('recovery preserves owner scripts, earlier editorial phases, waiting and ac
 
 test('manually saved generated searches become an owner brief and cannot receive automatic query correction', async () => {
   const item = await ready();
-  const generated = { ...item, input: { ...item.input, scriptOrigin: 'local-model', visualTerms: undefined } };
+  const generated = { ...item, input: { ...item.input, scriptOrigin: 'local-model', visualTerms: undefined, visualTermsOrigin: 'local-model' } };
   write([generated]);
   const changed = generated.scenes.map(scene => ({ ...scene, query: 'opening bedroom curtains' }));
   const saved = await drafts.saveCreationDraft(generated.id, generated.version, changed);
   assert.deepEqual(saved.input.visualTerms, changed.map(scene => scene.query));
+  assert.equal(saved.input.visualTermsOrigin, 'owner');
   assert.deepEqual(read()[0].input.visualTerms, saved.input.visualTerms);
   assert.equal(saved.input.script, generated.input.script);
 });

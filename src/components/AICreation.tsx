@@ -43,6 +43,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const [uploadingSong, setUploadingSong] = useState(false);
   const [recommendationNotice, setRecommendationNotice] = useState("");
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const selectedCreateButton = useRef<HTMLButtonElement>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(initialSuggestionsOpen);
   const [ideaOpen, setIdeaOpen] = useState(!initialTopic?.trim() && !initialSuggestionsOpen);
   const [selectedNews, setSelectedNews] = useState<NewsIdea | null>(null);
@@ -55,6 +56,11 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   const activeLyrics = activeWriting.lyrics ? lyrics : "";
   const savedWriting = !!(narration.trim() && !activeWriting.narration || visualBrief.trim() && !activeWriting.visualBrief || lyrics.trim() && !activeWriting.lyrics);
   const explicitStarter = krishnaStoryPreset(topic);
+  const selectedRecommendation = selectedRecommendationId ? resolveCreationRecommendation(selectedRecommendationId) : null;
+  const createDisabled = busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent : !singing?.available));
+  useEffect(() => {
+    if (selectedRecommendationId) selectedCreateButton.current?.focus();
+  }, [selectedRecommendationId]);
   useEffect(() => {
     if (kind !== "Children's song") return;
     const controller = new AbortController();
@@ -98,7 +104,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
     setIdeaOpen(false);
     // Choosing inspiration must not discard owner writing or switch a saved
     // recording to a generator. These fields remain under the owner's control.
-    setRecommendationNotice(`${next.kind} selected. Nothing has been queued.`);
+    setRecommendationNotice("");
   }
 
   function chooseNews(idea: NewsIdea) {
@@ -119,7 +125,6 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
       setIdeaOpen(true);
       return;
     }
-    const selectedRecommendation = selectedRecommendationId ? resolveCreationRecommendation(selectedRecommendationId) : null;
     if (selectedRecommendationId && (!selectedRecommendation || selectedRecommendation.title !== topic || selectedRecommendation.kind !== kind)) {
       setError("The selected idea changed. Choose it again or edit your idea before creating the video.");
       return;
@@ -269,11 +274,23 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
                 </div></details></> : null}
             </details>
+            {selectedRecommendation ? <section aria-label="Selected idea" className="rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div>
+                  <h4 className="text-sm font-semibold">Selected idea</h4>
+                  <p className="mt-1 font-semibold">{selectedRecommendation.title}</p>
+                  <p className="mt-2 text-sm leading-5 text-[#59634d]">{selectedRecommendation.premise}</p>
+                </div>
+                <Button ref={selectedCreateButton} type="submit" disabled={createDisabled} className="bg-[#26331f] px-5 text-white">
+                  {busy ? "Preparing…" : batchCount === 10 ? "Create 10 story videos" : "Create video"}
+                </Button>
+              </div>
+            </section> : null}
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {savedWriting ? <p role="status" className="text-xs text-[#657153]">Previous custom writing is saved but not used for this idea; edit a field to reuse that writing.</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}
             <details className="rounded-xl border p-3" open={ideaOpen} onToggle={event => setIdeaOpen(event.currentTarget.open)}>
-              <summary className="cursor-pointer text-sm font-semibold">{topic.trim() ? "Edit your idea" : "Describe your video"}{topic.trim() ? <span className="mt-1 block line-clamp-2 text-xs font-normal text-[#59634d]">{topic}</span> : null}</summary>
+              <summary className="cursor-pointer text-sm font-semibold">{topic.trim() ? "Edit your idea" : "Describe your video"}{topic.trim() && !selectedRecommendation ? <span className="mt-1 block line-clamp-2 text-xs font-normal text-[#59634d]">{topic}</span> : null}</summary>
               <label className="mt-2 block text-sm font-semibold">Your idea
               <textarea
                 value={topic}
@@ -326,13 +343,9 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
         {busy ? <StudioActivity label={selectedNews ? "Preparing report" : "Preparing video"} /> : null}
-        <Button type="submit" disabled={busy || uploadingSong || (kind === "Children's song" && (songMode === "recording" ? !songAudio || !activeLyrics.trim() : songMode === "hosted-ace" ? !hostedSongConsent : !singing?.available))} className="bg-[#26331f] px-5 text-white">
-          {busy
-            ? "Preparing…"
-            : batchCount === 10
-              ? "Create 10 story videos"
-              : "Create video"}
-        </Button>
+        {!selectedRecommendation ? <Button type="submit" disabled={createDisabled} className="bg-[#26331f] px-5 text-white">
+          {busy ? "Preparing…" : batchCount === 10 ? "Create 10 story videos" : "Create video"}
+        </Button> : null}
       </form>
     </section>
   );

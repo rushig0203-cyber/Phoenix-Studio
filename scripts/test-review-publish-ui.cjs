@@ -116,7 +116,8 @@ function uiHarness(options = {}) {
     react: hooks,
     './PostingProgressContext': { usePostingProgress: () => options.sharedProgress || null },
     '@/lib/rumbleWindow': { openRumbleUpload: () => { options.onOpenRumble?.({ copied, downloads }); return !options.popupBlocked; },
-      rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' } },
+      rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' },
+      rumbleUploadLink: { href: 'https://rumble.com/upload', target: 'phoenix-rumble-upload', rel: 'noopener noreferrer' } },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('MockFragment') },
   };
   const shared = {
@@ -518,7 +519,7 @@ test('posting expands inline and can be collapsed without submitting', async t =
   const panel = () => nodes(h.tree).find(node => node.props.id === h.button('Post / export').props['aria-controls']);
   assert.equal(panel().props['data-posting-panel'], true);
   assert.equal(panel().props.hidden, true);
-  h.choose('Rumble upload'); await h.flush();
+  h.click('Post / export'); await h.flush();
   assert.equal(panel().type, 'section'); assert.equal(panel().props.hidden, false);
   assert.equal(h.button('Post / export').props['aria-expanded'], true);
   assert.ok(!nodes(h.tree).some(node => node.type === 'dialog'));
@@ -695,38 +696,37 @@ test('Facebook continuation approval and polling cannot approve or poll an unrel
 test('Rumble reveals the existing MP4 and copies its text without downloading or submitting an upload', async t => {
   const file = sampleFile({ quality: { postCopy: 'Light through the trees.\nCredit: source creator.', hashtags: ['#Forest', '#Nature'], captions: [] } });
   const h = uiHarness({ file, onOpenRumble({ copied, downloads }) { assert.equal(copied.length, 1, 'Start clipboard access before the tab takes focus'); assert.equal(downloads.length, 0); } }); t.after(() => h.unmount());
+  h.click('Post / export'); await h.flush();
+  assert.equal(h.requests.length, 0);
   h.choose('Rumble upload'); await h.flush();
-  assert.equal(h.requests.length, 0); assert.equal(h.intervals.size, 0);
-  assert.match(h.text, /Rumble · assisted upload/); assert.match(h.text, /Automatic publishing is not connected/);
-  assert.match(h.text, /Instagram catalogue music is not included/);
+  assert.equal(h.requests.length, 1); assert.equal(h.intervals.size, 0);
+  assert.match(h.text, /Continue on Rumble/);
+  assert.match(h.text, /Drop the selected MP4.*review the licence and publish there/);
   const dashboard = nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Open Rumble dashboard ↗');
   assert.equal(dashboard.props.href, 'https://rumble.com/account/dashboard');
   assert.equal(dashboard.props.target, 'phoenix-rumble-dashboard');
   assert.equal(dashboard.props.rel, 'noopener noreferrer');
   assert.equal(h.control('Rumble title', 'input').props.value, file.title);
   assert.equal(h.control('Rumble description and hashtags', 'textarea').props.value, 'Light through the trees.\nCredit: source creator.\n\n#Forest #Nature');
-  const action = h.button('Open Rumble & show saved video ↗');
+  const action = h.button('Show saved video again');
   assert.equal(action.props.type, 'button');
-  let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
-  assert.equal(prevented, false); assert.equal(h.downloads.length,0);
+  assert.equal(h.downloads.length,0);
   assert.equal(h.reveals.length,1);assert.equal(h.reveals[0].url,'/api/review-files/review%20video%2Fone/reveal?target=instagram');
   assert.deepEqual(h.copied, [h.control('Rumble description and hashtags', 'textarea').props.value]);
   assert.match(h.text, /description and hashtags copied/i); assert.doesNotMatch(h.text, /Upload permission verified|100%|Upload is complete/);
-  assert.match(h.text,/No duplicate download or upload was created/);
+  assert.match(h.text,/Saved video selected in File Explorer/);
   h.click('Copy title'); await h.flush(); assert.equal(h.copied.at(-1), file.title);
+  h.click('Copy description'); await h.flush(); assert.equal(h.copied.at(-1), h.control('Rumble description and hashtags', 'textarea').props.value);
   assert.equal(h.requests.length,1);assert.equal(h.posts.length,0,'The local reveal must not become a provider upload');
 });
 
 test('Rumble clipboard or local-file failures remain recoverable without automatic downloads or uploads', async t => {
   for (const options of [{ clipboardUnavailable: true }, { reveal:()=>response({error:'The saved MP4 could not be shown.'},500) }]) {
     const h = uiHarness(options); t.after(() => h.unmount()); h.choose('Rumble upload'); await h.flush();
-    const action = h.button('Open Rumble & show saved video ↗');
-    let prevented = false; action.props.onClick({ preventDefault() { prevented = true; } }); await h.flush();
-    assert.equal(prevented, false);
     assert.equal(h.downloads.length,0);assert.equal(h.copied.length,options.clipboardUnavailable?0:1);
     assert.match(h.text,options.clipboardUnavailable?/Clipboard unavailable/:/saved MP4 could not be shown/);
     assert.ok(nodes(h.tree).some(node => node.type === 'a' && text(node) === 'Download MP4'));
-    assert.ok(h.button('Open Rumble ↗'));
+    assert.ok(nodes(h.tree).some(node => node.type === 'a' && node.props.href === 'https://rumble.com/upload'));
     assert.equal(h.reveals.length,1);assert.equal(h.posts.length,0);
   }
 });
@@ -742,36 +742,36 @@ test('Rumble preserves Instagram polling and both panels while using current sav
   h.tick(); await h.flush();
   const reads = h.requests.length;
   h.updateFile(sampleFile({ title: 'New saved title', updatedAt: '2026-10-23T01:00:00Z', outputs: { youtube: { width: 1080, height: 1920, duration: 24 } }, quality: { postCopy: 'New caption.', hashtags: ['#Mountains'], captions: [] } }));
-  const action = h.button('Open Rumble & show saved video ↗');
+  const action = h.button('Show saved video again');
   action.props.onClick({ preventDefault() { assert.fail('A ready saved output is allowed'); } }); await h.flush();
   assert.equal(h.reveals.at(-1).url,'/api/review-files/review%20video%2Fone/reveal?target=youtube');assert.equal(h.downloads.length,0);
   assert.equal(h.copied.at(-1), 'New caption.\n\n#Mountains'); assert.equal(h.control('Rumble title', 'input').props.value, 'New saved title');
   h.updateFile({ ...h.file, status: 'FAILED' }); await h.flush();
-  assert.equal(h.button('Open Rumble & show saved video ↗'),undefined);
+  assert.equal(h.button('Show saved video again'),undefined);
   assert.match(h.text,/No finished video is available/);assert.equal(h.requests.length,reads+1);assert.equal(h.posts.length,0);
 });
 
-test('Rumble stays visible when opening Instagram and blocked popups cannot claim a completed handoff', async t => {
+test('Rumble stays visible beside Instagram and a blocked popup still prepares the saved file', async t => {
   const h = uiHarness({ popupBlocked: true }); t.after(() => h.unmount());
   h.choose('Rumble upload'); await h.flush();
   h.choose('Post to Instagram'); await h.flush();
   assert.equal(Boolean(nodes(h.tree).find(node => node.props['aria-label'] === 'Rumble assisted upload').props.hidden), false, 'Opening Instagram must not hide the Rumble handoff');
   assert.equal(Boolean(h.panel('Instagram').props.hidden), false);
-  assert.ok(h.button('Open Rumble & show saved video ↗'));
-  h.click('Open Rumble & show saved video ↗'); await h.flush();
+  assert.ok(h.button('Show saved video again'));
   assert.match(h.text, /browser blocked the Rumble window/);
-  assert.equal(h.downloads.length,0);assert.equal(h.copied.length,1);assert.equal(h.posts.length,0);assert.equal(h.reveals.length,0);
-  assert.doesNotMatch(h.text, /description and hashtags copied/);
+  assert.match(h.text, /Saved video selected in File Explorer/);
+  assert.equal(h.downloads.length,0);assert.equal(h.copied.length,1);assert.equal(h.posts.length,0);assert.equal(h.reveals.length,1);
+  assert.equal(nodes(h.tree).find(node => node.type === 'a' && text(node) === 'Start fresh upload ↗').props.href, 'https://rumble.com/upload');
 });
 
 test('Rumble preparation deduplicates rapid clicks and ignores a late response for changed video metadata',async t=>{
   let finish;const h=uiHarness({reveal:()=>new Promise(resolve=>{finish=resolve;})});t.after(()=>h.unmount());
-  h.choose('Rumble upload');await h.flush();const action=h.button('Open Rumble & show saved video ↗');
+  h.click('Post / export');await h.flush();const action=h.button('Rumble upload');
   action.props.onClick();action.props.onClick();await h.flush();assert.equal(h.reveals.length,1);assert.equal(h.button('Opening saved video…').props.disabled,true);
   h.updateFile(sampleFile({title:'A different saved revision',updatedAt:'2026-11-01T00:00:00Z'}));
   finish(response({revealed:true}));await h.flush();
-  assert.equal(h.control('Rumble title','input').props.value,'A different saved revision');assert.doesNotMatch(h.text,/Saved video opened in File Explorer/);
-  assert.equal(h.button('Open Rumble & show saved video ↗').props.disabled,false);assert.equal(h.downloads.length,0);assert.equal(h.posts.length,0);
+  assert.equal(h.control('Rumble title','input').props.value,'A different saved revision');assert.doesNotMatch(h.text,/Saved video selected in File Explorer/);
+  assert.equal(h.button('Show saved video again').props.disabled,false);assert.equal(h.downloads.length,0);assert.equal(h.posts.length,0);
 });
 
 test('location ideas are optional, honest and inert until explicit Meta search', async t => {

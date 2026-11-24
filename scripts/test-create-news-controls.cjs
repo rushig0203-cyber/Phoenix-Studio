@@ -62,6 +62,13 @@ test('the dedicated video workspace opens personalized ideas without creating un
   assert.equal(h.requests.length, 0);
   assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, idea.title);
   assert.equal(nodes(h.tree).filter(node => node.type === 'Recommendations').length, 0);
+  const selected = nodes(h.tree).find(node => node.type === 'section' && node.props['aria-label'] === 'Selected idea');
+  const resolved = recommendations.resolveCreationRecommendation(idea.id);
+  assert.ok(selected); assert.ok(text(selected).includes(resolved.title)); assert.ok(text(selected).includes(resolved.premise));
+  assert.equal(nodes(h.tree).filter(node => node.type === 'button' && node.props.type === 'submit').length, 1);
+  assert.equal(nodes(selected).find(node => node.type === 'button' && node.props.type === 'submit').props.disabled, false);
+  assert.equal(text(nodes(h.tree).find(node => node.type === 'details' && text(node).startsWith('Edit your idea'))).includes(resolved.title), false,
+    'The selected idea summary should be the single visible source for its exact title and angle.');
   h.submit(); await h.flush();
   assert.equal(h.requests.length, 1); assert.equal(JSON.parse(h.requests[0].body).topic, idea.title);
   assert.equal(JSON.parse(h.requests[0].body).recommendationId, idea.id);
@@ -76,10 +83,15 @@ test('curated nature submission keeps the exact visible title and clears its ID 
   const canonical = recommendations.recommendationPool().find(idea => idea.id === id);
   recommendationArea().props.onChoose({ ...canonical, title: resolved.title, premise: resolved.premise, visualSubject: resolved.visualSubject }); h.render();
   assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, resolved.title);
+  const selected = nodes(h.tree).find(node => node.type === 'section' && node.props['aria-label'] === 'Selected idea');
+  assert.ok(text(selected).includes(resolved.premise));
+  assert.equal(nodes(h.tree).filter(node => node.type === 'button' && node.props.type === 'submit').length, 1);
   h.submit(); await h.flush();
   let request = JSON.parse(h.requests.at(-1).body);
   assert.equal(request.topic, resolved.title); assert.equal(request.recommendationId, id);
   nodes(h.tree).find(node => node.type === 'textarea').props.onChange({ target: { value: 'A new hand-written topic' } }); h.render();
+  assert.equal(nodes(h.tree).some(node => node.type === 'section' && node.props['aria-label'] === 'Selected idea'), false);
+  assert.equal(nodes(h.tree).filter(node => node.type === 'button' && node.props.type === 'submit').length, 1);
   h.submit(); await h.flush(); request = JSON.parse(h.requests.at(-1).body);
   assert.equal(request.topic, 'A new hand-written topic'); assert.equal(request.recommendationId, undefined);
 });

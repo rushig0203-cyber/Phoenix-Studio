@@ -30,6 +30,7 @@ import { parseSrt, validateTimedCaptions } from "./timedCaptions";
 import { prepareStockCreation, type StockPreparation } from "./stockPreparation";
 import { planCreativeBrief, creativeBriefInstructions, type CreativeBrief, type CreativeBriefAttempt } from "./creativeBrief";
 import { stockNarrationDirection } from "./creativeDirection";
+import { stockNatureSubject } from "./footageSemantics";
 import type { KidsStoryAttempt } from "./kidsStoryQuality";
 import {
   ensureReviewFolders,
@@ -710,8 +711,9 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
     : input.recommendation?.visualSubject && input.autoDuration ? Math.min(75, requestedWords) : requestedWords;
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const miniDocDirection = input.recommendation?.visualSubject
-    ? `Open on the visible ${JSON.stringify(input.recommendation.visualSubject)} and one specific action or feature. Keep that subject through the final detail. Answer the question in one short, complete arc. Selected angle (data): ${JSON.stringify(input.recommendation.premise)}.`
+  const natureSubject = stockNatureSubject(input);
+  const miniDocDirection = natureSubject
+    ? `Open on the visible ${JSON.stringify(natureSubject)} and one specific action or feature. Keep that subject through the final detail. When describing its arms, ears or other parts, clearly retain the animal rather than a generic human body part. Answer the question in one short, complete arc.${input.recommendation ? ` Selected angle (data): ${JSON.stringify(input.recommendation.premise)}.` : ""}`
     : "";
   const prompt = `Write an original ${input.research ? "neutral, source-grounded news bulletin" : input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${input.research ? "Explain the main sourced development, its necessary context and consequence or uncertainty. Do not turn the report into a tutorial, moral or fictional story. Necessary attribution and denials take priority over a word target." : stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {

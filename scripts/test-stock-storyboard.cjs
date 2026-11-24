@@ -171,3 +171,57 @@ test('measured renders must prove each exact planned asset and speech boundary',
     assert.throws(() => assertMeasuredStockRender(approved, readStockShots([{ ...raw, ...patch }], 3, true)), /Scene 1.*measured speech cut/);
   }
 });
+
+test('typed nature ideas retain their named subject without overriding owner briefs or other workflows', () => {
+  const { stockNatureSubject } = require('../src/lib/footageSemantics.ts');
+  assert.equal(stockNatureSubject({ topic: 'How an octopus explores with its arms' }), 'octopus');
+  assert.equal(stockNatureSubject({ topic: "Watch how a deer's ears turn" }), 'deer');
+  assert.equal(stockNatureSubject({ topic: 'A bunny eating in a forest' }), 'rabbit');
+  assert.equal(stockNatureSubject({ topic: 'A dog playing with a toy' }), 'dog');
+  assert.equal(stockNatureSubject({ topic: 'Why a waterfall creates mist' }), 'waterfall');
+  assert.equal(stockNatureSubject({ topic: 'How cacti store water' }), 'cactus');
+  const { hasFootageEvidence } = require('../src/lib/footageSemantics.ts');
+  for (const [description, subject] of [['cacti in a desert', 'cactus'], ['octopuses underwater', 'octopus'], ['butterflies feeding', 'butterfly'], ['foxes in a forest', 'fox']]) assert.equal(hasFootageEvidence(description, subject), true);
+  for (const input of [
+    { topic: 'How an octopus explores', visualTerms: ['person drawing an octopus'] },
+    { topic: 'How an octopus explores', research: {} },
+    { topic: 'A bunny in the garden', creationType: 'children-story' },
+    { topic: 'Bear market strategies', creationType: 'business' },
+    { topic: 'How to replace a rubber seal' }, { topic: 'A roast duck recipe' },
+    { topic: 'How to film deer' }, { topic: 'An octopus kite flies' },
+    { topic: 'A dog and a cat play together' }, { topic: 'Hand whisk or mixer' },
+  ]) assert.equal(stockNatureSubject(input), undefined, JSON.stringify(input));
+  assert.equal(stockNatureSubject({ topic: 'How an octopus explores', visualTerms: ['octopus arms'], visualTermsOrigin: 'local-model' }), 'octopus');
+});
+
+test('the saved octopus/deer failure titles cannot pass the nature subject gate', () => {
+  const { rankFootage } = require('../src/lib/automaticFootage.ts');
+  const make = (id, title) => ({ id, duration: 30, width: 720, height: 1280, sourcePage: `https://www.pexels.com/video/${title}-${id}/`, creator: 'Fixture' });
+  const octopus = [make(1, 'colorful-octopus-kites-flying-in-clear-sky'), make(2, 'a-person-with-wet-paint-on-her-arm'), make(3, 'a-person-touching-dumplings-on-a-plate'), make(4, 'lizard-crawling-on-rocky-surface-in-nature'), make(5, 'a-clicbot-with-wheels-and-a-robotic-arm'), make(6, 'octopus-arms-moving-underwater')];
+  assert.deepEqual(rankFootage(octopus, 'octopus', 5, '9:16', new Set(), undefined, undefined, { subject: 'octopus' }).map(result => result.choice.id), [6]);
+  assert.deepEqual(rankFootage(octopus, 'arm close up', 5, '9:16', new Set(), undefined, undefined, { subject: 'octopus' }).map(result => result.choice.id), [6]);
+  const deer = [make(1, 'close-up-video-of-an-ear'), make(2, 'a-woman-massaging-the-ear-of-a-man'), make(3, 'deer-ears-turning-in-a-forest')];
+  assert.deepEqual(rankFootage(deer, 'deer ears', 5, '9:16', new Set(), undefined, undefined, { subject: 'deer' }).map(result => result.choice.id), [3]);
+  assert.equal(rankFootage([make(9, 'dog-playing-with-a-toy')], 'dog playing', 5, '9:16', new Set(), undefined, undefined, { subject: 'dog' }).length, 1);
+});
+
+test('typed octopus storyboard repairs body-part queries while retaining every narration sentence', async () => {
+  const original = global.fetch;
+  let calls = 0;
+  const narration = 'An octopus explores with its arms. Its suckers detect touch.';
+  global.fetch = async (_url, init) => {
+    const prompt = JSON.parse(init.body).prompt;
+    assert.match(prompt, /octopus.*explicitly named/);
+    return Response.json({ response: JSON.stringify({ queries: ++calls === 1 ? ['octopus arms', 'suckers close up'] : ['octopus suckers'] }) });
+  };
+  try {
+    const plan = await createStockStoryboard({ topic: 'How an octopus explores with its arms', script: narration, duration: 30 });
+    assert.equal(plan.map(beat => beat.narration).join(' '), narration);
+    assert.deepEqual(plan.map(beat => beat.query), ['octopus arms', 'octopus suckers']);
+    assert.equal(calls, 2);
+    await assert.rejects(createStockStoryboard({ topic: 'How an octopus explores with its arms', script: narration, duration: 30, storyboard: [{ narration, query: 'human arms', assetId: 1 }] }), /planned octopus subject/);
+    const owner = await createStockStoryboard({ topic: 'How an octopus explores with its arms', script: narration, duration: 30, visualTerms: ['person drawing an octopus'] });
+    assert.equal(owner[0].query, 'person drawing an octopus');
+    assert.equal(calls, 2, 'owner visual terms do not invoke a model or get replaced');
+  } finally { global.fetch = original; }
+});

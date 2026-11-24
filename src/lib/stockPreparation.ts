@@ -4,6 +4,7 @@ import { selectAutomaticFootage } from "./automaticFootage";
 import type { DraftScene } from "./creationDraftTypes";
 import { selectedFootage } from "./stockCatalog";
 import { withWritingSession } from "./writingModel";
+import { hasFootageEvidence, stockNatureSubject } from "./footageSemantics";
 import { NEWS_MIXED_VISUAL_POLICY, newsIllustrationQuery, newsStockQueryIssue, readNewsIllustration } from "./newsVisualPolicy";
 
 export type StockPreparation = { version: 1; scenes: DraftScene[]; repairUsed?: true };
@@ -16,8 +17,9 @@ const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
 export async function prepareStockCreation(original: GenerationInput, savedScenes: DraftScene[] = [], checkpoint: Checkpoint = async () => {}, selectFootage = true) {
   let input = { ...original };
   let scenes = savedScenes.map(scene => ({ ...scene }));
-  const evidence = input.narrationPresentation === "measured-speech-v1" && !input.research
-    ? { subject: input.recommendation?.visualSubject } : undefined;
+  const subject = stockNatureSubject(input);
+  const evidence = !input.research && (input.narrationPresentation === "measured-speech-v1" || subject)
+    ? { subject } : undefined;
   let repairUsed = input.stockPreparation?.repairUsed;
   const save = async (current: DraftScene[], stage: string) => {
     scenes = current.map(scene => ({ ...scene }));
@@ -36,6 +38,9 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
     input = { ...input, script, scriptOrigin };
     // The saved script/editorial verdict survives an interrupted shot-list call.
     await checkpoint(input, scenes, "Narration saved — planning the matching visual sequence");
+    if (subject && scriptOrigin === "local-model" && !hasFootageEvidence(script, subject)) {
+      throw new Error(`The generated narration does not name its ${subject} subject. Saved narration is retained for correction; no unrelated footage was selected.`);
+    }
     if (!scenes.length) scenes = await createStockStoryboard(input as GenerationInput & { script: string });
     if (input.research) {
       const unsafe = scenes.findIndex(scene => scene.illustration

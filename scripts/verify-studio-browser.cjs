@@ -64,6 +64,7 @@ async function run() {
   const temporaryMedia = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ui-smoke-'));
   const movie = path.join(temporaryMedia, 'synthetic.webm');
   let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions, showPostingProgress = false;
+  let rumbleReveals = 0;
   const suggestionsGate = new Promise(resolve => { releaseSuggestions = resolve; });
   const proof = { status: 'running', synthetic: true, source: process.env.GITHUB_SHA, directory, buildId,
     assertions: [], screenshots: [], stylesheets: [], apiReads: [], deniedRequests: [], pageErrors: [] };
@@ -112,6 +113,11 @@ async function run() {
       const incoming = route.request(), url = new URL(incoming.url());
       if (incoming.method() === 'GET' && templates.some(template => template.opening.image === url.href)) {
         return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
+      }
+      if (url.origin === origin && incoming.method() === 'POST' && url.pathname === `/api/review-files/${file.id}/reveal`
+        && url.search === '?target=instagram' && incoming.postData() === null) {
+        rumbleReveals++;
+        return json(route, { revealed: true });
       }
       if (url.origin !== origin || !['GET', 'HEAD'].includes(incoming.method())) {
         proof.deniedRequests.push(`${incoming.method()} ${incoming.url()}`);
@@ -267,8 +273,18 @@ async function run() {
       && visibleAngles.every(([title, angle]) => title?.length > 0 && title.length <= 60 && angle?.length > 0)
       && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible(), visibleAngles);
     await capture('studio-create-video');
-    await page.getByText('Describe your video', { exact: true }).click();
+    await creationIdeas.first().click();
+    const selectedIdea = page.getByRole('region', { name: 'Selected idea', exact: true });
+    const selectedCreate = selectedIdea.getByRole('button', { name: 'Create video', exact: true });
+    await selectedCreate.waitFor();
+    verify('Selecting a nature idea shows its exact angle and focuses one Create action',
+      await selectedIdea.getByText(visibleAngles[0][0], { exact: true }).isVisible()
+      && await selectedIdea.getByText(visibleAngles[0][1], { exact: true }).isVisible()
+      && await page.getByRole('button', { name: 'Create video', exact: true }).count() === 1
+      && await selectedCreate.evaluate(button => button === document.activeElement));
+    await page.getByText('Edit your idea', { exact: true }).click();
     await page.getByLabel('Your idea').fill('Krishna and Meera watch stars at night');
+    await page.getByText('Explore suggestions', { exact: true }).click();
     await page.getByRole('button', { name: /^Use idea:/ }).first().waitFor();
     verify('A new Krishna idea stays editable and does not force a series or the Butter Pot starter', await page.getByLabel('Your idea').inputValue() === 'Krishna and Meera watch stars at night'
       && await page.getByLabel('Output quantity').inputValue() === '1');
@@ -405,10 +421,22 @@ async function run() {
     await destinations.getByRole('button', { name: 'Instagram', exact: true }).click();
     verify('Opening more platforms retains the Instagram caption and ready final action', await instagram.getByLabel('Caption and hashtags', { exact: true }).inputValue() === 'Owner-reviewed caption kept while choosing platforms.'
       && await instagram.getByRole('button', { name: 'Post to Instagram', exact: true }).isEnabled());
+    await page.evaluate(() => {
+      const open = window.open;
+      window.open = (url, target, features) => target === 'phoenix-rumble-upload'
+        ? { closed: false, opener: null, location: { href: 'about:blank', replace() {} }, focus() {} }
+        : open.call(window, url, target, features);
+    });
     await destinations.getByRole('button', { name: 'Rumble · assisted', exact: true }).click();
     const rumble = dialog.getByRole('region', { name: 'Rumble assisted upload', exact: true });
-    verify('Rumble opens alongside Instagram and links to the creator dashboard', await rumble.isVisible() && await instagram.isVisible()
+    await rumble.getByRole('status').getByText(/Saved video selected in File Explorer/).waitFor();
+    verify('One Rumble click prepares the exact saved video alongside Instagram', rumbleReveals === 1
+      && await rumble.isVisible() && await instagram.isVisible());
+    await rumble.getByText('Rumble options', { exact: true }).click();
+    verify('The Rumble handoff retains safe links to upload and the creator dashboard',
+      await rumble.getByRole('link', { name: /Start fresh upload/ }).getAttribute('href') === 'https://rumble.com/upload'
       && await rumble.getByRole('link', { name: /Open Rumble dashboard/ }).getAttribute('href') === 'https://rumble.com/account/dashboard');
+    await rumble.getByText('Rumble options', { exact: true }).click();
     showPostingProgress = true;
     await instagram.getByRole('button', { name: 'Check status', exact: true }).click();
     const instagramIcon = strip.locator('[data-posting-platform="instagram"]');
@@ -444,7 +472,7 @@ async function run() {
     await page.getByLabel('Trim start', { exact: true }).waitFor();
     await capture('studio-editor-night');
     verify('No browser runtime errors', proof.pageErrors.length === 0, proof.pageErrors);
-    verify('No provider, external or mutating browser requests', proof.deniedRequests.length === 0, proof.deniedRequests);
+    verify('No provider or external requests and only the mocked local Rumble reveal', proof.deniedRequests.length === 0 && rumbleReveals === 1, proof.deniedRequests);
     verify('Actual built stylesheets loaded', stylesheetUrls.size > 0);
     proof.stylesheets = [...stylesheetUrls];
     proof.status = 'passed';

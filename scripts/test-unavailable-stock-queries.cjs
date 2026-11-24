@@ -50,7 +50,7 @@ function harness({ reply = replacements, search = async () => [], providerError 
   const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': news });
   const preparation = load('src/lib/stockPreparation.ts', { './generation': { createStockScript: async input => input.script },
     './stockStoryboard': storyboard, './automaticFootage': automatic, './stockCatalog': catalog,
-    './writingModel': writing, './newsVisualPolicy': news });
+    './writingModel': writing, './newsVisualPolicy': news, './footageSemantics': semantics });
   return { calls, storyboard, automatic, preparation, checkpoint: async (input, selected, stage) => calls.checkpoints.push({ input: plain(input), selected: plain(selected), stage }) };
 }
 
@@ -115,6 +115,42 @@ test('a mini-doc scene with no supported action keeps the exact footage, narrati
   await assert.rejects(resumed.preparation.prepareStockCreation(saved, saved.stockPreparation.scenes, resumed.checkpoint), /Scene 2/);
   assert.equal(resumed.calls.writer.length, 0);
   assert.ok(resumed.calls.search.every(([query]) => query === 'jellyfish contracting'));
+});
+
+test('typed animal preparation rejects saved human detail and animal-shaped objects without replacing media', async () => {
+  for (const [topic, narration, query, title] of [
+    ['How an octopus explores with its arms', 'An octopus explores with its arms.', 'octopus arms', 'colorful octopus kites with long arms'],
+    ["Watch how a deer's ears turn", 'A deer turns its ears.', 'ears close up', 'close up video of a human ear'],
+  ]) {
+    const h = harness();
+    const saved = [{ narration, query, footage: footage(701, title) }];
+    const before = plain(saved);
+    await assert.rejects(h.preparation.prepareStockCreation({ ...base, topic, script: narration }, saved, h.checkpoint), /different narrated action|saved footage does not support/);
+    assert.deepEqual(saved, before);
+    assert.equal(h.calls.search.length, 0);
+    assert.equal(h.calls.writer.length, 0);
+  }
+});
+
+test('typed nature preparation uses real subject evidence even without recommendation metadata', async () => {
+  const h = harness({ search: async query => [footage(1, 'octopus arms painted on a human arm'), footage(2, 'octopus arms moving underwater')] });
+  const narration = 'An octopus moves its arms underwater.';
+  const result = await h.preparation.prepareStockCreation({ ...base, duration: 20, topic: 'How an octopus explores with its arms', script: narration }, [{ narration, query: 'octopus arms' }], h.checkpoint);
+  assert.equal(result.scenes[0].footage.id, 2);
+  assert.equal(h.calls.writer.length, 0);
+});
+
+test('generated nature narration must name its subject before footage selection while owner words stay authoritative', async () => {
+  const narration = 'Its arms move along the seabed.';
+  const scene = { narration, query: 'octopus arms' };
+  const input = { ...base, duration: 20, topic: 'How an octopus explores with its arms', script: narration };
+  const generated = harness();
+  await assert.rejects(generated.preparation.prepareStockCreation(input, [scene], generated.checkpoint), /narration does not name its octopus subject/);
+  assert.equal(generated.calls.checkpoints.at(-1).input.script, narration);
+  assert.equal(generated.calls.writer.length, 0); assert.equal(generated.calls.search.length, 0);
+  const owner = harness({ search: async () => [footage(2, 'octopus arms moving underwater')] });
+  const result = await owner.preparation.prepareStockCreation({ ...input, scriptOrigin: 'owner' }, [scene], owner.checkpoint);
+  assert.equal(result.input.script, narration); assert.equal(result.scenes[0].footage.id, 2);
 });
 
 test('owner-written, approved, explicit visual briefs and exact-ID plans cannot receive query repair', async () => {

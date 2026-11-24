@@ -1,5 +1,36 @@
 import { visualWords } from "./stockBrief";
 
+const animalSubjects = ["octopus", "deer", "jellyfish", "otter", "penguin", "elephant", "giraffe", "squirrel", "flamingo", "zebra", "duck", "frog", "hummingbird", "dragonfly", "snail", "crab", "seal", "chameleon", "hedgehog", "horse", "butterfly", "bee", "bird", "cat", "dog", "rabbit", "panda", "bear", "fox", "owl", "dolphin", "whale", "shark", "turtle"];
+const landscapeSubjects = ["waterfall", "forest", "mountain", "lake", "fjord", "dune", "snow", "moss", "fern", "bamboo", "cactus", "mangrove", "wave"];
+const subjectPattern = (subject: string) => new RegExp(`\\b${subject === "butterfly" ? "butterfl(?:y|ies)" : subject === "fox" ? "fox(?:es)?" : subject === "octopus" ? "octopus(?:es)?" : subject === "cactus" ? "cact(?:us|i)" : `${subject}s?`}\\b`, "i");
+const normalizeNatureAliases = (text: string) => text.replace(/\b(?:bunny|bunnies)\b/gi, "rabbit").replace(/\b(?:puppy|puppies)\b/gi, "dog").replace(/\b(?:kitten|kittens)\b/gi, "cat").replace(/\bcacti\b/gi, "cactus").replace(/\bwoodland\b/gi, "forest");
+
+/** Anchor a clearly named subject even when the owner typed the idea instead of selecting a suggestion. */
+export function stockNatureSubject(input: { topic: string; creationType?: string; research?: unknown; recommendation?: { visualSubject?: string }; visualTerms?: string[]; visualTermsOrigin?: string }) {
+  if (input.research || input.creationType && input.creationType !== "general"
+    || input.visualTerms?.length && input.visualTermsOrigin !== "local-model"
+    || /\b(?:filmmaking|videography|photography|camera|film|filming|shoot|shooting|record|recording|edit|editing)\b/i.test(input.topic)) return undefined;
+  if (input.recommendation?.visualSubject) return input.recommendation.visualSubject;
+  const topic = normalizeNatureAliases(input.topic);
+  if (/\b(?:recipes?|cooking|roast(?:ed|ing)?|fried|baking|rubber|gasket|sealant|bear market|bull market|mountain bik\w*|repair\w*|plumbing)\b/i.test(topic)) return undefined;
+  const animals = animalSubjects.filter(subject => subjectPattern(subject).test(topic));
+  if (animals.length === 1) return natureDepictionMismatch(topic, animals[0]) ? undefined : animals[0];
+  if (animals.length > 1) return undefined;
+  if (/\b(?:paintings?|drawings?|cartoons?|animation|sculptur\w*|origami)\b/i.test(topic)) return undefined;
+  const landscapes = landscapeSubjects.filter(subject => subjectPattern(subject).test(topic));
+  return landscapes.length === 1 ? landscapes[0] : undefined;
+}
+
+export function natureDepictionMismatch(description: string, subject: string) {
+  const animal = animalSubjects.find(name => subjectPattern(name).test(normalizeNatureAliases(subject)));
+  if (!animal) return undefined;
+  const subjectWords = subjectPattern(animal).source;
+  const proxy = new RegExp(`${subjectWords}[ -]+(?:shaped[ -]+)?(?:kites?|toys?|robots?|balloons?|costumes?|mascots?)\\b|\\b(?:toy|robotic|plush|cartoon|origami)[ -]+${subjectWords}`, "i");
+  if (proxy.test(normalizeNatureAliases(description)) || /\b(?:tattoo\w*|sculptur\w*|paintings?|painted (?:on|onto)|drawings?|cartoons?|animation)\b/i.test(description)) {
+    return "an animal-shaped object or depiction is not footage of the living subject";
+  }
+}
+
 const framingWords = new Set(["video", "stock", "clip", "footage", "view", "close", "closeup", "shot", "wide", "macro"]);
 const natureActions = [
   { name: "pulsing", pattern: /^(?:puls(?:e|es|ed|ing)|contract(?:s|ed|ing|ion|ions)?)$/ },
@@ -11,7 +42,7 @@ const natureActions = [
 ];
 
 function evidenceWords(text: string) {
-  return visualWords(text.replace(/\bjelly[ -]fish\b/gi, "jellyfish")).filter(word => !framingWords.has(word));
+  return visualWords(normalizeNatureAliases(text).replace(/\bjelly[ -]fish\b/gi, "jellyfish")).filter(word => !framingWords.has(word));
 }
 
 function wordForms(word: string) {

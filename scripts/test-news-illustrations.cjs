@@ -34,7 +34,7 @@ function harness(search = async () => []) {
   const catalog = { searchFootage: async (...args) => { calls.search.push(args); return search(...args); }, selectedFootage: async () => assert.fail('Cached exact assets must be retained') };
   const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': policy });
   const preparation = load('src/lib/stockPreparation.ts', { './generation': { createStockScript: async value => value.script }, './stockStoryboard': storyboard,
-    './automaticFootage': automatic, './stockCatalog': catalog, './writingModel': writing, './newsVisualPolicy': policy });
+    './automaticFootage': automatic, './stockCatalog': catalog, './writingModel': writing, './newsVisualPolicy': policy, './footageSemantics': semantics });
   return { calls, storyboard, preparation, checkpoint: async (saved, scenes) => calls.checkpoints.push(plain({ saved, scenes })) };
 }
 

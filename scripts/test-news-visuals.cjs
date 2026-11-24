@@ -298,6 +298,7 @@ test('shared preparation validates legacy saved scenes even without footage sele
     './stockStoryboard': storyboard, './automaticFootage': footage,
     './stockCatalog': { selectedFootage: async () => { throw new Error('Unexpected asset request'); } },
     './writingModel': { withWritingSession: async work => work() }, './newsVisualPolicy': policy,
+    './footageSemantics': require('../src/lib/footageSemantics.ts'),
   };
   const source = require('typescript').transpileModule(fs.readFileSync(path.join(project, 'src/lib/stockPreparation.ts'), 'utf8'), { compilerOptions: { module: 1, target: 7 } }).outputText;
   vm.runInNewContext(source, { module: fixtureModule, exports: fixtureModule.exports, require: id => { assert.ok(id in imports, id); return imports[id]; } });
