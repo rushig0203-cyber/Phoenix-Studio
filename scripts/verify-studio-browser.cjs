@@ -414,7 +414,6 @@ async function run() {
     await page.locator('[data-template-progress] progress[value="37"]').waitFor();
     await capture('studio-progress');
     pendingTemplate = false;
-    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: `Preview: ${file.title}`, exact: true });
     await dialog.waitFor();
     await page.waitForFunction(() => { const video = document.querySelector('dialog[open] video'); return video && video.readyState >= 2; });
@@ -423,7 +422,7 @@ async function run() {
     await post.waitFor();
     await page.waitForFunction(() => { const button = document.querySelector('dialog[open] section[aria-label="Instagram upload confirmation"] button[type="submit"]'); return button && !button.disabled; });
     await post.scrollIntoViewIfNeeded();
-    verify('Exact completed output automatically opens from saved template request', await dialog.isVisible() && await page.evaluate(() => localStorage.getItem('phoenix-quick-template-v1')) === null);
+    verify('Exact completed output automatically opens from the saved template request without refreshing', await dialog.isVisible() && await page.evaluate(() => localStorage.getItem('phoenix-quick-template-v1')) === null);
     verify('Direct final Post is visible and enabled', await post.isVisible() && await post.isEnabled());
     verify('Final review has no intermediate Post / export action', await dialog.getByRole('button', { name: 'Post / export', exact: true }).count() === 0);
     const nativePreview = () => dialog.locator('video').evaluate(video => {
