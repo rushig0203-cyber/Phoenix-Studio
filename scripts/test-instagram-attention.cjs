@@ -82,7 +82,7 @@ test('cohorts compare only mature same-age same-exposure recipes; missing intera
 test('Insights preserves interaction totals and keeps watch diagnosis in one disclosure', () => {
   const data = { ...state(four()), summary: summarize(state(four()), now) };
   const jsx = (type, props) => ({ type, props }); let slot = 0;
-  const component = load('src/components/InstagramPerformance.tsx', { react: { useState(initial) { return [slot++ === 0 ? data : typeof initial === 'function' ? initial() : initial, () => {}]; }, useRef: value => ({ current: value }), useCallback: value => value, useEffect() {} }, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' } }).default;
+  const component = load('src/components/InstagramPerformance.tsx', { react: { useState(initial) { return [slot++ === 0 ? data : typeof initial === 'function' ? initial() : initial, () => {}]; }, useRef: value => ({ current: value }), useCallback: value => value, useEffect() {} }, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' }, 'lucide-react': { ChevronDown: 'ChevronDown' } }).default;
   const tree = component();
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
   const text = value => value == null || typeof value === 'boolean' ? '' : Array.isArray(value) ? value.map(text).join('') : typeof value === 'object' ? text(value.props?.children) : String(value);
