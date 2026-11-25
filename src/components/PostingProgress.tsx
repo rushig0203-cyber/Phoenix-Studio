@@ -12,6 +12,9 @@ const ReviewPlayer = dynamic(() => import("./ReviewPlayer"), { ssr: false });
 const noticesKey = "phoenix-posting-notices-dismissed";
 const statusLabel = { QUEUED: "Queued", UPLOADING: "Uploading", PROCESSING: "Processing", COMPLETE: "Posted", FAILED: "Failed", NEEDS_CHECK: "Needs check" } as const;
 const button = "rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50";
+const activePollMs = 5_000;
+const recoveryPollMs = 15_000;
+const idlePollMs = 60_000;
 
 function ProgressCircle({ percent, label }: { percent?: number; label: string }) {
   return <span role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
@@ -39,14 +42,21 @@ export default function PostingProgress({ children }: { children: React.ReactNod
   const openRequest = useRef<AbortController | null>(null);
   const dockButton = useRef<HTMLButtonElement>(null);
   const version = useRef(0);
+  const workActive = useRef(false);
+  const wake = useRef<(() => void) | null>(null);
 
   const update = useCallback((next: ReviewPublishJob[]) => {
     jobsRef.current = next;
+    const destinations = postingDestinations(next);
+    const active = destinations.some(postingActive);
+    const becameActive = active && !workActive.current;
+    workActive.current = active;
     const at = Date.now();
     samplesRef.current = sampleTransfers(next, samplesRef.current, at);
     setObservedAt(at);
     setJobs(next); setSamples(samplesRef.current);
-    if (postingDestinations(next).every(job => job.status === "COMPLETE")) setExpanded(false);
+    if (destinations.every(job => job.status === "COMPLETE")) setExpanded(false);
+    if (becameActive) wake.current?.();
   }, []);
   const observe = useCallback((file: ReviewFile, saved: ReviewPublishJob[]) => {
     version.current++;
@@ -85,18 +95,24 @@ export default function PostingProgress({ children }: { children: React.ReactNod
     if (!["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return;
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined, pending = false;
+    function schedule(delay: number) {
+      clearTimeout(timer);
+      if (!abort.signal.aborted && !document.hidden) timer = setTimeout(() => void read(), delay);
+    }
     async function read() {
       if (pending || abort.signal.aborted) return;
       clearTimeout(timer);
       if (document.hidden) return;
       pending = true;
       const started = version.current;
+      let completeSnapshot = false;
       try {
         const response = await fetch("/api/review-publications", { cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]) });
         const data = await response.json();
         if (!response.ok || !Array.isArray(data.jobs)) throw new Error("Could not refresh posting status. Checking again…");
         if (!abort.signal.aborted && started === version.current) {
           const partial = data.limited || data.inspectionIssue;
+          completeSnapshot = !partial;
           const next = partial ? [...jobsRef.current.filter(job => !data.jobs.some((fresh: ReviewPublishJob) => fresh.reviewId === job.reviewId)), ...data.jobs] : data.jobs;
           update(next);
           setTitles(current => ({ ...current, ...data.titles }));
@@ -106,13 +122,14 @@ export default function PostingProgress({ children }: { children: React.ReactNod
         if (!abort.signal.aborted) setError("Could not refresh posting status. Checking again…");
       } finally {
         pending = false;
-        if (!abort.signal.aborted) timer = setTimeout(() => void read(), postingDestinations(jobsRef.current).some(postingActive) ? 5000 : 15000);
+        schedule(workActive.current ? activePollMs : completeSnapshot ? idlePollMs : recoveryPollMs);
       }
     }
     const visible = () => { if (!document.hidden) void read(); };
+    wake.current = () => { if (!pending) schedule(activePollMs); };
     document.addEventListener("visibilitychange", visible);
     void read();
-    return () => { abort.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+    return () => { wake.current = null; abort.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
   }, [update]);
 
   async function openVideo(reviewId: string) {

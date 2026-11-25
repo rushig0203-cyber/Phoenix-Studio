@@ -166,6 +166,39 @@ test('the progress loop skips hidden pages, prevents overlap, keeps snapshots on
   assert.equal(last.signal.aborted, true); assert.equal(h.timers.size, 0);
 });
 
+test('known idle scans drop to once a minute, newly accepted work wakes fast polling, and confirmation restores idle', async t => {
+  let jobs = [];
+  const h = harness({ read(request) { if (request.url === '/api/review-publications') return response({ jobs, titles: {} }); } });
+  t.after(() => h.unmount());
+  const delay = () => { assert.equal(h.timers.size, 1); return [...h.timers.values()][0].duration; };
+  await h.flush();
+  assert.equal(delay(), 60_000);
+  const queued = upload({ status: 'QUEUED', bytesUploaded: 0 });
+  h.shared.accepted({ id: reviewId, title: 'Fixture video' }, queued); await h.flush();
+  assert.equal(delay(), 5_000);
+  assert.equal(h.requests.length, 1, 'Approval replaces the timer without starting a second scan');
+  jobs = [upload({ bytesUploaded: 230 })];
+  h.tick(); await h.flush();
+  assert.equal(delay(), 5_000);
+  assert.match(h.text, /23%/);
+  jobs = [upload({ status: 'COMPLETE', bytesUploaded: 1000, percent: 100 })];
+  h.tick(); await h.flush();
+  assert.equal(delay(), 60_000);
+  assert.equal(h.shared.jobs[0].status, 'COMPLETE');
+  assert.equal(nodes(h.tree).some(node => node.props['data-posting-dock']), false);
+});
+
+test('an incomplete idle snapshot retries promptly and waking the tab checks for work immediately', async t => {
+  let partial = true;
+  const h = harness({ read() { return response({ jobs: [], titles: {}, inspectionIssue: partial }); } });
+  t.after(() => h.unmount()); await h.flush();
+  assert.equal([...h.timers.values()][0].duration, 15_000);
+  partial = false;
+  h.visible(false); h.visible(true); await h.flush();
+  assert.equal(h.requests.length, 2);
+  assert.equal([...h.timers.values()][0].duration, 60_000);
+});
+
 test('a stale snapshot cannot erase a just-approved upload and stopped notices never continue themselves', async t => {
   const pending = deferred();
   const h = harness({ read: () => pending.promise }); t.after(() => h.unmount());
