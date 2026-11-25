@@ -11,7 +11,7 @@ const cards = dashboard.slice(cardStart, cardEnd);
 
 test('completed history cards summarize the reel, clip count, duration, and 100 percent', () => {
   assert.match(cards, /const completed = job\.status === "COMPLETED"/);
-  assert.match(cards, /\{!completed \? <JobProgress[^>]*progress=\{job\.progress\}/);
+  assert.match(cards, /\{!completed && !failed && job\.status !== "CANCELLED" \? <JobProgress[^>]*progress=\{job\.progress\}/);
   assert.match(cards, /\{completed \? "Completed · 100%"/);
   assert.match(cards, /\{clipCount\} \{clipCount === 1 \? "clip" : "clips"\} · \{durationSeconds > 0 \? formatTime\(durationSeconds\) : "Duration unavailable"\}/);
   assert.match(cards, /Object\.values\(file\.outputs \|\| \{\}\)/);
@@ -22,7 +22,7 @@ test('completed history cards summarize the reel, clip count, duration, and 100 
 test('compact job names/date/progress stay visible while ETA, stage and errors remain in a closed disclosure', () => {
   assert.match(cards, /\{!completed && timing\(job\) \? <p/);
   assert.match(cards, /!completed && !failed && job\.stage \? <p/);
-  assert.match(cards, /<details className="min-w-0">\s*<summary title="Show job details"/);
+  assert.match(cards, /<details className="min-w-0">\s*<summary title="Show job details" data-job-summary/);
   assert.match(cards, /<time dateTime=\{dated \? job\.createdAt : undefined\}/);
   assert.match(cards, /dateStyle: "medium", timeStyle: "short"/);
   assert.ok(cards.indexOf('<JobProgress') < cards.indexOf('</summary>'), 'The actual progress stays visible in the collapsed row');

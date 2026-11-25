@@ -421,14 +421,14 @@ export default function DashboardClient() {
         <div hidden={workspace !== "clips"} data-creation-workspace="clips" className={styles.workArea}>
           {sourceOpen ? <SourceProcessor active={section === "create" && workspace === "clips" && !offline} onClose={() => closeWorkspace("clips")} onStarted={() => started("Video queued. Follow its progress below.", "source")} /> : workspace === "clips" ? <Button onClick={() => setSourceOpen(true)}>Clip another video</Button> : null}
         </div>
-        <div hidden={workspace !== "video"} data-creation-workspace="video" className={styles.workArea}>
-          {aiOpen ? <AICreation key={idea?.id || "custom"} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} creationActivityAt={creationActivityAt} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
+        <div hidden={workspace !== "video"} data-creation-workspace="video" className={styles.videoArea}>
+          {aiOpen ? <AICreation key={idea?.id || "custom"} active={section === "create" && workspace === "video" && !offline} initialSuggestionsOpen initialKind={idea?.workflow === "business" ? "Business video" : idea?.workflow === "children-story" ? "Children's short story" : "General video"} initialTopic={idea?.title} creationActivityAt={creationActivityAt} onClose={() => closeWorkspace("video")} onStarted={message => started(message || "Video queued. Follow its progress below.", "creation")} /> : workspace === "video" ? <Button onClick={() => setAiOpen(true)}>Create another video</Button> : null}
         </div>
         </fieldset>
         {section === "library" ? <div className={styles.workArea}><ReviewLibrary files={files} loading={loading} onRefresh={load} /></div> : null}
         {section === "insights" ? <div className={`${styles.workArea} ${styles.insightsArea}`}><ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /></div> : null}
         {section === "create" ? <>
-        <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
+        <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={styles.jobs}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex items-center gap-2">
               <h2 className="text-base font-semibold">Jobs</h2>
@@ -442,15 +442,17 @@ export default function DashboardClient() {
                 </div>
               </details>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setShowOlderFinished(false); setJobPage(1); }} className="rounded-lg border px-2.5 py-2 text-xs font-medium">
+                {([["active", "Active"], ["failed", "Needs attention"], ["completed", "Completed"], ["all", "All jobs"]] as const).map(([value, label]) => <option key={value} value={value}>{label} · {queue.counts[value]}</option>)}
+              </select>
+              <Button type="button" variant="ghost" size="icon" aria-label="Refresh jobs" title="Refresh jobs" onClick={() => void load()} disabled={loading}>
+                <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
           {notice ? <p role="status" className="mt-2 text-xs text-[#4f5c31]">{notice}</p> : null}
-          <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold"><span>Show</span><select aria-label="Job status filter" value={queue.filter} onChange={event => { setJobFilter(event.target.value as JobFilter); setShowOlderFinished(false); setJobPage(1); }} className="rounded-lg border border-[#bdc7a5] bg-white px-2 py-1">
-            {([["active", "Active"], ["failed", "Needs attention"], ["completed", "Completed"], ["all", "All jobs"]] as const).map(([value, label]) => <option key={value} value={value}>{label} · {queue.counts[value]}</option>)}
-          </select></label>
-          {queue.total > 0 ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#687657]">
+          {queue.pages > 1 || queue.filter === "completed" && queue.counts.completed > RECENT_FINISHED_JOBS ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <p>{queue.filter === "completed" && !showOlderFinished ? `Latest ${queue.total} of ${queue.counts.completed} finished jobs` : `Showing ${(queue.page - 1) * JOB_PAGE_SIZE + 1}–${Math.min(queue.page * JOB_PAGE_SIZE, queue.total)} of ${queue.total} ${queue.filter === "active" ? "active jobs" : "saved jobs"}.`}</p>
             {queue.filter === "completed" && queue.counts.completed > RECENT_FINISHED_JOBS ? <button type="button" className="rounded px-2 py-1 font-semibold text-primary underline underline-offset-4" onClick={() => { setShowOlderFinished(value => !value); setJobPage(1); }}>{showOlderFinished ? "Show latest five" : "Show older finished jobs"}</button> : null}
           </div> : null}
@@ -458,9 +460,9 @@ export default function DashboardClient() {
           {queue.total === 0 ? (
             loading ? <StudioActivity label="Loading jobs…" /> : <p className="mt-5 text-sm text-[#778269]">{queue.filter === "active" ? "No active jobs." : queue.filter === "failed" ? "No jobs need attention." : queue.filter === "completed" ? "No finished jobs yet." : "No saved jobs yet."}</p>
           ) : (
-            <div aria-label="Job list" className="mt-2 divide-y divide-[#e0e5d5]">
+            <div aria-label="Job list" className="mt-3 divide-y divide-border">
               {queue.displayed.map((entry) => {
-                if ("draft" in entry) return <fieldset key={`preparation-${entry.id}`} disabled={offline} className="min-w-0 border-0 p-0" aria-label="Video preparation controls"><CreationDrafts drafts={[entry.draft]} onRefresh={load} onRequeued={draft => { setJobFilter("active"); setJobPage(1); setNotice(`“${draft.input.topic}” queued again. Follow its progress in Active.`); }} /></fieldset>;
+                if ("draft" in entry) return <CreationDrafts key={`preparation-${entry.id}`} drafts={[entry.draft]} onRefresh={load} onRequeued={draft => { setJobFilter("active"); setJobPage(1); setNotice(`“${draft.input.topic}” queued again. Follow its progress in Active.`); }} />;
                 const job = entry.job;
                 const failed = job.status === "FAILED" || job.status === "BLOCKED";
                 const completed = job.status === "COMPLETED";
@@ -474,15 +476,23 @@ export default function DashboardClient() {
                 const dated = Number.isFinite(Date.parse(job.createdAt));
                 const active = ["RUNNING", "PROCESSING"].includes(job.status);
                 return (
-                  <article key={retryKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
+                  <article key={retryKey} data-job-row>
                     <details className="min-w-0">
-                      <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{job.title}</span><span className="sr-only"> — {job.status}; job details</span><time dateTime={dated ? job.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time>{!completed ? <JobProgress status={job.status} progress={job.progress} failed={failed} label={`${job.title} progress`} /> : null}</summary>
-                      <div className={`${styles.jobDetails} mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#687657]`}>
-                    <p className={failed ? "font-semibold text-[#914527]" : "font-semibold text-[#4f5c31]"}>{completed ? "Completed · 100%" : `${job.status} · ${job.progress}%`}</p>
-                    {completed ? <p className="mt-1 text-xs text-[#53633e]">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
-                    {!completed && timing(job) ? <p className="mt-1 text-xs font-medium text-[#53633e]">{timing(job)}</p> : null}
-                    {!completed && !failed && job.stage ? <p className="mt-1 text-xs text-[#687657]">{job.stage}</p> : null}
-                    {job.error ? <p className="mt-2 text-sm break-words text-[#a75528]">{job.error}</p> : null}
+                      <summary title="Show job details" data-job-summary>
+                        <span className="min-w-0">
+                          <span data-job-title>{job.title}</span>
+                          <span data-job-meta><time dateTime={dated ? job.createdAt : undefined}>{dated ? new Date(job.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time>
+                            {failed ? <span data-job-attention>Needs attention</span> : completed ? <span>Completed</span> : job.status === "CANCELLED" ? <span>Cancelled</span> : null}
+                          </span>
+                          {!completed && !failed && job.status !== "CANCELLED" ? <JobProgress status={job.status} progress={job.progress} label={`${job.title} progress`} /> : null}
+                        </span>
+                      </summary>
+                      <div className={`${styles.jobDetails} mt-3 space-y-1 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground`}>
+                    <p className={failed ? "font-semibold text-destructive" : "font-semibold text-foreground"}>{completed ? "Completed · 100%" : failed ? "Needs attention" : `${job.status} · ${job.progress}%`}</p>
+                    {completed ? <p className="mt-1">{clipCount} {clipCount === 1 ? "clip" : "clips"} · {durationSeconds > 0 ? formatTime(durationSeconds) : "Duration unavailable"}</p> : null}
+                    {!completed && timing(job) ? <p className="mt-1 font-medium">{timing(job)}</p> : null}
+                    {!completed && !failed && job.stage ? <p className="mt-1">{job.stage}</p> : null}
+                    {job.error ? <p className="mt-2 text-sm break-words text-destructive">{job.error}</p> : null}
                       <p className="mt-1">{job.detail}</p>
                       {completed && timing(job) ? <p className="mt-1">{timing(job)}</p> : null}
                       {completed && !outputFiles.length ? <p className="mt-1">The finished file is not in this Library snapshot. It may be in Trash; history remains saved.</p> : null}
@@ -494,7 +504,7 @@ export default function DashboardClient() {
                     ) : null}
                       </div>
                     </details>
-                    <div className="flex items-center gap-1 pt-0.5">
+                    <div data-job-actions>
                       {failed && job.kind !== "edit" ? <Button type="button" variant="ghost" size="sm" disabled={offline || retrying !== null || removingJob !== null} aria-label={`Retry failed job: ${job.title}`} title="Retry this failed job" onClick={() => void retry(job)}>{retrying === retryKey ? "Queueing…" : "Retry"}</Button> : null}
                       {failed && job.kind === "edit" && !offline ? <Link href={job.reviewId ? `/dashboard/edit/${job.reviewId}` : "/dashboard#library"} aria-label={`Retry failed edit: ${job.title}`} title="Open the saved edit to export again" className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium hover:bg-[#edf1e5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]">Retry</Link> : null}
                       <Button type="button" variant="ghost" size="sm" disabled={offline || active || removingJob !== null || retrying !== null} onClick={() => void removeJob(job)} aria-label={`${job.status === "QUEUED" ? "Cancel queued job and delete history" : "Delete job history"}: ${job.title}`} title={active ? "Available when this render finishes" : job.status === "QUEUED" ? "Cancel this queued job and remove its history; saved videos are kept" : "Remove history only; saved videos are kept"}>{removingJob === retryKey ? "Removing…" : "Delete"}</Button>

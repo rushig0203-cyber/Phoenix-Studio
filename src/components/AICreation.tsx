@@ -21,7 +21,7 @@ function defaultFormat(kind: Kind): PublishingFormat {
   return kind === "Children's song" ? "youtube-full" : "youtube-short";
 }
 
-export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic, initialSuggestionsOpen = false, creationActivityAt }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string; initialSuggestionsOpen?: boolean; creationActivityAt?: number }) {
+export default function AICreation({ onClose, onStarted, initialKind = "General video", initialTopic, initialSuggestionsOpen = false, creationActivityAt, active = true }: { onClose: () => void; onStarted: (message?: string) => void; initialKind?: Kind; initialTopic?: string; initialSuggestionsOpen?: boolean; creationActivityAt?: number; active?: boolean }) {
   const [kind, setKind] = useState<Kind>(initialKind);
   const [topic, setTopic] = useState<string>(initialTopic || "");
   const [autoIdea, setAutoIdea] = useState(false);
@@ -203,33 +203,17 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
   }
 
   return (
-    <section className="mt-5 rounded-[1.5rem] border border-[#bfcaa6] bg-white p-5">
-      <div className="flex flex-wrap justify-between gap-4">
+    <section data-video-creation className="py-1">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="mt-1 text-xl font-semibold">What is your idea?</h3>
+          <h3 className="text-lg font-semibold">Pick an idea or write your own</h3>
         </div>
-        <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </div>
 
-      <form noValidate onSubmit={(event) => void create(event)} className="mt-5 space-y-4">
-        <details className="rounded-xl border border-[#cad7a4] bg-[#f4f8e8] p-3">
-          <summary className="cursor-pointer text-sm font-semibold">How Phoenix will make this</summary>
-          <p className="flex items-center gap-2 text-sm font-bold text-[#3d5428]">
-            <ShieldCheck className="h-4 w-4" />
-            {children ? "Original illustrated animation" : "Real stock footage with narration"}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-[#647451]">
-            {children
-              ? "Ages 3–6 by default. Phoenix plans the story and renders original 2D characters automatically. This is illustrated animation, not studio-quality 3D or anime. Songs use free hosted generation, your sung recording, or an available local singing engine."
-              : "Your selected writer plans the narration, or you supply it below. Phoenix selects real Pexels footage by the shot brief, duration and format, then renders locally. You review only the finished video. Groq writing sends text only; video files stay on this PC."}
-            {" "}No paid AI provider or automatic posting is used.
-            {" "}Laptop-safe rendering runs one Phoenix export at a time with at most two CPU threads.
-            {" "}Describe the subject and audience; Phoenix chooses the workflow. For children&apos;s animation or songs, include that in your idea.
-            {" "}Attention or earnings are never guaranteed.
-          </p>
-        </details>
+      <form noValidate onSubmit={(event) => void create(event)} className="mt-4 space-y-4">
 
-        {kind === "Children's song" ? <section className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
+        {kind === "Children's song" ? <section className="space-y-3 border-b border-border pb-4">
           <h4 className="font-semibold">Real singing + music</h4>
           <label className="block text-sm font-semibold">Song source<select value={songMode} onChange={event => setSongMode(event.target.value as typeof songMode)} className="mt-1 w-full rounded-lg border bg-white p-2">
             <option value="recording">Use my sung recording · free</option>
@@ -251,7 +235,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
         </section> : null}
 
         {children && kind !== "Children's song" ? (
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm">
+          <label className="flex cursor-pointer items-start gap-3 py-2 text-sm">
             <input
               type="checkbox"
               checked={autoIdea}
@@ -267,14 +251,14 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
 
         {!children || !autoIdea ? (
           <>
-            <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="rounded-xl border p-3">
+            <details open={suggestionsOpen} onToggle={event => setSuggestionsOpen(event.currentTarget.open)} className="py-1">
               <summary className="cursor-pointer text-sm font-semibold">Explore suggestions</summary>
-              {suggestionsOpen ? <><RecommendedIdeas kind={kind} creationActivityAt={creationActivityAt} onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
+              {suggestionsOpen ? <><RecommendedIdeas kind={kind} active={active} creationActivityAt={creationActivityAt} onChoose={chooseRecommendation} /><details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">News reports</summary><NewsIdeas onChoose={chooseNews} /></details>
                 <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Starter examples</summary><div className="mt-3 flex flex-wrap gap-2">
                   {[KRISHNA_STORY_TITLE, HINDI_KRISHNA_STORY_TITLE].map(title => <Button key={title} type="button" variant="outline" size="sm" onClick={() => { changeTopic(title); setSuggestionsOpen(false); setIdeaOpen(false); }}>{title}</Button>)}
                 </div></details></> : null}
             </details>
-            {selectedRecommendation ? <section aria-label="Selected idea" className="rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
+            {selectedRecommendation ? <section aria-label="Selected idea" className="border-l-2 border-primary py-2 pl-4">
               <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
                   <h4 className="text-sm font-semibold">Selected idea</h4>
@@ -289,7 +273,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
             {recommendationNotice ? <p role="status" className="text-xs text-[#657153]">{recommendationNotice}</p> : null}
             {savedWriting ? <p role="status" className="text-xs text-[#657153]">Previous custom writing is saved but not used for this idea; edit a field to reuse that writing.</p> : null}
             {selectedNews ? <p className="text-xs"><a href={selectedNews.url} target="_blank" rel="noreferrer" className="underline">Source: BBC News · {new Date(selectedNews.publishedAt).toLocaleDateString()}</a> · Single-source report, not independently verified.</p> : null}
-            <details className="rounded-xl border p-3" open={ideaOpen} onToggle={event => setIdeaOpen(event.currentTarget.open)}>
+            <details className="border-t border-border pt-4" open={ideaOpen} onToggle={event => setIdeaOpen(event.currentTarget.open)}>
               <summary className="cursor-pointer text-sm font-semibold">{topic.trim() ? "Edit your idea" : "Describe your video"}{topic.trim() && !selectedRecommendation ? <span className="mt-1 block line-clamp-2 text-xs font-normal text-[#59634d]">{topic}</span> : null}</summary>
               <label className="mt-2 block text-sm font-semibold">Your idea
               <textarea
@@ -311,7 +295,7 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </p>
         )}
 
-        {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 rounded-xl border border-[#bfcaa6] bg-[#f7faef] p-4">
+        {selectedNews ? <p className="text-xs text-[#657153]">Report mode uses source-based narration and illustrative footage. Your custom narration and visual brief are kept for other ideas, but are not used for this report. Edit the idea above to leave report mode.</p> : !children ? <details className="space-y-3 border-t border-border pt-4">
           <summary className="cursor-pointer font-semibold">Narration & visual brief (optional)</summary>
           <label className="block text-sm font-semibold">Your narration (optional)<textarea rows={5} maxLength={20000} value={narration} onChange={event => {setNarration(event.target.value);setActiveWriting(current=>({...current,narration:true}));}} placeholder="Leave blank for your selected writer, or write the exact narration you want." className="mt-1 w-full rounded-lg border bg-white p-2 font-normal" /></label>
           <p className="text-xs text-[#647451]">Phoenix estimates the length from your complete narration. Your words are kept, not rewritten or stretched to fill time.</p>
@@ -339,7 +323,23 @@ export default function AICreation({ onClose, onStarted, initialKind = "General 
           </label>
         ) : null}
 
-        <p className="text-xs text-[#5f654d]">Review the finished video before posting.</p>
+        <details className="border-t border-border pt-4 text-muted-foreground">
+          <summary className="cursor-pointer text-xs font-semibold">How Phoenix will make this</summary>
+          <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <ShieldCheck className="h-4 w-4" />
+            {children ? "Original illustrated animation" : "Real stock footage with narration"}
+          </p>
+          <p className="mt-1 text-xs leading-5">
+            {children
+              ? "Ages 3–6 by default. Phoenix plans the story and renders original 2D characters automatically. This is illustrated animation, not studio-quality 3D or anime. Songs use free hosted generation, your sung recording, or an available local singing engine."
+              : "Your selected writer plans the narration, or you supply it below. Phoenix selects real Pexels footage by the shot brief, duration and format, then renders locally. You review only the finished video. Groq writing sends text only; video files stay on this PC."}
+            {" "}No paid AI provider or automatic posting is used.
+            {" "}Laptop-safe rendering runs one Phoenix export at a time with at most two CPU threads.
+            {" "}Describe the subject and audience; Phoenix chooses the workflow. For children&apos;s animation or songs, include that in your idea.
+            {" "}Attention or earnings are never guaranteed.
+          </p>
+        </details>
+        <p className="text-xs text-muted-foreground">Review the finished video before posting.</p>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff1e8] p-3 text-sm text-[#a74c2c]">{error}</p> : null}
         {busy ? <StudioActivity label={selectedNews ? "Preparing report" : "Preparing video"} /> : null}

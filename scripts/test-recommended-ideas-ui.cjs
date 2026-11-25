@@ -38,12 +38,12 @@ const natureContext = () => ({ now: Date.parse('2026-11-15T12:00:00Z'), recent: 
 // Exercise the real component and selector against an inert, local API fixture.
 // No owner files, providers, jobs, browser, real timers or server are started.
 async function harness(options = {}) {
-  let index = 0, tree, clock = 0, nextTimer = 0, context = natureContext(), activityAt = options.creationActivityAt;
-  const timers = new Map(), slots = [], effects = [], pending = [], cleanups = [], chosen = [], requests = [];
+  let index = 0, tree, clock = 0, nextTimer = 0, context = natureContext(), activityAt = options.creationActivityAt, active = options.active ?? true;
+  const timers = new Map(), slots = [], effects = [], pending = [], chosen = [], requests = [], signals = [];
   const hooks = {
     useState(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], next => { slots[at] = typeof next === 'function' ? next(slots[at]) : next; }]; },
     useRef(initial) { const at = index++; if (!Object.hasOwn(slots, at)) slots[at] = { current: initial }; return slots[at]; },
-    useEffect(callback, dependencies) { const at = index++, previous = effects[at]; if (!previous || dependencies.some((value, offset) => !Object.is(value, previous[offset]))) { effects[at] = [...dependencies]; pending.push(callback); } },
+    useEffect(callback, dependencies) { const at = index++, previous = effects[at]; if (!previous || dependencies.some((value, offset) => !Object.is(value, previous.dependencies[offset]))) { effects[at] = { dependencies }; pending.push(() => { previous?.cleanup?.(); effects[at].cleanup = callback(); }); } },
   };
   const jsx = (type, props, key) => type === Activity ? Activity(props) : ({ type, props, key });
   const sandbox = { URLSearchParams, AbortController, AbortSignal,
@@ -52,16 +52,20 @@ async function harness(options = {}) {
       const parsed = new URL(url, 'http://local.test');
       assert.equal(parsed.pathname, '/api/content-suggestions'); assert.equal(parsed.searchParams.get('workflow'), 'creation'); assert.equal(init.cache, 'no-store');
       requests.push(parsed);
+      signals.push(init.signal);
       const seen = parsed.searchParams.get('seen').split(',').filter(Boolean); assert.ok(seen.length <= 48);
       if (options.fail?.()) return { ok: false };
       const result = recommendations.personalizedCreationRecommendations(context, Number(parsed.searchParams.get('cursor')), seen, parsed.searchParams.get('kind') || undefined);
-      return { ok: true, async json() { return { ...result, ideas: result.ideas.map(idea => options.decorate ? options.decorate(idea) : idea) }; } };
+      const batch = { ...result, ideas: result.ideas.map(idea => options.decorate ? options.decorate(idea) : idea) };
+      const response = options.result ? options.result(batch, requests.length) : batch;
+      await options.waitForResponse?.(requests.length);
+      return { ok: true, async json() { return response; } };
     },
   };
   if (options.propertyDenied) Object.defineProperty(sandbox, 'localStorage', { get() { throw new Error('Browser property blocked'); } });
   else sandbox.localStorage = options.storage || memoryStorage();
   const Component = load(component, { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, './StudioActivity': { __esModule: true, default: Activity }, '@/lib/creationRecommendations': recommendations }, sandbox).default;
-  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea), kind: options.kind || 'General video', creationActivityAt: activityAt }); while (pending.length) { const cleanup = pending.shift()(); if (cleanup) cleanups.push(cleanup); } return tree; }
+  function render() { index = 0; tree = Component({ onChoose: idea => chosen.push(idea), kind: options.kind || 'General video', creationActivityAt: activityAt, active }); while (pending.length) pending.shift()(); return tree; }
   async function settle() { for (let count = 0; count < 8; count++) await Promise.resolve(); render(); }
   const cards = () => nodes(tree).filter(node => node.type === 'button' && node.props['aria-label']?.startsWith('Use idea: '));
   const ids = () => cards().map(node => node.props['aria-label']);
@@ -69,7 +73,7 @@ async function harness(options = {}) {
   const categories = async () => { nodes(tree).find(node => node.type === 'button' && text(node) === 'Other categories').props.onClick(); await settle(); };
   render(); await settle();
   async function advance(milliseconds) { const target = clock + milliseconds; for (let passes = 0; ; passes++) { assert.ok(passes < 20); const next = [...timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0]; if (!next) break; clock = next[1].at; timers.delete(next[0]); next[1].callback(); await settle(); } clock = target; }
-  return { cards, ids, more, categories, chosen, advance, requests, tree: () => tree, setContext(value) { context = value; }, async setActivityAt(value) { activityAt = value; await settle(); }, unmount() { cleanups.forEach(cleanup => cleanup()); } };
+  return { cards, ids, more, categories, chosen, advance, requests, signals, settle, tree: () => tree, setContext(value) { context = value; }, async setActive(value) { active = value; render(); await settle(); }, async setActivityAt(value) { activityAt = value; await settle(); }, unmount() { effects.forEach(effect => effect?.cleanup?.()); } };
 }
 
 test('creation fetches local recent subjects on open and remembers them across visits', async () => {
@@ -144,6 +148,47 @@ test('automatic refresh checks daily, on finished creation activity and on deman
   await ui.setActivityAt(Date.parse('2026-11-16T12:00:00Z'));
   assert.equal(ui.requests.length, 3, 'A successful draft/render completion timestamp refreshes the list');
   ui.unmount(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 3);
+});
+
+test('each return to the mounted video workspace refreshes once and hidden panels do no suggestion work', async () => {
+  const ui = await harness({ active: false });
+  assert.equal(ui.requests.length, 0);
+  await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 0);
+  await ui.setActive(true); const first = ui.ids();
+  assert.equal(first.length, 5); assert.equal(ui.requests.length, 1);
+  await ui.setActive(true); assert.equal(ui.requests.length, 1, 'An unchanged active flag is not another visit');
+  await ui.setActive(false);
+  await ui.setActivityAt(Date.parse('2026-11-16T12:00:00Z'));
+  await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS * 2);
+  assert.equal(ui.requests.length, 1, 'Hidden daily and completion refreshes wait until the next opening');
+  await ui.setActive(true);
+  assert.equal(ui.requests.length, 2); assert.ok(ui.ids().every(id => !first.includes(id)));
+  assert.equal(ui.chosen.length, 0);
+  ui.unmount(); await ui.advance(recommendations.RECOMMENDATION_REFRESH_MS); assert.equal(ui.requests.length, 2);
+});
+
+test('a late response from the hidden visit cannot overwrite reopened ideas or their stored history', async () => {
+  let finishFirst;
+  const waiting = new Promise(resolve => { finishFirst = resolve; }), storage = memoryStorage();
+  const ui = await harness({ storage, waitForResponse: at => at === 1 ? waiting : undefined,
+    result: (result, at) => at === 1 ? { ideas: [], nextCursor: 0 } : result });
+  assert.equal(ui.requests.length, 1); assert.equal(ui.cards().length, 0);
+  await ui.setActive(false); assert.equal(ui.signals[0].aborted, true);
+  await ui.setActive(true); assert.equal(ui.requests.length, 2); assert.equal(ui.cards().length, 5);
+  const before = ui.ids(), saved = storage.getItem(recommendations.PERSONALIZED_RECOMMENDATION_STORAGE_KEY);
+  finishFirst(); await ui.settle();
+  assert.deepEqual(plain(ui.ids()), plain(before));
+  assert.equal(storage.getItem(recommendations.PERSONALIZED_RECOMMENDATION_STORAGE_KEY), saved);
+  assert.equal(ui.chosen.length, 0); ui.unmount();
+});
+
+test('a valid empty batch ends loading and keeps the custom-topic path available after reopening', async () => {
+  const ui = await harness({ result: () => ({ ideas: [], nextCursor: 0 }) });
+  assert.equal(ui.cards().length, 0); assert.equal(ui.tree().props['aria-busy'], false);
+  assert.match(text(ui.tree()), /No matching ideas are available\. You can describe your own video/);
+  await ui.setActive(false); await ui.setActive(true);
+  assert.equal(ui.requests.length, 2); assert.equal(ui.tree().props['aria-busy'], false);
+  assert.equal(ui.chosen.length, 0); ui.unmount();
 });
 
 test('a failed refresh retains usable cards and does not record an unseen batch', async () => {

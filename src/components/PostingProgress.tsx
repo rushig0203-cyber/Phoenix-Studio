@@ -16,9 +16,9 @@ const button = "rounded-lg border border-border px-3 py-2 text-xs font-semibold 
 function ProgressCircle({ percent, label }: { percent?: number; label: string }) {
   return <span role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
     aria-valuetext={percent === undefined ? "Progress not measured" : `${percent}% of video bytes sent`}
-    className="grid size-11 shrink-0 place-items-center rounded-full border border-border p-1"
+    className="grid size-9 shrink-0 place-items-center rounded-full border border-border"
     style={percent === undefined ? undefined : { background: `conic-gradient(var(--primary) ${percent}%, var(--border) 0)` }}>
-    <span className="grid size-8 place-items-center rounded-full bg-card text-[0.65rem] font-semibold">{percent === undefined ? "···" : `${percent}%`}</span>
+    <span className="grid size-7 place-items-center rounded-full bg-card text-[0.65rem] font-semibold">{percent === undefined ? "···" : `${percent}%`}</span>
   </span>;
 }
 
@@ -46,6 +46,7 @@ export default function PostingProgress({ children }: { children: React.ReactNod
     samplesRef.current = sampleTransfers(next, samplesRef.current, at);
     setObservedAt(at);
     setJobs(next); setSamples(samplesRef.current);
+    if (postingDestinations(next).every(job => job.status === "COMPLETE")) setExpanded(false);
   }, []);
   const observe = useCallback((file: ReviewFile, saved: ReviewPublishJob[]) => {
     version.current++;
@@ -129,21 +130,21 @@ export default function PostingProgress({ children }: { children: React.ReactNod
   }
 
   const allDestinations = postingDestinations(jobs);
-  const notices = allDestinations.filter(job => !postingActive(job) && !dismissed.includes(job.id)
-    && observedAt - Date.parse(job.updatedAt) < (job.status === "COMPLETE" ? 10 : 60) * 60_000)
+  const notices = allDestinations.filter(job => job.status !== "COMPLETE" && !postingActive(job) && !dismissed.includes(job.id)
+    && observedAt - Date.parse(job.updatedAt) < 60 * 60_000)
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).slice(0, 8);
   const destinations = [...allDestinations.filter(postingActive), ...notices];
   const { active: activeDestinations, remaining, attention, percent } = postingOverview(destinations);
   const groups = [...new Set(destinations.map(job => job.reviewId))];
-  const summary = !destinations.length ? "Posting status" : remaining ? `${remaining} destination${remaining === 1 ? "" : "s"} remaining`
-    : attention ? `${attention} destination${attention === 1 ? " needs" : "s need"} attention` : "Posting complete";
-  const phase = error ? "Status unavailable" : attention ? `${attention} need${attention === 1 ? "s" : ""} attention`
-    : destinations.some(job => job.status === "PROCESSING") ? "Processing on platform"
-    : destinations.some(job => job.status === "UPLOADING") ? percent === undefined ? "Calculating progress…" : `${percent}% of video bytes sent`
-    : remaining ? "Waiting to upload" : "View your posts";
+  const summary = remaining ? `${remaining} destination${remaining === 1 ? "" : "s"} remaining`
+    : attention ? `${attention} destination${attention === 1 ? " needs" : "s need"} attention` : "Posting status";
   const transfers = activeDestinations.filter(job => job.status === "UPLOADING");
-  const timing = !error && remaining && !destinations.some(job => job.status === "PROCESSING")
-    ? transfers.length === 1 ? `${remaining > 1 ? "Current transfer · " : ""}${transferTime(transfers[0], samples.get(transfers[0].id), observedAt)}` : transfers.length > 1 ? "Transfer estimates in details" : "Calculating time…" : "";
+  const timing = transfers.length === 1 ? transferTime(transfers[0], samples.get(transfers[0].id), observedAt) : "";
+  const phase = error ? "Status unavailable" : remaining && attention ? `${attention} need${attention === 1 ? "s" : ""} attention`
+    : activeDestinations.some(job => job.status === "PROCESSING") ? "Processing on platform"
+    : percent === 100 ? "Waiting for platform"
+    : transfers.length ? timing.startsWith("About") ? timing : "Uploading"
+    : remaining ? "Waiting to upload" : "";
 
   function dismissNotices() {
     const next = [...new Set([...dismissed, ...destinations.filter(job => !postingActive(job)).map(job => job.id)])].slice(-200);
@@ -154,15 +155,14 @@ export default function PostingProgress({ children }: { children: React.ReactNod
 
   return <PostingContext.Provider value={{ jobs, error, observe, accepted }}>
     {children}
-    {(destinations.length > 0 || error) && <aside data-posting-dock aria-label="Posting progress" className="fixed bottom-3 right-3 z-40 w-[min(23rem,calc(100vw-1.5rem))] rounded-2xl border border-border bg-card text-foreground shadow-2xl sm:bottom-5 sm:right-5">
+    {(destinations.length > 0 || error) && <aside data-posting-dock aria-label="Posting progress" className={`fixed bottom-3 right-3 z-40 rounded-xl border border-border bg-card text-foreground shadow-2xl sm:bottom-5 sm:right-5 ${expanded ? "w-[min(23rem,calc(100vw-1.5rem))]" : "w-max max-w-[calc(100vw-1.5rem)]"}`}>
       <button ref={dockButton} type="button" aria-expanded={expanded} aria-controls="posting-progress-details" onClick={() => setExpanded(value => !value)}
-        className="flex w-full items-center gap-3 rounded-2xl p-3 text-left focus-visible:outline-2 focus-visible:outline-ring">
-        <ProgressCircle percent={error ? undefined : percent} label="Combined video transfer" />
-        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{summary}</span><span className="block text-xs text-muted-foreground">{phase}</span>{timing ? <span className="block text-xs text-muted-foreground">{timing}</span> : null}</span>
-        <span aria-hidden="true" className="text-xs">{expanded ? "▾" : "▴"}</span>
+        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring">
+        {remaining > 0 && <ProgressCircle percent={error || percent === 100 ? undefined : percent} label="Combined video transfer" />}
+        <span className="min-w-0 flex-1"><span className="block text-xs font-semibold">{summary}</span>{phase && <span className="block text-xs text-muted-foreground">{phase}</span>}</span>
+        <span aria-hidden="true" className="shrink-0 text-xs text-muted-foreground">{expanded ? "▾" : "▴"}</span>
       </button>
       {expanded && <div id="posting-progress-details" className="max-h-[min(70dvh,36rem)] space-y-3 overflow-y-auto border-t border-border p-3">
-        <p className="text-xs text-muted-foreground">Uploads continue while Phoenix is running. Closing the preview keeps progress here. Transfer estimates exclude platform processing.</p>
         {error && <p role="status" className="text-xs text-amber-300">{error}</p>}
         {groups.map(reviewId => <section key={reviewId} aria-label={titles[reviewId] || "Saved video"} className="space-y-2 rounded-xl border border-border p-2">
           <div className="flex items-start justify-between gap-2"><h2 className="min-w-0 break-words text-xs font-semibold">{titles[reviewId] || "Saved video"}</h2>
@@ -173,19 +173,18 @@ export default function PostingProgress({ children }: { children: React.ReactNod
             return <div key={job.id} data-posting-dock-job={job.id} className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
               <PlatformIcon platform={job.platform} className="mt-1 size-4 shrink-0" />
               <div className="min-w-0 flex-1 text-xs"><p className="font-semibold">{name} · {statusLabel[job.status]}</p><p className="break-words text-muted-foreground">{job.accountName}</p>
-                {job.status === "UPLOADING" && sent !== undefined && <p>{sent}% of video bytes sent</p>}
                 {postingActive(job) && <p>{error ? "Waiting for current status" : transferTime(job, samples.get(job.id), observedAt)}</p>}
                 {(job.status === "FAILED" || job.status === "NEEDS_CHECK") && <p className="mt-1 break-words">{job.detail}</p>}
                 {job.remoteUrl && <a href={job.remoteUrl} target="_blank" rel="noopener noreferrer" className="underline">View post ↗</a>}
               </div>
-              <ProgressCircle percent={error ? undefined : job.status === "COMPLETE" ? 100 : job.status === "UPLOADING" ? sent : undefined} label={`${name} transfer`} />
+              {!error && job.status === "UPLOADING" && sent !== undefined && sent < 100 && <ProgressCircle percent={sent} label={`${name} transfer`} />}
             </div>;
           })}
         </section>)}
         {openError && <p role="alert" className="text-xs">{openError}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={button} onClick={() => { setExpanded(false); dockButton.current?.focus(); }}>Collapse progress</button>
-          {destinations.some(job => !postingActive(job)) && <button type="button" className={button} onClick={dismissNotices}>Dismiss finished / stopped notices</button>}
+          {attention > 0 && <button type="button" className={button} onClick={dismissNotices}>Dismiss notices</button>}
         </div>
       </div>}
     </aside>}

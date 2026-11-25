@@ -63,7 +63,7 @@ async function run() {
   fs.mkdirSync(output, { recursive: true });
   const temporaryMedia = fs.mkdtempSync(path.join(os.tmpdir(), 'phoenix-ui-smoke-'));
   const movie = path.join(temporaryMedia, 'synthetic.webm');
-  let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions, showPostingProgress = false;
+  let server, browser, page, serverLog = '', pendingTemplate = false, releaseSuggestions, showPostingProgress = false, postingFinished = false;
   let rumbleReveals = 0;
   const suggestionsGate = new Promise(resolve => { releaseSuggestions = resolve; });
   const proof = { status: 'running', synthetic: true, source: process.env.GITHUB_SHA, directory, buildId,
@@ -73,11 +73,12 @@ async function run() {
   const publicationJobs = () => {
     if (!showPostingProgress) return [];
     const updatedAt = new Date().toISOString();
-    return [
+    const jobs = [
       { id: 'fixture-upload-ig', reviewId: file.id, platform: 'instagram', status: 'UPLOADING', percent: 87, bytesUploaded: 92, totalBytes: 100, accountName: '@fixture_wildlife', detail: 'Sending the saved Reel.', privacy: 'public', updatedAt },
       { id: 'fixture-upload-fb', reviewId: file.id, platform: 'facebook', status: 'COMPLETE', percent: 100, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture Facebook Page', detail: 'Reel published.', privacy: 'public', updatedAt },
       { id: 'fixture-upload-yt', reviewId: file.id, platform: 'youtube', status: 'PROCESSING', percent: 96, bytesUploaded: 100, totalBytes: 100, accountName: 'Fixture YouTube Channel', detail: 'YouTube is processing the upload.', privacy: 'public', updatedAt },
     ];
+    return postingFinished ? jobs.map(job => ({ ...job, status: 'COMPLETE', percent: 100, bytesUploaded: job.totalBytes })) : jobs;
   };
   try {
     const rendered = spawnSync(require('@ffmpeg-installer/ffmpeg').path,
@@ -127,7 +128,10 @@ async function run() {
       proof.apiReads.push(`${url.pathname}${url.search}`);
       if (url.pathname === '/api/review-files') return json(route, pendingTemplate ? [] : [file]);
       if (url.pathname === '/api/source-processing') return json(route, { preflight: { ready: true, summary: 'Synthetic video tools ready', dependencies: { ffmpeg: true, ffprobe: true, python: true, fasterWhisper: true }, details: {}, firstModelDownloadRequired: false, whisperModel: { message: '' } }, jobs: pendingTemplate ? [{ id: request.jobId, title: request.title, status: 'PROCESSING', progress: 37, stage: 'Preparing the next scene', createdAt: date }] : [] });
-      if (['/api/generations', '/api/review-edits', '/api/creation-drafts'].includes(url.pathname)) return json(route, []);
+      if (url.pathname === '/api/creation-drafts') return json(route, [{ id: 'fixture-failed-draft', version: 1, status: 'FAILED', createdAt: date,
+        input: { topic: 'A long nature documentary idea about how the river changes throughout the year', duration: 28, aspect: '9:16' },
+        stage: 'Preparation stopped', error: 'Could not find a matching river shot.' }]);
+      if (['/api/generations', '/api/review-edits'].includes(url.pathname)) return json(route, []);
       if (url.pathname === '/api/studio-wallpaper' || url.pathname === '/api/studio-logo') return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: poster });
       if (url.pathname === '/api/studio-health') return json(route, { build: directory, worker: { state: 'healthy', heartbeatAt: date }, resources: { busy: false, waitingForMemory: false, freeMiB: 4096, reason: 'Synthetic CI service status' },
         services: { writerProvider: 'groq', writer: { state: 'ready', detail: 'Fixture writer' }, renderer: { state: 'ready', detail: 'Fixture renderer' } } });
@@ -268,11 +272,25 @@ async function run() {
     await workflows.getByRole('link', { name: 'Create a Video', exact: true }).click();
     const creationIdeas = page.getByRole('button', { name: /^Use idea:/ });
     await creationIdeas.first().waitFor();
-    const visibleAngles = await creationIdeas.evaluateAll(buttons => buttons.map(button =>
+    const readAngles = () => creationIdeas.evaluateAll(buttons => buttons.map(button =>
       Array.from(button.querySelectorAll('span'), line => line.textContent.trim())));
-    verify('Create a Video starts with five short nature mini-doc ideas and their angles', visibleAngles.length === 5
-      && visibleAngles.every(([title, angle]) => title?.length > 0 && title.length <= 60 && angle?.length > 0)
-      && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible(), visibleAngles);
+    const initialAngles = await readAngles();
+    verify('Create a Video starts with five short nature mini-doc ideas and their angles', initialAngles.length === 5
+      && initialAngles.every(([title, angle]) => title?.length > 0 && title.length <= 60 && angle?.length > 0)
+      && await page.getByRole('heading', { level: 1, name: 'Create a video', exact: true }).isVisible(), initialAngles);
+    await workflows.getByRole('link', { name: 'Clip a Video', exact: true }).click();
+    await page.getByRole('heading', { level: 1, name: 'Clip your video', exact: true }).waitFor();
+    await Promise.all([
+      page.waitForResponse(response => response.ok() && response.url().includes('/api/content-suggestions?workflow=creation')),
+      workflows.getByRole('link', { name: 'Create a Video', exact: true }).click(),
+    ]);
+    await page.waitForFunction(previous => {
+      const first = document.querySelector('[data-creation-ideas][aria-busy="false"] button[aria-label^="Use idea:"]');
+      return !!first && first.getAttribute('aria-label') !== 'Use idea: ' + previous;
+    }, initialAngles[0][0]);
+    const visibleAngles = await readAngles();
+    verify('Reopening Create a Video gets new ideas without a refresh click', visibleAngles.length === 5
+      && visibleAngles.every(([title]) => !initialAngles.some(([previous]) => title === previous)), visibleAngles);
     await capture('studio-create-video');
     await creationIdeas.first().click();
     const selectedIdea = page.getByRole('region', { name: 'Selected idea', exact: true });
@@ -337,6 +355,20 @@ async function run() {
       return location.hash === '#jobs' && heading.top >= nav.bottom - 1 && heading.bottom <= innerHeight;
     });
     verify('Jobs jump opens the queue below the sticky mobile navigation', await page.getByRole('heading', { name: 'Jobs', exact: true }).isVisible());
+    await page.getByRole('combobox', { name: 'Job status filter' }).selectOption('failed');
+    const failedRow = page.locator('[data-job-row]').filter({ hasText: 'A long nature documentary idea' });
+    await failedRow.waitFor();
+    verify('Failed jobs fit on a phone and reserve progress bars for ongoing work', await failedRow.evaluate(row => {
+      const bounds = row.getBoundingClientRect();
+      const summary = row.querySelector('[data-job-summary]');
+      const actions = row.querySelector('[data-job-actions]').getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth && summary.getBoundingClientRect().right <= actions.left
+        && getComputedStyle(summary, '::before').content !== 'none' && !row.querySelector('progress')
+        && row.querySelector('[data-job-attention]').textContent === 'Needs attention';
+    }));
+    await failedRow.locator('summary').click();
+    verify('One tap reveals the failed job cause without hiding Retry', await failedRow.getByText('Could not find a matching river shot.').isVisible()
+      && await failedRow.getByRole('button', { name: /^Retry failed job:/ }).isEnabled());
     await page.setViewportSize({ width: 1440, height: 1000 });
     const navigate = async section => { await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"]`).click(); await page.locator(`nav[aria-label="Studio sections"] a[href="#${section}"][aria-current="page"]`).waitFor(); };
     await navigate('library');
@@ -470,13 +502,19 @@ async function run() {
     await dialog.getByRole('button', { name: 'Close video preview', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
     const dock = page.locator('[data-posting-dock]');
-    await dock.locator('button[aria-expanded="false"]').click();
-    verify('Closing the preview keeps the three distinct posting destinations available in the corner',
-      await dock.locator('[data-posting-dock-job]').count() === 3
+    const dockToggle = dock.locator('button[aria-expanded="false"]');
+    await dockToggle.waitFor();
+    verify('The collapsed posting indicator is smaller than its details panel', await dock.evaluate(element => element.getBoundingClientRect().width < 300));
+    await dockToggle.click();
+    verify('Closing the preview keeps the two unfinished destinations in the corner',
+      await dock.locator('[data-posting-dock-job]').count() === 2
       && await dock.getByRole('progressbar', { name: 'Instagram Reel transfer', exact: true }).getAttribute('aria-valuenow') === '92');
     await dock.getByRole('button', { name: 'Open video', exact: true }).click();
     await dialog.waitFor();
     await dialog.getByRole('button', { name: 'Close video preview', exact: true }).click();
+    postingFinished = true;
+    await dock.waitFor({ state: 'hidden', timeout: 12000 });
+    verify('Confirmed posts disappear from the collapsed indicator automatically', await dock.count() === 0);
     showPostingProgress = false;
     await page.goto(`${origin}/dashboard/settings`);
     await page.getByRole('heading', { name: 'Publishing settings', exact: true }).waitFor();

@@ -219,8 +219,8 @@ test('compact rows keep preparations and renders in one chronological list with 
     assert.ok(nodes(summary, node => node.type === 'time')[0].props.dateTime);
     const buttons = nodes(row, node => typeof node.props?.onClick === 'function');
     assert.deepEqual(buttons.map(text), ['Retry', 'Delete']);
-    const progress = nodes(summary, node => node.type?.name === 'JobProgress')[0];
-    assert.equal(progress.props.progress, 10); assert.equal(progress.props.failed, true);
+    assert.ok(nodes(summary, node => node.props?.['data-job-attention']).length);
+    assert.equal(nodes(summary, node => node.type?.name === 'JobProgress').length, 0, 'A failed job has a status label instead of an empty progress bar');
   }
   assert.equal(h.requests.length, 6); assert.ok(h.requests.every(request => !request.method));
 });

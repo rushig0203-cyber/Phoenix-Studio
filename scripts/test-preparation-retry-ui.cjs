@@ -55,7 +55,7 @@ test('failed preparation retry stays in attention view with its cause, and archi
   assert.equal(JSON.parse(h.requests[1].body).action, 'archive');
 });
 
-test('compact preparation row shows name/date and visible progress, with details closed and only Delete/Retry actions', () => {
+test('compact failed preparation shows name, date and status without an empty progress bar', () => {
   const h = harness();
   assert.equal(nodes(h.tree, node => node.type === 'section' || node.type === 'h2').length, 0, 'No separate preparation category');
   const details = nodes(h.tree, node => node.type === 'details')[0];
@@ -66,9 +66,8 @@ test('compact preparation row shows name/date and visible progress, with details
   assert.equal(date.props.dateTime, '2026-10-11T08:30:00Z');
   assert.ok(text(date).length > 8);
   assert.equal(h.button('Retry').props.title, 'Retry this failed job');
-  const progress = nodes(h.tree, node => node.type === 'progress-fixture')[0];
-  assert.equal(progress.props.status, 'FAILED'); assert.equal(progress.props.label, 'Local fixture progress');
-  assert.equal(nodes(details, node => node.type === 'progress-fixture').length, 0, 'Progress remains visible when details are closed');
+  assert.match(text(summary), /Needs attention/);
+  assert.equal(nodes(h.tree, node => node.type === 'progress-fixture').length, 0);
   assert.equal(h.button('Delete').props.title, 'Remove history only; saved videos are kept');
   assert.equal(h.requests.length, 0);
 });
@@ -78,6 +77,8 @@ test('active preparations cannot be deleted or recovered, and legacy dates never
     const h = harness(status, 'unknown');
     assert.equal(h.button('Delete').props.disabled, true);
     assert.equal(h.button('Retry'), undefined);
+    const progress = nodes(h.tree, node => node.type === 'progress-fixture')[0];
+    assert.equal(progress.props.status, status); assert.equal(progress.props.label, 'Local fixture progress');
     assert.match(h.text, /Date unavailable/);
     assert.doesNotMatch(h.text, /Invalid Date/);
     assert.equal(h.requests.length, 0);
@@ -86,8 +87,8 @@ test('active preparations cannot be deleted or recovered, and legacy dates never
 
 test('an original editorial illustration is disclosed without stock selection or approval controls', () => {
   const h = harness('QUEUED', '2026-10-11T08:30:00Z', [{ narration: 'The court heard the case.', query: 'editorial legal illustration', illustration: { kind: 'editorial-2d-v1', subject: 'legal', label: 'Illustration' } }]);
-  assert.match(h.text, /Illustration · original editorial 2D: legal/);
-  assert.match(h.text, /each illustration is labelled in the finished video/);
+  assert.match(h.text, /Original editorial illustration · legal/);
+  assert.match(h.text, /Each illustration is labelled in the finished video/);
   assert.equal(nodes(h.tree, node => node.type === 'video' || node.type === 'input' || node.type === 'select').length, 0);
   assert.equal(h.button('Approve'), undefined);
   assert.equal(h.requests.length, 0);

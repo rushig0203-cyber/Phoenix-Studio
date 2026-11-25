@@ -115,27 +115,40 @@
 .workArea :global(#channels > .grid) { gap: 1.5rem 2rem; }
 .insightsArea { margin-top: 0; padding: 0; background: transparent; }
 .insightsArea :global(#channel-insights dl dd) { overflow-wrap: anywhere; }
+.videoArea { max-width: 68rem; margin-top: .8rem; min-width: 0; }
 .main :global([data-template-progress]), .jobs {
   --muted-foreground: var(--night-muted);
   --destructive: var(--night-error);
 }
 .jobs {
   --border: var(--night-edge);
-  margin-top: 1.6rem; padding: .95rem 0 0; border: 0; border-top: 1px solid var(--night-edge);
+  max-width: 68rem; margin-top: 2rem; padding: 1rem 0 0; border: 0; border-top: 1px solid var(--night-edge);
   border-radius: 0; background: transparent; scroll-margin-top: 5.5rem;
 }
-.jobs :global([aria-label="Job list"] > *) { border-color: var(--night-edge); }
-.jobs :global([aria-label="Job list"] > article) { padding-block: .7rem; }
 .jobs :global([role="status"][class~="text-[#4f5c31]"]) { color: var(--night-accent) !important; }
 .jobs :global([aria-label="Job status filter"]) {
   color-scheme: dark; color: var(--night-text);
-  background-color: var(--night-panel) !important; border-color: var(--night-edge) !important;
+  background-color: var(--night-panel); border-color: var(--night-edge);
 }
-.jobs :global(details > div[class~="bg-[#fffdf7]"]), .jobDetails,
-.jobs :global(fieldset[aria-label="Video preparation controls"]) {
-  color: var(--foreground);
+.jobs :global(details > div[class~="bg-[#fffdf7]"]) { color: var(--foreground); }
+.jobs :global([data-job-row]) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
+  gap: .6rem; padding: .75rem .35rem;
 }
-.jobs :global(fieldset[aria-label="Video preparation controls"]) { background: var(--card); border-radius: .75rem; }
+.jobs :global([data-job-summary]) {
+  display: grid; grid-template-columns: .9rem minmax(0, 1fr); gap: .5rem;
+  border-radius: .35rem; cursor: pointer; list-style: none; text-align: left;
+}
+.jobs :global([data-job-summary]::-webkit-details-marker) { display: none; }
+.jobs :global([data-job-summary])::before {
+  content: ""; width: .42rem; height: .42rem; margin: .45rem auto 0;
+  border: solid var(--night-muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg);
+}
+.jobs :global(details[open] > [data-job-summary])::before { transform: rotate(45deg); }
+.jobs :global([data-job-title]) { display: block; font-size: .875rem; font-weight: 600; overflow-wrap: anywhere; }
+.jobs :global([data-job-meta]) { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; margin-top: .15rem; color: var(--night-muted); font-size: .73rem; }
+.jobs :global([data-job-attention]) { color: var(--night-error); }
+.jobs :global([data-job-actions]) { display: flex; align-items: center; gap: .25rem; }
 .jobs :global(button:hover:not(:disabled)):not(.jobDetails button) { color: var(--foreground); }
 
 @media (max-width: 840px) {
@@ -160,4 +173,6 @@
   .main :global([data-template-copy]) { padding: .75rem .32rem .75rem .75rem; }
   .main :global([data-template-action]) { width: 1.35rem; height: 1.35rem; margin: 0 .6rem .75rem 0; }
   .main :global([data-template-reason]) { font-size: .73rem; }
+  .jobs :global([data-job-row]) { padding-inline: .15rem; }
+  .jobs :global([data-job-actions] > *) { min-height: 2.25rem; padding-inline: .35rem; }
 }

@@ -23,27 +23,34 @@ export default function CreationDrafts({ drafts, onRefresh, onRequeued }: { draf
   const pending = drafts.filter(draft => !["APPROVED", "ARCHIVED"].includes(draft.status));
   if (!pending.length) return null;
   return <>
-    {error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}</p> : null}
+    {error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : null}
     {pending.map(draft => {
       const failed = draft.status === "FAILED";
       const active = ["PLANNING", "APPROVING"].includes(draft.status);
       const queued = ["QUEUED", "READY"].includes(draft.status);
       const dated = Number.isFinite(Date.parse(draft.createdAt));
       const illustrations = draft.scenes?.filter(scene => scene.illustration) || [];
-      return <article key={draft.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2.5">
-        <div className="min-w-0"><details>
-          <summary title="Show job details" className="cursor-pointer rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#394a2a]"><span className="font-medium break-words">{draft.input.topic}</span><span className="sr-only"> — {failed ? "Failed" : active ? "Preparing" : "Queued"}; job details</span><time dateTime={dated ? draft.createdAt : undefined} className="mt-0.5 block pl-4 text-xs text-[#687657]">{dated ? new Date(draft.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time></summary>
-          <div className="mt-2 space-y-1 rounded-lg bg-[#f1f4e9] p-3 text-xs text-[#657153]">
-        <p>{failed ? "Failed" : draft.status === "APPROVING" ? "Starting render" : draft.status === "PLANNING" ? "Preparing" : "Queued"}</p>
-        <p className="mt-1 text-xs text-[#657153]">{draft.input.duration}s · {draft.input.aspect}</p>
-        {illustrations.length ? <p className="mt-2 text-xs text-[#657153]">Illustration · original editorial 2D: {[...new Set(illustrations.map(scene => scene.illustration!.subject))].join(", ")}. Neutral context for the narration; each illustration is labelled in the finished video.</p> : null}
-        <p role="status" className="mt-2 text-sm text-[#657153]">{draft.status === "READY" ? "Queued for automatic rendering" : draft.stage}</p>
-        {draft.status === "QUEUED" && draft.nextAttemptAt && Number.isFinite(Date.parse(draft.nextAttemptAt)) ? <p className="mt-2 text-xs text-[#657153]">Next automatic check: <time dateTime={draft.nextAttemptAt}>{new Date(draft.nextAttemptAt).toLocaleString()}</time>. This is a retry time, not a guaranteed completion time. No need to click Generate again.</p> : null}
-        {draft.status === "QUEUED" && /Groq|quota/.test(draft.stage) ? <p className="mt-2 text-xs text-[#657153]">While writing waits, <a className="underline" href="#create">Use stock footage</a> can still make a reel without an AI writer, subject to local rendering memory.</p> : null}
-        {draft.error ? <details className="mt-2 text-sm text-red-800"><summary className="cursor-pointer">Why this job failed</summary><p className="mt-2 break-words">{draft.error.replace(/Edit this search or retry later\./g, "Retry to search again.")}</p></details> : null}
+      return <article key={draft.id} data-job-row>
+        <details className="min-w-0">
+          <summary title="Show job details" data-job-summary>
+            <span className="min-w-0">
+              <span data-job-title>{draft.input.topic}</span>
+              <span data-job-meta><time dateTime={dated ? draft.createdAt : undefined}>{dated ? new Date(draft.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Date unavailable"}</time>
+                {failed ? <span data-job-attention>Needs attention</span> : null}
+              </span>
+              {!failed ? <JobProgress label={`${draft.input.topic} progress`} status={draft.status} /> : null}
+            </span>
+          </summary>
+          <div className="mt-3 space-y-2 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+            <p>{draft.input.duration}s · {draft.input.aspect}</p>
+            {illustrations.length ? <p>Original editorial illustration · {[...new Set(illustrations.map(scene => scene.illustration!.subject))].join(", ")}. Each illustration is labelled in the finished video.</p> : null}
+            <p role="status" className="text-sm">{draft.status === "READY" ? "Queued for automatic rendering" : draft.stage}</p>
+            {draft.status === "QUEUED" && draft.nextAttemptAt && Number.isFinite(Date.parse(draft.nextAttemptAt)) ? <p>Next automatic check: <time dateTime={draft.nextAttemptAt}>{new Date(draft.nextAttemptAt).toLocaleString()}</time>.</p> : null}
+            {draft.status === "QUEUED" && /Groq|quota/.test(draft.stage) ? <p>While writing waits, you can <a className="underline" href="#create">make a reel with stock footage</a>.</p> : null}
+            {draft.error ? <div className="text-sm text-destructive"><p className="font-medium">Why this job failed</p><p className="mt-1 break-words">{draft.error.replace(/Edit this search or retry later\./g, "Retry to search again.")}</p></div> : null}
           </div>
-        </details><JobProgress label={`${draft.input.topic} progress`} status={draft.status} /></div>
-        <div className="flex items-center gap-1 pt-0.5">{failed ? <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-label={`Retry failed job: ${draft.input.topic}`} title="Retry this failed job" onClick={() => void command(draft, "retry")}>{busy === draft.id ? "Updating…" : "Retry"}</Button> : null}<Button type="button" variant="ghost" size="sm" disabled={active || busy !== null} aria-label={`${queued ? "Cancel queued job and delete history" : "Delete job history"}: ${draft.input.topic}`} title={active ? "Available when preparation finishes" : queued ? "Cancel this queued job and remove its history; saved videos are kept" : "Remove history only; saved videos are kept"} onClick={() => void command(draft, "archive")}>{busy === draft.id ? "Updating…" : "Delete"}</Button></div>
+        </details>
+        <div data-job-actions>{failed ? <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-label={`Retry failed job: ${draft.input.topic}`} title="Retry this failed job" onClick={() => void command(draft, "retry")}>{busy === draft.id ? "Updating…" : "Retry"}</Button> : null}<Button type="button" variant="ghost" size="sm" disabled={active || busy !== null} aria-label={`${queued ? "Cancel queued job and delete history" : "Delete job history"}: ${draft.input.topic}`} title={active ? "Available when preparation finishes" : queued ? "Cancel this queued job and remove its history; saved videos are kept" : "Remove history only; saved videos are kept"} onClick={() => void command(draft, "archive")}>{busy === draft.id ? "Updating…" : "Delete"}</Button></div>
       </article>;
     })}
   </>;

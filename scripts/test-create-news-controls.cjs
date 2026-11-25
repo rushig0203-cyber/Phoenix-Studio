@@ -95,6 +95,24 @@ test('curated nature submission keeps the exact visible title and clears its ID 
   h.submit(); await h.flush(); request = JSON.parse(h.requests.at(-1).body);
   assert.equal(request.topic, 'A new hand-written topic'); assert.equal(request.recommendationId, undefined);
 });
+test('workspace visibility reaches ideas without resetting selected or custom writing', () => {
+  const props = { initialSuggestionsOpen: true, active: true };
+  const h = harness('AICreation', () => assert.fail('Navigation must not submit a video'), props);
+  const recommendationsArea = () => nodes(h.tree).find(node => node.type === 'Recommendations');
+  assert.equal(recommendationsArea().props.active, true);
+  const idea = recommendations.resolveCreationRecommendation('otter-swimming:observation');
+  recommendationsArea().props.onChoose(idea); h.render();
+  props.active = false; h.render(); props.active = true; h.render();
+  assert.ok(nodes(h.tree).some(node => node.props?.['aria-label'] === 'Selected idea'));
+  assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, idea.title);
+  nodes(h.tree).find(node => node.type === 'textarea').props.onChange({ target: { value: 'My own complete nature idea' } }); h.render();
+  props.active = false; h.render(); props.active = true; h.render();
+  assert.equal(nodes(h.tree).find(node => node.type === 'textarea').props.value, 'My own complete nature idea');
+  nodes(h.tree).find(node => node.type === 'details' && text(node).includes('Explore suggestions')).props.onToggle({ currentTarget: { open: true } }); h.render();
+  props.active = false; h.render(); assert.equal(recommendationsArea().props.active, false);
+  props.active = true; h.render(); assert.equal(recommendationsArea().props.active, true);
+  assert.equal(h.requests.length, 0);
+});
 test('creation shows shared activity while pending and preserves a retryable service error', async () => {
   let resolve;
   const pending = new Promise(done => { resolve = done; });

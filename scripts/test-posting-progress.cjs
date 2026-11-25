@@ -178,7 +178,7 @@ test('a stale snapshot cannot erase a just-approved upload and stopped notices n
   const stopped = { ...accepted, status: 'NEEDS_CHECK', detail: 'Continue explicitly after checking the saved request.' };
   h.shared.observe({ id: reviewId, title: 'Approved video' }, [stopped]); await h.flush(); h.expand();
   assert.match(h.text, /Needs check/); assert.doesNotMatch(h.text, /Continue saved upload|Cancel/);
-  h.click('Dismiss finished / stopped notices'); await h.flush();
+  h.click('Dismiss notices'); await h.flush();
   assert.equal(nodes(h.tree).some(node => node.props['data-posting-dock']), false);
   assert.equal(h.shared.jobs[0].status, 'NEEDS_CHECK', 'Dismissing changes only the notice, never its saved state');
   assert.equal(h.requests.length, 1);
@@ -195,4 +195,28 @@ test('historical failures stay in posting history and recent stopped notices nev
   assert.equal(nodes(h.tree).some(node => node.props['data-posting-dock']), false);
   h.shared.observe({ id: reviewId, title: 'Fixture video' }, [{ ...historical, updatedAt: '2026-11-23T00:00:00Z' }]); await h.flush();
   assert.match(h.text, /1 destination needs attention/); assert.doesNotMatch(h.text, /Posting complete|destination remaining|100%/);
+});
+
+test('completed uploads leave the dock while simultaneous platforms and failures remain visible', async t => {
+  const completedId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const processingId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const failedId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const completed = upload({ id: completedId, platform: 'instagram', status: 'COMPLETE', bytesUploaded: 1000, totalBytes: 1000, percent: 100 });
+  const done = harness({ jobs: [completed] }); t.after(() => done.unmount()); await done.flush();
+  assert.equal(nodes(done.tree).some(node => node.props['data-posting-dock']), false, '100% posted destinations disappear without a dismissal action');
+  const awaitingPlatform = harness({ jobs: [upload({ bytesUploaded: 1000 })] }); t.after(() => awaitingPlatform.unmount()); await awaitingPlatform.flush();
+  assert.ok(nodes(awaitingPlatform.tree).some(node => node.props['data-posting-dock']), 'All bytes sent is still active until the platform confirms the post.');
+  awaitingPlatform.expand(); assert.match(awaitingPlatform.text, /Waiting for platform/); assert.doesNotMatch(awaitingPlatform.text, /YouTube · Posted/);
+  awaitingPlatform.shared.observe({ id: reviewId, title: 'Fixture video' }, [upload({ status: 'COMPLETE', bytesUploaded: 1000, percent: 100 })]);
+  await awaitingPlatform.flush();
+  assert.equal(nodes(awaitingPlatform.tree).some(node => node.props['data-posting-dock']), false, 'The existing dock clears as soon as confirmation arrives');
+  const h = harness({ jobs: [upload(), upload({ id: processingId, platform: 'facebook', status: 'PROCESSING' }), completed,
+    upload({ id: failedId, reviewId: secondId, platform: 'instagram', status: 'FAILED', detail: 'Check the Instagram account before retrying.' })] });
+  t.after(() => h.unmount()); await h.flush();
+  assert.match(h.text, /2 destinations remaining/); assert.match(h.text, /1 needs attention/);
+  h.expand();
+  const visible = nodes(h.tree).filter(node => node.props['data-posting-dock-job']).map(node => node.props['data-posting-dock-job']);
+  assert.deepEqual(visible.sort(), [upload().id, processingId, failedId].sort());
+  assert.ok(!visible.includes(completedId)); assert.match(h.text, /Check the Instagram account before retrying/);
+  assert.match(h.text, /YouTube · Uploading/); assert.match(h.text, /Facebook Page · Processing/);
 });
