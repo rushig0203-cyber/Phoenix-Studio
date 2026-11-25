@@ -4,10 +4,13 @@ export type FacebookPerformanceMetrics = {
 };
 export type FacebookPerformanceVideo = {
   id: string; caption: string; timestamp: string; permalink?: string;
+  metricsUpdatedAt?: string;
   metrics: FacebookPerformanceMetrics;
 };
 export type FacebookPerformanceState = {
   status: "not_connected" | "permission_required" | "ready" | "limited" | "error" | "rate_limited" | "syncing";
   detail: string; account?: { name: string }; lastSuccessfulSyncAt?: string;
+  /** metrics.views contains documented total Reel plays, including replays. */
+  viewsMetric?: "fb_reels_total_plays";
   videos: FacebookPerformanceVideo[];
 };

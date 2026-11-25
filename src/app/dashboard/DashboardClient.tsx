@@ -387,7 +387,7 @@ export default function DashboardClient() {
   ];
   const artworkOnly = section === "create" && workspace === "reels";
   const queueLink = <a href="#jobs" className={styles.queueBadge} data-queue-state={queueState}><span aria-hidden="true" className={styles.queueDot} />{queueLabel}</a>;
-  const pageCopy = { create: ["Create", ""], library: ["Your video library", ""], insights: ["Channel insights", "See how your posted videos are performing."], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
+  const pageCopy = { create: ["Create", ""], library: ["Your video library", ""], insights: ["Channel insights", ""], settings: ["Your studio settings", "Manage channel connections and local studio preferences."] };
   return (
     <div className={`${styles.shell} min-h-screen`} data-studio-theme="night">
       <header className={styles.topbar} data-studio-topbar>
@@ -426,7 +426,7 @@ export default function DashboardClient() {
         </div>
         </fieldset>
         {section === "library" ? <div className={styles.workArea}><ReviewLibrary files={files} loading={loading} onRefresh={load} /></div> : null}
-        {section === "insights" ? <div className={styles.workArea}><ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /></div> : null}
+        {section === "insights" ? <div className={`${styles.workArea} ${styles.insightsArea}`}><ChannelInsights key={insightReview || "all-videos"} review={files.find(file => file.id === insightReview)} requestedReviewId={insightReview} /></div> : null}
         {section === "create" ? <>
         <section id="jobs" aria-label="Jobs and progress" data-studio-screen="jobs" className={`${styles.jobs} mt-5 border p-3 sm:p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">

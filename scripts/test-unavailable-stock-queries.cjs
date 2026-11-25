@@ -117,6 +117,95 @@ test('a mini-doc scene with no supported action keeps the exact footage, narrati
   assert.ok(resumed.calls.search.every(([query]) => query === 'jellyfish contracting'));
 });
 
+const snailPlan = [
+  { narration: 'A snail moves slowly across a leaf.', query: 'snail moving on leaf', footage: footage(32245168, 'slow moving snail on fresh green leaf', { duration: 13 }) },
+  { narration: 'Its muscular foot plays a key role, producing mucus to reduce friction and help it glide.', query: 'snail gliding', footage: footage(8225194, 'a snail gliding on a wet surface', { duration: 31 }) },
+  { narration: 'The foot muscles contract and relax, creating a wave-like motion that allows the snail to move forward without legs.', query: 'snail foot muscles contracting' },
+  { narration: "The snail's unique muscular foot and mucus production enable it to move without legs.", query: 'snail foot gliding forward' },
+];
+const duckPlan = [
+  { narration: "A duck's feathers are its most valuable asset, but how does it keep them clean and waterproof?", query: 'duck preening its feathers', footage: footage(40246009, 'duck on river rocks preening feathers', { duration: 37 }) },
+  { narration: 'A duck uses its beak to preen its feathers, and its oil glands produce a special oil that helps to waterproof them, which it spreads evenly to keep them dry and healthy.', query: 'duck preening its feathers with beak' },
+];
+const natureInput = (plan, subject, duration) => ({ ...base, topic: `How a ${subject} moves and cares for itself`, duration,
+  script: plan.map(scene => scene.narration).join(' '), narrationPresentation: 'measured-speech-v1', autoDuration: true,
+  recommendation: { id: `${subject}:adaptation`, visualSubject: subject } });
+
+test('exact failed snail anatomy plan continues selected gliding footage without another search or model repair', async () => {
+  const before = plain(snailPlan), h = harness();
+  const input = { ...natureInput(snailPlan, 'snail', 26), stockPreparation: { version: 1, scenes: snailPlan, repairUsed: true } };
+  const result = await h.preparation.prepareStockCreation(input, snailPlan, h.checkpoint);
+  assert.equal(result.scenes.length, 2);
+  assert.deepEqual(plain(result.scenes.map(scene => scene.footage.id)), [32245168, 8225194]);
+  assert.equal(result.scenes[1].query, 'snail gliding');
+  assert.equal(result.scenes.map(scene => scene.narration).join(' '), input.script);
+  assert.match(result.scenes[1].footageReason, /Continuous snail gliding.*No replay or slowdown/);
+  assert.equal(result.input.stockPreparation.repairUsed, true);
+  assert.equal(h.calls.search.length, 0); assert.equal(h.calls.writer.length, 0);
+  assert.deepEqual(snailPlan, before, 'Saved/caller narration and selected footage are not mutated');
+  const retry = harness();
+  const resumed = await retry.preparation.prepareStockCreation(result.input, result.scenes, retry.checkpoint);
+  assert.deepEqual(plain(resumed.scenes), plain(result.scenes));
+  assert.equal(retry.calls.search.length, 0); assert.equal(retry.calls.writer.length, 0);
+});
+
+test('new generated snail plans normalize invisible anatomy before search and retain every sentence', async () => {
+  const h = harness({ reply: snailPlan.map(scene => scene.query), search: async query => query === snailPlan[0].query
+    ? [snailPlan[0].footage] : query === 'snail gliding' ? [snailPlan[1].footage] : [] });
+  const input = natureInput(snailPlan, 'snail', 26);
+  const result = await h.preparation.prepareStockCreation(input, [], h.checkpoint);
+  assert.equal(h.calls.writer.length, 1); assert.equal(h.calls.search.length, 2);
+  assert.match(h.calls.writer[0].prompt, /Do not claim stock proves muscle contractions/);
+  assert.equal(result.scenes.length, 2);
+  assert.equal(result.scenes.map(scene => scene.narration).join(' '), input.script);
+  assert.ok(h.calls.search.every(([query]) => !/muscles|foot/.test(query)));
+});
+
+test('exact failed duck plan keeps a single continuous 37-second preening asset for its 23-second narration', async () => {
+  const h = harness(), input = natureInput(duckPlan, 'duck', 23);
+  const result = await h.preparation.prepareStockCreation(input, duckPlan, h.checkpoint);
+  assert.equal(result.scenes.length, 1); assert.equal(result.scenes[0].footage.id, 40246009);
+  assert.equal(result.scenes[0].narration, input.script);
+  assert.equal(result.scenes[0].query, duckPlan[0].query);
+  assert.match(result.scenes[0].footageReason, /28\.6s.*No replay or slowdown/);
+  assert.equal(h.calls.search.length, 0); assert.equal(h.calls.writer.length, 0);
+});
+
+test('continuing narration cannot overrun a short source or replay it; a distinct suitable source is selected', async () => {
+  const plan = [{ ...duckPlan[0], footage: { ...duckPlan[0].footage, duration: 20 } }, duckPlan[1]];
+  const h = harness({ search: async () => [plan[0].footage, footage(81, 'duck preening feathers', { duration: 25 })] });
+  const result = await h.preparation.prepareStockCreation(natureInput(plan, 'duck', 23), plan, h.checkpoint);
+  assert.equal(result.scenes.length, 2);
+  assert.deepEqual(plain(result.scenes.map(scene => scene.footage.id)), [40246009, 81]);
+  assert.equal(h.calls.search.length, 1); assert.equal(h.calls.writer.length, 0);
+  const unavailable = harness({ search: async () => [plan[0].footage] });
+  await assert.rejects(unavailable.preparation.prepareStockCreation({ ...natureInput(plan, 'duck', 23), stockPreparation: { version: 1, scenes: plan, repairUsed: true } }, plan, unavailable.checkpoint), /Scene 2.*no distinct clip/);
+  assert.equal(unavailable.calls.checkpoints.at(-1).selected.length, 2);
+});
+
+test('visible action evidence supports snail crawling without requiring anatomy, while rejecting still or different animals', () => {
+  const h = harness(), options = { subject: 'snail' };
+  assert.equal(h.storyboard.stockQueryMismatch(snailPlan[2].narration, 'snail crawling', 'snail'), undefined);
+  assert.equal(h.storyboard.stockQueryMismatch(snailPlan[2].narration, 'snail resting', 'snail'), 'the visible gliding action');
+  assert.equal(h.storyboard.stockQueryMismatch('The jellyfish contracts its bell.', 'jellyfish drifting', 'jellyfish'), 'the visible pulsing action');
+  const choices = [footage(1, 'snail resting on a leaf'), footage(2, 'slug crawling on wet surface'), footage(3, 'snail crawling on wet surface'), footage(4, 'robotic snail crawling')];
+  assert.deepEqual(plain(h.automatic.rankFootage(choices, 'snail gliding', 10, '9:16', new Set(), undefined, undefined, options).map(item => item.choice.id)), [3]);
+  assert.equal(semantics.natureIllustrativeQuery(snailPlan[2].narration, 'snail foot muscles contracting underwater', 'snail'), 'snail foot muscles contracting underwater', 'Specific settings are not silently discarded');
+});
+
+test('same action in a different setting is not merged, and owner or approved plans are never rewritten', async () => {
+  const plan = [duckPlan[0], { ...duckPlan[1], query: 'duck preening feathers pond' }];
+  const h = harness({ search: async () => [footage(82, 'duck preening feathers pond')] });
+  const result = await h.preparation.prepareStockCreation(natureInput(plan, 'duck', 23), plan, h.checkpoint);
+  assert.equal(result.scenes.length, 2); assert.equal(result.scenes[1].footage.id, 82);
+  for (const extra of [{ scriptOrigin: 'owner' }, { scriptApproved: true }, { visualTerms: ['duck preening feathers'], visualTermsOrigin: 'owner' }]) {
+    const locked = harness();
+    await assert.rejects(locked.preparation.prepareStockCreation({ ...natureInput(duckPlan, 'duck', 23), ...extra }, duckPlan, locked.checkpoint), /no distinct/);
+    assert.deepEqual(locked.calls.checkpoints.at(-1).selected, plain(duckPlan));
+    assert.equal(locked.calls.writer.length, 0);
+  }
+});
+
 test('typed animal preparation rejects saved human detail and animal-shaped objects without replacing media', async () => {
   for (const [topic, narration, query, title] of [
     ['How an octopus explores with its arms', 'An octopus explores with its arms.', 'octopus arms', 'colorful octopus kites with long arms'],

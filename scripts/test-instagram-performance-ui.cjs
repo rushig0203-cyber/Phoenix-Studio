@@ -24,7 +24,7 @@ function harness(options = {}) {
     useEffect(callback, dependencies) { const at = index++, old = effectSlots[at]; if (!old || dependencies.some((value, offset) => !Object.is(value, old.dependencies[offset]))) { old?.cleanup?.(); effectSlots[at] = { callback, dependencies }; pending.push(() => { effectSlots[at].cleanup = callback(); }); } },
   };
   const jsx = (type, props, key) => ({ type, props, key });
-  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') } };
+  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, 'lucide-react': { ChevronDown: 'ChevronDown' } };
   const compiledModule = { exports: {} };
   class ClockDate extends Date { static now() { return clock; } }
   new vm.Script(source, { filename }).runInNewContext({ module: compiledModule, exports: compiledModule.exports, Date: ClockDate, URL, AbortController,
@@ -53,6 +53,11 @@ test('results remain compact, newest first, with five expandable rows and workin
   assert.equal(text(rows()[0]).startsWith('Video 10'), true);
   assert.equal(ui.all('table').length, 0);
   assert.equal(ui.all('dl')[0].props['aria-label'], 'Saved Instagram sample');
+  assert.match(ui.all('dl')[0].props.className, /grid-cols-3/); assert.match(ui.all('dl')[0].props.className, /border-l-rose-500/);
+  const rowSummary = nodes(rows()[0]).find(node => node.type === 'summary');
+  assert.match(rowSummary.props.className, /list-none/); assert.match(rowSummary.props.className, /details-marker/);
+  assert.ok(nodes(rowSummary).some(node => node.type === 'ChevronDown' && node.props['aria-hidden'] === 'true'));
+  assert.ok(nodes(rowSummary).some(node => /w-full min-w-0/.test(node.props.className || '')), 'Counts wrap beneath titles on narrow layouts.');
   assert.equal(ui.find('button', 'Previous').props.disabled, true);
   ui.find('button', 'Next').props.onClick(); ui.render();
   assert.equal(rows().length, 5);

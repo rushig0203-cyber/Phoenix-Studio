@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type { ChannelStatus } from "@/lib/channelConnections";
 import type { ReviewFile } from "@/lib/reviewFiles";
 import InstagramPerformance from "./InstagramPerformance";
@@ -14,6 +15,7 @@ type Results = {
   status: "not_connected" | "permission_required" | "syncing" | "ready" | "limited" | "rate_limited" | "error";
   detail: string;
   account?: { name: string };
+  viewsMetric?: "fb_reels_total_plays";
   lastSuccessfulSyncAt?: string;
   videos: Array<{ id: string; caption: string; timestamp: string; permalink?: string; metrics: { views: number | null; likes: number | null; comments: number | null; shares: number | null } }>;
 };
@@ -127,11 +129,13 @@ export default function ChannelInsights({ review, requestedReviewId }: { review?
   const needsFirstYouTubeCheck = platform === "youtube" && data?.status === "syncing" && !data.lastSuccessfulSyncAt
     && !data.videos.length && data.detail.startsWith("Choose Refresh");
   const noYouTubePosts = platform === "youtube" && data?.status === "ready" && !data.videos.length;
+  const viewCountLabel = platform === "facebook" && data?.viewsMetric === "fb_reels_total_plays" ? "plays" : "views";
   const videos = (data?.videos || []).filter(video => !requestedReviewId || video.id === focusedVideoId)
     .sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
   const pages = Math.ceil(videos.length / 5);
   const currentPage = Math.min(page, Math.max(0, pages - 1));
   const measuredCount = (name: "views" | "likes" | "comments") => videos.filter(video => typeof video.metrics[name] === "number" && Number.isFinite(video.metrics[name]) && video.metrics[name]! >= 0).length;
+  const accent = platform === "facebook" ? "border-l-blue-500" : "border-l-red-500";
   const total = (name: "views" | "likes" | "comments") => {
     const values = videos.map(video => video.metrics[name]).filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
     return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
@@ -152,8 +156,8 @@ export default function ChannelInsights({ review, requestedReviewId }: { review?
         </div>
         {busy[platform] && <StudioActivity label="Checking video statistics" />}
         {errors[platform] && <p role="alert" className="text-sm text-destructive">{errors[platform]} Saved counts below have not been replaced.</p>}
-        {data?.lastSuccessfulSyncAt && <dl aria-label={"Saved " + dashboards[platform].name + " sample"} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([["Videos", videos.length, undefined], ["Views", total("views"), "views"], ["Likes", total("likes"), "likes"], ["Comments", total("comments"), "comments"]] as const).map(([label, value, key]) => <div key={label} className="rounded-xl bg-muted p-3"><dt className="text-xs text-muted-foreground">{label}<span className="mt-1 block text-[0.65rem]">{key ? `${measuredCount(key)} of ${videos.length} measured` : "Saved video sample"}</span></dt><dd className="mt-1 text-xl font-semibold tabular-nums">{metric(value)}</dd></div>)}
+        {data?.lastSuccessfulSyncAt && <dl aria-label={"Saved " + dashboards[platform].name + " sample"} className={`grid grid-cols-2 divide-x divide-y divide-border overflow-hidden rounded-xl border border-l-2 bg-muted/30 sm:grid-cols-4 sm:divide-y-0 ${accent}`}>
+          {([["Videos", videos.length, undefined], [viewCountLabel === "plays" ? "Plays" : "Views", total("views"), "views"], ["Likes", total("likes"), "likes"], ["Comments", total("comments"), "comments"]] as const).map(([label, value, key]) => <div key={label} className="min-w-0 px-3 py-3 sm:px-4"><dt className="text-xs font-medium text-muted-foreground">{label}<span className="mt-1 block text-[0.6rem] leading-4 sm:text-[0.65rem]">{key === "views" && viewCountLabel === "plays" ? `Includes replays · ${measuredCount(key)} of ${videos.length} measured` : key ? `${measuredCount(key)} of ${videos.length} measured` : "Saved video sample"}</span></dt><dd className="mt-1 text-2xl font-semibold tabular-nums">{metric(value)}</dd></div>)}
         </dl>}
         {data?.detail && <p className="text-sm text-muted-foreground">{needsFirstYouTubeCheck ? "Choose Check YouTube counts to read available statistics. No video will be posted." : data.detail}</p>}
         {platform === "youtube" && <p className="text-xs text-muted-foreground">YouTube counts cover confirmed uploads from Phoenix, not videos uploaded elsewhere.</p>}
@@ -163,10 +167,10 @@ export default function ChannelInsights({ review, requestedReviewId }: { review?
         {videos.length > 0 && <div aria-label="Video results" className="divide-y divide-border">
           {videos.slice(currentPage * 5, (currentPage + 1) * 5).map(video => {
             const title = (video.caption || dashboards[platform].name + " video").slice(0, 100), link = videoLink(video, platform);
-            return <details key={video.id} data-facebook-result={platform === "facebook" || undefined} data-youtube-result={platform === "youtube" || undefined} open={requestedReviewId ? true : undefined} className="py-3">
-              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
+            return <details key={video.id} data-facebook-result={platform === "facebook" || undefined} data-youtube-result={platform === "youtube" || undefined} open={requestedReviewId ? true : undefined} className="group py-4">
+              <summary className="flex list-none cursor-pointer flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 flex-1 font-medium"><span className="line-clamp-2">{title}</span><span className="mt-1 block text-xs font-normal text-muted-foreground">{dateLabel(video.timestamp)}</span></span>
-                <span className="text-xs text-muted-foreground">{metric(video.metrics.views)} views · {metric(video.metrics.likes)} likes</span>
+                <span className="flex w-full min-w-0 items-center justify-between gap-3 text-xs text-muted-foreground sm:w-auto sm:shrink-0 sm:justify-end"><span className="min-w-0 tabular-nums">{metric(video.metrics.views)} {viewCountLabel} · {metric(video.metrics.likes)} likes</span><ChevronDown aria-hidden="true" className="size-4 shrink-0 transition-transform group-open:rotate-180" /></span>
               </summary>
               <div className="mt-2 space-y-2 text-xs text-muted-foreground"><p>Comments: {metric(video.metrics.comments)}{platform === "facebook" && <> · Shares: {metric(video.metrics.shares)}</>}</p>{link && <a href={link} target="_blank" rel="noopener noreferrer" className="underline">Open {dashboards[platform].name} video</a>}</div>
             </details>;

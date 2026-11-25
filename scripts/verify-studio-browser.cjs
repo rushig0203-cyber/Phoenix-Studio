@@ -150,6 +150,7 @@ async function run() {
       if (url.pathname === '/api/facebook-performance' || url.pathname === '/api/youtube-performance') {
         const youtube = url.pathname.includes('youtube');
         return json(route, { status: 'ready', account: { name: youtube ? 'Fixture YouTube counts' : 'Fixture Facebook counts' },
+          ...(youtube ? {} : { viewsMetric: 'fb_reels_total_plays' }),
           detail: 'Synthetic basic video results.', lastSuccessfulSyncAt: date, videos: [{ id: youtube ? 'Abcdef_1234' : '12345',
             caption: youtube ? 'YouTube count fixture' : 'Facebook count fixture', timestamp: date,
             metrics: { views: youtube ? 73 : 61, likes: 3, comments: 1, shares: null } }] });
@@ -300,6 +301,7 @@ async function run() {
     verify('Switching creation workspaces retains the selected clip style', await highlights.isChecked());
     await workflows.getByRole('link', { name: 'Make a Reel', exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('[data-quick-template]').first().waitFor();
     const mobileNav = await page.locator('nav[aria-label="Studio sections"]').evaluate(nav => {
       const bounds = nav.getBoundingClientRect();
       return { viewport: innerWidth, scrollWidth: nav.scrollWidth, clientWidth: nav.clientWidth,
@@ -319,6 +321,14 @@ async function run() {
     verify('Mobile creation paths are one tappable row and the first template is in reach', mobileCreation.rows === 1
       && mobileCreation.minHeight >= 44 && mobileCreation.lastRight <= mobileCreation.viewport
       && mobileCreation.firstTemplateBottom < mobileCreation.viewportHeight, mobileCreation);
+    const templateArrowsFit = await page.locator('[data-quick-template]').evaluateAll(cards => cards.length > 0 && cards.every(card => {
+      const bounds = card.getBoundingClientRect();
+      const copy = card.querySelector('[data-template-copy]').getBoundingClientRect();
+      const arrow = card.querySelector('[data-template-action]').getBoundingClientRect();
+      return copy.right <= arrow.left + 1 && arrow.right <= bounds.right - 4 && arrow.bottom <= bounds.bottom - 4
+        && arrow.top >= bounds.top && arrow.width >= 18;
+    }));
+    verify('Reel card arrows fit inside the card with their own space', templateArrowsFit);
     await capture('studio-create-mobile');
     await page.locator('a[data-queue-state][href="#jobs"]').click();
     await page.waitForFunction(() => {
@@ -335,16 +345,27 @@ async function run() {
     await navigate('insights');
     await page.getByRole('region', { name: 'Instagram insights', exact: true }).getByText('Synthetic saved results for UI verification.').waitFor();
     await capture('studio-insights');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const insightsRowFits = await page.locator('[data-instagram-result] > summary').first().evaluate(summary => {
+      const row = summary.getBoundingClientRect();
+      const arrow = summary.querySelector('svg').getBoundingClientRect();
+      return row.left >= 0 && row.right <= innerWidth && arrow.left >= row.left && arrow.right <= row.right + 1;
+    });
+    verify('Insights rows contain their expand arrow on a phone', insightsRowFits);
+    await page.setViewportSize({ width: 1440, height: 1000 });
     const insightPlatforms = page.getByRole('group', { name: 'Insight platforms' });
     for (const [platform, count] of [['Facebook', '61'], ['YouTube', '73']]) {
       await insightPlatforms.getByRole('button', { name: platform, exact: true }).click();
       const sample = page.locator('dl[aria-label="Saved ' + platform + ' sample"]');
       await sample.waitFor();
       verify(platform + ' displays its own measured counts', (await sample.locator('dd').allTextContents()).join(',') === '1,' + count + ',3,1');
-      verify(platform + ' uses distinct readable metric tiles', await sample.locator('div').first().evaluate(tile => {
-        const style = getComputedStyle(tile);
-        return style.backgroundColor === 'rgb(36, 35, 41)' && parseFloat(style.borderRadius) >= 8;
+      verify(platform + ' uses a single metrics strip with a distinct platform accent', await sample.evaluate(strip => {
+        const style = getComputedStyle(strip);
+        return style.display === 'grid' && parseFloat(style.borderRadius) >= 8
+          && parseFloat(style.borderLeftWidth) >= 2 && strip.children.length === 4;
       }));
+      if (platform === 'Facebook') verify('Facebook labels measured Reel plays and replay coverage', /Plays/.test(await sample.innerText())
+        && /Includes replays/.test(await sample.innerText()));
       await capture('studio-insights-' + platform.toLowerCase());
     }
     await insightPlatforms.getByRole('button', { name: 'Rumble', exact: true }).click();

@@ -350,6 +350,53 @@ test('business writing retains feasible visuals and the reviewer evaluates the p
   assert.notEqual(editor.editorialFingerprint(brief), editor.editorialFingerprint({ ...brief, creationType: 'business' }));
 });
 
+test('a short first crab narration is saved before the existing editor repairs it', async () => {
+  const firstDraft = 'Crabs often walk sideways because their legs bend outward.';
+  const corrected = 'Crabs often walk sideways because their legs bend outward. Watch how the legs on one side pull while the other side pushes. That sideways step follows the direction their legs can move most easily.';
+  const outline = {
+    viewerQuestion: 'Why do many crabs walk sideways?', audience: 'Wildlife viewers',
+    angles: [
+      { angle: 'Connect the leg shape to the sideways step', value: 'Explain the movement viewers see on screen.' },
+      { angle: 'Follow one crab crossing a sandy patch', value: 'Keep the movement easy to watch.' },
+      { angle: 'Look at the legs on both sides', value: 'Show how the sides work together.' },
+    ],
+    selectedAngle: 0, structure: 'explanation',
+    opening: 'Crabs often walk sideways because their legs bend outward.',
+    beats: [
+      { point: 'The crab takes a sideways step.', visual: 'A crab walking sideways on sand.' },
+      { point: 'One side pushes as the other pulls.', visual: 'Same kind of crab, legs visible as it steps.' },
+      { point: 'The direction follows the leg movement.', visual: 'A crab continuing sideways across sand.' },
+    ],
+    payoff: 'Leg movement makes the sideways step easy.',
+    avoid: ['Do not claim all crabs walk sideways.'],
+  };
+  const evidence = Object.fromEntries(criteria.map(key => [key, { evidence: 'Crabs often walk sideways' }]));
+  let calls = 0;
+  global.fetch = async (_, init) => {
+    const body = JSON.parse(init.body);
+    const call = ++calls;
+    if (call === 1) return Response.json({ response: JSON.stringify(outline) });
+    if (call === 2) {
+      assert.match(body.prompt, /at least 25/);
+      return Response.json({ response: firstDraft });
+    }
+    if (call === 4) {
+      assert.match(body.prompt, /Rewrite this narration/);
+      assert.ok(body.prompt.includes(firstDraft));
+      return Response.json({ response: JSON.stringify({ script: corrected }) });
+    }
+    assert.ok([3, 5].includes(call), 'Expected one edit and a new editorial check');
+    return Response.json({ response: JSON.stringify(verdict(evidence)) });
+  };
+  const input = { topic: 'Why many crabs walk sideways', duration: 35, autoDuration: true, creationType: 'general' };
+  const snapshots = [];
+  const result = await createStockScript(input, async stage => snapshots.push({ stage, script: input.script }));
+  assert.equal(result, corrected);
+  assert.ok(snapshots.some(state => state.script === firstDraft && /Narration saved/.test(state.stage)));
+  assert.equal(input.editorial.revised, true);
+  assert.equal(calls, 5);
+});
+
 test('the bounded rewrite retains selected feedback and fingerprints its actual rules', async () => {
   const previous=global.fetch;
   const guidanceRules=['Each beat adds new information; remove repeated motivational filler.'];

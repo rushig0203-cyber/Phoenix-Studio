@@ -40,9 +40,12 @@ const natureActions = [
   { name: "climbing", pattern: /^climb\w*$/ },
   { name: "surfacing", pattern: /^surfac(?:e|es|ing|ed)$/ },
 ];
+const snailTravel = /\b(?:crawl(?:s|ed|ing)?|glid(?:e|es|ed|ing)|mov(?:e|es|ed|ing))\b/i;
 
 function evidenceWords(text: string) {
-  return visualWords(normalizeNatureAliases(text).replace(/\bjelly[ -]fish\b/gi, "jellyfish")).filter(word => !framingWords.has(word));
+  let normalized = normalizeNatureAliases(text).replace(/\bjelly[ -]fish\b/gi, "jellyfish");
+  if (/\bsnails?\b/i.test(normalized)) normalized = normalized.replace(new RegExp(snailTravel.source, "gi"), "gliding");
+  return visualWords(normalized).filter(word => !framingWords.has(word));
 }
 
 function wordForms(word: string) {
@@ -65,7 +68,32 @@ export function hasFootageEvidence(description: string, requirement: string) {
   return required.length > 0 && required.every(word => wordForms(word).some(form => supplied.has(form)));
 }
 
-export function natureShotActionMismatch(narration: string, query: string) {
+export function natureVisibleAction(text: string, subject: string) {
+  const words = evidenceWords(text);
+  const actions = natureActions.filter(action => words.some(word => action.pattern.test(word))
+    && !(subject === "snail" && action.name === "pulsing" && !words.some(word => /^puls/.test(word)))).map(action => action.name);
+  if (subject === "snail" && snailTravel.test(text)) actions.push("gliding");
+  return actions.length === 1 ? actions[0] : undefined;
+}
+
+/** Keep physiology in the narration; stock illustrates the animal's observable action. */
+export function natureIllustrativeQuery(narration: string, query: string, subject: string) {
+  if (!hasFootageEvidence(query, subject) || natureDepictionMismatch(query, subject)) return query;
+  const words = evidenceWords(query);
+  if (subject === "snail" && snailTravel.test(narration) && /\b(?:foot|muscles?|mucus)\b/i.test(query)
+    && words.every(word => /^(?:snails?|foot|muscles?|muscular|mucus|production|contract\w*|relax\w*|wave|like|motion|gliding|forward|without|legs?)$/.test(word))) return "snail gliding";
+  if (subject === "duck" && natureVisibleAction(narration, subject) === "preening"
+    && natureVisibleAction(query, subject) === "preening"
+    && words.every(word => /^(?:ducks?|preen\w*|groom\w*|feathers?|beaks?|oil|glands?)$/.test(word))) return "duck preening feathers";
+  return query;
+}
+
+export function natureShotActionMismatch(narration: string, query: string, subject?: string) {
+  if (subject === "snail") {
+    const action = natureVisibleAction(narration, subject);
+    if (action && natureVisibleAction(query, subject) !== action) return action;
+    return;
+  }
   const spoken = evidenceWords(narration);
   const requested = evidenceWords(query);
   const visibleActions = natureActions.filter(action => spoken.some(word => action.pattern.test(word)));

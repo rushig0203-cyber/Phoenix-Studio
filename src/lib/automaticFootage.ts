@@ -1,7 +1,7 @@
 import type { DraftScene, FootageChoice } from "./creationDraftTypes";
 import { searchFootage } from "./stockCatalog";
 import { visualWords } from "./stockBrief";
-import { footageMetadataMismatch, hasFootageEvidence, natureDepictionMismatch } from "./footageSemantics";
+import { footageMetadataMismatch, hasFootageEvidence, natureDepictionMismatch, natureShotActionMismatch, natureVisibleAction } from "./footageSemantics";
 import type { NewsResearch } from "./newsResearch";
 import { NEWS_MIXED_VISUAL_POLICY, newsContextSearches, newsEditorialIllustration, newsIllustrationQuery, newsFootageMetadataIssue, newsStockQueryIssue, newsVisualTerms, readNewsIllustration, type NewsVisualPolicy } from "./newsVisualPolicy";
 
@@ -10,7 +10,7 @@ const tokens = (value: string) => visualWords(value).filter(word => !generic.has
 const footageTitle = (choice: FootageChoice) => new URL(choice.sourcePage).pathname.replace(/[-_/\d]+/g, " ").trim();
 
 /** Metadata heuristics, not visual recognition. Never silently use an unrelated search. */
-type ShotEvidence = { subject?: string };
+type ShotEvidence = { subject?: string; allowAdjacentMerge?: boolean };
 
 export function rankFootage(choices: FootageChoice[], query: string, minimumSeconds: number, aspect: "9:16" | "16:9", used: Set<number>, previous?: FootageChoice, research?: NewsResearch, evidence?: ShotEvidence) {
   const wanted = research ? newsVisualTerms(query) : tokens(query);
@@ -57,6 +57,26 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
         throw new Error(`Scene ${index + 1} · ${scene.query}: saved footage does not support this shot. The narration and selected clip were retained.`);
       }
       continue;
+    }
+    const previous = selected[index - 1];
+    const subject = evidence?.subject;
+    const action = subject && natureVisibleAction(scene.query, subject);
+    if (!research && evidence?.allowAdjacentMerge && subject && action && previous?.footage
+      && natureVisibleAction(previous.query, subject) === action
+      && !natureShotActionMismatch(scene.narration, previous.query, subject)) {
+      const combined = `${previous.narration} ${scene.narration}`;
+      const combinedMinimum = duration * combined.split(/\s+/).length / words * 1.2 + 1;
+      // One continuous approved source, never a replay; actual measured speech
+      // is still checked against downloaded native-speed frames by the renderer.
+      if (rankFootage([previous.footage], scene.query, combinedMinimum, aspect, new Set(), undefined, undefined, evidence).length
+        && rankFootage([previous.footage], previous.query, combinedMinimum, aspect, new Set(), undefined, undefined, evidence).length) {
+        previous.narration = combined;
+        previous.footageReason = `Continuous ${subject} ${action} shot for adjacent explanations; catalogue duration covers ${combinedMinimum.toFixed(1)}s including the speech-timing margin. No replay or slowdown. Metadata checks only; review the visible action.`;
+        selected.splice(index, 1);
+        await onScene(selected, `Joined continuing ${subject} ${action} explanation — selected footage retained`);
+        index--;
+        continue;
+      }
     }
     await onScene(selected, `Selecting footage ${index + 1}/${selected.length}: ${scene.query}`);
     const catalogTitles = new Set<string>();

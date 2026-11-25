@@ -13,7 +13,7 @@ import { tryWithLocalRenderSlot, retainExternalRender, finishExternalRender, rec
 import { requireSongAudio } from "./songAudio";
 import { inferPublishingFormat, publishingProfile, type PublishingFormat } from "./publishingFormats";
 import { socialHandle } from "./socialAccounts";
-import { stockVisualBrief, stockNarrationError, stockScriptTargetWords, checkStockScript } from "./stockBrief";
+import { stockVisualBrief, stockNarrationError, stockScriptTargetWords, stockScriptWordRange, checkStockScript } from "./stockBrief";
 import { assertMeasuredStockRender, readStockShots, type StockBeat } from "./stockStoryboard";
 import { STOCK_PLAYBACK_POLICY, supportsNativeStockPlayback } from "./stockPlayback";
 import { LOCAL_STOCK_VOICE_PROTOCOL, supportsLocalStockVoice } from "./localVoiceProtocol";
@@ -686,10 +686,6 @@ function cleanScript(value: string) {
     .trim();
 }
 
-function countWords(value: string) {
-  return value.match(/\b[\p{L}\p{N}'-]+\b/gu)?.length || 0;
-}
-
 export function fitStockScriptToDuration(value: string, duration: number) {
   const cleaned = cleanScript(value);
   // Never discard the payoff to fit a word budget. The editor must rewrite
@@ -707,15 +703,15 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
   }
   return withWritingSession(async () => {
   const requestedWords = stockScriptTargetWords(input.duration);
+  const natureSubject = stockNatureSubject(input);
   const targetWords = input.research && input.autoDuration ? Math.min(90, requestedWords)
-    : input.recommendation?.visualSubject && input.autoDuration ? Math.min(75, requestedWords) : requestedWords;
+    : natureSubject && input.autoDuration ? Math.min(75, requestedWords) : requestedWords;
   const guidance = await getCreativeGuidance(input.creationType);
   input.managerGuidance = guidance;
-  const natureSubject = stockNatureSubject(input);
   const miniDocDirection = natureSubject
     ? `Open on the visible ${JSON.stringify(natureSubject)} and one specific action or feature. Keep that subject through the final detail. When describing its arms, ears or other parts, clearly retain the animal rather than a generic human body part. Answer the question in one short, complete arc.${input.recommendation ? ` Selected angle (data): ${JSON.stringify(input.recommendation.premise)}.` : ""}`
     : "";
-  const prompt = `Write an original ${input.research ? "neutral, source-grounded news bulletin" : input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Aim for a concise, complete narration, at most about ${targetWords} words. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${input.research ? "Explain the main sourced development, its necessary context and consequence or uncertainty. Do not turn the report into a tutorial, moral or fictional story. Necessary attribution and denials take priority over a word target." : stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
+  const prompt = `Write an original ${input.research ? "neutral, source-grounded news bulletin" : input.creationType === "business" ? "practical business" : "educational general-interest"} social-video narration about: ${JSON.stringify(input.topic)}\n${input.autoDuration ? `Write a complete narration of at least ${stockScriptWordRange(input.duration, false, true).min} and about ${targetWords} words at most. End at the payoff, without adding lines to fill a runtime.` : `Target ${targetWords} words (within 10%).`} Follow the chosen outline and answer its actual viewer question. ${input.research ? "Explain the main sourced development, its necessary context and consequence or uncertainty. Do not turn the report into a tutorial, moral or fictional story. Necessary attribution and denials take priority over a word target." : stockNarrationDirection(input.creationType, input.topic)} Maintain a coherent setting when depicting a continuing action, but do not force every comparison or explanation into one setting. Plain spoken English only. No greetings, headings, lists, hashtags, stage directions, unsupported statistics, invented citations, financial promises, marketing filler or copied slogans. The outline is planning DATA: do not speak its labels or visual instructions. Its visualConstraints limit what the examples can claim; do not read those instructions aloud.`;
   try {
     let rawScript = cleanScript(input.script || "");
     if (!rawScript) {
@@ -729,14 +725,13 @@ export async function createStockScript(input: GenerationInput, onStage: (stage:
       }, { timeoutMs: Math.max(150_000, input.duration * 1_200) });
     if (!response.ok) throw new Error(`The selected writer returned ${response.status}`);
     rawScript = cleanScript(String((await response.json()).response || ""));
-    if (countWords(rawScript) < (input.autoDuration ? 25 : 40)) throw new Error("Local script was incomplete");
+    if (!/[\p{L}\p{N}]/u.test(rawScript)) throw new Error("The writer returned no usable narration");
     // Persist completed writing before the next admission check. A resource wait
     // in the editor should resume this draft, not ask the writer to replace it.
     input.script = rawScript;
     input.scriptOrigin = "local-model";
     await onStage("Narration saved — preparing the editorial check");
     }
-    if (countWords(rawScript) < (input.autoDuration ? 25 : 40)) throw new Error("Local script was incomplete");
     const { script, editorial } = await editStockNarration({ ...input, script: rawScript, feedbackRevision: guidance.revision, guidanceRules: guidance.rules, briefInstructions: input.creativeBrief ? creativeBriefInstructions(input.creativeBrief) : undefined }, onStage, async attempt => {
       input.editorialAttempts = [...(input.editorialAttempts || []), attempt].slice(-20);
       if (input.script && input.script !== attempt.script) {

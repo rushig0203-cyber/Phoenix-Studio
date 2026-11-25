@@ -4,7 +4,7 @@ import { selectAutomaticFootage } from "./automaticFootage";
 import type { DraftScene } from "./creationDraftTypes";
 import { selectedFootage } from "./stockCatalog";
 import { withWritingSession } from "./writingModel";
-import { hasFootageEvidence, stockNatureSubject } from "./footageSemantics";
+import { hasFootageEvidence, natureIllustrativeQuery, stockNatureSubject } from "./footageSemantics";
 import { NEWS_MIXED_VISUAL_POLICY, newsIllustrationQuery, newsStockQueryIssue, readNewsIllustration } from "./newsVisualPolicy";
 
 export type StockPreparation = { version: 1; scenes: DraftScene[]; repairUsed?: true };
@@ -18,8 +18,10 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
   let input = { ...original };
   let scenes = savedScenes.map(scene => ({ ...scene }));
   const subject = stockNatureSubject(input);
+  const canAdjustGeneratedPlan = (input.scriptOrigin === "local-model" || !input.script?.trim()) && !input.scriptApproved
+    && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
   const evidence = !input.research && (input.narrationPresentation === "measured-speech-v1" || subject)
-    ? { subject } : undefined;
+    ? { subject, allowAdjacentMerge: canAdjustGeneratedPlan } : undefined;
   let repairUsed = input.stockPreparation?.repairUsed;
   const save = async (current: DraftScene[], stage: string) => {
     scenes = current.map(scene => ({ ...scene }));
@@ -42,6 +44,8 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
       throw new Error(`The generated narration does not name its ${subject} subject. Saved narration is retained for correction; no unrelated footage was selected.`);
     }
     if (!scenes.length) scenes = await createStockStoryboard(input as GenerationInput & { script: string });
+    if (subject && canAdjustGeneratedPlan) scenes = scenes.map(scene => scene.footage || scene.illustration ? scene
+      : { ...scene, query: natureIllustrativeQuery(scene.narration, scene.query, subject) });
     if (input.research) {
       const unsafe = scenes.findIndex(scene => scene.illustration
         ? input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY || scene.footage || !readNewsIllustration(scene.illustration) || scene.query !== newsIllustrationQuery(scene.illustration)

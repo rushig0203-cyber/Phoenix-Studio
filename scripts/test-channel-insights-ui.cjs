@@ -21,7 +21,7 @@ function harness(fetcher, props = {}) {
     useEffect(callback, dependencies) { const at = index++, old = effects[at]; if (!old || dependencies.some((value, offset) => !Object.is(value, old.dependencies[offset]))) { old?.cleanup?.(); effects[at] = { callback, dependencies }; pending.push(() => { effects[at].cleanup = callback(); }); } },
   };
   const jsx = (type, props, key) => ({ type, props, key });
-  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, './InstagramPerformance': { default: () => null }, './PlatformIcon': { default: () => null }, './StudioActivity': { default: () => null },
+  const dependencies = { react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: Symbol('Fragment') }, 'lucide-react': { ChevronDown: 'ChevronDown' }, './InstagramPerformance': { default: () => null }, './PlatformIcon': { default: () => null }, './StudioActivity': { default: () => null },
     '@/lib/rumbleWindow': { rumbleDashboardLink: { href: 'https://rumble.com/account/dashboard', target: 'phoenix-rumble-dashboard', rel: 'noopener noreferrer' } } };
   const mod = { exports: {} };
   new vm.Script(source, { filename }).runInNewContext({ module: mod, exports: mod.exports, URL, AbortController, setTimeout, clearTimeout,
@@ -55,6 +55,11 @@ test('platform selection reads saved Facebook stats and only refresh explicitly 
   assert.equal(ui.requests[1].url, '/api/facebook-performance'); assert.equal(ui.requests[1].method, undefined);
   const rows = () => ui.all('details').filter(node => node.props['data-facebook-result']);
   assert.equal(rows().length, 5); assert.ok(rows().every(row => row.props.open === undefined));
+  const rowSummary = nodes(rows()[0]).find(node => node.type === 'summary');
+  assert.match(rowSummary.props.className, /list-none/); assert.match(rowSummary.props.className, /details-marker/);
+  assert.ok(nodes(rowSummary).some(node => node.type === 'ChevronDown' && node.props['aria-hidden'] === 'true'));
+  assert.match(ui.find('dl', node => node.props['aria-label'] === 'Saved Facebook sample').props.className, /border-l-blue-500/);
+  assert.match(rowSummary.props.className, /gap-y-2/);
   assert.match(text(rows()[0]), /^Facebook 7/); assert.equal(ui.all('table').length, 0);
   ui.find('button', 'Next').props.onClick(); ui.render(); assert.equal(rows().length, 2);
   assert.match(text(ui.tree()), /Page 2 of 2/);
@@ -77,7 +82,7 @@ test('Facebook displays real zeroes and unavailable values distinctly and preser
 });
 
 test('partial saved totals identify measured coverage and use the active studio theme', async () => {
-  const sample = facebook({ status: 'limited', videos: [
+  const sample = facebook({ status: 'limited', viewsMetric: 'fb_reels_total_plays', videos: [
     { id: '101', caption: 'Measured zero', timestamp: '2026-11-08T10:00:00Z', metrics: { views: 0, likes: 3, comments: 0 } },
     { id: '102', caption: 'Unavailable views', timestamp: '2026-11-09T10:00:00Z', metrics: { views: null, likes: 4, comments: null } },
   ] });
@@ -87,6 +92,9 @@ test('partial saved totals identify measured coverage and use the active studio 
   assert.match(text(ui.tree()), /Last measured:/);
   assert.deepEqual(ui.all('dd').map(text), ['2', '0', '7', '0']);
   assert.match(text(ui.tree()), /1 of 2 measured/); assert.match(text(ui.tree()), /2 of 2 measured/);
+  assert.match(text(ui.tree()), /Plays/); assert.match(text(ui.tree()), /Includes replays/);
+  const sampleRow = ui.all('details').find(node => node.props['data-facebook-result']);
+  assert.match(text(nodes(sampleRow).find(node => node.type === 'summary')), /plays/);
   assert.match(text(ui.tree()), /0 is a measured zero/);
   assert.ok(nodes(ui.tree()).some(node => /\bbg-card\b/.test(node.props.className || '')));
   assert.ok(nodes(ui.tree()).some(node => /\bbg-muted\b/.test(node.props.className || '')));

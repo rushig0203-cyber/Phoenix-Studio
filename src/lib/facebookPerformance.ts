@@ -5,6 +5,7 @@ import { FACEBOOK_PAGE_GRAPH_VERSION, getChannelPublishAccess, createChannelPubl
 import { withFileLock } from "./fileLock";
 import { writeAtomicJson } from "./atomicJson";
 import { boundedJson } from "./groqWriter";
+import { publicationJobPath } from "./reviewPublicationStore";
 import type { FacebookPerformanceState, FacebookPerformanceVideo } from "./facebookPerformanceTypes";
 
 type Status = FacebookPerformanceState["status"];
@@ -13,6 +14,8 @@ type Store = FacebookPerformanceState & {
   nextRefreshAt?: string; lease?: { token: string; until: number };
 };
 const cacheLimit = 128 * 1024;
+const reelMetric = "fb_reels_total_plays" as const;
+const playsPerRefresh = 4;
 const filename = () => path.join(process.env.PHOENIX_FACEBOOK_PERFORMANCE_STORAGE || path.join(process.cwd(), "storage", "private"), "facebook-performance.json");
 const numericId = (value: unknown): value is string => typeof value === "string" && /^\d{1,40}$/.test(value);
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -25,16 +28,18 @@ function count(value: unknown): number | null {
 }
 function detailFor(status: Status) {
   if (status === "not_connected") return "Connect or check the Facebook Page in Settings to read its Reel counts.";
-  if (status === "permission_required") return "Meta did not allow reading these Facebook Page Reel counts. Check the existing Page connection and permissions; posting access is separate.";
+  if (status === "permission_required") return "Meta did not allow reading these Facebook Reel statistics. Check existing Page insights access; publishing permission alone does not grant read_insights, pages_manage_engagement or the Page ANALYZE task. No permission was added.";
   if (status === "rate_limited") return "Meta temporarily limited Facebook statistics requests. Saved figures remain available; wait before refreshing again.";
   if (status === "error") return "Facebook Reel counts could not refresh. Valid saved figures are retained; no video or posting request was changed.";
-  if (status === "syncing") return "Reading basic counts for up to 25 latest Facebook Page Reels.";
-  if (status === "limited") return "Available counts for up to 25 latest Page Reels are shown. Some counts or older Reels are unavailable; unknown values are not zero.";
-  return "Basic counts for the latest Page Reels are loaded. This is not full Reel analytics; watch time and unreturned share counts remain unknown.";
+  if (status === "syncing") return "Reading latest Page Reels and up to four lifetime Reel play counts.";
+  if (status === "limited") return "Partial Page Reel statistics. At most four play counts are checked per refresh, prioritizing Phoenix uploads and unmeasured Reels. Plays include replays; unknown values are not zero.";
+  return "Available Page Reel counts are loaded. Plays include replays; watch time and unreturned share counts remain unknown.";
 }
 const publicState = (state: FacebookPerformanceState): FacebookPerformanceState => ({ status: state.status,
-  detail: state.status === "syncing" && !(state as Partial<Store>).lease ? "Facebook Page connected. Use Refresh to collect its basic Reel counts." : detailFor(state.status),
-  ...(state.account ? { account: { name: state.account.name } } : {}), ...(state.lastSuccessfulSyncAt ? { lastSuccessfulSyncAt: state.lastSuccessfulSyncAt } : {}), videos: state.videos });
+  detail: state.status === "syncing" && !(state as Partial<Store>).lease ? "Facebook Page connected. Use Refresh to collect its Reel statistics."
+    : !state.viewsMetric && state.videos.length && state.status === "limited" ? "Saved general-video view counts are unverified for Reel plays. Refresh to measure documented Reel plays; unknown values are not zero." : detailFor(state.status),
+  ...(state.account ? { account: { name: state.account.name } } : {}), ...(state.viewsMetric ? { viewsMetric: state.viewsMetric } : {}),
+  ...(state.lastSuccessfulSyncAt ? { lastSuccessfulSyncAt: state.lastSuccessfulSyncAt } : {}), videos: state.videos });
 const empty = (): FacebookPerformanceState => ({ status: "not_connected", detail: detailFor("not_connected"), videos: [] });
 const same = (saved: Store | undefined, access: ChannelPublishAccess) => saved?.account.id === access.accountId && saved.account.connectionRevision === access.connectionRevision;
 const fresh = (access: ChannelPublishAccess): Store => ({ version: 1, status: "syncing", detail: detailFor("syncing"),
@@ -54,7 +59,7 @@ function permalink(value: unknown, id: string, secret = "") {
   } catch { /* Untrusted provider links are never followed. */ }
   return undefined;
 }
-function checkedVideo(value: unknown, cached = false, secret = ""): FacebookPerformanceVideo | undefined {
+function checkedVideo(value: unknown, cached = false, secret = "", verifiedPlays = false): FacebookPerformanceVideo | undefined {
   if (!object(value) || !numericId(value.id)) return;
   const timestamp = date(cached ? value.timestamp : value.created_time);
   if (!timestamp) return;
@@ -62,8 +67,9 @@ function checkedVideo(value: unknown, cached = false, secret = ""): FacebookPerf
   const summaryCount = (edge: unknown) => object(edge) && object(edge.summary) ? count(edge.summary.total_count) : null;
   const link = permalink(cached ? value.permalink : value.permalink_url, value.id, secret);
   const shares = cached ? count(metrics.shares) : object(value.shares) ? count(value.shares.count) : count(value.shares);
+  const metricsUpdatedAt = cached && verifiedPlays ? date(value.metricsUpdatedAt) : undefined;
   return { id: value.id, caption: text(cached ? value.caption : value.description || value.title, 600, secret), timestamp,
-    ...(link ? { permalink: link } : {}), metrics: { views: count(metrics.views), likes: cached ? count(metrics.likes) : summaryCount(value.likes),
+    ...(link ? { permalink: link } : {}), ...(metricsUpdatedAt ? { metricsUpdatedAt } : {}), metrics: { views: metricsUpdatedAt ? count(metrics.views) : null, likes: cached ? count(metrics.likes) : summaryCount(value.likes),
       comments: cached ? count(metrics.comments) : summaryCount(value.comments), shares, averageWatchTimeMs: null } };
 }
 async function readStore(): Promise<Store | undefined> {
@@ -83,9 +89,11 @@ async function readStore(): Promise<Store | undefined> {
     const statuses: Status[] = ["not_connected", "permission_required", "ready", "limited", "error", "rate_limited", "syncing"];
     const status: Status = statuses.includes(saved.status as Status) ? saved.status as Status : "error";
     const seen = new Set<string>();
-    const videos = saved.videos.map(row => checkedVideo(row, true)).filter((row): row is FacebookPerformanceVideo => !!row && !seen.has(row.id) && !!seen.add(row.id));
+    const verifiedPlays = saved.viewsMetric === reelMetric;
+    const videos = saved.videos.map(row => checkedVideo(row, true, "", verifiedPlays)).filter((row): row is FacebookPerformanceVideo => !!row && !seen.has(row.id) && !!seen.add(row.id));
     const state: Store = { version: 1, account: { id: saved.account.id, name: text(saved.account.name, 120), connectionRevision: saved.account.connectionRevision },
-      status, detail: detailFor(status), videos, lastSuccessfulSyncAt: date(saved.lastSuccessfulSyncAt), nextRefreshAt: date(saved.nextRefreshAt) };
+      status: status === "ready" && videos.some(row => row.metrics.views === null) ? "limited" : status,
+      ...(verifiedPlays ? { viewsMetric: reelMetric } : {}), detail: detailFor(status), videos, lastSuccessfulSyncAt: date(saved.lastSuccessfulSyncAt), nextRefreshAt: date(saved.nextRefreshAt) };
     if (object(saved.lease) && typeof saved.lease.token === "string" && /^[a-f0-9-]{36}$/i.test(saved.lease.token)
       && typeof saved.lease.until === "number" && saved.lease.until > Date.now() && saved.lease.until < Date.now() + 60_000) state.lease = { token: saved.lease.token, until: saved.lease.until };
     if (state.status === "syncing" && !state.lease) state.status = "error";
@@ -122,7 +130,67 @@ function quotaDelay(headers: Headers) {
   return Math.ceil(Math.max(60_000, Math.min(86_400_000, Number.isFinite(delay) ? delay : 3_600_000)));
 }
 
-/** Explicit owner refresh: one bounded Page request, no pagination, media or model. */
+async function localJson(filename: string, limit: number): Promise<unknown> {
+  let handle;
+  try {
+    const stat = await fs.lstat(filename);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > limit) return;
+    handle = await fs.open(filename, "r");
+    const bytes = Buffer.alloc(stat.size + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const read = await handle.read(bytes, length, bytes.length - length, length);
+      if (!read.bytesRead) break;
+      length += read.bytesRead;
+    }
+    if (length !== stat.size) return;
+    return JSON.parse(bytes.toString("utf8", 0, length));
+  } catch { return; }
+  finally { await handle?.close(); }
+}
+
+/** Optional priority only: malformed journals cannot attribute or block Page statistics. */
+async function phoenixReels(connected: ChannelPublishAccess, videos: FacebookPerformanceVideo[]) {
+  const matched = new Set<string>(), listed = new Set(videos.map(video => video.id));
+  const index = await localJson(path.join(process.cwd(), "storage", "Phoenix Studio Review Files", "index.json"), 8 * 1024 * 1024);
+  if (!Array.isArray(index)) return matched;
+  const reviews = index.slice(0, 5000).filter(row => object(row) && typeof row.id === "string"
+    && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row.id) && row.status === "READY" && !row.trashedAt)
+    .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0)).slice(0, 50);
+  for (const review of reviews) {
+    const job = await localJson(publicationJobPath(review.id, "facebook"), 64 * 1024);
+    if (object(job) && job.version === 1 && job.reviewId === review.id && job.platform === "facebook" && !job.kind
+        && job.accountId === connected.accountId && job.connectionRevision === connected.connectionRevision
+        && job.status === "COMPLETE" && job.phase === "complete" && numericId(job.remoteId) && listed.has(job.remoteId)) matched.add(job.remoteId);
+  }
+  return matched;
+}
+
+async function graph(url: URL, connected: ChannelPublishAccess, timeout = 10_000, allowUnsupportedMetric = false): Promise<Record<string, unknown>> {
+  const response = await fetch(url.href, { headers: { Authorization: `Bearer ${connected.accessToken}` }, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(timeout) });
+  if (response.status === 429 || [401, 403].includes(response.status)) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new ProviderFailure(response.status === 429 ? "rate_limited" : "permission_required", response.status === 429 ? quotaDelay(response.headers) : 600_000);
+  }
+  const data = await boundedJson(response);
+  const error = object(data) && object(data.error) ? data.error : undefined;
+  const code = typeof error?.code === "number" ? error.code : undefined;
+  if ([4, 17, 32, 613, 80001, 80004, 80006].includes(code || 0)) throw new ProviderFailure("rate_limited", quotaDelay(response.headers));
+  if ([10, 190, 200, 283, 294].includes(code || 0)) throw new ProviderFailure("permission_required", 600_000);
+  if (allowUnsupportedMetric && code === 100) return { data: [] };
+  if (!response.ok || error || !object(data) || !Array.isArray(data.data)) throw new ProviderFailure("error", 60_000);
+  return data;
+}
+
+function totalPlays(data: unknown): number | null {
+  if (!object(data) || !Array.isArray(data.data) || data.data.length > 10) return null;
+  const metrics = data.data.filter(row => object(row) && row.name === reelMetric && row.period === "lifetime");
+  if (metrics.length !== 1 || !object(metrics[0]) || !Array.isArray(metrics[0].values) || metrics[0].values.length !== 1) return null;
+  const value = metrics[0].values[0];
+  return object(value) ? count(value.value) : null;
+}
+
+/** Explicit owner refresh: one Page list plus at most four read-only play queries; no pagination/media/model. */
 export async function syncFacebookPerformance(): Promise<FacebookPerformanceState> {
   let connected: ChannelPublishAccess, assertCurrent: () => Promise<void>;
   try { connected = await access(); assertCurrent = await createChannelPublishAccessMonitor(connected); }
@@ -145,21 +213,33 @@ export async function syncFacebookPerformance(): Promise<FacebookPerformanceStat
   try {
     await assertCurrent();
     const url = new URL(`https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}/${connected.accountId}/video_reels`);
-    url.searchParams.set("fields", "id,title,description,created_time,permalink_url,views,likes.limit(0).summary(true),comments.limit(0).summary(true)");
+    url.searchParams.set("fields", "id,title,description,created_time,permalink_url,likes.limit(0).summary(true),comments.limit(0).summary(true)");
     url.searchParams.set("limit", "25");
-    const response = await fetch(url.href, { headers: { Authorization: `Bearer ${connected.accessToken}` }, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(10_000) });
-    if (response.status === 429 || [401, 403].includes(response.status)) {
-      await response.body?.cancel().catch(() => undefined);
-      throw new ProviderFailure(response.status === 429 ? "rate_limited" : "permission_required", response.status === 429 ? quotaDelay(response.headers) : 600_000);
-    }
-    const data = await boundedJson(response);
-    const error = object(data) && object(data.error) ? data.error : undefined;
-    const code = typeof error?.code === "number" ? error.code : undefined;
-    if (response.status === 429 || [4, 17, 32, 613, 80004, 80006].includes(code || 0)) throw new ProviderFailure("rate_limited", quotaDelay(response.headers));
-    if ([401, 403].includes(response.status) || [10, 190, 200, 294].includes(code || 0)) throw new ProviderFailure("permission_required", 600_000);
-    if (!response.ok || error || !object(data) || !Array.isArray(data.data) || data.data.length > 25) throw new ProviderFailure("error", 60_000);
+    const data = await graph(url, connected);
+    if (!Array.isArray(data.data) || data.data.length > 25) throw new ProviderFailure("error", 60_000);
     const seen = new Set<string>();
     const videos = data.data.map(row => checkedVideo(row, false, connected.accessToken)).filter((row): row is FacebookPerformanceVideo => !!row && !seen.has(row.id) && !!seen.add(row.id));
+    for (const video of videos) {
+      const saved = claimed.videos.find(row => row.id === video.id);
+      if (claimed.viewsMetric === reelMetric && saved?.metricsUpdatedAt) { video.metrics.views = saved.metrics.views; video.metricsUpdatedAt = saved.metricsUpdatedAt; }
+    }
+    const known = await phoenixReels(connected, videos);
+    const selected = [...videos].sort((a, b) => Number(known.has(b.id)) - Number(known.has(a.id))
+      || (Date.parse(a.metricsUpdatedAt || "") || 0) - (Date.parse(b.metricsUpdatedAt || "") || 0)
+      || Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, playsPerRefresh);
+    next = { ...next, videos, viewsMetric: reelMetric, lastSuccessfulSyncAt: new Date().toISOString() };
+    const deadline = Date.now() + 12_000;
+    for (const video of selected) {
+      const remaining = deadline - Date.now(); if (remaining <= 0) break;
+      await assertCurrent();
+      const query = new URL(`https://graph.facebook.com/${FACEBOOK_PAGE_GRAPH_VERSION}/${video.id}/video_insights`);
+      query.searchParams.set("metric", reelMetric); query.searchParams.set("period", "lifetime");
+      const result = await graph(query, connected, Math.min(5000, remaining), true);
+      await assertCurrent();
+      video.metrics.views = totalPlays(result);
+      // A completed unknown result still moves behind unchecked Reels on the next refresh.
+      video.metricsUpdatedAt = new Date().toISOString();
+    }
     const limited = videos.length !== data.data.length || videos.some(row => [row.metrics.views, row.metrics.likes, row.metrics.comments].includes(null)) || object(data.paging) && !!data.paging.next;
     next = { ...next, videos, status: limited ? "limited" : "ready", lastSuccessfulSyncAt: new Date().toISOString(), nextRefreshAt: new Date(Date.now() + 60_000).toISOString() };
   } catch (error) {
