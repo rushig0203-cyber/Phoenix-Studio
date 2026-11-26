@@ -45,7 +45,7 @@ index c4d12e1..3c78873 100644
          raise ValueError(f"unsupported video aspect: {self}")
  
  
-@@ -70,6 +70,33 @@ class MaterialInfo:
+@@ -70,6 +70,46 @@ class MaterialInfo:
      source_info: Optional[dict[str, Any]] = None
  
  
@@ -56,16 +56,29 @@ index c4d12e1..3c78873 100644
 +    label: Literal["Illustration"]
 +
 +
++class PhoenixStillImage(BaseModel):
++    model_config = ConfigDict(extra="forbid")
++    id: int = Field(gt=0)
++    title: str = Field(min_length=1, max_length=300)
++    width: int = Field(ge=480, le=1600)
++    height: int = Field(ge=480, le=1600)
++    url: str = Field(min_length=1, max_length=2048)
++    sourcePage: str = Field(min_length=1, max_length=2048)
++    creator: str = Field(min_length=1, max_length=160)
++    licence: Literal["CC0 1.0", "Public domain"]
++
++
 +class PhoenixStoryBeat(BaseModel):
 +    narration: str = Field(min_length=1, max_length=4000)
 +    query: str = Field(min_length=2, max_length=80)
 +    assetId: Optional[int] = Field(default=None, gt=0)
 +    illustration: Optional[PhoenixEditorialIllustration] = None
++    still: Optional[PhoenixStillImage] = None
 +
 +    @pydantic.model_validator(mode="after")
 +    def exclusive_visual(self):
-+        if self.assetId is not None and self.illustration is not None:
-+            raise ValueError("A storyboard section must choose either its approved stock asset or its original editorial illustration.")
++        if sum(value is not None for value in (self.assetId, self.illustration, self.still)) > 1:
++            raise ValueError("A storyboard section may choose only one approved visual: stock footage, an illustration, or a reference photo.")
 +        return self
 +
 +
@@ -79,7 +92,7 @@ index c4d12e1..3c78873 100644
  class VideoParams(BaseModel):
      """
      {
-@@ -95,6 +122,14 @@ class VideoParams(BaseModel):
+@@ -95,6 +135,14 @@ class VideoParams(BaseModel):
      video_clip_duration: int = Field(default=5, ge=1)
      video_clip_speed: Optional[float] = 1.0
      match_materials_to_script: bool = False
@@ -94,7 +107,7 @@ index c4d12e1..3c78873 100644
      video_count: int = Field(default=1, ge=1)
  
      video_source: Optional[str] = "pexels"
-@@ -131,11 +166,25 @@ class VideoParams(BaseModel):
+@@ -131,11 +179,28 @@ class VideoParams(BaseModel):
      font_size: int = 60
      stroke_color: Optional[str] = "#000000"
      stroke_width: float = 1.5
@@ -116,6 +129,9 @@ index c4d12e1..3c78873 100644
 +        if any(beat.illustration is not None for beat in self.phoenix_storyboard or []):
 +            if self.phoenix_news_visual_policy != "context-stock-or-editorial-2d-v2":
 +                raise ValueError("Original editorial illustrations require the explicit version 2 news policy.")
++        if any(beat.still is not None for beat in self.phoenix_storyboard or []):
++            if self.phoenix_news_visual_policy is not None:
++                raise ValueError("Wikimedia reference photos are not accepted in news workflows; use approved contextual stock or the existing labeled illustration flow.")
 +        return self
 +
  
@@ -607,7 +623,7 @@ new file mode 100644
 index 0000000..b2d0bd1
 --- /dev/null
 +++ b/app/services/phoenix_storyboard.py
-@@ -0,0 +1,955 @@
+@@ -0,0 +1,1097 @@
 +"""Narration-timed approved stock and explicit original editorial illustrations."""
 +
 +import hashlib
@@ -639,6 +655,123 @@ index 0000000..b2d0bd1
 +            or not isinstance(value.get("subject"), str) or value.get("subject") not in _EDITORIAL_SUBJECTS):
 +        raise ValueError("Invalid original editorial illustration metadata.")
 +    return dict(value)
++
++
++def approved_wikimedia_still(value):
++    """Accept one attributed Commons JPEG thumbnail; never an arbitrary image URL."""
++    fields = {"id", "title", "width", "height", "url", "sourcePage", "creator", "licence"}
++    if not isinstance(value, dict) or set(value) != fields:
++        raise ValueError("Invalid Wikimedia reference photo metadata.")
++    if (type(value["id"]) is not int or value["id"] <= 0
++            or type(value["width"]) is not int or type(value["height"]) is not int
++            or not 480 <= value["width"] <= 1600 or not 480 <= value["height"] <= 1600
++            or value["width"] * value["height"] > 2_560_000
++            or not isinstance(value["url"], str) or not isinstance(value["sourcePage"], str)):
++        raise ValueError("Wikimedia reference photo dimensions exceed the supported pixel limit.")
++    for key, maximum in (("title", 300), ("creator", 160)):
++        text = value[key]
++        if not isinstance(text, str) or not text.strip() or len(text) > maximum or any(ord(char) < 32 or ord(char) == 127 for char in text):
++            raise ValueError("Wikimedia reference photo attribution is missing or invalid.")
++    if value["licence"] not in ("CC0 1.0", "Public domain"):
++        raise ValueError("Wikimedia reference photo requires CC0 1.0 or public domain licensing.")
++    try:
++        image_url = urlparse(value["url"])
++        match = re.fullmatch(r"/wikipedia/commons/thumb/[0-9a-f]/[0-9a-f]{2}/([^/]+)/([0-9]{3,4})px-([^/]+)", image_url.path)
++        if (image_url.scheme != "https" or image_url.netloc != "upload.wikimedia.org" or image_url.query or image_url.fragment
++                or image_url.username or image_url.password or not match):
++            raise ValueError
++        encoded_name, nominal_width, second_name = match.groups()
++        filename, duplicate = unquote(encoded_name), unquote(second_name)
++        if (filename != duplicate or "/" in filename or "\\" in filename or not re.search(r"\.jpe?g\Z", filename, re.I)
++                or int(nominal_width) != value["width"]):
++            raise ValueError
++        source = urlparse(value["sourcePage"])
++        page_prefix = "/wiki/File:"
++        if (source.scheme != "https" or source.netloc != "commons.wikimedia.org" or source.query or source.fragment
++                or source.username or source.password or not source.path.startswith(page_prefix)):
++            raise ValueError
++        page_name = unquote(source.path[len(page_prefix):]).replace("_", " ")
++        if not page_name or page_name != filename.replace("_", " "):
++            raise ValueError
++    except (TypeError, ValueError):
++        raise ValueError("Wikimedia reference photo must use its exact attributed HTTPS Commons thumbnail.") from None
++    return dict(value)
++
++
++def download_wikimedia_still(value, directory, max_bytes=8 * 1024 * 1024):
++    """Stream one no-redirect JPEG thumbnail and verify its decoded content."""
++    import requests
++    from PIL import Image
++    from app.config import config
++    from app.services import material
++
++    still = approved_wikimedia_still(value)
++    limit = min(8 * 1024 * 1024, max_bytes)
++    if type(limit) is not int or limit < 1:
++        raise ValueError("Wikimedia reference photo exceeds the remaining bounded download budget.")
++    destination = Path(directory)
++    destination.mkdir(parents=True, exist_ok=True)
++    staged = None
++    try:
++        with requests.get(still["url"], stream=True, proxies=config.proxy, verify=material._get_tls_verify(),
++                          timeout=(15, 30), allow_redirects=False) as response:
++            content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
++            declared = response.headers.get("Content-Length")
++            if response.status_code != 200 or response.url != still["url"] or content_type != "image/jpeg":
++                raise ValueError("Wikimedia did not return the approved JPEG thumbnail directly.")
++            if declared and int(declared) > limit:
++                raise ValueError("Wikimedia reference photo exceeds the per-job byte limit.")
++            with tempfile.NamedTemporaryFile(dir=destination, prefix=".phoenix-still-", suffix=".jpg", delete=False) as output:
++                staged = Path(output.name)
++                received, deadline = 0, time.monotonic() + 120
++                for chunk in response.iter_content(chunk_size=64 * 1024):
++                    if not chunk:
++                        continue
++                    received += len(chunk)
++                    if received > limit or time.monotonic() > deadline:
++                        raise ValueError("Wikimedia reference photo exceeded its byte or time limit.")
++                    output.write(chunk)
++        if received < 4:
++            raise ValueError("Wikimedia returned an empty reference photo.")
++        with Image.open(staged) as image:
++            if image.format != "JPEG" or image.size != (still["width"], still["height"]):
++                raise ValueError("Wikimedia reference photo did not match its declared JPEG dimensions.")
++            if image.width * image.height > 2_560_000:
++                raise ValueError("Wikimedia reference photo exceeds the pixel limit.")
++            image.verify()
++        with Image.open(staged) as image:
++            image.load()
++            if image.format != "JPEG" or image.size != (still["width"], still["height"]):
++                raise ValueError("Wikimedia reference photo could not be fully decoded.")
++        filename = destination / f"wikimedia-still-{still['id']}.jpg"
++        os.replace(staged, filename)
++        staged = None
++        return str(filename), received
++    finally:
++        if staged is not None:
++            staged.unlink(missing_ok=True)
++
++
++def compose_reference_photo(filename, resolution):
++    """Fit the complete photo and label its role independently of speech subtitles."""
++    from PIL import Image, ImageDraw, ImageFont, ImageOps
++
++    width, height = resolution
++    inset = max(12, round(width * .04))
++    font_size = max(18, round(min(width, height) * .033))
++    font = ImageFont.load_default(size=font_size)
++    with Image.open(filename) as source:
++        fitted = ImageOps.contain(source.convert("RGB"), (width, height - 4 * inset))
++        canvas = Image.new("RGB", resolution, "#171D24")
++        canvas.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
++    draw = ImageDraw.Draw(canvas)
++    label = "Reference photo"
++    draw.rounded_rectangle((inset // 2, inset // 2, round(draw.textlength(label, font=font)) + inset * 2, inset + font_size * 2),
++                           radius=inset // 3, fill="#171D24")
++    draw.text((inset, inset), label, fill="#FFFFFF", font=font)
++    composed = Path(filename).with_suffix(".png")
++    canvas.save(composed, format="PNG")
++    return str(composed)
 +
 +
 +def render_editorial_illustration(illustration, narration, filename, resolution):
@@ -857,6 +990,8 @@ index 0000000..b2d0bd1
 +                      "encoder": self.encoder}
 +            if shot.get("illustration"):
 +                recipe.update(version=4, illustration=shot["illustration"])
++            if shot.get("still"):
++                recipe.update(version=5, still=shot["still"])
 +            return hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()
 +        except (OSError, ValueError):
 +            return None
@@ -1401,13 +1536,17 @@ index 0000000..b2d0bd1
 +    locked_assets = news_context_only or measured_policy
 +    section_label = "News" if news_context_only else "Narration"
 +    for index, beat in enumerate(beats):
++        if beat.get("still") is not None:
++            if news_policy is not None:
++                raise ValueError("Wikimedia reference photos are not accepted in news workflows; use the existing approved contextual asset flow.")
++            approved_wikimedia_still(beat["still"])
 +        if beat.get("illustration") is not None:
 +            editorial_illustration(beat["illustration"])
 +            if news_policy != "context-stock-or-editorial-2d-v2" or beat.get("assetId"):
 +                raise ValueError("Original editorial illustrations require their exact version 2 news plan without a stock asset.")
 +    if locked_assets:
 +        for index, beat in enumerate(beats):
-+            if not beat.get("assetId") and not (news_policy == "context-stock-or-editorial-2d-v2" and beat.get("illustration")):
++            if not beat.get("assetId") and not beat.get("still") and not (news_policy == "context-stock-or-editorial-2d-v2" and beat.get("illustration")):
 +                raise ValueError(f"{section_label} section {index + 1} requires an approved contextual asset before rendering. No supplemental stock search was allowed.")
 +    search = material.search_videos_pexels if params.video_source == "pexels" else material.search_videos_pixabay
 +    directory = config.app.get("material_directory", "").strip()
@@ -1417,8 +1556,10 @@ index 0000000..b2d0bd1
 +        directory = ""
 +    timeline, sources, used = [], [], set()
 +    reserved = {str(beat["assetId"]) for beat in beats if beat.get("assetId")}
++    still_bytes = 0
 +    for index, beat in enumerate(beats):
-+        progress(40 + 10 * index / len(beats), f"Finding footage for narration section {index + 1}/{len(beats)}")
++        stage = f"Preparing reference photo for narration section {index + 1}/{len(beats)}" if beat.get("still") else f"Finding footage for narration section {index + 1}/{len(beats)}"
++        progress(40 + 10 * index / len(beats), stage)
 +        if beat.get("illustration"):
 +            illustration = editorial_illustration(beat["illustration"])
 +            resolution = (1280, 720) if params.video_aspect == "16:9" else (720, 720) if params.video_aspect == "1:1" else (720, 1280)
@@ -1428,6 +1569,18 @@ index 0000000..b2d0bd1
 +            sources.append({"provider": "phoenix-original", "asset_id": f"editorial-{index:03}",
 +                            "licence": "Original procedural editorial illustration; no external visual media",
 +                            "illustration": illustration, "file_name": os.path.basename(filename)})
++            continue
++        if beat.get("still"):
++            still = approved_wikimedia_still(beat["still"])
++            filename, received = download_wikimedia_still(still, utils.task_dir(task_id), 64 * 1024 * 1024 - still_bytes)
++            still_bytes += received
++            resolution = (1280, 720) if params.video_aspect == "16:9" else (720, 720) if params.video_aspect == "1:1" else (720, 1280)
++            shot = {**beat, "path": compose_reference_photo(filename, resolution), "sourceStart": 0.0, "playbackRate": 1,
++                    "still": still, "visualLabel": "Reference photo"}
++            timeline.append(shot)
++            sources.append({"provider": "wikimedia", "asset_id": str(still["id"]), "source_page": still["sourcePage"],
++                            "creator": still["creator"], "licence": still["licence"], "file_name": os.path.basename(filename),
++                            "still": still})
 +            continue
 +        approved_id = beat.get("assetId")
 +        if approved_id:
@@ -1525,6 +1678,11 @@ index 0000000..b2d0bd1
 +            editorial_illustration(shot["illustration"])
 +            if Path(shot["path"]).suffix.lower() != ".png" or shot["sourceStart"] != 0:
 +                raise ValueError("Editorial illustrations require their original generated PNG, starting at zero.")
++        if shot.get("still"):
++            approved_wikimedia_still(shot["still"])
++            if (Path(shot["path"]).suffix.lower() != ".png" or shot["sourceStart"] != 0
++                    or shot.get("visualLabel") != "Reference photo"):
++                raise ValueError("Wikimedia reference photos require the labelled composite, at original frame zero.")
 +    width, height = resolution
 +    flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
 +
@@ -1548,7 +1706,7 @@ index 0000000..b2d0bd1
 +            cache_key = cache.key(shot, frames, resolution)
 +            reused = cache.restore(cache_key, part)
 +            if not reused:
-+                image_input = ["-loop", "1", "-framerate", str(_OUTPUT_FPS)] if shot.get("illustration") else ["-ss", str(shot["sourceStart"])]
++                image_input = ["-loop", "1", "-framerate", str(_OUTPUT_FPS)] if shot.get("illustration") or shot.get("still") else ["-ss", str(shot["sourceStart"])]
 +                encoded = run(["-threads", "1", *image_input, "-i", shot["path"], "-an", "-sn", "-dn", "-vf", f"setpts=PTS-STARTPTS,scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps={_OUTPUT_FPS}", "-filter_threads", "1", "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "1", "-progress", "pipe:1", str(part)])
 +                counts = re.findall(r"^frame=(\d+)", encoded.stdout.decode(errors="replace"), re.M)
 +                if not counts or int(counts[-1]) != frames:

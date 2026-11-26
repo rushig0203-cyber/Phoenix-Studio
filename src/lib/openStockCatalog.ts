@@ -183,3 +183,83 @@ export async function resolveOpenStock(provider: OpenProvider, id: number | stri
   if (!item) throw new Error("The requested NASA video is no longer available.");
   return resolveNasaItem(object(item), signal);
 }
+
+export type NarratedStill = {
+  id: number;
+  title: string;
+  width: number;
+  height: number;
+  url: string;
+  sourcePage: string;
+  creator: string;
+  licence: "CC0 1.0" | "Public domain";
+};
+
+/** Saved catalogue evidence, not visual recognition or proof of a reported event. */
+export function readNarratedStill(value: unknown): NarratedStill | undefined {
+  const row = object(value), keys = ["id", "title", "width", "height", "url", "sourcePage", "creator", "licence"];
+  if (Object.keys(row).length !== keys.length || keys.some(key => !Object.hasOwn(row, key))
+    || !Number.isSafeInteger(row.id) || Number(row.id) <= 0
+    || ![row.width, row.height].every(size => Number.isSafeInteger(size) && Number(size) >= 480 && Number(size) <= 1600)
+    || ![row.title, row.creator].every(item => typeof item === "string" && !!item.trim() && item === text(item, 240))
+    || typeof row.creator !== "string" || row.creator.length > 160
+    || row.licence !== "CC0 1.0" && row.licence !== "Public domain") return undefined;
+  try {
+    const source = new URL(assetUrl(row.sourcePage, ["commons.wikimedia.org"], "/wiki/File:"));
+    const image = new URL(assetUrl(row.url, ["upload.wikimedia.org"], "/wikipedia/commons/thumb/"));
+    const filename = decodeURIComponent(source.pathname.slice("/wiki/File:".length)).replace(/ /g, "_");
+    const imagePath = decodeURIComponent(image.pathname);
+    if (source.search || image.search || !filename || /[\\/\u0000-\u001f\u007f]/.test(filename)
+      || !/\.jpe?g$/i.test(filename) || !/\.jpe?g$/i.test(imagePath)) return undefined;
+    const thumb = /^\/wikipedia\/commons\/thumb\/[a-f0-9]\/[a-f0-9]{2}\/([^/]+)\/([^/]+)$/.exec(imagePath);
+    if (!thumb || thumb[1] !== filename || thumb[2] !== `${row.width}px-${filename}`) return undefined;
+    return { id: Number(row.id), title: String(row.title), width: Number(row.width), height: Number(row.height), url: image.toString(), sourcePage: source.toString(), creator: row.creator, licence: row.licence };
+  } catch { return undefined; }
+}
+
+function commonsStill(value: unknown): NarratedStill | undefined {
+  const page = object(value), info = object(array(page.imageinfo)[0]), metadata = object(info.extmetadata);
+  const field = (key: string, limit = 240) => text(object(metadata[key]).value, limit);
+  if (page.ns !== 6 || info.mime !== "image/jpeg"
+    || field("Restrictions", 2000) || field("AttributionRequired").toLowerCase() === "true") return undefined;
+  const key = field("License").toLowerCase(), short = field("LicenseShortName");
+  let licence: NarratedStill["licence"];
+  if (/^cc-?zero$|^cc0$/.test(key) && /^CC0(?: 1\.0)?$/i.test(short)
+    && /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0(?:\/?|\/deed\.en)$/.test(field("LicenseUrl"))) licence = "CC0 1.0";
+  else if (/^(?:pd|public-domain)$/.test(key) && /^public domain$/i.test(short) && field("Copyrighted").toLowerCase() === "false") licence = "Public domain";
+  else return undefined;
+  // Match the approved still renderer: bounded JPEG thumbnails only, never
+  // an original-image fallback or an implicit conversion of SVG/PNG/GIF.
+  if (info.thumbmime !== "image/jpeg") return undefined;
+  let thumbnail: URL;
+  try {
+    thumbnail = new URL(assetUrl(info.thumburl, ["upload.wikimedia.org", "thumb.wikimedia.org"], "/wikipedia/commons/thumb/"));
+    if ([...thumbnail.searchParams.keys()].some(key => !["utm_source", "utm_campaign", "utm_content"].includes(key))) return undefined;
+    // The identical thumbnail is served directly from the canonical upload host.
+    thumbnail.hostname = "upload.wikimedia.org";
+    thumbnail.search = "";
+  } catch { return undefined; }
+  return readNarratedStill({ id: page.pageid, title: field("ObjectName") || text(page.title).replace(/^File:/, "").replace(/\.jpe?g$/i, ""),
+    width: info.thumbwidth, height: info.thumbheight,
+    url: thumbnail.toString(), sourcePage: info.descriptionurl,
+    creator: field("Artist", 160) || "Wikimedia Commons contributor", licence });
+}
+
+/** A bounded metadata search; media stays on the provider until selected. */
+export async function searchNarratedStills(query: string): Promise<NarratedStill[]> {
+  if (typeof query !== "string" || !query.trim() || query.length > 120 || /[\u0000-\u001f\u007f|]/.test(query)) throw new Error("The narrated image search is outside the safe query limits.");
+  const params = new URLSearchParams({ action: "query", generator: "search", gsrsearch: `${query.trim()} filetype:bitmap`, gsrnamespace: "6", gsrlimit: "8", prop: "imageinfo",
+    iiprop: "url|size|mime|thumbmime|extmetadata", iiurlwidth: "960", iiurlheight: "960", iiextmetadatalanguage: "en", format: "json" });
+  const signal = AbortSignal.timeout(15_000);
+  async function search() {
+    const data = await json(`https://commons.wikimedia.org/w/api.php?${params}`, signal, "commons");
+    return Object.values(object(object(data.query).pages)).sort((a, b) => Number(object(a).index) - Number(object(b).index)).slice(0, 8)
+      .flatMap(page => { const still = commonsStill(page); return still ? [still] : []; });
+  }
+  const photos = await search();
+  if (photos.length) return photos;
+  // Broad results can all need attribution or share-alike. Search the CC0
+  // category separately, then check every result's own file metadata again.
+  params.set("gsrsearch", `${query.trim()} filetype:bitmap incategory:"CC-Zero"`);
+  return search();
+}

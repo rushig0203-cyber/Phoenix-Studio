@@ -274,6 +274,7 @@ jobs:
           scripts/test-stock-catalog-paging.cjs
           scripts/test-natural-stock-relevance.cjs
           scripts/test-open-stock-catalog.cjs
+          scripts/test-narrated-stills.cjs
           scripts/test-stock-provider-integration.cjs
           scripts/test-stock-reel-adaptive.cjs
           scripts/test-stock-motion.cjs

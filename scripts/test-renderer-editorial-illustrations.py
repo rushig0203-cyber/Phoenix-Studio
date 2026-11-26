@@ -49,6 +49,34 @@ class TestEditorialIllustrations(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid original editorial"):
                 self.renderer["editorial_illustration"](value)
 
+    def test_verified_reference_photo_fits_and_has_a_visible_label_in_the_rendered_frame(self):
+        from PIL import Image
+        name = "Mallard_drake_preening_(158415201).jpg"
+        still = {"id": 73646009, "title": "Mallard drake preening", "width": 960, "height": 643,
+                 "url": f"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/{name}/960px-{name}",
+                 "sourcePage": f"https://commons.wikimedia.org/wiki/File:{name}", "creator": "Sample photographer", "licence": "CC0 1.0"}
+        self.assertEqual(self.renderer["approved_wikimedia_still"](still), still)
+        with self.assertRaises(ValueError):
+            self.renderer["approved_wikimedia_still"]({**still, "width": 800})
+        with tempfile.TemporaryDirectory(prefix="phoenix-reference-frame-") as directory:
+            root = Path(directory)
+            source, output, frame = root / "photo.jpg", root / "video.mp4", root / "frame.png"
+            Image.new("RGB", (960, 643), "#45855A").save(source)
+            resolution = (360, 640)
+            labelled = self.renderer["compose_reference_photo"](str(source), resolution)
+            shot = {"still": still, "visualLabel": "Reference photo", "path": labelled,
+                    "start": 0, "end": .5, "sourceStart": 0, "playbackRate": 1}
+            ffmpeg = subprocess.check_output(["node", "-p", "require('@ffmpeg-installer/ffmpeg').path"],
+                                            cwd=Path(__file__).resolve().parent.parent, text=True, timeout=10).strip()
+            with patch.dict(self.renderer, {"_shot_cache_directory": lambda: root / "cache"}):
+                self.renderer["render_timeline"]([shot], output, resolution, ffmpeg)
+            subprocess.run([ffmpeg, "-v", "error", "-i", str(output), "-frames:v", "1", str(frame)], check=True, capture_output=True, timeout=15)
+            with Image.open(frame) as image:
+                self.assertEqual(image.size, resolution)
+                self.assertGreater(sum(all(channel > 190 for channel in pixel) for pixel in image.crop((0, 0, 180, 70)).convert("RGB").getdata()), 20)
+                red, green, blue = image.convert("RGB").getpixel((180, 320))
+                self.assertGreater(green, max(red, blue) + 30)
+
     def test_concat_resolves_existing_shots_beside_a_forward_slash_manifest(self):
         with tempfile.TemporaryDirectory(prefix="phoenix-editorial-concat-test-") as temporary:
             root = Path(temporary)

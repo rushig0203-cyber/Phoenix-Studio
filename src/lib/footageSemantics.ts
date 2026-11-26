@@ -35,6 +35,7 @@ const framingWords = new Set(["video", "stock", "clip", "footage", "view", "clos
 const natureActions = [
   { name: "pulsing", pattern: /^(?:puls(?:e|es|ed|ing)|contract(?:s|ed|ing|ion|ions)?)$/ },
   { name: "preening", pattern: /^(?:preen\w*|groom\w*)$/ },
+  { name: "fluffing", pattern: /^fluff\w*$/ },
   { name: "hovering", pattern: /^hover\w*$/ },
   { name: "feeding", pattern: /^(?:feed\w*|eat\w*|graz(?:e|es|ing|ed))$/ },
   { name: "climbing", pattern: /^climb\w*$/ },
@@ -68,12 +69,26 @@ export function hasFootageEvidence(description: string, requirement: string) {
   return required.length > 0 && required.every(word => wordForms(word).some(form => supplied.has(form)));
 }
 
-export function natureVisibleAction(text: string, subject: string) {
+function natureActionNames(text: string, subject: string) {
   const words = evidenceWords(text);
   const actions = natureActions.filter(action => words.some(word => action.pattern.test(word))
     && !(subject === "snail" && action.name === "pulsing" && !words.some(word => /^puls/.test(word)))).map(action => action.name);
   if (subject === "snail" && snailTravel.test(text)) actions.push("gliding");
+  return actions;
+}
+
+export function natureVisibleAction(text: string, subject: string) {
+  const actions = natureActionNames(text, subject);
   return actions.length === 1 ? actions[0] : undefined;
+}
+
+/** A bounded repair for a generated shot, never evidence that a clip shows it. */
+export function natureNarratedQuery(narration: string, subject: string) {
+  const normalized = normalizeNatureAliases(narration);
+  if (!animalSubjects.includes(subject) || /\b(?:not|never|cannot|can't|doesn't|don't|without|imagine|imaginary)\b/i.test(normalized)
+    || animalSubjects.some(other => other !== subject && subjectPattern(other).test(normalized))) return;
+  const action = natureActionNames(narration, subject).find(name => name !== "pulsing" || subject === "jellyfish");
+  if (action) return natureIllustrativeQuery(narration, `${subject} ${action}`, subject);
 }
 
 /** Keep physiology in the narration; stock illustrates the animal's observable action. */
@@ -82,7 +97,7 @@ export function natureIllustrativeQuery(narration: string, query: string, subjec
   const words = evidenceWords(query);
   if (subject === "snail" && snailTravel.test(narration) && /\b(?:foot|muscles?|mucus)\b/i.test(query)
     && words.every(word => /^(?:snails?|foot|muscles?|muscular|mucus|production|contract\w*|relax\w*|wave|like|motion|gliding|forward|without|legs?)$/.test(word))) return "snail gliding";
-  if (subject === "duck" && natureVisibleAction(narration, subject) === "preening"
+  if (subject === "duck" && natureActionNames(narration, subject).includes("preening")
     && natureVisibleAction(query, subject) === "preening"
     && words.every(word => /^(?:ducks?|preen\w*|groom\w*|feathers?|beaks?|oil|glands?)$/.test(word))) return "duck preening feathers";
   return query;

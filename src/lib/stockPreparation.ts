@@ -18,10 +18,13 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
   let input = { ...original };
   let scenes = savedScenes.map(scene => ({ ...scene }));
   const subject = stockNatureSubject(input);
+  const exactPicture = input.storyboard?.some(beat => beat.assetId || beat.still);
   const canAdjustGeneratedPlan = (input.scriptOrigin === "local-model" || !input.script?.trim()) && !input.scriptApproved
-    && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
+    && !input.visualTerms?.length && !exactPicture;
+  const allowStill = !input.research && !input.scriptApproved && input.reviewMode !== "storyboard" && !exactPicture
+    && (!input.visualTerms?.length || input.visualTermsOrigin === "local-model");
   const evidence = !input.research && (input.narrationPresentation === "measured-speech-v1" || subject)
-    ? { subject, allowAdjacentMerge: canAdjustGeneratedPlan } : undefined;
+    ? { subject, allowAdjacentMerge: canAdjustGeneratedPlan, allowStill } : undefined;
   let repairUsed = input.stockPreparation?.repairUsed;
   const save = async (current: DraftScene[], stage: string) => {
     scenes = current.map(scene => ({ ...scene }));
@@ -44,12 +47,12 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
       throw new Error(`The generated narration does not name its ${subject} subject. Saved narration is retained for correction; no unrelated footage was selected.`);
     }
     if (!scenes.length) scenes = await createStockStoryboard(input as GenerationInput & { script: string });
-    if (subject && canAdjustGeneratedPlan) scenes = scenes.map(scene => scene.footage || scene.illustration ? scene
+    if (subject && canAdjustGeneratedPlan) scenes = scenes.map(scene => scene.footage || scene.still || scene.illustration ? scene
       : { ...scene, query: natureIllustrativeQuery(scene.narration, scene.query, subject) });
     if (input.research) {
-      const unsafe = scenes.findIndex(scene => scene.illustration
+      const unsafe = scenes.findIndex(scene => scene.still || (scene.illustration
         ? input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY || scene.footage || !readNewsIllustration(scene.illustration) || scene.query !== newsIllustrationQuery(scene.illustration)
-        : newsStockQueryIssue(scene.query, input.research));
+        : newsStockQueryIssue(scene.query, input.research)));
       if (unsafe >= 0) throw new Error(`News section ${unsafe + 1}: ${newsStockQueryIssue(scenes[unsafe].query, input.research)}. The saved narration is retained; create a new visual plan instead of rendering this legacy shot.`);
     } else if (input.visualTermsOrigin === "local-model" || evidence && input.visualTermsOrigin !== "owner") {
       const unsafe = scenes.findIndex(scene => stockQueryMismatch(scene.narration, scene.query, evidence?.subject));
@@ -68,7 +71,7 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
   }
   if (selectFootage) {
     const canRepairQueries = input.scriptOrigin === "local-model" && !input.scriptApproved && !repairUsed
-      && !input.visualTerms?.length && !input.storyboard?.some(beat => beat.assetId);
+      && !input.visualTerms?.length && !exactPicture;
     await selectAutomaticFootage(scenes, input.duration, input.aspect, save, input.research,
       canRepairQueries && input.newsVisualPolicy !== NEWS_MIXED_VISUAL_POLICY ? async (current, failedIndex, titles) => {
         const queries = await repairUnavailableStockQueries(input, current, failedIndex, titles);
@@ -76,8 +79,10 @@ export async function prepareStockCreation(original: GenerationInput, savedScene
         return queries;
       } : undefined, input.newsVisualPolicy, evidence);
   }
-  if (selectFootage && scenes.some(scene => !scene.footage && !scene.illustration)) throw new Error("The footage plan is incomplete. No backend search fallback was allowed.");
-  input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query, ...(scene.illustration ? { illustration: { ...scene.illustration } } : { assetId: scene.footage?.id }) })), stockPreparation: { version: 1, scenes, ...(repairUsed ? { repairUsed } : {}) } };
-  await checkpoint(input, scenes, selectFootage ? "Exact footage saved — ready for rendering" : "Visual sequence saved");
+  if (selectFootage && scenes.some(scene => !scene.footage && !scene.still && !scene.illustration)) throw new Error("The visual plan is incomplete. No backend search fallback was allowed.");
+  input = { ...input, storyboard: scenes.map(scene => ({ narration: scene.narration, query: scene.query,
+    ...(scene.still ? { still: { ...scene.still } } : scene.illustration ? { illustration: { ...scene.illustration } } : { assetId: scene.footage?.id }) })),
+    stockPreparation: { version: 1, scenes, ...(repairUsed ? { repairUsed } : {}) } };
+  await checkpoint(input, scenes, selectFootage ? "Exact visuals saved — ready for rendering" : "Visual sequence saved");
   return { input, scenes };
 }

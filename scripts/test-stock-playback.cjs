@@ -21,9 +21,11 @@ function load(filename, mocks = {}) {
 const playback = load('src/lib/stockPlayback.ts');
 const brief = load('src/lib/stockBrief.ts');
 const newsPolicy = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
+const openCatalog = load('src/lib/openStockCatalog.ts');
 const shots = load('src/lib/stockStoryboard.ts', {
   './footageSemantics': { actionMismatch: () => undefined },
   './newsVisualPolicy': newsPolicy,
+  './openStockCatalog': openCatalog,
   './writingModel': { generateWritingModel: () => { throw new Error('No writer allowed'); }, withWritingSession: () => { throw new Error('No writer allowed'); } },
 });
 const reels = load('src/lib/stockReel.ts');

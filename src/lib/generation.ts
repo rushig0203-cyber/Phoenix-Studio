@@ -404,6 +404,7 @@ export async function requireStockStoryboardRenderer(approvedFootage = false, ne
   if (news && !supportsNewsPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the local renderer for measured news captions before creating this report. Existing videos and narration are retained.");
   if (measuredNarration && !supportsStockNarrationPresentation(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Restart the updated stock renderer for measured narration, captions and scene cuts.");
   if (localVoice && !supportsLocalStockVoice(api?.components?.schemas?.TaskVideoRequest?.properties)) throw new Error("Update and restart the stock renderer for offline local narration. The selected local voice will not be replaced with an online voice.");
+  return Boolean(api?.components?.schemas?.PhoenixStoryBeat?.properties?.still);
 }
 
 export async function generatorReachable() {
@@ -882,10 +883,12 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
   const actualShots = input.storyboard?.length ? readStockShots(shots, media.duration, true) : undefined;
   if (input.research) assertNewsStockRender(input.newsVisualPolicy, input.storyboard, actualShots || []);
   const measured = input.narrationPresentation === "measured-speech-v1";
-  if (measured) assertMeasuredStockRender(input.storyboard, actualShots);
+  if (measured || input.storyboard?.some(shot => shot.still)) assertMeasuredStockRender(input.storyboard, actualShots);
+  const photos = actualShots?.flatMap(shot => shot.still ? [shot.still] : []) || [];
   const illustrationCount = actualShots?.filter(shot => shot.illustration).length || 0;
-  const hasStock = Boolean(actualShots?.some(shot => !shot.illustration));
-  const visualRights = illustrationCount ? `${illustrationCount} original local editorial 2D illustration(s), labelled Illustration${hasStock ? "; remaining shots use Pexels free licensed stock" : "; no external visual media"}` : "Pexels free stock footage assembled by the local MoneyPrinterTurbo service";
+  const hasStock = Boolean(actualShots?.some(shot => !shot.illustration && !shot.still));
+  const visualRights = photos.length ? `${photos.length} labelled Wikimedia Commons reference photo(s), each with a saved CC0 or public-domain source${hasStock ? "; remaining shots use Pexels free licensed stock" : ""}`
+    : illustrationCount ? `${illustrationCount} original local editorial 2D illustration(s), labelled Illustration${hasStock ? "; remaining shots use Pexels free licensed stock" : "; no external visual media"}` : "Pexels free stock footage assembled by the local MoneyPrinterTurbo service";
   const retained = input.rendererProtocol === 1 || artifacts ? await retainStockArtifacts(job.id, destination, media, artifacts, input.script) : undefined;
   const musicRecording = retained?.musicPresent && input.narrationBed ? stockRecordingMetadata(input.narrationBed).credit : undefined;
   const reportCopy = input.research ? `Report source: ${input.research.source} (${input.research.publishedAt.slice(0, 10)}) ${input.research.url}\n${input.research.limitation}` : undefined;
@@ -893,7 +896,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
     id: job.id,
     title: input.topic.slice(0, 120),
     targets: [target],
-    source: { kind: illustrationCount && !hasStock ? "upload" : "pexels", filename: safeFilename(`stock-${job.id}.mp4`), licence: visualRights },
+    source: { kind: photos.length && !hasStock ? "commons" : illustrationCount && !hasStock ? "upload" : "pexels", filename: safeFilename(`stock-${job.id}.mp4`), licence: visualRights },
     audience: "general",
     quality: {
       audio: retained ? retained.musicPresent ? "local-narration-music" : "local-narration" : "needs-review",
@@ -906,7 +909,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       research: input.research ? { source: input.research.source, url: input.research.url, publishedAt: input.research.publishedAt, fetchedAt: input.research.fetchedAt, limitation: input.research.limitation } : undefined,
       editorial: input.editorial,
       managerGuidance: input.managerGuidance,
-      checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), illustrationCount ? visualRights : "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
+      checks: [input.scriptOrigin === "owner" ? "Owner narration preserved" : "Model-written narration with no generic fallback", ...(input.editorial?.checks || []), illustrationCount || photos.length ? visualRights : "Free Pexels footage searched in visual-brief order", "Video and audio streams validated", retained ? "Actual timed captions and clean narrated master retained" : "Legacy render: caption and music artifacts were not verified", "No paid AI video provider used"],
       visualBrief: stockSearchTerms(input),
       storyboard: actualShots,
       warning: `${input.research ? input.research.limitation + " " : ""}${retained && !retained.musicPresent && (!measured || input.narrationBed) ? "Background music was not mixed successfully; narration is retained. " : !retained ? "Legacy caption/music status needs manual review. " : ""}Review every shot against the narration before posting.`,
@@ -925,7 +928,7 @@ async function completeStockJob(job: LocalGenerationJob, input: GenerationInput,
       status: "NOT_REVIEWED",
       madeForKids: false,
       originality: illustrationCount && !hasStock ? "original-local" : "licensed-transformed",
-      rightsBasis: illustrationCount ? `${visualRights}. Original narration, captions and edit; review any music separately.` : `Pexels free-stock footage with an original script, narration, captions and edit.${musicRecording ? ` Music: ${musicRecording.title}, CC0 1.0.` : ""}`,
+      rightsBasis: illustrationCount || photos.length ? `${visualRights}. Original narration, captions and edit; review any music separately.` : `Pexels free-stock footage with an original script, narration, captions and edit.${musicRecording ? ` Music: ${musicRecording.title}, CC0 1.0.` : ""}`,
       checks: ["Confirm every stock clip still matches its provider licence", "Watch the complete export for factual and visual accuracy", "Confirm title, thumbnail, and upload copy are original"],
       manualReviewRequired: true,
       syntheticDisclosureReview: "REVIEW_REQUIRED",
@@ -1075,7 +1078,7 @@ async function runChildrenJob(job: LocalGenerationJob, input: GenerationInput) {
 
 async function chooseNarrationBed(job: LocalGenerationJob, input: GenerationInput): Promise<StockRecordingSelection | null> {
   if (input.research || !input.recommendation?.visualSubject) return null;
-  const visuals = input.stockPreparation?.scenes.flatMap(scene => scene.footage ? [new URL(scene.footage.sourcePage).pathname.replaceAll("-", " ")] : []) || [];
+  const visuals = input.stockPreparation?.scenes.flatMap(scene => scene.still ? [scene.still.title] : scene.footage ? [new URL(scene.footage.sourcePage).pathname.replaceAll("-", " ")] : []) || [];
   const direction = `${input.recommendation.premise} ${visuals.join(" ")}`;
   if (!/\b(?:calm|peaceful|quiet|gentl\w*|glid\w*|drift\w*|float\w*|still water)\b/i.test(direction)
     || /\b(?:chase|hunt|attack|fight|rescue|rapid\w*|storm|crash|distress)\b/i.test(direction)) return null;
@@ -1092,11 +1095,12 @@ async function startStockJob(job: LocalGenerationJob, input: GenerationInput) {
   if (await existingReadyOutput(job, input)) return;
   if (!(await generatorReachable())) throw new Error("The free local stock-video service is offline.");
   const measured = input.narrationPresentation === "measured-speech-v1";
-  await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research) || measured, Boolean(input.research), input.voice === "local-windows-voice", input.newsVisualPolicy, measured);
+  const acceptsReferencePhotos = await requireStockStoryboardRenderer(Boolean(input.storyboard?.some(beat => beat.assetId)) || Boolean(input.research) || measured, Boolean(input.research), input.voice === "local-windows-voice", input.newsVisualPolicy, measured);
   await updateJob(job.id, { progress: 5, stage: "Preparing the script and exact footage through the shared creation pipeline" });
   const plan = await prepareStockCreation(input, input.stockPreparation?.scenes, (saved, _scenes, stage) => updateJob(job.id, { stage, duration: saved.duration, requestedDuration: saved.requestedDuration ?? saved.duration, requestJson: JSON.stringify(saved) }));
   const script = plan.input.script!;
   const storyboard = plan.input.storyboard!;
+  if (storyboard.some(beat => beat.still) && !acceptsReferencePhotos) throw new Error("Restart the updated local renderer to use the saved reference photos. Your draft is retained.");
   const prepared: GenerationInput = { ...plan.input, rendererProtocol: 1, newsVisualPolicy: plan.input.research ? plan.input.newsVisualPolicy || NEWS_STOCK_VISUAL_POLICY : undefined, visualTerms: storyboard.map(beat => beat.query), visualTermsOrigin: input.visualTermsOrigin || (input.visualTerms?.length ? "owner" : "local-model") };
   if (measured && prepared.narrationBed === undefined) prepared.narrationBed = await chooseNarrationBed(job, prepared);
   const bed = measured && !prepared.research ? prepared.narrationBed : undefined;

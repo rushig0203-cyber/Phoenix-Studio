@@ -23,6 +23,7 @@ function load(relative, dependencies) {
 const brief = load('src/lib/stockBrief.ts', {});
 const semantics = load('src/lib/footageSemantics.ts', { './stockBrief': brief });
 const news = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
+const openCatalog = load('src/lib/openStockCatalog.ts', {});
 const plain = value => JSON.parse(JSON.stringify(value));
 const scenes = [
   { narration: 'A generic customer follow-up can come across as insincere, but a tailored approach can strengthen relationships and drive business growth.', query: 'Generic email sent' },
@@ -37,22 +38,60 @@ const footage = (id, title, extra = {}) => ({ id, duration: 40, width: 720, heig
   creator: 'Fixture filmmaker', ...extra });
 const base = { topic: 'Make a useful customer follow-up specific', duration: 47, aspect: '9:16',
   script: scenes.map(scene => scene.narration).join(' '), scriptOrigin: 'local-model', reviewMode: 'final' };
-function harness({ reply = replacements, search = async () => [], providerError } = {}) {
-  const calls = { writer: [], search: [], checkpoints: [] };
+function harness({ reply = replacements, search = async () => [], searchPhotos = async () => [], providerError } = {}) {
+  const calls = { writer: [], search: [], photos: [], checkpoints: [] };
   const writing = { withWritingSession: async fn => fn(), async generateWritingModel(body) {
     calls.writer.push(body);
     if (providerError) throw providerError;
     return Response.json({ response: JSON.stringify({ queries: reply }) });
   } };
-  const storyboard = load('src/lib/stockStoryboard.ts', { './footageSemantics': semantics, './writingModel': writing, './newsVisualPolicy': news });
+  const storyboard = load('src/lib/stockStoryboard.ts', { './footageSemantics': semantics, './writingModel': writing, './newsVisualPolicy': news, './openStockCatalog': openCatalog });
   const catalog = { async searchFootage(...args) { calls.search.push(args); return search(...args); },
     async selectedFootage() { assert.fail('A selected asset must not be replaced/resolved in these fixtures'); } };
-  const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': news });
+  const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': news,
+    './openStockCatalog': { ...openCatalog, async searchNarratedStills(query) { calls.photos.push(query); return searchPhotos(query); } } });
   const preparation = load('src/lib/stockPreparation.ts', { './generation': { createStockScript: async input => input.script },
     './stockStoryboard': storyboard, './automaticFootage': automatic, './stockCatalog': catalog,
     './writingModel': writing, './newsVisualPolicy': news, './footageSemantics': semantics });
   return { calls, storyboard, automatic, preparation, checkpoint: async (input, selected, stage) => calls.checkpoints.push({ input: plain(input), selected: plain(selected), stage }) };
 }
+
+test('a Pexels outage selects, checkpoints and proves a labelled exact CC0 reference', async () => {
+  const photo = {
+    id: 73646009, width: 960, height: 643, title: 'Mallard drake preening (158415201)', creator: 'Gisle Vanem', licence: 'CC0 1.0',
+    sourcePage: 'https://commons.wikimedia.org/wiki/File:Mallard_drake_preening_(158415201).jpg',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Mallard_drake_preening_%28158415201%29.jpg/960px-Mallard_drake_preening_%28158415201%29.jpg',
+  };
+  const narration = 'A duck preens its feathers to keep them in good condition.';
+  const h = harness({ search: async () => { throw new Error('Pexels limit reached.'); },
+    searchPhotos: async () => [{ ...photo, id: 1, title: 'Mallard duck cartoon preening' }, photo] });
+  const input = { ...base, topic: 'How a duck cares for its feathers', script: narration, narrationPresentation: 'measured-speech-v1' };
+  const prepared = await h.preparation.prepareStockCreation(input, [{ narration, query: 'duck preening feathers' }], h.checkpoint);
+  const [beat] = prepared.input.storyboard;
+  assert.equal(prepared.input.script, narration);
+  assert.deepEqual(h.calls.photos, ['duck preening']);
+  assert.equal(h.calls.search.length, 1);
+  assert.equal(h.calls.writer.length, 0);
+  assert.equal(beat.assetId, undefined);
+  assert.deepEqual(plain(beat.still), photo);
+  const shot = { ...beat, start: 0, end: 5, timing: 'subtitle-boundary', playbackRate: 1, visualLabel: 'Reference photo' };
+  const rendered = h.storyboard.readStockShots([shot], 5, true);
+  assert.doesNotThrow(() => h.storyboard.assertMeasuredStockRender([beat], rendered));
+  assert.throws(() => h.storyboard.assertMeasuredStockRender([beat], [{ ...rendered[0], still: { ...photo, id: 2 } }]), /did not prove/);
+  assert.throws(() => h.storyboard.readStockShots([{ ...shot, visualLabel: undefined }], 5, true), /invalid reference photo/);
+  await h.preparation.prepareStockCreation(prepared.input, prepared.scenes, h.checkpoint);
+  assert.equal(h.calls.photos.length, 1, 'Resuming keeps the exact picture');
+});
+
+test('another action explicitly in the same sentence gets matching footage before the image fallback', async () => {
+  const narration = 'The duck preens and fluffs its feathers.';
+  const h = harness({ search: async query => query === 'duck preening feathers' ? [footage(62, query, { duration: 60 })] : [] });
+  const input = { ...base, topic: 'How a duck cares for its feathers', script: narration, narrationPresentation: 'measured-speech-v1' };
+  const result = await h.preparation.prepareStockCreation(input, [{ narration, query: 'duck fluffing feathers' }], h.checkpoint);
+  assert.equal(result.input.storyboard[0].assetId, 62);
+  assert.equal(result.input.storyboard[0].query, 'duck preening feathers');
+  assert.deepEqual(h.calls.photos, []);
+});
 
 test('exact cached customer follow-up failure gets one repair, saves it and selects five distinct usable shots', async () => {
   const original = plain(scenes);
@@ -105,7 +144,7 @@ test('a mini-doc scene with no supported action keeps the exact footage, narrati
     narrationPresentation: 'measured-speech-v1', recommendation: { id: 'jellyfish-pulse:adaptation', visualSubject: 'jellyfish' } };
   const search = async () => [footage(7, 'quiet waves'), footage(8, 'jellyfish in water')];
   const h = harness({ reply: [start.query, 'jellyfish contracting'], search });
-  await assert.rejects(h.preparation.prepareStockCreation(input, [start, ending], h.checkpoint), /Scene 2.*planned subject and action/);
+  await assert.rejects(h.preparation.prepareStockCreation(input, [start, ending], h.checkpoint), /Scene 2.*(?:planned subject and action|no matching clip)/);
   assert.equal(h.calls.writer.length, 1);
   const saved = h.calls.checkpoints.at(-1).input;
   assert.equal(saved.stockPreparation.repairUsed, true);
@@ -114,7 +153,7 @@ test('a mini-doc scene with no supported action keeps the exact footage, narrati
   const resumed = harness({ search });
   await assert.rejects(resumed.preparation.prepareStockCreation(saved, saved.stockPreparation.scenes, resumed.checkpoint), /Scene 2/);
   assert.equal(resumed.calls.writer.length, 0);
-  assert.ok(resumed.calls.search.every(([query]) => query === 'jellyfish contracting'));
+  assert.ok(resumed.calls.search.every(([query]) => ['jellyfish contracting', 'jellyfish pulsing'].includes(query)), 'A bounded literal synonym may be checked; unrelated actions may not');
 });
 
 const snailPlan = [
@@ -130,6 +169,36 @@ const duckPlan = [
 const natureInput = (plan, subject, duration) => ({ ...base, topic: `How a ${subject} moves and cares for itself`, duration,
   script: plan.map(scene => scene.narration).join(' '), narrationPresentation: 'measured-speech-v1', autoDuration: true,
   recommendation: { id: `${subject}:adaptation`, visualSubject: subject } });
+
+const latestDuckScript = "A duck's feathers are its most valuable asset, but how does it keep them clean and healthy? A duck preens its feathers with its beak, carefully cleaning and smoothing each one. As it preens, the duck rubs its beak on its oil gland, located near its tail, to collect oil. This oil is then applied to its feathers to waterproof them, allowing the duck to swim and dive without getting wet. The duck also fluffs its feathers to maintain insulation, trapping warm air next to its body. By preening its feathers, using its oil gland to waterproof them, and fluffing them to maintain insulation, a duck is able to keep its feathers clean and healthy.";
+
+test('latest failed duck narration repairs mismatched generated queries to its stated action before another writer call', async () => {
+  const input = { topic: 'How a duck cares for its feathers', script: latestDuckScript, duration: 35,
+    recommendation: { visualSubject: 'duck' }, creativeBrief: { structure: 'explanation', beats: Array.from({ length: 4 }, () => ({ visual: 'duck feather care' })) } };
+  for (const ending of ['duck waterproof feathers', 'duck fluffing feathers']) {
+    const h = harness({ reply: ['duck preening feathers', 'duck rubbing beak oil gland', 'duck fluffing feathers', ending] });
+    const plan = await h.storyboard.createStockStoryboard(input);
+    assert.equal(plan.length, 4); assert.equal(plan.map(beat => beat.narration).join(' '), latestDuckScript);
+    assert.deepEqual(plain(plan.map(beat => beat.query)), ['duck preening feathers', 'duck preening feathers', 'duck fluffing feathers', ending === 'duck fluffing feathers' ? ending : 'duck preening feathers']);
+    assert.ok(plan.every(beat => !h.storyboard.stockQueryMismatch(beat.narration, beat.query, 'duck')));
+    assert.equal(h.calls.writer.length, 1); assert.equal(h.calls.search.length, 0);
+  }
+});
+
+test('deterministic nature repair does not infer negated, other-animal or internal mechanisms as visible actions', async () => {
+  assert.equal(semantics.natureNarratedQuery('The duck preens its feathers.', 'duck'), 'duck preening feathers');
+  for (const narration of ['The duck never preens here.', 'The duck is quiet while a hummingbird hovers.', 'The duck oil gland contracts internally.', 'Imagine a duck hovering above the lake.', 'A duck remains dry without preening.']) {
+    assert.equal(semantics.natureNarratedQuery(narration, 'duck'), undefined, narration);
+  }
+  const h = harness(), closing = latestDuckScript.split('. ').at(-1);
+  assert.equal(h.storyboard.stockQueryMismatch(closing, 'duck fluffing feathers', 'duck'), undefined);
+  assert.equal(h.storyboard.stockQueryMismatch(closing, 'duck feeding', 'duck'), 'the visible preening action');
+  assert.equal(h.storyboard.stockQueryMismatch('The duck fluffs its feathers.', 'duck swimming', 'duck'), 'the visible fluffing action');
+  const owner = await h.storyboard.createStockStoryboard({ topic: 'How a duck cares for its feathers', script: latestDuckScript, duration: 35, visualTerms: ['duck feather details'] });
+  assert.ok(owner.every(beat => beat.query === 'duck feather details'));
+  await assert.rejects(h.storyboard.createStockStoryboard({ topic: 'How a duck cares for its feathers', script: latestDuckScript, duration: 35, storyboard: [{ narration: latestDuckScript, query: 'duck swimming', assetId: 91 }] }), /Saved section/);
+  assert.equal(h.calls.writer.length, 0);
+});
 
 test('exact failed snail anatomy plan continues selected gliding footage without another search or model repair', async () => {
   const before = plain(snailPlan), h = harness();
@@ -179,7 +248,7 @@ test('continuing narration cannot overrun a short source or replay it; a distinc
   assert.deepEqual(plain(result.scenes.map(scene => scene.footage.id)), [40246009, 81]);
   assert.equal(h.calls.search.length, 1); assert.equal(h.calls.writer.length, 0);
   const unavailable = harness({ search: async () => [plan[0].footage] });
-  await assert.rejects(unavailable.preparation.prepareStockCreation({ ...natureInput(plan, 'duck', 23), stockPreparation: { version: 1, scenes: plan, repairUsed: true } }, plan, unavailable.checkpoint), /Scene 2.*no distinct clip/);
+  await assert.rejects(unavailable.preparation.prepareStockCreation({ ...natureInput(plan, 'duck', 23), stockPreparation: { version: 1, scenes: plan, repairUsed: true } }, plan, unavailable.checkpoint), /Scene 2.*no (?:distinct|matching) clip/);
   assert.equal(unavailable.calls.checkpoints.at(-1).selected.length, 2);
 });
 
@@ -200,7 +269,7 @@ test('same action in a different setting is not merged, and owner or approved pl
   assert.equal(result.scenes.length, 2); assert.equal(result.scenes[1].footage.id, 82);
   for (const extra of [{ scriptOrigin: 'owner' }, { scriptApproved: true }, { visualTerms: ['duck preening feathers'], visualTermsOrigin: 'owner' }]) {
     const locked = harness();
-    await assert.rejects(locked.preparation.prepareStockCreation({ ...natureInput(duckPlan, 'duck', 23), ...extra }, duckPlan, locked.checkpoint), /no distinct/);
+    await assert.rejects(locked.preparation.prepareStockCreation({ ...natureInput(duckPlan, 'duck', 23), ...extra }, duckPlan, locked.checkpoint), /no (?:distinct|matching)/);
     assert.deepEqual(locked.calls.checkpoints.at(-1).selected, plain(duckPlan));
     assert.equal(locked.calls.writer.length, 0);
   }
@@ -342,4 +411,20 @@ test('helper never accepts a changed selected query', async () => {
   const h = harness({ reply: ['different customer conversation', ...replacements.slice(1)] });
   await assert.rejects(h.storyboard.repairUnavailableStockQueries(base, [selected, ...scenes.slice(1)], 1, []), /change selected section/);
   assert.equal(h.calls.writer.length, 1);
+});
+
+test('later catalogue repair treats saved photos and illustrations as immutable selections', async () => {
+  for (const picture of [{ still: { fixture: 'opaque validated photo' } }, { illustration: { fixture: 'opaque validated illustration' } }]) {
+    const selected = { ...scenes[0], query: replacements[0], ...picture };
+    const plan = [selected, ...scenes.slice(1)], before = plain(plan);
+    const h = harness();
+    const repaired = await h.storyboard.repairUnavailableStockQueries(base, plan, 1, []);
+    assert.equal(repaired[0], selected.query); assert.deepEqual(plain(plan), before);
+    assert.match(h.calls.writer[0].prompt, /"section":1[^}]+"selected":true/);
+    const rejected = harness({ reply: ['different customer conversation', ...replacements.slice(1)] });
+    await assert.rejects(rejected.storyboard.repairUnavailableStockQueries(base, plan, 1, []), /change selected section 1/);
+    const locked = harness();
+    await assert.rejects(locked.storyboard.repairUnavailableStockQueries(base, plan, 0, []), /cannot be repaired safely/);
+    assert.equal(locked.calls.writer.length, 0);
+  }
 });

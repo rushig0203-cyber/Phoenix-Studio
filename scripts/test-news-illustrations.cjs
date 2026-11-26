@@ -18,6 +18,7 @@ function load(relative, dependencies) {
 const brief = load('src/lib/stockBrief.ts', {});
 const semantics = load('src/lib/footageSemantics.ts', { './stockBrief': brief });
 const policy = load('src/lib/newsVisualPolicy.ts', { './stockBrief': brief });
+const openCatalog = load('src/lib/openStockCatalog.ts', {});
 const research = { title: 'Australian author jailed', summary: 'An author pleaded guilty during a court case.', text: 'The report concerns court proceedings.' };
 const narration = 'The author was jailed after pleading guilty. The court heard the case earlier this year.';
 const input = { topic: research.title, script: narration, duration: 25, aspect: '9:16', research, newsVisualPolicy: policy.NEWS_MIXED_VISUAL_POLICY, scriptOrigin: 'local-model' };
@@ -28,11 +29,12 @@ test('one truthful disclosure works for stock, original illustrations and mixed 
   for (const value of ['Visuals are not illustrative.', 'This is footage of the real event.', 'BBC News reports continuing talks.']) assert.equal(policy.hasNewsVisualDisclosure(value), false);
 });
 function harness(search = async () => []) {
-  const calls = { writer: 0, search: [], checkpoints: [] };
+  const calls = { writer: 0, search: [], photos: 0, checkpoints: [] };
   const writing = { withWritingSession: async work => work(), generateWritingModel: async () => { calls.writer++; assert.fail('New automatic news shot planning must not retry a writer'); } };
-  const storyboard = load('src/lib/stockStoryboard.ts', { './footageSemantics': semantics, './writingModel': writing, './newsVisualPolicy': policy });
+  const storyboard = load('src/lib/stockStoryboard.ts', { './footageSemantics': semantics, './writingModel': writing, './newsVisualPolicy': policy, './openStockCatalog': openCatalog });
   const catalog = { searchFootage: async (...args) => { calls.search.push(args); return search(...args); }, selectedFootage: async () => assert.fail('Cached exact assets must be retained') };
-  const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': policy });
+  const automatic = load('src/lib/automaticFootage.ts', { './stockCatalog': catalog, './stockBrief': brief, './footageSemantics': semantics, './newsVisualPolicy': policy,
+    './openStockCatalog': { ...openCatalog, searchNarratedStills: async () => { calls.photos++; assert.fail('News must never query an external photo catalogue'); } } });
   const preparation = load('src/lib/stockPreparation.ts', { './generation': { createStockScript: async value => value.script }, './stockStoryboard': storyboard,
     './automaticFootage': automatic, './stockCatalog': catalog, './writingModel': writing, './newsVisualPolicy': policy, './footageSemantics': semantics });
   return { calls, storyboard, preparation, checkpoint: async (saved, scenes) => calls.checkpoints.push(plain({ saved, scenes })) };
@@ -63,12 +65,22 @@ test('eligible distinct stock remains first choice with fallback only for the un
   assert.equal(result.scenes[1].illustration.subject, 'legal');
 });
 
-test('network and quota failures are preserved instead of becoming illustration success', async () => {
-  for (const message of ['Network failed', 'Free quota reached']) {
+test('Pexels outages use labelled original news illustrations and never query external photos', async () => {
+  for (const message of ['Pexels network failed', 'Pexels free quota reached']) {
     const h = harness(async () => { throw new Error(message); });
-    await assert.rejects(h.preparation.prepareStockCreation(input), new RegExp(message));
+    const result = await h.preparation.prepareStockCreation(input);
+    assert.equal(result.input.script, narration);
+    assert.ok(result.scenes.length > 0);
+    assert.ok(result.scenes.every(scene => scene.illustration?.label === 'Illustration' && scene.illustration.subject === 'legal' && !scene.footage && !scene.still));
     assert.equal(h.calls.search.length, 1);
+    assert.equal(h.calls.photos, 0); assert.equal(h.calls.writer, 0);
   }
+});
+
+test('legacy stock-only news retains provider failures without adding photos or illustrations', async () => {
+  const h = harness(async () => { throw new Error('Pexels network failed'); });
+  await assert.rejects(h.preparation.prepareStockCreation({ ...input, newsVisualPolicy: policy.NEWS_STOCK_VISUAL_POLICY }, [{ narration, query: 'gavel' }]), /Pexels network failed/);
+  assert.equal(h.calls.search.length, 1); assert.equal(h.calls.photos, 0); assert.equal(h.calls.writer, 0);
 });
 
 test('legacy approved news stock guard cannot gain illustration fallback', async () => {
@@ -119,7 +131,7 @@ test('new draft policy and approval snapshot preserve exact original metadata an
     'node:crypto': require('node:crypto'), 'node:path': path, 'node:fs/promises': { mkdir: async () => {}, readFile: async () => JSON.stringify(saved) },
     './reviewFiles': { reviewRoot: () => 'fixture-only' }, './atomicJson': { writeAtomicJson: async (_name, value) => { saved = plain(value); } }, './fileLock': { withFileLock: async (_name, work) => work() },
     './renderResources': {}, './generation': { createGenerationJobs: async (_owner, values) => { jobs = plain(values); return [{ id: 'fixture-job' }]; } }, './kidsRenderer': {}, './krishnaStory': {}, './qualityManager': {}, './songWriting': {},
-    './stockStoryboard': {}, './stockBrief': { stockNarrationError: () => undefined }, './songAudio': {}, './stockCatalog': {}, './localSinging': {}, './hostedSinging': {}, './stockPreparation': {}, './newsVisualPolicy': policy, './writingModel': {},
+    './stockStoryboard': {}, './stockBrief': { stockNarrationError: () => undefined }, './songAudio': {}, './stockCatalog': {}, './localSinging': {}, './hostedSinging': {}, './stockPreparation': {}, './newsVisualPolicy': policy, './writingModel': {}, './openStockCatalog': openCatalog,
   };
   const drafts = load('src/lib/creationDrafts.ts', imports);
   const [created] = await drafts.createCreationDrafts([{ ...input, requestId: 'new-request' }]);

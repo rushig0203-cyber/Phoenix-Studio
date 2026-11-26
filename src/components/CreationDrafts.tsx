@@ -30,6 +30,7 @@ export default function CreationDrafts({ drafts, onRefresh, onRequeued }: { draf
       const queued = ["QUEUED", "READY"].includes(draft.status);
       const dated = Number.isFinite(Date.parse(draft.createdAt));
       const illustrations = draft.scenes?.filter(scene => scene.illustration) || [];
+      const references = draft.scenes?.filter(scene => scene.still).length || 0;
       return <article key={draft.id} data-job-row>
         <details className="min-w-0">
           <summary title="Show job details" data-job-summary>
@@ -44,6 +45,7 @@ export default function CreationDrafts({ drafts, onRefresh, onRequeued }: { draf
           <div className="mt-3 space-y-2 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
             <p>{draft.input.duration}s · {draft.input.aspect}</p>
             {illustrations.length ? <p>Original editorial illustration · {[...new Set(illustrations.map(scene => scene.illustration!.subject))].join(", ")}. Each illustration is labelled in the finished video.</p> : null}
+            {references ? <p>{references} reference photo{references === 1 ? "" : "s"} · labelled in the finished video.</p> : null}
             <p role="status" className="text-sm">{draft.status === "READY" ? "Queued for automatic rendering" : draft.stage}</p>
             {draft.status === "QUEUED" && draft.nextAttemptAt && Number.isFinite(Date.parse(draft.nextAttemptAt)) ? <p>Next automatic check: <time dateTime={draft.nextAttemptAt}>{new Date(draft.nextAttemptAt).toLocaleString()}</time>.</p> : null}
             {draft.status === "QUEUED" && /Groq|quota/.test(draft.stage) ? <p>While writing waits, you can <a className="underline" href="#create">make a reel with stock footage</a>.</p> : null}
