@@ -19,7 +19,9 @@ function photoSearchTerm(query: string, subject?: string) {
 }
 
 function stillMatches(still: NarratedStill, query: string, subject?: string) {
-  const title = subject === "duck" ? still.title.replace(/\bmallards?\b/i, "$& duck") : still.title;
+  const name = decodeURIComponent(new URL(still.sourcePage).pathname.slice("/wiki/File:".length)).replace(/_/g, " ");
+  const metadata = `${still.title} ${name}`;
+  const title = subject === "duck" ? metadata.replace(/\bmallards?\b/i, "$& duck") : metadata;
   return hasFootageEvidence(title, photoSearchTerm(query, subject)) && !footageMetadataMismatch(title, query)
     && !/\b(?:illustration|diagram|drawing|painting|rendering|animation|artwork|poster|model|AI-generated)\b/i.test(still.title)
     && (!subject || hasFootageEvidence(title, subject) && !natureDepictionMismatch(title, subject));
@@ -177,7 +179,7 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
         await onScene(selected, `Checking licensed reference photos ${index + 1}/${selected.length}: ${query}`);
         let choices: NarratedStill[];
         try { choices = await searchNarratedStills(query); } catch { photoUnavailable = true; break; }
-        const still = choices.find(photo => !photosUsed.has(photo.id) && stillMatches(photo, query, subject));
+        const still = choices.map(readNarratedStill).find(photo => photo && !photosUsed.has(photo.id) && stillMatches(photo, query, subject));
         if (!still) continue;
         scene.query = query;
         scene.still = still;

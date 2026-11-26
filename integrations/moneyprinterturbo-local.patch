@@ -713,8 +713,8 @@ index 0000000..b2d0bd1
 +    destination.mkdir(parents=True, exist_ok=True)
 +    staged = None
 +    try:
-+        with requests.get(still["url"], stream=True, proxies=config.proxy, verify=material._get_tls_verify(),
-+                          timeout=(15, 30), allow_redirects=False) as response:
++        with requests.get(still["url"], stream=True, proxies=config.proxy, verify=material._get_tls_verify(), timeout=(15, 30), allow_redirects=False,
++                          headers={"User-Agent": "PhoenixStudio/0.1 (https://github.com/rushig0203-cyber/Phoenix-Studio)", "Accept": "image/jpeg"}) as response:
 +            content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
 +            declared = response.headers.get("Content-Length")
 +            if response.status_code != 200 or response.url != still["url"] or content_type != "image/jpeg":

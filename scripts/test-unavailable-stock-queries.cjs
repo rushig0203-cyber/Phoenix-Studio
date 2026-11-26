@@ -58,7 +58,7 @@ function harness({ reply = replacements, search = async () => [], searchPhotos =
 
 test('a Pexels outage selects, checkpoints and proves a labelled exact CC0 reference', async () => {
   const photo = {
-    id: 73646009, width: 960, height: 643, title: 'Mallard drake preening (158415201)', creator: 'Gisle Vanem', licence: 'CC0 1.0',
+    id: 73646009, width: 960, height: 643, title: 'Dsc 1067 Jpg', creator: 'Gisle Vanem', licence: 'CC0 1.0',
     sourcePage: 'https://commons.wikimedia.org/wiki/File:Mallard_drake_preening_(158415201).jpg',
     url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Mallard_drake_preening_%28158415201%29.jpg/960px-Mallard_drake_preening_%28158415201%29.jpg',
   };
