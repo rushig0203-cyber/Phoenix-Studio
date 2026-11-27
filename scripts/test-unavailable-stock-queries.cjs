@@ -56,12 +56,13 @@ function harness({ reply = replacements, search = async () => [], searchPhotos =
   return { calls, storyboard, automatic, preparation, checkpoint: async (input, selected, stage) => calls.checkpoints.push({ input: plain(input), selected: plain(selected), stage }) };
 }
 
+const photo = {
+  id: 73646009, width: 960, height: 643, title: 'Dsc 1067 Jpg', creator: 'Gisle Vanem', licence: 'CC0 1.0',
+  sourcePage: 'https://commons.wikimedia.org/wiki/File:Mallard_drake_preening_(158415201).jpg',
+  url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Mallard_drake_preening_%28158415201%29.jpg/960px-Mallard_drake_preening_%28158415201%29.jpg',
+};
+
 test('a Pexels outage selects, checkpoints and proves a labelled exact CC0 reference', async () => {
-  const photo = {
-    id: 73646009, width: 960, height: 643, title: 'Dsc 1067 Jpg', creator: 'Gisle Vanem', licence: 'CC0 1.0',
-    sourcePage: 'https://commons.wikimedia.org/wiki/File:Mallard_drake_preening_(158415201).jpg',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Mallard_drake_preening_%28158415201%29.jpg/960px-Mallard_drake_preening_%28158415201%29.jpg',
-  };
   const narration = 'A duck preens its feathers to keep them in good condition.';
   const h = harness({ search: async () => { throw new Error('Pexels limit reached.'); },
     searchPhotos: async () => [{ ...photo, id: 1, title: 'Mallard duck cartoon preening' }, photo] });
@@ -81,6 +82,40 @@ test('a Pexels outage selects, checkpoints and proves a labelled exact CC0 refer
   assert.throws(() => h.storyboard.readStockShots([{ ...shot, visualLabel: undefined }], 5, true), /invalid reference photo/);
   await h.preparation.prepareStockCreation(prepared.input, prepared.scenes, h.checkpoint);
   assert.equal(h.calls.photos.length, 1, 'Resuming keeps the exact picture');
+});
+
+test('a still cannot replace the motion the narration asks the viewer to watch', async () => {
+  for (const narration of [
+    'Watch the duck preen in real time as its beak moves through the feathers.',
+    'Here you can see the duck moving its bill through the feathers.',
+    'The next view shows the duck in slow motion.',
+  ]) {
+    const scene = { narration, query: 'duck preening feathers' };
+    const input = { ...base, topic: 'How a duck cares for its feathers', script: narration, narrationPresentation: 'measured-speech-v1' };
+    const h = harness({ searchPhotos: async () => [photo] });
+    await assert.rejects(h.preparation.prepareStockCreation({ ...input, stockPreparation: { version: 1, scenes: [scene], repairUsed: true } }, [scene], h.checkpoint), /Scene 1.*needs a matching video clip.*draft and selected visuals are saved/);
+    assert.equal(h.calls.search.length, 3);
+    assert.deepEqual(h.calls.photos, []);
+    assert.deepEqual(h.calls.checkpoints.at(-1).selected, [scene]);
+  }
+});
+
+test('a saved still with a motion promise retains its exact checkpoint and requires correction', async () => {
+  const scene = { narration: 'Watch the duck preen its feathers.', query: 'duck preening', still: photo };
+  const h = harness();
+  await assert.rejects(h.automatic.selectAutomaticFootage([scene], 8, '9:16', async () => assert.fail('No new checkpoint should be written')),
+    /saved reference photo cannot show it.*draft is retained/);
+  assert.deepEqual(scene.still, photo);
+  assert.deepEqual(h.calls.search, []);
+  assert.deepEqual(h.calls.photos, []);
+});
+
+test('clear moving footage still wins for a scene that asks viewers to watch', async () => {
+  const scene = { narration: 'Watch the duck preen its feathers.', query: 'duck preening feathers' };
+  const h = harness({ search: async () => [footage(71, scene.query)] });
+  const [selected] = await h.automatic.selectAutomaticFootage([scene], 8, '9:16', async () => {}, undefined, undefined, undefined, { subject: 'duck', allowStill: true });
+  assert.equal(selected.footage.id, 71);
+  assert.deepEqual(h.calls.photos, []);
 });
 
 test('another action explicitly in the same sentence gets matching footage before the image fallback', async () => {
@@ -144,7 +179,7 @@ test('a mini-doc scene with no supported action keeps the exact footage, narrati
     narrationPresentation: 'measured-speech-v1', recommendation: { id: 'jellyfish-pulse:adaptation', visualSubject: 'jellyfish' } };
   const search = async () => [footage(7, 'quiet waves'), footage(8, 'jellyfish in water')];
   const h = harness({ reply: [start.query, 'jellyfish contracting'], search });
-  await assert.rejects(h.preparation.prepareStockCreation(input, [start, ending], h.checkpoint), /Scene 2.*(?:planned subject and action|no matching clip)/);
+  await assert.rejects(h.preparation.prepareStockCreation(input, [start, ending], h.checkpoint), /Scene 2.*needs a matching video clip/);
   assert.equal(h.calls.writer.length, 1);
   const saved = h.calls.checkpoints.at(-1).input;
   assert.equal(saved.stockPreparation.repairUsed, true);

@@ -13,6 +13,12 @@ const footageTitle = (choice: FootageChoice) => new URL(choice.sourcePage).pathn
 /** Metadata heuristics, not visual recognition. Never silently use an unrelated search. */
 type ShotEvidence = { subject?: string; allowAdjacentMerge?: boolean; allowStill?: boolean };
 
+function narrationRequiresMotion(narration: string) {
+  return /\b(?:in (?:real[ -]time|slow[ -]motion)|frame[ -]by[ -]frame)\b/i.test(narration)
+    || /(?:^|[.!?]\s+|\byou can\s+|\bwe can\s+)(?:now\s+)?watch\s+(?!for\b)/i.test(narration.trim())
+    || /\b(?:see|notice|look at)\s+[^.!?]{0,70}\b(?:moves?|moving|changes?|changing|contracts?|contracting|flows?|flowing|preens?|preening|pulses?|pulsing|fluffs?|fluffing|opens?|opening|closes?|closing|turns?|turning)\b/i.test(narration);
+}
+
 function photoSearchTerm(query: string, subject?: string) {
   // Preening already names a feather action; catalogue photo titles often omit "feathers".
   return subject === "duck" && /^duck preening feathers$/i.test(query) ? "duck preening" : query;
@@ -71,7 +77,10 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
   };
   for (let index = 0; index < selected.length; index++) {
     const scene = selected[index];
+    const requiresMotion = narrationRequiresMotion(scene.narration);
+    const canUsePhoto = !research && evidence?.allowStill && !requiresMotion;
     if (scene.still) {
+      if (requiresMotion) throw new Error(`Scene ${index + 1} · ${scene.query}: the narration asks viewers to watch movement. This saved reference photo cannot show it. Your draft is retained.`);
       const still = readNarratedStill(scene.still);
       if (research || scene.footage || scene.illustration || !still || !stillMatches(still, scene.query, evidence?.subject)) {
         throw new Error(`Scene ${index + 1}: the saved reference photo could not be verified. Your draft is retained.`);
@@ -173,7 +182,7 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       }
     }
     let photoUnavailable = false;
-    if (!best && !research && evidence?.allowStill) {
+    if (!best && canUsePhoto) {
       const queries = [...new Set([scene.query, ...(alternate ? [alternate] : [])].map(query => photoSearchTerm(query, subject)))];
       for (const query of queries) {
         await onScene(selected, `Checking licensed reference photos ${index + 1}/${selected.length}: ${query}`);
@@ -191,7 +200,8 @@ export async function selectAutomaticFootage(scenes: DraftScene[], duration: num
       if (scene.still) continue;
     }
     if (!best && repairFailure) throw repairFailure;
-    if (!best && footageUnavailable) throw new Error(`Scene ${index + 1} · ${scene.query}: ${footageUnavailable.message}${evidence?.allowStill ? photoUnavailable ? " The reference-photo catalogue could not be reached either." : " No licensed matching reference photo was found." : ""} Your draft is saved.`);
+    if (!best && !research && evidence?.allowStill && requiresMotion) throw new Error(`Scene ${index + 1} · ${scene.query}: this narration asks viewers to watch movement, so it needs a matching video clip. ${footageUnavailable?.message || "No suitable clip was found."} Your draft and selected visuals are saved.`);
+    if (!best && footageUnavailable) throw new Error(`Scene ${index + 1} · ${scene.query}: ${footageUnavailable.message}${canUsePhoto ? photoUnavailable ? " The reference-photo catalogue could not be reached either." : " No licensed matching reference photo was found." : ""} Your draft is saved.`);
     if (!best && evidence?.allowStill) throw new Error(`Scene ${index + 1} · ${scene.query}: no matching clip covers the narration${photoUnavailable ? "; the reference-photo catalogue could not be checked" : ", and no matching licensed reference photo was found"}. Your draft and selected visuals are saved.`);
     if (!best && evidence) throw new Error(`Scene ${index + 1} · ${scene.query}: no distinct clip supported the planned subject and action for ${Math.ceil(minimum)} seconds. Your draft and any selected clips are saved.`);
     if (!best) throw new Error(`Section ${index + 1}: no distinct, suitable footage of at least ${Math.ceil(minimum)} seconds for “${scene.query}” after an expanded search. Retry later. No unrelated filler or paid fallback was used.`);

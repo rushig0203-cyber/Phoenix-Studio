@@ -27,10 +27,12 @@ Create has three dedicated workspaces:
   style only changes the mode; **Process video** starts the upload and processing.
   Find each upload's clips under **Library → Episode clips**.
 - **[Create a Video](http://localhost:3000/dashboard#create?mode=video)**
-  (`#create?mode=video`): start from six personalized ideas or describe your own.
+  (`#create?mode=video`): start from five nature mini-documentary ideas, explore
+  other categories, or describe your own.
   Selecting an idea fills the form; **Create video** explicitly queues it.
-  **More ideas** checks the latest saved work. Narrated stock videos and children's
-  2D stories use separate rendering paths. Planning finishes automatically.
+  Ideas refresh on opening the workspace. **More ideas** checks the latest saved
+  work. Narrated stock videos and children's 2D stories use separate rendering
+  paths. Planning finishes automatically.
   Narration keeps its natural speaking speed and ends with the story or
   explanation. Song exports use the complete recording within the chosen format's
   upper limit. Review the finished video before posting.
@@ -60,6 +62,8 @@ Available automatic stock sources are Pexels, Pixabay, eligible Wikimedia Common
 and NASA footage. Commons/NASA results require supported rights and source
 evidence. These sources share the same Make a Reel flow. Required credits for
 existing and new videos are retained; Coverr is not included.
+Create a Video uses Pexels footage and may use a labelled CC0 or public-domain
+Wikimedia Commons photo for a scene that can be illustrated with a still.
 No arbitrary internet video scraping is enabled.
 
 ## Writers, captions and quality
